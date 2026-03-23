@@ -1,25 +1,27 @@
 #!/bin/bash
+# .env 파일에서 GITHUB_TOKEN 정보를 읽어옵니다.
+if [ -f .env ]; then
+  export $(grep ^GITHUB_TOKEN .env | xargs)
+fi
 
 echo ">>> Checking repository status..."
 
-# .git 폴더가 없으면 최초 클론(Clone)을 진행합니다.
 if [ ! -d ".git" ]; then
-  echo ">>> .git directory not found. Initializing repository..."
+  echo ">>> .git directory not found. Initializing repository manually..."
   if [ -z "$GITHUB_TOKEN" ]; then
-    docker compose run --rm git-sync sh -c "git clone https://github.com/banlan21-maker/erp.git ."
+    sudo docker compose run --rm git-sync sh -c "git config --global --add safe.directory /git && git init && git remote add origin https://github.com/banlan21-maker/erp.git && git fetch origin master && git checkout -f master"
   else
-    docker compose run --rm git-sync sh -c "git clone https://x-access-token:${GITHUB_TOKEN}@github.com/banlan21-maker/erp.git ."
+    sudo docker compose run --rm git-sync sh -c "git config --global --add safe.directory /git && git init && git remote add origin https://x-access-token:${GITHUB_TOKEN}@github.com/banlan21-maker/erp.git && git fetch origin master && git checkout -f master"
   fi
 else
-  # 이미 존재하면 Pull 하여 동기화합니다.
-  echo ">>> Syncing with GitHub using Docker container..."
-  docker compose run --rm git-sync
+  echo ">>> Syncing with GitHub (Pull)..."
+  sudo docker compose run --rm git-sync sh -c "git config --global --add safe.directory /git && git pull origin master"
 fi
 
 if [ $? -eq 0 ]; then
-  echo ">>> Sync successful. Rebuilding and restarting services..."
-  docker compose up -d --build
+  echo ">>> Sync successful. Building services..."
+  sudo docker compose up -d --build
 else
-  echo ">>> Sync/Clone failed. Please check your GITHUB_TOKEN in .env or your network connection."
+  echo ">>> Failed. Check your TOKEN or Network."
   exit 1
 fi
