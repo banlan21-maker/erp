@@ -62,8 +62,8 @@ const COLUMN_MAP: Record<string, string[]> = {
   width: ["width", "폭", "w", "너비"],
   length: ["length", "길이", "l", "len"],
   qty: ["qty", "수량", "ea", "매수", "q"],
-  steelWeight: ["steelweight", "강재중량", "중량", "weight", "wt", "강중"],
-  useWeight: ["useweight", "사용중량", "사용중", "usewt"],
+  steelWeight: ["steelweight", "강재중량", "자재중량", "중량", "weight", "wt", "강중"],
+  useWeight: ["useweight", "사용중량", "부재중량", "사용중", "usewt"],
 };
 
 function findColumnIndex(
