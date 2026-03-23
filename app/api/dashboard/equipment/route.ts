@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -9,9 +11,13 @@ export async function GET() {
       orderBy: { name: "asc" }
     });
 
-    // 금일 시작된 절단 실적 조회
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+    // 금일 시작된 절단 실적 조회 (한국 시간 기준 자정)
+    const formatter = new Intl.DateTimeFormat('en-CA', { // 'en-CA' outputs YYYY-MM-DD
+      timeZone: 'Asia/Seoul',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    });
+    const kstDateString = formatter.format(new Date());
+    const startOfDay = new Date(`${kstDateString}T00:00:00+09:00`);
 
     const logs = await prisma.cuttingLog.findMany({
       where: {
