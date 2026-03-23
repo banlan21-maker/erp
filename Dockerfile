@@ -34,7 +34,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-USER nextjs
+# 나스 환경의 Prisma 마이그레이션 수행 시 파일 쓰기(TS 컴파일) 권한 충돌 방지를 위해 root로 실행합니다.
+# USER nextjs
 
 EXPOSE 3000
 
