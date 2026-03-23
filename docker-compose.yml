@@ -46,10 +46,10 @@ services:
         git config --global --add safe.directory /git
         if [ -z "$GITHUB_TOKEN" ]; then
           echo "GITHUB_TOKEN is not set. Using existing credentials."
-          git pull origin main
+          git pull origin master
         else
           echo "Using GITHUB_TOKEN for sync."
-          git pull https://x-access-token:${GITHUB_TOKEN}@github.com/banlan21-maker/erp.git main
+          git pull https://x-access-token:${GITHUB_TOKEN}@github.com/banlan21-maker/erp.git master
         fi
 
 volumes:
