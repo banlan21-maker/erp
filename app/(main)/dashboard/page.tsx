@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FolderOpen, FileSpreadsheet, Layers, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
+import { DashboardEquipmentProgress } from "@/components/dashboard-equipment-progress";
 
 const STATUS_COLOR: Record<string, string> = {
   ACTIVE: "bg-green-100 text-green-700",
@@ -62,6 +63,9 @@ export default async function DashboardPage() {
         <h2 className="text-2xl font-bold text-gray-900">현황 대시보드</h2>
         <p className="text-sm text-gray-500 mt-1">CNC 절단 파트 ERP 실시간 현황</p>
       </div>
+
+      {/* 장비별 작업 현황 위젯 */}
+      <DashboardEquipmentProgress />
 
       {/* 요약 카드 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

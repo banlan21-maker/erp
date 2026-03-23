@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - '3000:3000'
+      - '5002:3000'
     environment:
       - DATABASE_URL=postgresql://cnc_user:cnc_password@db:5432/cnc_erp
       - NODE_ENV=production
@@ -24,7 +24,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - '5432:5432'
+      - '5003:5432'
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U cnc_user -d cnc_erp"]
