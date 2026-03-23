@@ -14,7 +14,7 @@ const navItems = [
   { href: "/dashboard", label: "대시보드",      icon: LayoutDashboard },
   { href: "/workers",   label: "인원관리",      icon: Users },
   { href: "/projects",  label: "호선·프로젝트", icon: FolderOpen },
-  { href: "/drawings",  label: "강재리스트",    icon: FileSpreadsheet },
+  { href: "/drawings",  label: "강재관리",      icon: FileSpreadsheet },
   { href: "/worklog",   label: "작업일보",      icon: ClipboardList },
   { href: "/reports",   label: "보고서",        icon: BarChart2 },
 ];

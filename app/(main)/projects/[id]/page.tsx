@@ -4,9 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
-import DrawingUploader from "@/components/drawing-uploader";
-import DrawingTable from "@/components/drawing-table";
+import { ArrowLeft, FileSpreadsheet, ExternalLink } from "lucide-react";
 import ProjectDeleteButton from "@/components/project-delete-button";
 
 const TYPE_DESC: Record<string, string> = {
@@ -30,7 +28,6 @@ export default async function ProjectDetailPage({
   const project = await prisma.project.findUnique({
     where: { id },
     include: {
-      drawingLists: { orderBy: { createdAt: "asc" } },
       _count: { select: { drawingLists: true } },
     },
   });
@@ -71,17 +68,20 @@ export default async function ProjectDetailPage({
         </div>
       )}
 
-      {/* 강재리스트 */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold text-gray-800">
-            강재리스트{" "}
-            <span className="text-gray-400 font-normal text-sm">({project._count.drawingLists}행)</span>
-          </h3>
-          <DrawingUploader projectId={project.id} />
+      {/* 강재리스트 바로가기 */}
+      <Link
+        href={`/drawings?tab=list&projectId=${project.id}`}
+        className="flex items-center justify-between bg-white border rounded-xl px-5 py-4 hover:bg-blue-50 transition-colors group"
+      >
+        <div className="flex items-center gap-3">
+          <FileSpreadsheet size={18} className="text-blue-500" />
+          <div>
+            <p className="text-sm font-semibold text-gray-800">강재리스트 보기</p>
+            <p className="text-xs text-gray-400 mt-0.5">총 {project._count.drawingLists}행 등록됨</p>
+          </div>
         </div>
-        <DrawingTable drawings={project.drawingLists} projectId={project.id} />
-      </div>
+        <ExternalLink size={15} className="text-gray-400 group-hover:text-blue-500" />
+      </Link>
     </div>
   );
 }

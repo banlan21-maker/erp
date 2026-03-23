@@ -12,16 +12,18 @@ import {
   SelectItem,
   SelectLabel,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
-import { Upload, FileSpreadsheet, FolderOpen, CheckCircle2, AlertCircle, Settings2 } from "lucide-react";
+import { Upload, FileSpreadsheet, FolderOpen, CheckCircle2, AlertCircle, Settings2, List, ArrowLeft } from "lucide-react";
 import PresetManager from "./preset-manager";
+import DrawingTable from "./drawing-table";
+import type { DrawingList } from "@prisma/client";
 
 interface ProjectOption {
   id: string;
   projectCode: string;
   projectName: string;
   drawingCount: number;
+  status: string;
 }
 
 interface RecentUpload {
@@ -44,16 +46,98 @@ interface Preset {
   dataStartRow: number;
 }
 
+const STATUS_LABEL: Record<string, string> = { ACTIVE: "진행중", COMPLETED: "완료", ON_HOLD: "보류" };
+const STATUS_COLOR: Record<string, string> = {
+  ACTIVE: "bg-green-100 text-green-700",
+  COMPLETED: "bg-gray-100 text-gray-600",
+  ON_HOLD: "bg-yellow-100 text-yellow-700",
+};
+
 export default function DrawingsMain({
+  tab,
+  projectId,
   projectOptions,
   recentUploads,
+  drawings,
+  activeProject,
+}: {
+  tab: string;
+  projectId: string | null;
+  projectOptions: ProjectOption[];
+  recentUploads: RecentUpload[];
+  drawings: DrawingList[];
+  activeProject: { id: string; projectCode: string; projectName: string } | null;
+}) {
+  const router = useRouter();
+
+  const goTab = (t: string) => router.push(`/drawings?tab=${t}`);
+
+  return (
+    <div className="space-y-4">
+      {/* 헤더 */}
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">강재관리</h2>
+        <p className="text-sm text-gray-500 mt-0.5">강재 등록 및 현황을 관리합니다.</p>
+      </div>
+
+      {/* 탭 */}
+      <div className="flex border-b border-gray-200">
+        <button
+          onClick={() => goTab("upload")}
+          className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            tab === "upload"
+              ? "border-blue-600 text-blue-600"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          <Upload size={15} /> 강재등록
+        </button>
+        <button
+          onClick={() => goTab("list")}
+          className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            tab === "list"
+              ? "border-blue-600 text-blue-600"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          <List size={15} /> 강재리스트
+        </button>
+      </div>
+
+      {/* 강재등록 탭 */}
+      {tab === "upload" && (
+        <UploadTab
+          projectOptions={projectOptions}
+          recentUploads={recentUploads}
+          router={router}
+        />
+      )}
+
+      {/* 강재리스트 탭 */}
+      {tab === "list" && (
+        <ListTab
+          projectOptions={projectOptions}
+          drawings={drawings}
+          activeProject={activeProject}
+          projectId={projectId}
+          router={router}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── 강재등록 탭 ─────────────────────────────────────────────────────────── */
+function UploadTab({
+  projectOptions,
+  recentUploads,
+  router,
 }: {
   projectOptions: ProjectOption[];
   recentUploads: RecentUpload[];
+  router: ReturnType<typeof useRouter>;
 }) {
-  const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
-
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
@@ -68,7 +152,6 @@ export default function DrawingsMain({
       .then((d) => { if (d.success) setPresets(d.data); });
   }, []);
 
-  // 호선코드 기준 그룹핑
   const grouped: Record<string, ProjectOption[]> = {};
   for (const p of projectOptions) {
     if (!grouped[p.projectCode]) grouped[p.projectCode] = [];
@@ -89,72 +172,37 @@ export default function DrawingsMain({
   };
 
   const handleUpload = async () => {
-    if (!selectedProjectId) {
-      setResult({ success: false, message: "호선/블록을 먼저 선택하세요." });
-      return;
-    }
-    if (!selectedFile) {
-      setResult({ success: false, message: "Excel 파일을 선택하세요." });
-      return;
-    }
-
+    if (!selectedProjectId) { setResult({ success: false, message: "호선/블록을 먼저 선택하세요." }); return; }
+    if (!selectedFile) { setResult({ success: false, message: "Excel 파일을 선택하세요." }); return; }
     setLoading(true);
     setResult(null);
     try {
       const formData = new FormData();
       formData.append("file", selectedFile);
       formData.append("projectId", selectedProjectId);
-      if (selectedPresetId !== "__default__") {
-        formData.append("presetId", selectedPresetId);
-      }
-
+      if (selectedPresetId !== "__default__") formData.append("presetId", selectedPresetId);
       const res = await fetch("/api/drawings", { method: "POST", body: formData });
       const data = await res.json();
-
       if (data.success) {
-        setResult({
-          success: true,
-          message: `${data.data.count}행이 등록되었습니다.`,
-          count: data.data.count,
-          warnings: data.data.warnings,
-        });
+        setResult({ success: true, message: `${data.data.count}행이 등록되었습니다.`, count: data.data.count, warnings: data.data.warnings });
         setSelectedFile(null);
         if (fileRef.current) fileRef.current.value = "";
         router.refresh();
       } else {
-        setResult({
-          success: false,
-          message: data.error,
-          warnings: data.details,
-        });
+        setResult({ success: false, message: data.error, warnings: data.details });
       }
-    } catch {
-      setResult({ success: false, message: "서버 연결 오류가 발생했습니다." });
-    } finally {
-      setLoading(false);
-    }
+    } catch { setResult({ success: false, message: "서버 연결 오류가 발생했습니다." }); }
+    finally { setLoading(false); }
   };
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">강재리스트</h2>
-        <p className="text-sm text-gray-500 mt-0.5">호선/블록을 선택하고 Excel 파일을 업로드하세요.</p>
-      </div>
-
-      {/* ── 업로드 패널 ── */}
       <div className="bg-white rounded-xl border p-6 space-y-5">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold text-gray-800 flex items-center gap-2">
-            <Upload size={16} className="text-blue-500" />
-            강재리스트 등록
+            <Upload size={16} className="text-blue-500" /> 강재리스트 등록
           </h3>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowPresetManager(true)}
-            className="flex items-center gap-1.5 text-xs"
-          >
+          <Button variant="outline" size="sm" onClick={() => setShowPresetManager(true)} className="flex items-center gap-1.5 text-xs">
             <Settings2 size={13} /> 업로드 형식 지정
           </Button>
         </div>
@@ -163,57 +211,49 @@ export default function DrawingsMain({
           <div className="text-center py-6 text-gray-400 border-2 border-dashed rounded-xl">
             <FolderOpen size={28} className="mx-auto mb-2 opacity-50" />
             <p className="text-sm">등록된 호선이 없습니다.</p>
-            <Link href="/projects/new" className="text-xs text-blue-500 hover:underline mt-1 inline-block">
-              호선 먼저 등록하기 →
-            </Link>
+            <Link href="/projects/new" className="text-xs text-blue-500 hover:underline mt-1 inline-block">호선 먼저 등록하기 →</Link>
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Step 1: 호선/블록 선택 */}
+            {/* Step 1 */}
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1.5">
                 <span className="bg-blue-600 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">1</span>
                 호선 / 블록 선택
               </Label>
-              <Select
-                value={selectedProjectId}
-                onValueChange={(v) => { setSelectedProjectId(v ?? ""); setResult(null); }}
-              >
+              <Select value={selectedProjectId} onValueChange={(v) => { setSelectedProjectId(v ?? ""); setResult(null); }}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="호선 및 블록을 선택하세요" />
+                  {selectedProjectId && selectedProject ? (
+                    <span>{selectedProject.projectCode} - {selectedProject.projectName}</span>
+                  ) : (
+                    <span className="text-muted-foreground">호선 및 블록을 선택하세요</span>
+                  )}
                 </SelectTrigger>
                 <SelectContent>
                   {Object.entries(grouped).map(([code, blocks]) => (
                     <SelectGroup key={code}>
-                      <SelectLabel className="text-xs font-bold text-gray-500">
-                        호선 [{code}]
-                      </SelectLabel>
+                      <SelectLabel className="text-xs font-bold text-gray-500">호선 [{code}]</SelectLabel>
                       {blocks.map((p) => (
                         <SelectItem key={p.id} value={p.id}>
                           <span className="font-medium">{p.projectName}</span>
-                          <span className="text-gray-400 text-xs ml-2">
-                            (현재 {p.drawingCount}행)
-                          </span>
+                          <span className="text-gray-400 text-xs ml-2">(현재 {p.drawingCount}행)</span>
                         </SelectItem>
                       ))}
                     </SelectGroup>
                   ))}
                 </SelectContent>
               </Select>
-
               {selectedProject && (
                 <p className="text-xs text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg">
                   선택: 호선 [{selectedProject.projectCode}] — {selectedProject.projectName}
                   {selectedProject.drawingCount > 0 && (
-                    <span className="text-orange-600 ml-2">
-                      · 기존 {selectedProject.drawingCount}행에 추가됩니다 (덮어쓰기 아님)
-                    </span>
+                    <span className="text-orange-600 ml-2">· 기존 {selectedProject.drawingCount}행에 추가됩니다</span>
                   )}
                 </p>
               )}
             </div>
 
-            {/* Step 2: 파일 선택 */}
+            {/* Step 2 */}
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1.5">
                 <span className="bg-blue-600 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">2</span>
@@ -222,18 +262,14 @@ export default function DrawingsMain({
               <div
                 onClick={() => fileRef.current?.click()}
                 className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${
-                  selectedFile
-                    ? "border-green-400 bg-green-50"
-                    : "border-gray-200 hover:border-blue-400 hover:bg-blue-50"
+                  selectedFile ? "border-green-400 bg-green-50" : "border-gray-200 hover:border-blue-400 hover:bg-blue-50"
                 }`}
               >
                 {selectedFile ? (
                   <div className="flex items-center justify-center gap-2 text-green-700">
                     <FileSpreadsheet size={20} />
                     <span className="text-sm font-medium">{selectedFile.name}</span>
-                    <span className="text-xs text-gray-500">
-                      ({(selectedFile.size / 1024).toFixed(1)} KB)
-                    </span>
+                    <span className="text-xs text-gray-500">({(selectedFile.size / 1024).toFixed(1)} KB)</span>
                   </div>
                 ) : (
                   <div className="text-gray-400">
@@ -243,29 +279,22 @@ export default function DrawingsMain({
                   </div>
                 )}
               </div>
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={handleFileSelect}
-                className="hidden"
-              />
+              <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={handleFileSelect} className="hidden" />
             </div>
 
-            {/* Step 2.5: 업로드 형식 선택 */}
+            {/* Step 2.5 */}
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1.5">
-                <span className="bg-gray-400 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
-                  ✦
-                </span>
+                <span className="bg-gray-400 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">✦</span>
                 업로드 형식
               </Label>
-              <Select
-                value={selectedPresetId}
-                onValueChange={(v) => setSelectedPresetId(v ?? "__default__")}
-              >
+              <Select value={selectedPresetId} onValueChange={(v) => setSelectedPresetId(v ?? "__default__")}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="형식 선택" />
+                  {selectedPresetId === "__default__" ? (
+                    <span>기본값 - 자동감지</span>
+                  ) : (
+                    <span>{presets.find((p) => p.id === selectedPresetId)?.name ?? "형식 선택"}</span>
+                  )}
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__default__">기본값 - 자동감지</SelectItem>
@@ -277,47 +306,26 @@ export default function DrawingsMain({
                   ))}
                 </SelectContent>
               </Select>
-              {selectedPresetId === "__default__" ? (
-                <p className="text-xs text-gray-400">헤더를 자동으로 감지합니다.</p>
-              ) : (
-                <p className="text-xs text-blue-600">
-                  선택된 형식: {presets.find((p) => p.id === selectedPresetId)?.name}
-                </p>
-              )}
             </div>
 
-            {/* 결과 메시지 */}
             {result && (
               <div className={`flex items-start gap-2 p-3 rounded-lg text-sm ${
-                result.success
-                  ? "bg-green-50 text-green-700 border border-green-200"
-                  : "bg-red-50 text-red-700 border border-red-200"
+                result.success ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"
               }`}>
-                {result.success
-                  ? <CheckCircle2 size={16} className="flex-shrink-0 mt-0.5" />
-                  : <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />}
+                {result.success ? <CheckCircle2 size={16} className="flex-shrink-0 mt-0.5" /> : <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />}
                 <div>
                   <p className="font-medium">{result.message}</p>
                   {result.warnings && result.warnings.length > 0 && (
                     <ul className="mt-1 space-y-0.5">
-                      {result.warnings.slice(0, 5).map((w, i) => (
-                        <li key={i} className="text-xs opacity-80">· {w}</li>
-                      ))}
-                      {result.warnings.length > 5 && (
-                        <li className="text-xs opacity-60">외 {result.warnings.length - 5}건...</li>
-                      )}
+                      {result.warnings.slice(0, 5).map((w, i) => <li key={i} className="text-xs opacity-80">· {w}</li>)}
+                      {result.warnings.length > 5 && <li className="text-xs opacity-60">외 {result.warnings.length - 5}건...</li>}
                     </ul>
                   )}
                 </div>
               </div>
             )}
 
-            {/* Step 3: 업로드 실행 */}
-            <Button
-              onClick={handleUpload}
-              disabled={loading || !selectedProjectId || !selectedFile}
-              className="w-full flex items-center gap-2"
-            >
+            <Button onClick={handleUpload} disabled={loading || !selectedProjectId || !selectedFile} className="w-full flex items-center gap-2">
               <Upload size={15} />
               {loading ? "파싱 중..." : "강재리스트 등록"}
             </Button>
@@ -325,7 +333,7 @@ export default function DrawingsMain({
         )}
       </div>
 
-      {/* ── 최근 업로드 현황 ── */}
+      {/* 최근 등록 현황 */}
       <div className="bg-white rounded-xl border p-5">
         <h3 className="text-sm font-semibold text-gray-700 mb-3">최근 등록 현황</h3>
         {recentUploads.length === 0 ? (
@@ -335,13 +343,11 @@ export default function DrawingsMain({
             {recentUploads.map((u) => (
               <Link
                 key={u.projectId}
-                href={`/projects/${u.projectId}`}
+                href={`/drawings?tab=list&projectId=${u.projectId}`}
                 className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 <FileSpreadsheet size={14} className="text-green-500 flex-shrink-0" />
-                <span className="text-sm font-medium text-gray-800">
-                  [{u.project.projectCode}] {u.project.projectName}
-                </span>
+                <span className="text-sm font-medium text-gray-800">[{u.project.projectCode}] {u.project.projectName}</span>
                 <span className="text-xs text-gray-400 ml-auto">
                   {u.sourceFile ?? "파일명 없음"} · {new Date(u.createdAt).toLocaleDateString("ko-KR")}
                 </span>
@@ -351,18 +357,92 @@ export default function DrawingsMain({
         )}
       </div>
 
-      {/* 프리셋 관리 다이얼로그 */}
       {showPresetManager && (
-        <PresetManager
-          onClose={() => {
-            setShowPresetManager(false);
-            // Refresh presets after closing
-            fetch("/api/excel-presets")
-              .then((r) => r.json())
-              .then((d) => { if (d.success) setPresets(d.data); });
-          }}
-        />
+        <PresetManager onClose={() => {
+          setShowPresetManager(false);
+          fetch("/api/excel-presets").then((r) => r.json()).then((d) => { if (d.success) setPresets(d.data); });
+        }} />
       )}
+    </div>
+  );
+}
+
+/* ── 강재리스트 탭 ───────────────────────────────────────────────────────── */
+function ListTab({
+  projectOptions,
+  drawings,
+  activeProject,
+  projectId,
+  router,
+}: {
+  projectOptions: ProjectOption[];
+  drawings: DrawingList[];
+  activeProject: { id: string; projectCode: string; projectName: string } | null;
+  projectId: string | null;
+  router: ReturnType<typeof useRouter>;
+}) {
+  // 프로젝트가 선택된 경우 → 강재리스트 테이블 표시
+  if (projectId && activeProject) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.push("/drawings?tab=list")}
+            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700"
+          >
+            <ArrowLeft size={15} /> 목록으로
+          </button>
+          <h3 className="text-base font-semibold text-gray-800">
+            [{activeProject.projectCode}] {activeProject.projectName}
+          </h3>
+        </div>
+        <DrawingTable drawings={drawings} projectId={activeProject.id} />
+      </div>
+    );
+  }
+
+  // 프로젝트 선택 전 → 프로젝트 목록 표시
+  const grouped: Record<string, ProjectOption[]> = {};
+  for (const p of projectOptions) {
+    if (!grouped[p.projectCode]) grouped[p.projectCode] = [];
+    grouped[p.projectCode].push(p);
+  }
+
+  if (projectOptions.length === 0) {
+    return (
+      <div className="text-center py-16 text-gray-400 bg-white rounded-xl border text-sm">
+        <FolderOpen size={28} className="mx-auto mb-2 opacity-50" />
+        <p>등록된 호선이 없습니다.</p>
+        <Link href="/projects/new" className="text-xs text-blue-500 hover:underline mt-1 inline-block">호선 먼저 등록하기 →</Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {Object.entries(grouped).map(([code, blocks]) => (
+        <div key={code} className="bg-white rounded-xl border overflow-hidden">
+          <div className="px-4 py-2.5 bg-gray-50 border-b">
+            <span className="text-xs font-bold text-gray-500">호선 [{code}]</span>
+          </div>
+          <div className="divide-y">
+            {blocks.map((p) => (
+              <Link
+                key={p.id}
+                href={`/drawings?tab=list&projectId=${p.id}`}
+                className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition-colors group"
+              >
+                <FileSpreadsheet size={15} className="text-gray-400 group-hover:text-blue-500 flex-shrink-0" />
+                <span className="flex-1 text-sm font-medium text-gray-800">{p.projectName}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLOR[p.status]}`}>
+                  {STATUS_LABEL[p.status]}
+                </span>
+                <span className="text-xs text-gray-400">{p.drawingCount}행</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
