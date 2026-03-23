@@ -184,85 +184,135 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
           등록된 인원이 없습니다. 인원 등록 버튼을 눌러 추가하세요.
         </div>
       ) : (
-        <div className="bg-white rounded-xl border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">이름</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">국적</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">생년월일</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">전화번호</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">등록일</th>
-                <th className="w-20 px-4 py-2.5"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {workers.map((w) => {
-                const isEditing = editingId === w.id;
-                const isDeleting = deletingId === w.id;
+        <>
+          {/* 모바일: 카드 목록 */}
+          <div className="flex flex-col gap-3 sm:hidden">
+            {workers.map((w) => {
+              const isEditing = editingId === w.id;
+              const isDeleting = deletingId === w.id;
+              if (isEditing) {
+                return (
+                  <div key={w.id} className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-gray-600">이름 *</label>
+                        <Input value={editForm.name} onChange={e => ef("name", e.target.value)} className="h-8 text-sm" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-gray-600">국적</label>
+                        <Input value={editForm.nationality} onChange={e => ef("nationality", e.target.value)} className="h-8 text-sm" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-gray-600">생년월일</label>
+                        <Input type="date" value={editForm.birthDate} onChange={e => ef("birthDate", e.target.value)} className="h-8 text-sm" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-gray-600">전화번호</label>
+                        <Input value={editForm.phone} onChange={e => ef("phone", e.target.value)} className="h-8 text-sm" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2 justify-end pt-1">
+                      <button onClick={cancelEdit} disabled={saving} className="px-3 py-1.5 text-xs text-gray-500 bg-white border rounded-lg">취소</button>
+                      <button onClick={saveEdit} disabled={saving} className="px-3 py-1.5 text-xs text-white bg-blue-600 rounded-lg">{saving ? "저장 중..." : "저장"}</button>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div key={w.id} className={`bg-white border rounded-xl p-4 ${isDeleting ? "opacity-40" : ""}`}>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="font-semibold text-gray-900">{w.name}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{w.nationality ?? "-"}</p>
+                    </div>
+                    <div className="flex gap-1">
+                      <button onClick={() => startEdit(w)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                        <Pencil size={14} />
+                      </button>
+                      <button onClick={() => deleteWorker(w.id)} disabled={isDeleting} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                    <span>📅 {formatBirth(w.birthDate)}</span>
+                    <span>📞 {w.phone ?? "-"}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
 
-                if (isEditing) {
+          {/* 데스크탑: 테이블 */}
+          <div className="hidden sm:block bg-white rounded-xl border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">이름</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">국적</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">생년월일</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">전화번호</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">등록일</th>
+                  <th className="w-20 px-4 py-2.5"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {workers.map((w) => {
+                  const isEditing = editingId === w.id;
+                  const isDeleting = deletingId === w.id;
+                  if (isEditing) {
+                    return (
+                      <tr key={w.id} className="bg-blue-50">
+                        <td className="px-3 py-2">
+                          <Input value={editForm.name} onChange={e => ef("name", e.target.value)} className="h-7 text-xs w-28" placeholder="이름 *" />
+                        </td>
+                        <td className="px-3 py-2">
+                          <Input value={editForm.nationality} onChange={e => ef("nationality", e.target.value)} className="h-7 text-xs w-24" placeholder="국적" />
+                        </td>
+                        <td className="px-3 py-2">
+                          <Input type="date" value={editForm.birthDate} onChange={e => ef("birthDate", e.target.value)} className="h-7 text-xs w-32" />
+                        </td>
+                        <td className="px-3 py-2">
+                          <Input value={editForm.phone} onChange={e => ef("phone", e.target.value)} className="h-7 text-xs w-32" placeholder="전화번호" />
+                        </td>
+                        <td className="px-3 py-2 text-xs text-gray-400">{w.createdAt.slice(0, 10)}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex gap-1 justify-end">
+                            <button onClick={saveEdit} disabled={saving} className="p-1 text-green-600 hover:bg-green-100 rounded" title="저장">
+                              <Check size={14} />
+                            </button>
+                            <button onClick={cancelEdit} disabled={saving} className="p-1 text-gray-400 hover:bg-gray-100 rounded" title="취소">
+                              <X size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
                   return (
-                    <tr key={w.id} className="bg-blue-50">
-                      <td className="px-3 py-2">
-                        <Input value={editForm.name} onChange={e => ef("name", e.target.value)} className="h-7 text-xs w-28" placeholder="이름 *" />
-                      </td>
-                      <td className="px-3 py-2">
-                        <Input value={editForm.nationality} onChange={e => ef("nationality", e.target.value)} className="h-7 text-xs w-24" placeholder="국적" />
-                      </td>
-                      <td className="px-3 py-2">
-                        <Input type="date" value={editForm.birthDate} onChange={e => ef("birthDate", e.target.value)} className="h-7 text-xs w-32" />
-                      </td>
-                      <td className="px-3 py-2">
-                        <Input value={editForm.phone} onChange={e => ef("phone", e.target.value)} className="h-7 text-xs w-32" placeholder="전화번호" />
-                      </td>
-                      <td className="px-3 py-2 text-xs text-gray-400">{w.createdAt.slice(0, 10)}</td>
-                      <td className="px-3 py-2">
+                    <tr key={w.id} className={`hover:bg-gray-50 transition-colors ${isDeleting ? "opacity-40" : ""}`}>
+                      <td className="px-4 py-2.5 font-medium text-gray-900">{w.name}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{w.nationality ?? "-"}</td>
+                      <td className="px-4 py-2.5 text-gray-600 font-mono text-xs">{formatBirth(w.birthDate)}</td>
+                      <td className="px-4 py-2.5 text-gray-600 font-mono text-xs">{w.phone ?? "-"}</td>
+                      <td className="px-4 py-2.5 text-gray-400 text-xs">{w.createdAt.slice(0, 10)}</td>
+                      <td className="px-4 py-2.5">
                         <div className="flex gap-1 justify-end">
-                          <button onClick={saveEdit} disabled={saving} className="p-1 text-green-600 hover:bg-green-100 rounded" title="저장">
-                            <Check size={14} />
+                          <button onClick={() => startEdit(w)} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="수정">
+                            <Pencil size={13} />
                           </button>
-                          <button onClick={cancelEdit} disabled={saving} className="p-1 text-gray-400 hover:bg-gray-100 rounded" title="취소">
-                            <X size={14} />
+                          <button onClick={() => deleteWorker(w.id)} disabled={isDeleting} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded" title="삭제">
+                            <Trash2 size={13} />
                           </button>
                         </div>
                       </td>
                     </tr>
                   );
-                }
-
-                return (
-                  <tr key={w.id} className={`hover:bg-gray-50 transition-colors ${isDeleting ? "opacity-40" : ""}`}>
-                    <td className="px-4 py-2.5 font-medium text-gray-900">{w.name}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{w.nationality ?? "-"}</td>
-                    <td className="px-4 py-2.5 text-gray-600 font-mono text-xs">{formatBirth(w.birthDate)}</td>
-                    <td className="px-4 py-2.5 text-gray-600 font-mono text-xs">{w.phone ?? "-"}</td>
-                    <td className="px-4 py-2.5 text-gray-400 text-xs">{w.createdAt.slice(0, 10)}</td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex gap-1 justify-end">
-                        <button
-                          onClick={() => startEdit(w)}
-                          className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
-                          title="수정"
-                        >
-                          <Pencil size={13} />
-                        </button>
-                        <button
-                          onClick={() => deleteWorker(w.id)}
-                          disabled={isDeleting}
-                          className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
-                          title="삭제"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
