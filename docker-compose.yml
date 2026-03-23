@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - '3000:3000'
+    environment:
+      - DATABASE_URL=postgresql://cnc_user:cnc_password@db:5432/cnc_erp
+      - NODE_ENV=production
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=cnc_user
+      - POSTGRES_PASSWORD=cnc_password
+      - POSTGRES_DB=cnc_erp
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cnc_user -d cnc_erp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 깃허브 소스 동기화용 서비스 (나스에 git이 없을 때 사용)
+  git-sync:
+    image: alpine/git
+    volumes:
+      - .:/git
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    working_dir: /git
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        if [ -z "$GITHUB_TOKEN" ]; then
+          echo "GITHUB_TOKEN is not set. Using existing credentials."
+          git pull origin main
+        else
+          echo "Using GITHUB_TOKEN for sync."
+          git pull https://x-access-token:${GITHUB_TOKEN}@github.com/banlan21-maker/erp.git main
+        fi
+
+volumes:
+  pgdata:
+    # NAS 영구 스토리지 — 컨테이너 재시작 후에도 데이터 보존

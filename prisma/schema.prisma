@@ -1,0 +1,195 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum EquipmentType {
+  PLASMA
+  GAS
+}
+
+enum EquipmentStatus {
+  ACTIVE
+  MAINTENANCE
+  INACTIVE
+}
+
+enum ProjectType {
+  A
+  B
+}
+
+enum ProjectStatus {
+  ACTIVE
+  COMPLETED
+  ON_HOLD
+}
+
+enum WorkOrderStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum CuttingStatus {
+  STARTED    // 절단 진행중
+  COMPLETED  // 절단 완료
+}
+
+enum DrawingStatus {
+  REGISTERED  // 등록 (Excel 업로드)
+  WAITING     // 대기 (입고 완료)
+  CUT         // 절단 (작업일보 등록)
+}
+
+// Excel 업로드 형식 프리셋
+model ExcelPreset {
+  id            String   @id @default(cuid())
+  name          String   // 프리셋 이름 (제공업체명 or 형식명)
+  dataStartRow  Int      @default(2) // 데이터 시작 행번호 (1-indexed)
+  colBlock      Int?     // 블록 열번호
+  colDrawingNo  Int?     // 도면/NEST 열번호
+  colHeatNo     Int?     // Heat NO 열번호
+  colMaterial   Int?     // 재질 열번호
+  colThickness  Int?     // 두께 열번호
+  colWidth      Int?     // 폭 열번호
+  colLength     Int?     // 길이 열번호
+  colQty        Int?     // 수량 열번호
+  colSteelWeight Int?    // 강재중량 열번호
+  colUseWeight  Int?     // 사용중량 열번호
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// 호선(프로젝트) 마스터
+model Project {
+  id          String        @id @default(cuid())
+  projectCode String
+  projectName String
+  type        ProjectType
+  client      String
+  status      ProjectStatus @default(ACTIVE)
+  memo        String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  drawingLists DrawingList[]
+  workOrders   WorkOrder[]
+  cuttingLogs  CuttingLog[]
+
+  @@unique([projectCode, projectName])
+}
+
+// 강재리스트 (Excel 업로드 파싱)
+model DrawingList {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  block       String?
+  drawingNo   String?
+  heatNo      String?
+  material    String
+  thickness   Float
+  width       Float
+  length      Float
+  qty         Int
+  steelWeight Float?
+  useWeight   Float?
+  sourceFile  String?
+  status      DrawingStatus @default(REGISTERED)
+  receivedAt  DateTime?     // 입고일 (대기 상태로 변경 시 자동 기록)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workOrders  WorkOrder[]
+  cuttingLogs CuttingLog[]
+}
+
+// 작업지시 (내부 참조용 유지)
+model WorkOrder {
+  id            String          @id @default(cuid())
+  projectId     String
+  project       Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  drawingListId String?
+  drawingList   DrawingList?    @relation(fields: [drawingListId], references: [id])
+  equipmentId   String?
+  equipment     Equipment?      @relation(fields: [equipmentId], references: [id])
+
+  orderNo       String          @unique
+  status        WorkOrderStatus @default(PENDING)
+  priority      Priority        @default(NORMAL)
+  assignedAt    DateTime?
+  dueDate       DateTime?
+  memo          String?
+
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+}
+
+// 절단 작업일보
+model CuttingLog {
+  id            String        @id @default(cuid())
+  equipmentId   String
+  equipment     Equipment     @relation(fields: [equipmentId], references: [id])
+  projectId     String?
+  project       Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  drawingListId String?
+  drawingList   DrawingList?  @relation(fields: [drawingListId], references: [id], onDelete: SetNull)
+
+  heatNo        String        // Heat NO (필수)
+  material      String?       // 재질 (도면에서 자동입력)
+  thickness     Float?        // 두께 (도면에서 자동입력)
+  width         Float?        // 폭 (도면에서 자동입력)
+  length        Float?        // 길이 (도면에서 자동입력)
+  qty           Int?          // 수량 (도면에서 자동입력)
+  drawingNo     String?       // 도면번호 (도면에서 자동입력)
+  operator      String        // 작업자명 (필수)
+  status        CuttingStatus @default(STARTED)
+  startAt       DateTime      @default(now())
+  endAt         DateTime?     // 절단 종료 시각
+  memo          String?
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+// 인원 마스터
+model Worker {
+  id          String    @id @default(cuid())
+  name        String                        // 이름
+  nationality String?                       // 국적
+  birthDate   DateTime?                     // 생년월일
+  phone       String?                       // 전화번호
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// 장비 마스터
+model Equipment {
+  id             String          @id @default(cuid())
+  name           String
+  type           EquipmentType
+  status         EquipmentStatus @default(ACTIVE)
+  lastInspection DateTime?
+  nextInspection DateTime?
+  memo           String?
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  workOrders     WorkOrder[]
+  cuttingLogs    CuttingLog[]
+}

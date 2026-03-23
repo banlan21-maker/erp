@@ -1,0 +1,147 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { parseExcelBuffer, parseExcelBufferWithPreset } from "@/lib/excel-parser";
+
+// GET /api/drawings?projectId=xxx - 강재리스트 조회
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const projectId = searchParams.get("projectId");
+
+    if (!projectId) {
+      return NextResponse.json(
+        { success: false, error: "projectId가 필요합니다." },
+        { status: 400 }
+      );
+    }
+
+    const status = searchParams.get("status"); // 예: "WAITING"
+
+    const drawings = await prisma.drawingList.findMany({
+      where: {
+        projectId,
+        ...(status ? { status: status as "REGISTERED" | "WAITING" | "CUT" } : {}),
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    return NextResponse.json({ success: true, data: drawings });
+  } catch (error) {
+    console.error("[GET /api/drawings]", error);
+    return NextResponse.json(
+      { success: false, error: "강재리스트 조회 중 오류가 발생했습니다." },
+      { status: 500 }
+    );
+  }
+}
+
+// POST /api/drawings/upload - Excel 업로드 파싱 후 DB 저장
+// multipart/form-data: file + projectId
+export async function POST(request: NextRequest) {
+  try {
+    const formData = await request.formData();
+    const file = formData.get("file") as File | null;
+    const projectId = formData.get("projectId") as string | null;
+    const presetId = formData.get("presetId") as string | null;
+
+    if (!file || !projectId) {
+      return NextResponse.json(
+        { success: false, error: "file과 projectId가 필요합니다." },
+        { status: 400 }
+      );
+    }
+
+    // 프로젝트 존재 확인
+    const project = await prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) {
+      return NextResponse.json(
+        { success: false, error: "프로젝트를 찾을 수 없습니다." },
+        { status: 404 }
+      );
+    }
+
+    // Buffer 변환
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // Excel 파싱 (프리셋 또는 자동감지)
+    let result;
+    if (presetId) {
+      const presetRow = await prisma.excelPreset.findUnique({ where: { id: presetId } });
+      if (presetRow) {
+        result = parseExcelBufferWithPreset(buffer, file.name, presetRow);
+      } else {
+        result = parseExcelBuffer(buffer, file.name);
+      }
+    } else {
+      result = parseExcelBuffer(buffer, file.name);
+    }
+
+    if (!result.success || result.rows.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Excel 파싱에 실패했습니다.",
+          details: result.errors,
+        },
+        { status: 422 }
+      );
+    }
+
+    // DB 저장 (배치 insert)
+    const created = await prisma.drawingList.createMany({
+      data: result.rows.map((row) => ({
+        projectId,
+        block: row.block,
+        drawingNo: row.drawingNo,
+        heatNo: row.heatNo,
+        material: row.material,
+        thickness: row.thickness,
+        width: row.width,
+        length: row.length,
+        qty: row.qty,
+        steelWeight: row.steelWeight,
+        useWeight: row.useWeight,
+        sourceFile: file.name,
+      })),
+    });
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: { count: created.count, warnings: result.errors },
+      },
+      { status: 201 }
+    );
+  } catch (error) {
+    console.error("[POST /api/drawings]", error);
+    return NextResponse.json(
+      { success: false, error: "강재리스트 업로드 중 오류가 발생했습니다." },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE /api/drawings?projectId=xxx - 프로젝트 전체 강재리스트 삭제
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const projectId = searchParams.get("projectId");
+
+    if (!projectId) {
+      return NextResponse.json(
+        { success: false, error: "projectId가 필요합니다." },
+        { status: 400 }
+      );
+    }
+
+    const deleted = await prisma.drawingList.deleteMany({ where: { projectId } });
+    return NextResponse.json({ success: true, data: { count: deleted.count } });
+  } catch (error) {
+    console.error("[DELETE /api/drawings]", error);
+    return NextResponse.json(
+      { success: false, error: "전체 삭제 중 오류가 발생했습니다." },
+      { status: 500 }
+    );
+  }
+}
