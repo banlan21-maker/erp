@@ -170,23 +170,6 @@ export default async function DashboardPage() {
         </Card>
       </div>
 
-      {/* 빠른 이동 */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold text-gray-700">빠른 이동</CardTitle>
-        </CardHeader>
-        <CardContent className="flex gap-3">
-          <Link href="/projects/new" className="flex-1 text-center text-xs bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 transition-colors font-medium">
-            + 호선 등록
-          </Link>
-          <Link href="/drawings" className="flex-1 text-center text-xs bg-green-600 text-white py-2.5 rounded-lg hover:bg-green-700 transition-colors font-medium">
-            강재리스트 등록
-          </Link>
-          <Link href="/equipment" className="flex-1 text-center text-xs bg-gray-600 text-white py-2.5 rounded-lg hover:bg-gray-700 transition-colors font-medium">
-            장비 관리
-          </Link>
-        </CardContent>
-      </Card>
     </div>
   );
 }
