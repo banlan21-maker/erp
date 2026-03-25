@@ -1,12 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Calendar, Search, Filter, History, PackageCheck, PackageMinus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export default function HistoryPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-gray-400">로딩 중...</div>}>
+      <HistoryContent />
+    </Suspense>
+  );
+}
+
+function HistoryContent() {
   const searchParams = useSearchParams();
   const initTab = searchParams.get("tab") === "outbound" ? "outbound" : "inbound";
   
@@ -220,3 +228,4 @@ export default function HistoryPage() {
     </div>
   );
 }
+
