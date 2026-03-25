@@ -27,11 +27,11 @@ const menuGroups = {
     { href: "/reports",   label: "보고서",        icon: BarChart2 },
   ],
   material: [
-    { href: "/supply/dashboard",   label: "자재 대시보드", icon: LayoutDashboard },
-    { href: "/supply/consumables", label: "소모품 목록",   icon: Package },
-    { href: "/supply/fixtures",    label: "비품 목록",     icon: ClipboardList },
-    { href: "/supply/vendors",     label: "거래처관리",    icon: Truck },
-    { href: "/supply/history",     label: "입출고이력",    icon: History },
+    { href: "/supply/dashboard",   label: "자재 대시보드",  icon: LayoutDashboard },
+    { href: "/supply/inventory",   label: "재고관리",       icon: Package },
+    { href: "/supply/inout",       label: "입출고관리",     icon: History },
+    { href: "/supply/stats",       label: "월별 사용량",    icon: BarChart2 },
+    { href: "/supply/vendors",     label: "거래처 관리",    icon: Truck },
   ],
   management: [
     { href: "/workers",   label: "인원관리",      icon: Users },
