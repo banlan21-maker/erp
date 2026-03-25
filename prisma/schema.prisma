@@ -11,6 +11,11 @@ enum EquipmentType {
   GAS
 }
 
+enum SupplyCategory {
+  CONSUMABLE
+  FIXTURE
+}
+
 enum EquipmentStatus {
   ACTIVE
   MAINTENANCE
@@ -168,13 +173,22 @@ model CuttingLog {
 
 // 인원 마스터
 model Worker {
-  id          String    @id @default(cuid())
-  name        String                        // 이름
-  nationality String?                       // 국적
-  birthDate   DateTime?                     // 생년월일
-  phone       String?                       // 전화번호
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  name          String                        // 이름
+  nationality   String?                       // 국적
+  birthDate     DateTime?                     // 생년월일
+  phone         String?                       // 전화번호
+  role          String?                       // 담당
+  position      String?                       // 직책
+  joinDate      DateTime?                     // 입사일
+  bloodType     String?                       // 혈액형
+  shoeSize      String?                       // 신발사이즈
+  winterTop     String?                       // 동복 상의
+  winterBottom  String?                       // 동복 하의
+  summerTop     String?                       // 하계 상의
+  summerBottom  String?                       // 하계 하의
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 // 장비 마스터
@@ -192,4 +206,70 @@ model Equipment {
 
   workOrders     WorkOrder[]
   cuttingLogs    CuttingLog[]
+}
+
+// ==========================================
+// 구매/자재 파트 (소모품, 비품, 거래처, 입출고)
+// ==========================================
+
+model SupplyItem {
+  id           Int            @id @default(autoincrement())
+  name         String         // 품명
+  category     SupplyCategory // 물품 구분 (소모품/비품)
+  subCategory  String?        // 세부분류
+  unit         String         // 단위 (개, 통, 켤레 등)
+  stockQty     Int            @default(0) // 현재 재고 수량
+  reorderPoint Int?           // 발주 기준점 (소모품 전용)
+  location     String?        // 보관 위치
+  memo         String?        // 비고
+
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  inbounds     SupplyInbound[]
+  outbounds    SupplyOutbound[]
+}
+
+model SupplyInbound {
+  id           Int         @id @default(autoincrement())
+  itemId       Int
+  item         SupplyItem  @relation(fields: [itemId], references: [id])
+  vendorId     Int?
+  vendor       Vendor?     @relation(fields: [vendorId], references: [id])
+  qty          Int         // 입고 수량
+  receivedBy   String      // 입고 담당자
+  receivedAt   DateTime    @default(now()) // 입고 일시
+  memo         String?     // 비고
+
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model SupplyOutbound {
+  id           Int         @id @default(autoincrement())
+  itemId       Int
+  item         SupplyItem  @relation(fields: [itemId], references: [id])
+  qty          Int         // 출고 수량
+  usedBy       String      // 사용자
+  usedAt       DateTime    @default(now()) // 출고 일시
+  memo         String?     // 비고
+
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model Vendor {
+  id             Int         @id @default(autoincrement())
+  name           String      // 업체명
+  contact        String?     // 담당자명
+  phone          String?     // 연락처
+  email          String?     // 이메일
+  businessNumber String?     // 사업자번호
+  category       String?     // 주요 취급 품목 카테고리
+  memo           String?     // 비고
+
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  inbounds     SupplyInbound[]
 }

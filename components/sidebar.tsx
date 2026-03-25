@@ -4,28 +4,43 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, FolderOpen, FileSpreadsheet, ClipboardList,
-  Users, BarChart2, ChevronLeft, ChevronRight, Menu, Smartphone,
-  ExternalLink,
+  Users, BarChart2, ChevronLeft, ChevronRight, Smartphone,
+  ExternalLink, ShoppingCart, Package, Truck, History, Settings
 } from "lucide-react";
 
-type SidebarMode = "full" | "mini" | "hidden";
+export type ModuleType = "cnc" | "material" | "management";
 
-const navItems = [
-  { href: "/dashboard", label: "대시보드",      icon: LayoutDashboard },
-  { href: "/workers",   label: "인원관리",      icon: Users },
-  { href: "/projects",  label: "프로젝트",      icon: FolderOpen },
-  { href: "/drawings",  label: "강재관리",      icon: FileSpreadsheet },
-  { href: "/worklog",   label: "작업일보",      icon: ClipboardList },
-  { href: "/reports",   label: "보고서",        icon: BarChart2 },
-];
+type SidebarMode = "full" | "mini" | "hidden";
 
 interface SidebarProps {
   mode: SidebarMode;
   onModeChange: (m: SidebarMode) => void;
+  module: ModuleType;
 }
 
-export default function Sidebar({ mode, onModeChange }: SidebarProps) {
+const menuGroups = {
+  cnc: [
+    { href: "/dashboard", label: "대시보드",      icon: LayoutDashboard },
+    { href: "/projects",  label: "프로젝트",      icon: FolderOpen },
+    { href: "/drawings",  label: "강재관리",      icon: FileSpreadsheet },
+    { href: "/worklog",   label: "작업일보",      icon: ClipboardList },
+    { href: "/reports",   label: "보고서",        icon: BarChart2 },
+  ],
+  material: [
+    { href: "/supply/dashboard",   label: "자재 대시보드", icon: LayoutDashboard },
+    { href: "/supply/consumables", label: "소모품 목록",   icon: Package },
+    { href: "/supply/fixtures",    label: "비품 목록",     icon: ClipboardList },
+    { href: "/supply/vendors",     label: "거래처관리",    icon: Truck },
+    { href: "/supply/history",     label: "입출고이력",    icon: History },
+  ],
+  management: [
+    { href: "/workers",   label: "인원관리",      icon: Users },
+  ]
+};
+
+export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
   const pathname = usePathname();
+  const items = menuGroups[module] || menuGroups.cnc;
 
   const cycle = () => {
     if (mode === "full")   onModeChange("mini");
@@ -36,6 +51,14 @@ export default function Sidebar({ mode, onModeChange }: SidebarProps) {
   if (mode === "hidden") return null;
 
   const isMini = mode === "mini";
+  
+  let moduleLabel = "관리";
+  if (module === "cnc") moduleLabel = "CNC 절단";
+  else if (module === "material") moduleLabel = "구매/자재";
+
+  let moduleShort = "MNG";
+  if (module === "cnc") moduleShort = "CNC";
+  else if (module === "material") moduleShort = "MAT";
 
   return (
     <aside
@@ -44,21 +67,23 @@ export default function Sidebar({ mode, onModeChange }: SidebarProps) {
         ${isMini ? "w-14" : "w-56"}
       `}
     >
-      {/* 로고 */}
+      {/* 로고 영역 */}
       <div className={`border-b border-gray-700 flex items-center ${isMini ? "justify-center px-0 py-4" : "px-5 py-5"}`}>
         {isMini ? (
-          <span className="text-blue-400 font-bold text-sm">CNC</span>
+          <span className="text-blue-400 font-bold text-sm tracking-tighter">
+            {moduleShort}
+          </span>
         ) : (
           <div>
-            <p className="text-xs text-gray-400 font-medium">CNC 절단 파트</p>
-            <h1 className="text-base font-bold text-white mt-0.5">ERP 시스템</h1>
+            <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">{moduleLabel} 파트</p>
+            <h1 className="text-base font-bold text-white mt-0.5 tracking-tight text-nowrap">ERP 시스템</h1>
           </div>
         )}
       </div>
 
-      {/* 메인 내비게이션 */}
+      {/* 내비게이션 */}
       <nav className="flex-1 px-2 py-4 space-y-1">
-        {navItems.map(({ href, label, icon: Icon }) => {
+        {items.map(({ href, label, icon: Icon }) => {
           const isActive = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
           return (
             <Link
@@ -66,50 +91,52 @@ export default function Sidebar({ mode, onModeChange }: SidebarProps) {
               href={href}
               title={isMini ? label : undefined}
               className={`
-                flex items-center gap-3 rounded-lg text-sm font-medium transition-colors
+                flex items-center gap-3 rounded-lg text-sm font-medium transition-all duration-200
                 ${isMini ? "justify-center px-0 py-2.5" : "px-3 py-2"}
                 ${isActive
-                  ? "bg-blue-600 text-white"
+                  ? "bg-blue-600 text-white shadow-sm"
                   : "text-gray-300 hover:bg-gray-800 hover:text-white"}
               `}
             >
               <Icon size={18} className="flex-shrink-0" />
-              {!isMini && label}
+              {!isMini && <span>{label}</span>}
             </Link>
           );
         })}
 
-        {/* 구분선 + 현장 작업일보 */}
-        <div className="pt-2 mt-2 border-t border-gray-700">
-          <a
-            href="/field/worklog"
-            target="_blank"
-            rel="noopener noreferrer"
-            title={isMini ? "현장 작업일보 (새창)" : undefined}
-            className={`
-              flex items-center gap-3 rounded-lg text-sm font-medium transition-colors
-              text-emerald-400 hover:bg-gray-800 hover:text-emerald-300
-              ${isMini ? "justify-center px-0 py-2.5" : "px-3 py-2"}
-            `}
-          >
-            <Smartphone size={18} className="flex-shrink-0" />
-            {!isMini && (
-              <span className="flex-1 flex items-center justify-between">
-                현장 작업일보
-                <ExternalLink size={12} className="opacity-60" />
-              </span>
-            )}
-          </a>
-        </div>
+        {/* CNC 모듈일 때만 현장 작업일보 링크 표시 */}
+        {module === "cnc" && (
+          <div className="pt-2 mt-2 border-t border-gray-700">
+            <a
+              href="/field/worklog"
+              target="_blank"
+              rel="noopener noreferrer"
+              title={isMini ? "현장 작업일보 (새창)" : undefined}
+              className={`
+                flex items-center gap-3 rounded-lg text-sm font-medium transition-colors
+                text-emerald-400 hover:bg-gray-800 hover:text-emerald-300
+                ${isMini ? "justify-center px-0 py-2.5" : "px-3 py-2"}
+              `}
+            >
+              <Smartphone size={18} className="flex-shrink-0" />
+              {!isMini && (
+                <span className="flex-1 flex items-center justify-between">
+                  현장 작업일보
+                  <ExternalLink size={12} className="opacity-60" />
+                </span>
+              )}
+            </a>
+          </div>
+        )}
       </nav>
 
       {/* 하단: 토글 + 버전 */}
       <div className={`border-t border-gray-700 ${isMini ? "px-0 py-3 flex justify-center" : "px-5 py-3 flex items-center justify-between"}`}>
-        {!isMini && <p className="text-xs text-gray-500">Phase 1-A · v0.1.0</p>}
+        {!isMini && <p className="text-xs text-gray-500">v0.1.0</p>}
         <button
           onClick={cycle}
           title={isMini ? "사이드바 최대화" : "사이드바 최소화"}
-          className="text-gray-500 hover:text-gray-300 transition-colors p-1 rounded"
+          className="text-gray-500 hover:text-gray-300 transition-colors p-1.5 hover:bg-gray-800 rounded-md"
         >
           {isMini ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
         </button>
@@ -117,3 +144,4 @@ export default function Sidebar({ mode, onModeChange }: SidebarProps) {
     </aside>
   );
 }
+
