@@ -93,8 +93,8 @@ export default function ReportsMain({
       "길이(mm)":   l.length ?? "",
       "수량(매)":   l.qty ?? "",
       "작업시간":   formatDuration(l.startAt, l.endAt),
-      "강재중량(t)": l.steelWeight != null ? l.steelWeight.toFixed(3) : "",
-      "사용중량(t)": l.useWeight   != null ? l.useWeight.toFixed(3)   : "",
+      "강재중량(kg)": l.steelWeight != null ? l.steelWeight : "",
+      "사용중량(kg)": l.useWeight   != null ? l.useWeight   : "",
       "특이사항":   l.memo ?? "",
     }));
 
@@ -171,8 +171,8 @@ export default function ReportsMain({
           {[
             { label: "총 절단 건수", value: `${logs.length}건`,                color: "text-blue-700 bg-blue-50" },
             { label: "총 수량",      value: `${totalQty.toLocaleString()}매`,   color: "text-green-700 bg-green-50" },
-            { label: "강재중량 합계", value: `${totalSteel.toFixed(3)}t`,       color: "text-orange-700 bg-orange-50" },
-            { label: "사용중량 합계", value: `${totalUse.toFixed(3)}t`,         color: "text-purple-700 bg-purple-50" },
+            { label: "강재중량 합계", value: `${totalSteel.toLocaleString()}kg (${(totalSteel/1000).toFixed(3)}t)`, color: "text-orange-700 bg-orange-50" },
+            { label: "사용중량 합계", value: `${totalUse.toLocaleString()}kg (${(totalUse/1000).toFixed(3)}t)`,   color: "text-purple-700 bg-purple-50" },
           ].map(({ label, value, color }) => (
             <div key={label} className={`rounded-xl p-4 ${color}`}>
               <p className="text-xs font-medium opacity-70">{label}</p>
@@ -234,8 +234,8 @@ export default function ReportsMain({
                     ["폭×길이",    "right"],
                     ["수량",       "right"],
                     ["작업시간",   "center"],
-                    ["강재중량(t)","right"],
-                    ["사용중량(t)","right"],
+                    ["강재중량(kg)","right"],
+                    ["사용중량(kg)","right"],
                     ["특이사항",   "left"],
                   ].map(([label, align]) => (
                     <th key={label} className={`px-3 py-2 text-gray-500 font-semibold text-${align} whitespace-nowrap`}>
@@ -270,10 +270,10 @@ export default function ReportsMain({
                       <div className="text-green-600 font-medium">{formatDuration(log.startAt, log.endAt)}</div>
                     </td>
                     <td className="px-3 py-2 text-right text-gray-700">
-                      {log.steelWeight != null ? log.steelWeight.toFixed(3) : "-"}
+                      {log.steelWeight != null ? log.steelWeight.toLocaleString() : "-"}
                     </td>
                     <td className="px-3 py-2 text-right text-gray-700">
-                      {log.useWeight != null ? log.useWeight.toFixed(3) : "-"}
+                      {log.useWeight != null ? log.useWeight.toLocaleString() : "-"}
                     </td>
                     <td className="px-3 py-2 text-gray-400 max-w-[120px] truncate">{log.memo ?? "-"}</td>
                   </tr>
@@ -284,8 +284,8 @@ export default function ReportsMain({
                   <td colSpan={9} className="px-3 py-2 text-gray-500">합계 ({logs.length}건)</td>
                   <td className="px-3 py-2 text-right text-gray-800">{totalQty.toLocaleString()}매</td>
                   <td className="px-3 py-2"></td>
-                  <td className="px-3 py-2 text-right text-gray-800">{totalSteel.toFixed(3)}t</td>
-                  <td className="px-3 py-2 text-right text-gray-800">{totalUse.toFixed(3)}t</td>
+                  <td className="px-3 py-2 text-right text-gray-800">{totalSteel.toLocaleString()}kg<br/><span className="text-xs text-gray-500">({(totalSteel/1000).toFixed(3)}t)</span></td>
+                  <td className="px-3 py-2 text-right text-gray-800">{totalUse.toLocaleString()}kg<br/><span className="text-xs text-gray-500">({(totalUse/1000).toFixed(3)}t)</span></td>
                   <td></td>
                 </tr>
               </tfoot>

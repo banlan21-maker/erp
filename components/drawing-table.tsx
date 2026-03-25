@@ -423,8 +423,8 @@ export default function DrawingTable({
               <FilterHeader col="width"       label="폭(mm) *"      align="right"  {...filterHeaderProps} />
               <FilterHeader col="length"      label="길이(mm) *"    align="right"  {...filterHeaderProps} />
               <FilterHeader col="qty"         label="수량(매) *"    align="right"  {...filterHeaderProps} />
-              <FilterHeader col="steelWeight" label="강재중량(t)"   align="right"  {...filterHeaderProps} />
-              <FilterHeader col="useWeight"   label="사용중량(t)"   align="right"  {...filterHeaderProps} />
+              <FilterHeader col="steelWeight" label="강재중량(kg)"  align="right"  {...filterHeaderProps} />
+              <FilterHeader col="useWeight"   label="사용중량(kg)"  align="right"  {...filterHeaderProps} />
               <FilterHeader col="receivedAt"  label="입고일"        align="center" {...filterHeaderProps} />
               <th className="px-3 py-2.5 w-24"></th>
             </tr>
@@ -484,8 +484,8 @@ export default function DrawingTable({
                     <td className="px-3 py-2 text-right text-gray-700">{d.width.toLocaleString()}</td>
                     <td className="px-3 py-2 text-right text-gray-700">{d.length.toLocaleString()}</td>
                     <td className="px-3 py-2 text-right font-semibold text-gray-800">{d.qty}</td>
-                    <td className="px-3 py-2 text-right text-gray-500">{d.steelWeight != null ? d.steelWeight.toFixed(3) : "-"}</td>
-                    <td className="px-3 py-2 text-right text-gray-500">{d.useWeight  != null ? d.useWeight.toFixed(3)  : "-"}</td>
+                    <td className="px-3 py-2 text-right text-gray-500">{d.steelWeight != null ? d.steelWeight.toLocaleString() : "-"}</td>
+                    <td className="px-3 py-2 text-right text-gray-500">{d.useWeight  != null ? d.useWeight.toLocaleString()  : "-"}</td>
                     <td className="px-3 py-2 text-center text-xs text-gray-500 font-mono">{formatDate(d.receivedAt)}</td>
                     <td className="px-3 py-2">
                       <div className="flex gap-1 justify-end items-center">
@@ -541,10 +541,10 @@ export default function DrawingTable({
                 {filteredDrawings.reduce((s, d) => s + d.qty, 0)}매
               </td>
               <td className="px-3 py-2 text-right text-xs font-bold text-gray-700">
-                {filteredDrawings.reduce((s, d) => s + (d.steelWeight ?? 0), 0).toFixed(3)}t
+                {filteredDrawings.reduce((s, d) => s + (d.steelWeight ?? 0), 0).toLocaleString()}kg
               </td>
               <td className="px-3 py-2 text-right text-xs font-bold text-gray-700">
-                {filteredDrawings.reduce((s, d) => s + (d.useWeight ?? 0), 0).toFixed(3)}t
+                {filteredDrawings.reduce((s, d) => s + (d.useWeight ?? 0), 0).toLocaleString()}kg
               </td>
               <td></td>
             </tr>
