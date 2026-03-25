@@ -34,10 +34,14 @@ export interface ParseResult {
   totalRows: number;
 }
 
-// 숫자 변환 (문자열·숫자 모두 처리)
+// 숫자 변환 (문자열·숫자 모두 처리, 천단위 쉼표·단위 문자 허용)
 function toNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
-  const n = Number(value);
+  if (typeof value === "number") return isNaN(value) ? null : value;
+  // 쉼표(천단위) 제거 후 앞뒤 공백 제거
+  const cleaned = String(value).replace(/,/g, "").trim();
+  if (cleaned === "") return null;
+  const n = Number(cleaned);
   return isNaN(n) ? null : n;
 }
 
@@ -221,9 +225,10 @@ export function parseExcelBufferWithPreset(
   }
 
   // Helper to get value from a row using a 1-indexed column number
-  const getCol = (row: string[], colNum: number | null): unknown => {
-    if (colNum === null || colNum === undefined) return "";
-    return row[colNum - 1] ?? "";
+  const getCol = (row: unknown[], colNum: number | null): unknown => {
+    if (colNum === null || colNum === undefined || colNum < 1) return "";
+    const val = row[colNum - 1];
+    return val === null || val === undefined ? "" : val;
   };
 
   let parsedCount = 0;
