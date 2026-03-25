@@ -41,6 +41,11 @@ export async function PATCH(
               ...(log.heatNo?.trim() ? { heatNo: log.heatNo.trim() } : {}),
             },
           });
+          // 절단 로그에 drawingListId 기록 (삭제 시 복원 용도)
+          await prisma.cuttingLog.update({
+            where: { id },
+            data: { drawingListId: target.id },
+          });
         }
       }
 
@@ -68,13 +73,31 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/cutting-logs/[id] - 작업 기록 삭제
+// DELETE /api/cutting-logs/[id] - 작업 기록 삭제 (강재 상태 복원 포함)
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+
+    // 삭제 전 로그 조회 (drawingListId 확인)
+    const log = await prisma.cuttingLog.findUnique({ where: { id } });
+    if (!log) {
+      return NextResponse.json({ success: false, error: "기록을 찾을 수 없습니다." }, { status: 404 });
+    }
+
+    // drawingListId가 있으면 해당 강재를 CUT → WAITING으로 복원
+    if (log.drawingListId) {
+      const drawing = await prisma.drawingList.findUnique({ where: { id: log.drawingListId } });
+      if (drawing && drawing.status === "CUT") {
+        await prisma.drawingList.update({
+          where: { id: log.drawingListId },
+          data: { status: "WAITING" },
+        });
+      }
+    }
+
     await prisma.cuttingLog.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -2,7 +2,7 @@
 
 import { useRouter, usePathname } from "next/navigation";
 import { useState } from "react";
-import { Printer, Search, FileDown } from "lucide-react";
+import { Printer, Search, FileDown, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import * as XLSX from "xlsx";
@@ -54,6 +54,19 @@ export default function ReportsMain({
   const pathname = usePathname();
   const [from, setFrom] = useState(fromStr);
   const [to,   setTo]   = useState(toStr);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const deleteLog = async (id: string) => {
+    if (!confirm("이 작업 기록을 삭제하시겠습니까?\n해당 강재의 상태가 '대기'로 되돌아갑니다.")) return;
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/cutting-logs/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) router.refresh();
+      else alert(data.error ?? "삭제 오류");
+    } catch { alert("서버 연결 오류"); }
+    finally { setDeletingId(null); }
+  };
 
   const applyFilter = () => router.push(`${pathname}?from=${from}&to=${to}`);
 
@@ -243,6 +256,7 @@ export default function ReportsMain({
                       {label}
                     </th>
                   ))}
+                  <th className="px-3 py-2 no-print"></th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -277,6 +291,16 @@ export default function ReportsMain({
                       {log.useWeight != null ? log.useWeight.toLocaleString() : "-"}
                     </td>
                     <td className="px-3 py-2 text-gray-400 max-w-[120px] truncate">{log.memo ?? "-"}</td>
+                    <td className="px-3 py-2 no-print">
+                      <button
+                        onClick={() => deleteLog(log.id)}
+                        disabled={deletingId === log.id}
+                        className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded disabled:opacity-40"
+                        title="삭제 (강재 상태 대기로 복원)"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
