@@ -30,7 +30,8 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
 }
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 function formatDuration(start: string, end: string | null) {
   if (!end) return "-";
