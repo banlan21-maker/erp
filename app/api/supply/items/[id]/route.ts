@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const item = await prisma.supplyItem.findUnique({
-      where: { id: Number(params.id) },
+      where: { id: Number(id) },
     });
     if (!item) return NextResponse.json({ success: false, error: "품목을 찾을 수 없습니다." }, { status: 404 });
     return NextResponse.json({ success: true, data: item });
@@ -13,11 +14,10 @@ export async function GET(request: Request, { params }: { params: { id: string }
   }
 }
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const body = await request.json();
-    // stockQty는 직접 수정 불가능하도록 PATCH 데이터에서 제외합니다. 
-    // 수량 변경은 반드시 입출고 트랜잭션 API를 통해서만 반영되어야 합니다.
     const { name, subCategory, unit, reorderPoint, location, memo } = body;
 
     if (!name || !unit) {
@@ -25,7 +25,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     }
 
     const updatedItem = await prisma.supplyItem.update({
-      where: { id: Number(params.id) },
+      where: { id: Number(id) },
       data: {
         name,
         subCategory,

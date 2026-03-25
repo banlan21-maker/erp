@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const { searchParams } = new URL(request.url);
     const month = searchParams.get("month"); // 'YYYY-MM' 형식
 
-    const vendorId = Number(params.id);
+    const vendorId = Number(id);
     if (!vendorId) return NextResponse.json({ success: false, error: "잘못된 ID입니다." }, { status: 400 });
 
     const vendor = await prisma.vendor.findUnique({
@@ -38,10 +39,11 @@ export async function GET(request: Request, { params }: { params: { id: string }
   }
 }
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const body = await request.json();
-    const vendorId = Number(params.id);
+    const vendorId = Number(id);
 
     const { name, contact, phone, email, businessNumber, category, memo } = body;
 
