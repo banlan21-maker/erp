@@ -10,7 +10,7 @@ type SidebarMode = "full" | "mini" | "hidden";
 const moduleDashboardMap: Record<ModuleType, string> = {
   cnc: "/dashboard",
   material: "/supply/dashboard",
-  management: "/workers",
+  management: "/management/dashboard",
 };
 
 export default function MainLayoutClient({ children }: { children: React.ReactNode }) {
