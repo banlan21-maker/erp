@@ -131,10 +131,11 @@ export async function POST(request: NextRequest) {
     }
 
     // DB 저장 (배치 insert)
+    // block 우선순위: 프리셋 colBlock에서 읽은 값(있을 때) > project.projectName(기본)
     const created = await prisma.drawingList.createMany({
       data: result.rows.map((row) => ({
         projectId,
-        block: row.block,
+        block: row.block?.trim() || project.projectName,
         drawingNo: row.drawingNo,
         heatNo: row.heatNo,
         material: row.material,

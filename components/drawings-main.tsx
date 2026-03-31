@@ -241,7 +241,7 @@ function UploadTab({
   };
 
   const handleUpload = async () => {
-    if (!selectedProjectId) { setResult({ success: false, message: "호선/블록을 먼저 선택하세요." }); return; }
+    if (!selectedProjectId) { alert("호선/블록 선택은 필수입니다.\n프로젝트를 먼저 등록하고 호선/블록을 선택하세요."); return; }
     if (!selectedFile) { setResult({ success: false, message: "Excel 파일을 선택하세요." }); return; }
     setLoading(true);
     setResult(null);
