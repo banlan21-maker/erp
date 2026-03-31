@@ -129,9 +129,11 @@
   }
 }
 
-/* frappe-gantt: 클릭 후 남는 핸들(사각형) 표시 제거
-   핸들은 호버 시에만 보이도록 — active 클래스에 의한 잔류 표시 숨김 */
-.gantt .handle.active {
+/* frappe-gantt: 클릭 후 남는 핸들(흰 사각형) 완전 제거
+   .active / .visible 모두 기본 hidden, 호버 시에만 표시 */
+.gantt .handle,
+.gantt .handle.active,
+.gantt .handle.visible {
   opacity: 0 !important;
 }
 .gantt .bar-wrapper:hover .handle {
