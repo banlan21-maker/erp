@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, FolderOpen, FileSpreadsheet, ClipboardList,
   Users, BarChart2, ChevronLeft, ChevronRight, Smartphone,
-  ExternalLink, Package, Truck, History,
+  ExternalLink, Package, Truck, History, CalendarDays, Eye,
 } from "lucide-react";
 
 export type ModuleType = "cnc" | "material" | "management";
@@ -23,8 +23,10 @@ const menuGroups = {
     { href: "/dashboard", label: "절단 대시보드",  icon: LayoutDashboard },
     { href: "/projects",  label: "프로젝트",       icon: FolderOpen },
     { href: "/drawings",  label: "강재관리",       icon: FileSpreadsheet },
-    { href: "/worklog",   label: "작업일보",       icon: ClipboardList },
-    { href: "/reports",   label: "보고서",         icon: BarChart2 },
+    { href: "/worklog",    label: "작업일보",       icon: ClipboardList },
+    { href: "/reports",    label: "보고서",         icon: BarChart2 },
+    { href: "/schedule",   label: "스케줄 생성",    icon: CalendarDays },
+    { href: "/schedule/view", label: "스케줄 확인", icon: Eye },
   ],
   material: [
     { href: "/supply/dashboard",   label: "구매/자재 대시보드", icon: LayoutDashboard },

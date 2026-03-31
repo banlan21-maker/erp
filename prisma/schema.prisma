@@ -21,6 +21,34 @@ enum SupplyDepartment {
   FACILITY  // 공무
 }
 
+// ── 스케줄러 ──────────────────────────────────────────────
+
+enum ScheduleWorkType {
+  NORMAL    // 일반
+  REVISION  // 도면개정
+}
+
+enum ScheduleHoldReason {
+  MATERIAL_DELAY  // 강재지연
+  URGENT          // 긴급작업
+  REVISION        // 도면개정
+  OTHER           // 기타
+}
+
+enum ScheduleStatus {
+  PLANNED       // 예정
+  IN_PROGRESS   // 진행중
+  COMPLETED     // 완료
+  HOLD          // 홀드
+  CANCELLED     // 취소
+}
+
+enum UrgentWorkStatus {
+  PENDING      // 대기
+  IN_PROGRESS  // 진행중
+  COMPLETED    // 완료
+}
+
 enum EquipmentStatus {
   ACTIVE
   MAINTENANCE
@@ -97,6 +125,8 @@ model Project {
   drawingLists DrawingList[]
   workOrders   WorkOrder[]
   cuttingLogs  CuttingLog[]
+  schedules    CncSchedule[]
+  urgentWorks  UrgentWork[]
 
   @@unique([projectCode, projectName])
 }
@@ -278,4 +308,57 @@ model Vendor {
   updatedAt      DateTime    @updatedAt
 
   inbounds     SupplyInbound[]
+}
+
+// ==========================================
+// 스케줄러 모듈
+// ==========================================
+
+model CncSchedule {
+  id               String              @id @default(cuid())
+
+  // 기존 블록 연결 (자재 등록 전 선행 생성 가능하므로 nullable)
+  projectId        String?
+  project          Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  // 자재 미등록 상태에서 직접 입력하는 경우
+  vesselCode       String              // 호선 코드
+  blockName        String              // 블록명
+
+  plannedStart     DateTime?           // 절단 시작 예정일
+  plannedEnd       DateTime?           // 절단 완료 예정일
+  deliveryFactory  DateTime?           // 가공장 납기일
+  deliveryAssembly DateTime?           // 조립장 납기일
+
+  workType         ScheduleWorkType    @default(NORMAL)
+  status           ScheduleStatus      @default(PLANNED)
+  holdReason       ScheduleHoldReason? // 중단 사유 (홀드 시)
+
+  priority         Int                 @default(0)   // 낮을수록 우선
+  memo             String?
+
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+}
+
+model UrgentWork {
+  id           String           @id @default(cuid())
+  title        String           // 작업명
+
+  // 호선/블록 연관 (없으면 독립 작업)
+  projectId    String?
+  project      Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  requestDate  DateTime         @default(now())  // 요청일
+  dueDate      DateTime?        // 납기일
+
+  material     String?          // 재질
+  thickness    Float?           // 두께
+  weight       Float?           // 중량 (kg)
+
+  status       UrgentWorkStatus @default(PENDING)
+  memo         String?
+
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 }

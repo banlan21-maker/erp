@@ -24,6 +24,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+      <head>
+        <link rel="stylesheet" href="/frappe-gantt.css" />
+      </head>
       <body className="min-h-full bg-gray-50">{children}</body>
     </html>
   );
