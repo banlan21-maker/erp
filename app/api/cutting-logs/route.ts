@@ -2,24 +2,37 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 // GET /api/cutting-logs?equipmentId=xxx&date=YYYY-MM-DD
+// GET /api/cutting-logs?projectId=xxx&date=YYYY-MM-DD  (관리자용: date 없으면 전체)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const equipmentId = searchParams.get("equipmentId");
-    const date = searchParams.get("date");
+    const projectId   = searchParams.get("projectId");
+    const date        = searchParams.get("date");
 
-    const targetDate = date ? new Date(date) : new Date();
-    const dayStart = new Date(targetDate); dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(targetDate); dayEnd.setHours(23, 59, 59, 999);
+    let dateFilter = {};
+    if (date) {
+      const targetDate = new Date(date);
+      const dayStart = new Date(targetDate); dayStart.setHours(0, 0, 0, 0);
+      const dayEnd   = new Date(targetDate); dayEnd.setHours(23, 59, 59, 999);
+      dateFilter = { startAt: { gte: dayStart, lte: dayEnd } };
+    } else if (!projectId) {
+      // projectId 없이 date도 없으면 오늘로 제한 (기존 현장용 호환)
+      const today = new Date();
+      const dayStart = new Date(today); dayStart.setHours(0, 0, 0, 0);
+      const dayEnd   = new Date(today); dayEnd.setHours(23, 59, 59, 999);
+      dateFilter = { startAt: { gte: dayStart, lte: dayEnd } };
+    }
 
     const logs = await prisma.cuttingLog.findMany({
       where: {
         ...(equipmentId ? { equipmentId } : {}),
-        startAt: { gte: dayStart, lte: dayEnd },
+        ...(projectId   ? { projectId }   : {}),
+        ...dateFilter,
       },
       include: {
         equipment: { select: { id: true, name: true, type: true } },
-        project: { select: { projectCode: true, projectName: true } },
+        project:   { select: { projectCode: true, projectName: true } },
         drawingList: { select: { drawingNo: true, block: true } },
       },
       orderBy: { startAt: "desc" },

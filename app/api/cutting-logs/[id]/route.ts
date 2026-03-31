@@ -52,15 +52,29 @@ export async function PATCH(
       return NextResponse.json({ success: true, data: log });
     }
 
-    // 일반 수정
+    // 일반 수정 (관리자 전체 필드 수정 포함)
+    const { startAt, endAt, status, equipmentId,
+            width, length, qty, drawingNo } = body;
     const log = await prisma.cuttingLog.update({
       where: { id },
       data: {
-        ...(heatNo !== undefined ? { heatNo: heatNo?.trim() || null } : {}),
-        ...(material !== undefined ? { material: material?.trim() || null } : {}),
+        ...(equipmentId !== undefined ? { equipmentId } : {}),
+        ...(heatNo    !== undefined ? { heatNo:    heatNo?.trim()    || null } : {}),
+        ...(material  !== undefined ? { material:  material?.trim()  || null } : {}),
         ...(thickness !== undefined ? { thickness: thickness ? Number(thickness) : null } : {}),
-        ...(operator ? { operator: operator.trim() } : {}),
-        ...(memo !== undefined ? { memo: memo?.trim() || null } : {}),
+        ...(width     !== undefined ? { width:     width     ? Number(width)     : null } : {}),
+        ...(length    !== undefined ? { length:    length    ? Number(length)    : null } : {}),
+        ...(qty       !== undefined ? { qty:       qty       ? Number(qty)       : null } : {}),
+        ...(drawingNo !== undefined ? { drawingNo: drawingNo?.trim() || null } : {}),
+        ...(operator  !== undefined ? { operator:  operator?.trim()  || ""   } : {}),
+        ...(memo      !== undefined ? { memo:      memo?.trim()      || null } : {}),
+        ...(startAt   !== undefined ? { startAt:   new Date(startAt) } : {}),
+        ...(endAt     !== undefined ? { endAt:     endAt ? new Date(endAt) : null } : {}),
+        ...(status    !== undefined ? { status } : {}),
+      },
+      include: {
+        equipment: { select: { id: true, name: true, type: true } },
+        project:   { select: { projectCode: true, projectName: true } },
       },
     });
     return NextResponse.json({ success: true, data: log });
