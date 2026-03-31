@@ -10,6 +10,7 @@ export default function NewSupplyItemPage() {
   const router = useRouter();
   
   const [category, setCategory] = useState<"CONSUMABLE" | "FIXTURE">("CONSUMABLE");
+  const [department, setDepartment] = useState<"CUTTING" | "FACILITY">("CUTTING");
   const [formData, setFormData] = useState({
     name: "",
     subCategory: "",
@@ -39,6 +40,7 @@ export default function NewSupplyItemPage() {
     try {
       const payload = {
         category,
+        department,
         name: formData.name,
         subCategory: formData.subCategory,
         unit: formData.unit,
@@ -124,10 +126,42 @@ export default function NewSupplyItemPage() {
             </button>
           </div>
           <p className="text-xs text-gray-500 mt-3">
-            {category === "CONSUMABLE" 
-              ? "※ 주기적으로 소모되어 재고 보충(발주)이 정기적으로 필요한 품목입니다. (예: 팁, 전극, 가스, 장갑)" 
+            {category === "CONSUMABLE"
+              ? "※ 주기적으로 소모되어 재고 보충(발주)이 정기적으로 필요한 품목입니다. (예: 팁, 전극, 가스, 장갑)"
               : "※ 장기간 형태를 유지하며 보관하는 비품 및 공구류입니다. (전동공구 등 발주기준점 불필요)"}
           </p>
+
+          {/* 관리주체 선택 */}
+          <div className="mt-5 pt-5 border-t border-gray-200">
+            <label className="block text-sm font-bold text-gray-800 mb-3">관리주체 선택 <span className="text-red-500">*</span></label>
+            <div className="flex gap-4">
+              <button
+                type="button"
+                onClick={() => setDepartment("CUTTING")}
+                className={`flex items-center justify-center gap-2 py-3 px-8 rounded-xl border-2 font-semibold transition-all ${
+                  department === "CUTTING"
+                    ? "border-blue-500 bg-blue-50 text-blue-700"
+                    : "border-gray-200 bg-white text-gray-500 hover:bg-gray-50"
+                }`}
+              >
+                절단
+              </button>
+              <button
+                type="button"
+                onClick={() => setDepartment("FACILITY")}
+                className={`flex items-center justify-center gap-2 py-3 px-8 rounded-xl border-2 font-semibold transition-all ${
+                  department === "FACILITY"
+                    ? "border-purple-500 bg-purple-50 text-purple-700"
+                    : "border-gray-200 bg-white text-gray-500 hover:bg-gray-50"
+                }`}
+              >
+                공무
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              {department === "CUTTING" ? "※ 절단 파트에서 관리하는 품목입니다." : "※ 공무팀에서 관리하는 품목입니다."}
+            </p>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 md:p-8">

@@ -1,12 +1,20 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import Sidebar, { ModuleType } from "@/components/sidebar";
 
 type SidebarMode = "full" | "mini" | "hidden";
 
+const moduleDashboardMap: Record<ModuleType, string> = {
+  cnc: "/dashboard",
+  material: "/supply/dashboard",
+  management: "/workers",
+};
+
 export default function MainLayoutClient({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const [mode, setMode] = useState<SidebarMode>("full");
   const [activeModule, setActiveModule] = useState<ModuleType>("cnc");
   const [mounted, setMounted] = useState(false);
@@ -27,6 +35,7 @@ export default function MainLayoutClient({ children }: { children: React.ReactNo
   const setModuleAndSave = (mod: ModuleType) => {
     setActiveModule(mod);
     localStorage.setItem("activeModule", mod);
+    router.push(moduleDashboardMap[mod]);
   };
 
   // 하이드레이션 불일치 방지

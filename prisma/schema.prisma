@@ -16,6 +16,11 @@ enum SupplyCategory {
   FIXTURE
 }
 
+enum SupplyDepartment {
+  CUTTING   // 절단
+  FACILITY  // 공무
+}
+
 enum EquipmentStatus {
   ACTIVE
   MAINTENANCE
@@ -213,15 +218,16 @@ model Equipment {
 // ==========================================
 
 model SupplyItem {
-  id           Int            @id @default(autoincrement())
-  name         String         // 품명
-  category     SupplyCategory // 물품 구분 (소모품/비품)
-  subCategory  String?        // 세부분류
-  unit         String         // 단위 (개, 통, 켤레 등)
-  stockQty     Int            @default(0) // 현재 재고 수량
-  reorderPoint Int?           // 발주 기준점 (소모품 전용)
-  location     String?        // 보관 위치
-  memo         String?        // 비고
+  id           Int              @id @default(autoincrement())
+  name         String           // 품명
+  category     SupplyCategory   // 물품 구분 (소모품/비품)
+  department   SupplyDepartment @default(CUTTING) // 관리주체 (절단/공무)
+  subCategory  String?          // 세부분류
+  unit         String           // 단위 (개, 통, 켤레 등)
+  stockQty     Int              @default(0) // 현재 재고 수량
+  reorderPoint Int?             // 발주 기준점 (소모품 전용)
+  location     String?          // 보관 위치
+  memo         String?          // 비고
 
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt

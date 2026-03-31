@@ -18,7 +18,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, subCategory, unit, reorderPoint, location, memo } = body;
+    const { name, department, subCategory, unit, reorderPoint, location, memo } = body;
 
     if (!name || !unit) {
       return NextResponse.json({ success: false, error: "품명, 단위는 필수입니다." }, { status: 400 });
@@ -28,6 +28,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       where: { id: Number(id) },
       data: {
         name,
+        ...(department && { department }),
         subCategory,
         unit,
         reorderPoint: reorderPoint ? Number(reorderPoint) : null,
