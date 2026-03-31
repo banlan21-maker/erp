@@ -66,6 +66,10 @@ export default function FrappeGanttWrapper({ items, onItemClick, onDateChange, r
   const ganttRef        = useRef<any>(null);
   const prevIdsRef      = useRef<string>("");
   const isDragUpdateRef = useRef(false);
+  // 드래그가 방금 끝났음 — on_date_change 직후 on_click이 오면 무시
+  const wasDragRef      = useRef(false);
+  // 더블클릭 타이머
+  const clickTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const itemsRef        = useRef<GanttItem[]>(items);
   const onClickRef      = useRef(onItemClick);
   const onDateChangeRef = useRef(onDateChange);
@@ -117,12 +121,27 @@ export default function FrappeGanttWrapper({ items, onItemClick, onDateChange, r
         popup_on: "click",
         readonly: readOnly ?? false,
         on_click: (task: any) => {
-          const item = itemsRef.current.find(i => i.id === task.id);
-          if (item) onClickRef.current?.(item);
+          // 드래그 직후 발생하는 클릭은 무시
+          if (wasDragRef.current) {
+            wasDragRef.current = false;
+            return;
+          }
+          // 더블클릭 감지: 300ms 내 2번째 클릭 시 모달 오픈
+          if (clickTimerRef.current) {
+            clearTimeout(clickTimerRef.current);
+            clickTimerRef.current = null;
+            const item = itemsRef.current.find(i => i.id === task.id);
+            if (item) onClickRef.current?.(item);
+          } else {
+            clickTimerRef.current = setTimeout(() => {
+              clickTimerRef.current = null;
+            }, 300);
+          }
         },
         on_date_change: (task: any, start: Date, end: Date) => {
           if (onDateChangeRef.current) {
             isDragUpdateRef.current = true;
+            wasDragRef.current = true; // 직후 on_click 무시
             const fmt = (d: Date) => d.toISOString().slice(0, 10);
             onDateChangeRef.current(task.id, fmt(start), fmt(end));
           }
