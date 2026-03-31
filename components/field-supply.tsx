@@ -201,11 +201,12 @@ export default function FieldSupply({
       }
 
       const isWarning = mode === "out" && data.data?.isWarning;
+      const modeLabel = mode === "in" ? "입고" : "출고";
       setResult({
         ok: true,
         msg: isWarning
-          ? `✅ ${mode === "in" ? "입고" : "출고"} 완료!\n⚠️ 재고가 발주 기준점 이하입니다!`
-          : `✅ ${mode === "in" ? "입고" : "출고"} 완료!`,
+          ? `✅ ${modeLabel} 완료!\n⚠️ 재고가 발주 기준점 이하입니다!`
+          : `✅ ${modeLabel} 완료!`,
       });
 
       // 폼 초기화 (담당자는 유지)
