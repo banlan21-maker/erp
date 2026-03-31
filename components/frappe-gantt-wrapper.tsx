@@ -62,14 +62,20 @@ function buildTasks(items: GanttItem[]) {
 }
 
 export default function FrappeGanttWrapper({ items, onItemClick, onDateChange, readOnly }: Props) {
-  const containerRef  = useRef<HTMLDivElement>(null);
-  const ganttRef      = useRef<any>(null);
-  const prevIdsRef    = useRef<string>("");
-  // keep latest callbacks in refs so they never become stale deps
+  const containerRef    = useRef<HTMLDivElement>(null);
+  const ganttRef        = useRef<any>(null);
+  const prevIdsRef      = useRef<string>("");
+  // 드래그로 인한 items 변경 여부 플래그 — true이면 useEffect에서 재빌드 스킵
+  const isDragUpdateRef = useRef(false);
+  // popup에서 최신 아이템 데이터를 stale closure 없이 참조하기 위한 ref
+  const itemsRef        = useRef<GanttItem[]>(items);
+  // 최신 콜백 ref
   const onClickRef      = useRef(onItemClick);
   const onDateChangeRef = useRef(onDateChange);
-  useEffect(() => { onClickRef.current = onItemClick; }, [onItemClick]);
+
+  useEffect(() => { onClickRef.current      = onItemClick; }, [onItemClick]);
   useEffect(() => { onDateChangeRef.current = onDateChange; }, [onDateChange]);
+  useEffect(() => { itemsRef.current        = items; }, [items]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -79,15 +85,22 @@ export default function FrappeGanttWrapper({ items, onItemClick, onDateChange, r
 
     const currentIds = tasks.map(t => t.id).join(",");
 
-    // 아이템 구조(ID 목록)가 같으면 전체 재빌드 없이 refresh만
+    // 드래그로 인한 items 업데이트 → 재빌드/refresh 완전히 스킵
+    // (frappe-gantt이 이미 바를 올바른 위치에 표시하고 있음)
+    if (isDragUpdateRef.current) {
+      isDragUpdateRef.current = false;
+      prevIdsRef.current = currentIds; // ID는 동일하므로 동기화
+      return;
+    }
+
+    // 아이템 ID 구조가 같으면 재빌드 스킵 (날짜 외 변경이 없는 경우)
     if (prevIdsRef.current === currentIds && ganttRef.current) {
-      try { ganttRef.current.refresh(tasks); } catch { /* ignore */ }
       return;
     }
 
     prevIdsRef.current = currentIds;
 
-    // 전체 재빌드 (아이템 추가/삭제 시에만)
+    // 전체 재빌드 (초기 로드 또는 아이템 추가/삭제 시)
     containerRef.current.innerHTML = "";
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     containerRef.current.appendChild(svg);
@@ -99,17 +112,22 @@ export default function FrappeGanttWrapper({ items, onItemClick, onDateChange, r
         popup_on: "click",
         readonly: readOnly ?? false,
         on_click: (task: any) => {
-          onClickRef.current?.(task._data);
+          const item = itemsRef.current.find(i => i.id === task.id);
+          if (item) onClickRef.current?.(item);
         },
         on_date_change: (task: any, start: Date, end: Date) => {
           if (onDateChangeRef.current) {
+            // 다음 items 변경이 드래그에 의한 것임을 미리 표시
+            isDragUpdateRef.current = true;
             const fmt = (d: Date) => d.toISOString().slice(0, 10);
             onDateChangeRef.current(task.id, fmt(start), fmt(end));
           }
         },
         popup: (task: any) => {
-          const d = task._data as GanttItem;
-          const rate = d.completionRate;
+          // _data 대신 itemsRef로 lookup (refresh 후 _data 유실 방지)
+          const d = itemsRef.current.find(i => i.id === task.id) ?? task._data;
+          if (!d) return "";
+          const rate  = d.completionRate;
           const delay = d.delayDays;
           const delayStr = delay === null ? "-" : delay > 0 ? `<span style="color:#ef4444">+${delay}일 지연</span>` : delay < 0 ? `<span style="color:#10b981">${delay}일 앞당김</span>` : "정시";
           return `
