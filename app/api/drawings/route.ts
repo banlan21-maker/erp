@@ -35,10 +35,52 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/drawings/upload - Excel 업로드 파싱 후 DB 저장
-// multipart/form-data: file + projectId
+// POST /api/drawings - Excel 업로드(multipart) 또는 수동 행 추가(JSON)
 export async function POST(request: NextRequest) {
   try {
+    const contentType = request.headers.get("content-type") ?? "";
+
+    // ── JSON: 수동 행 추가 ───────────────────────────────────────────────────
+    if (contentType.includes("application/json")) {
+      const { projectId, rows } = await request.json();
+
+      if (!projectId || !Array.isArray(rows) || rows.length === 0) {
+        return NextResponse.json(
+          { success: false, error: "projectId와 rows가 필요합니다." },
+          { status: 400 }
+        );
+      }
+
+      const project = await prisma.project.findUnique({ where: { id: projectId } });
+      if (!project) {
+        return NextResponse.json({ success: false, error: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
+      }
+
+      const created = await prisma.drawingList.createMany({
+        data: rows.map((r: {
+          block?: string; drawingNo?: string; heatNo?: string;
+          material: string; thickness: number; width: number; length: number;
+          qty: number; steelWeight?: number | null; useWeight?: number | null;
+        }) => ({
+          projectId,
+          block: r.block?.trim() || null,
+          drawingNo: r.drawingNo?.trim() || null,
+          heatNo: r.heatNo?.trim() || null,
+          material: r.material.trim(),
+          thickness: Number(r.thickness),
+          width: Number(r.width),
+          length: Number(r.length),
+          qty: Math.round(Number(r.qty)),
+          steelWeight: r.steelWeight != null && r.steelWeight !== 0 ? Number(r.steelWeight) : null,
+          useWeight: r.useWeight != null && r.useWeight !== 0 ? Number(r.useWeight) : null,
+          sourceFile: null,
+        })),
+      });
+
+      return NextResponse.json({ success: true, data: { count: created.count } }, { status: 201 });
+    }
+
+    // ── multipart: Excel 업로드 ──────────────────────────────────────────────
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const projectId = formData.get("projectId") as string | null;

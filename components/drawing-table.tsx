@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { DrawingList } from "@prisma/client";
-import { Pencil, Trash2, Check, X, PackageCheck, RotateCcw, ListFilter, XCircle } from "lucide-react";
+import { Pencil, Trash2, Check, X, PackageCheck, RotateCcw, ListFilter, XCircle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -14,6 +14,12 @@ interface EditForm {
   thickness: string; width: string; length: string; qty: string;
   steelWeight: string; useWeight: string;
 }
+
+const emptyAddForm: EditForm = {
+  block: "", drawingNo: "", heatNo: "", material: "",
+  thickness: "", width: "", length: "", qty: "1",
+  steelWeight: "", useWeight: "",
+};
 
 type DrawingStatusType = "REGISTERED" | "WAITING" | "CUT";
 
@@ -258,6 +264,47 @@ export default function DrawingTable({
   // 상태 변경
   const [statusUpdating, setStatusUpdating] = useState<string | null>(null);
 
+  // 단건 추가 모달
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addForm, setAddForm] = useState<EditForm>(emptyAddForm);
+  const [adding, setAdding] = useState(false);
+
+  const af = (field: keyof EditForm, value: string) =>
+    setAddForm(prev => ({ ...prev, [field]: value }));
+
+  const submitAdd = async () => {
+    if (!addForm.material.trim() || !addForm.thickness || !addForm.width || !addForm.length || !addForm.qty) {
+      alert("재질, 두께, 폭, 길이, 수량은 필수입니다."); return;
+    }
+    setAdding(true);
+    try {
+      const res = await fetch("/api/drawings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          rows: [{
+            block: addForm.block || null,
+            drawingNo: addForm.drawingNo || null,
+            heatNo: addForm.heatNo || null,
+            material: addForm.material,
+            thickness: Number(addForm.thickness),
+            width: Number(addForm.width),
+            length: Number(addForm.length),
+            qty: Number(addForm.qty),
+            steelWeight: addForm.steelWeight ? Number(addForm.steelWeight) : null,
+            useWeight: addForm.useWeight ? Number(addForm.useWeight) : null,
+          }],
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) { alert(data.error ?? "추가 실패"); return; }
+      setShowAddModal(false);
+      setAddForm(emptyAddForm);
+      router.refresh();
+    } catch { alert("서버 오류"); } finally { setAdding(false); }
+  };
+
   // 필터
   const [filters, setFilters] = useState<Record<string, string[]>>({});
   const [openCol, setOpenCol] = useState<string | null>(null);
@@ -359,9 +406,44 @@ export default function DrawingTable({
 
   if (drawings.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-400 bg-white rounded-xl border text-sm">
-        강재리스트가 없습니다. Excel 파일을 업로드하세요.
-      </div>
+      <>
+        <div className="flex justify-end mb-2">
+          <Button size="sm" onClick={() => setShowAddModal(true)} className="text-xs flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white">
+            <Plus size={13} /> 강재 추가
+          </Button>
+        </div>
+        <div className="text-center py-8 text-gray-400 bg-white rounded-xl border text-sm">
+          강재리스트가 없습니다. Excel 파일을 업로드하거나 강재 추가 버튼으로 직접 입력하세요.
+        </div>
+        {showAddModal && (
+          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setShowAddModal(false)}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl" onClick={e => e.stopPropagation()}>
+              <div className="px-5 py-4 border-b flex items-center justify-between">
+                <h3 className="font-bold text-gray-900 flex items-center gap-2"><Plus size={16} className="text-blue-600" /> 강재 1행 추가</h3>
+                <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              </div>
+              <div className="p-5 grid grid-cols-2 gap-3">
+                <div className="col-span-2 grid grid-cols-3 gap-3">
+                  <div><label className="text-xs font-semibold text-gray-600 mb-1 block">블록</label><Input className="h-8 text-xs" placeholder="예: FR20" value={addForm.block} onChange={e => af("block", e.target.value)} /></div>
+                  <div><label className="text-xs font-semibold text-gray-600 mb-1 block">도면번호/NEST</label><Input className="h-8 text-xs" placeholder="도면번호" value={addForm.drawingNo} onChange={e => af("drawingNo", e.target.value)} /></div>
+                  <div><label className="text-xs font-semibold text-gray-600 mb-1 block">Heat NO</label><Input className="h-8 text-xs" placeholder="Heat NO" value={addForm.heatNo} onChange={e => af("heatNo", e.target.value)} /></div>
+                </div>
+                <div><label className="text-xs font-semibold text-gray-600 mb-1 block">재질 <span className="text-red-500">*</span></label><Input className="h-8 text-xs" placeholder="예: SS400" value={addForm.material} onChange={e => af("material", e.target.value)} /></div>
+                <div><label className="text-xs font-semibold text-gray-600 mb-1 block">두께(mm) <span className="text-red-500">*</span></label><Input type="number" className="h-8 text-xs text-right" value={addForm.thickness} onChange={e => af("thickness", e.target.value)} /></div>
+                <div><label className="text-xs font-semibold text-gray-600 mb-1 block">폭(mm) <span className="text-red-500">*</span></label><Input type="number" className="h-8 text-xs text-right" value={addForm.width} onChange={e => af("width", e.target.value)} /></div>
+                <div><label className="text-xs font-semibold text-gray-600 mb-1 block">길이(mm) <span className="text-red-500">*</span></label><Input type="number" className="h-8 text-xs text-right" value={addForm.length} onChange={e => af("length", e.target.value)} /></div>
+                <div><label className="text-xs font-semibold text-gray-600 mb-1 block">수량(매) <span className="text-red-500">*</span></label><Input type="number" className="h-8 text-xs text-right" value={addForm.qty} onChange={e => af("qty", e.target.value)} /></div>
+                <div><label className="text-xs font-semibold text-gray-600 mb-1 block">강재중량(kg)</label><Input type="number" className="h-8 text-xs text-right" placeholder="선택" value={addForm.steelWeight} onChange={e => af("steelWeight", e.target.value)} /></div>
+                <div><label className="text-xs font-semibold text-gray-600 mb-1 block">사용중량(kg)</label><Input type="number" className="h-8 text-xs text-right" placeholder="선택" value={addForm.useWeight} onChange={e => af("useWeight", e.target.value)} /></div>
+              </div>
+              <div className="px-5 py-4 border-t flex justify-end gap-2">
+                <Button variant="outline" size="sm" onClick={() => setShowAddModal(false)}>취소</Button>
+                <Button size="sm" onClick={submitAdd} disabled={adding} className="bg-blue-600 hover:bg-blue-700 text-white">{adding ? "저장 중..." : "추가"}</Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
     );
   }
 
@@ -391,6 +473,12 @@ export default function DrawingTable({
             </div>
           )}
         </div>
+
+        {/* 강재 추가 버튼 */}
+        <Button size="sm" onClick={() => setShowAddModal(true)}
+          className="text-xs flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white">
+          <Plus size={13} /> 강재 추가
+        </Button>
 
         {/* 전체 삭제 */}
         {clearConfirm ? (
@@ -551,6 +639,68 @@ export default function DrawingTable({
           </tfoot>
         </table>
       </div>
+
+      {/* 단건 강재 추가 모달 */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setShowAddModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2"><Plus size={16} className="text-blue-600" /> 강재 1행 추가</h3>
+              <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-5 grid grid-cols-2 gap-3">
+              <div className="col-span-2 grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">블록</label>
+                  <Input className="h-8 text-xs" placeholder="예: FR20" value={addForm.block} onChange={e => af("block", e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">도면번호/NEST</label>
+                  <Input className="h-8 text-xs" placeholder="도면번호" value={addForm.drawingNo} onChange={e => af("drawingNo", e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">Heat NO</label>
+                  <Input className="h-8 text-xs" placeholder="Heat NO" value={addForm.heatNo} onChange={e => af("heatNo", e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">재질 <span className="text-red-500">*</span></label>
+                <Input className="h-8 text-xs" placeholder="예: SS400" value={addForm.material} onChange={e => af("material", e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">두께(mm) <span className="text-red-500">*</span></label>
+                <Input type="number" className="h-8 text-xs text-right" placeholder="0" value={addForm.thickness} onChange={e => af("thickness", e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">폭(mm) <span className="text-red-500">*</span></label>
+                <Input type="number" className="h-8 text-xs text-right" placeholder="0" value={addForm.width} onChange={e => af("width", e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">길이(mm) <span className="text-red-500">*</span></label>
+                <Input type="number" className="h-8 text-xs text-right" placeholder="0" value={addForm.length} onChange={e => af("length", e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">수량(매) <span className="text-red-500">*</span></label>
+                <Input type="number" className="h-8 text-xs text-right" placeholder="1" value={addForm.qty} onChange={e => af("qty", e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">강재중량(kg)</label>
+                <Input type="number" className="h-8 text-xs text-right" placeholder="선택" value={addForm.steelWeight} onChange={e => af("steelWeight", e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">사용중량(kg)</label>
+                <Input type="number" className="h-8 text-xs text-right" placeholder="선택" value={addForm.useWeight} onChange={e => af("useWeight", e.target.value)} />
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setShowAddModal(false)}>취소</Button>
+              <Button size="sm" onClick={submitAdd} disabled={adding} className="bg-blue-600 hover:bg-blue-700 text-white">
+                {adding ? "저장 중..." : "추가"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

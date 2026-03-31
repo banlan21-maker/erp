@@ -13,7 +13,7 @@ import {
   SelectLabel,
   SelectTrigger,
 } from "@/components/ui/select";
-import { Upload, FileSpreadsheet, FolderOpen, CheckCircle2, AlertCircle, Settings2, List, ArrowLeft, PackagePlus, Package } from "lucide-react";
+import { Upload, FileSpreadsheet, FolderOpen, CheckCircle2, AlertCircle, Settings2, List, ArrowLeft, PackagePlus, Package, Plus, Trash2 } from "lucide-react";
 import PresetManager from "./preset-manager";
 import DrawingTable from "./drawing-table";
 import { RemnantRegisterTab, RemnantManageTab } from "./remnant-tabs";
@@ -136,6 +136,18 @@ export default function DrawingsMain({
   );
 }
 
+interface ManualRow {
+  block: string; drawingNo: string; heatNo: string; material: string;
+  thickness: string; width: string; length: string; qty: string;
+  steelWeight: string; useWeight: string;
+}
+
+const emptyManualRow = (): ManualRow => ({
+  block: "", drawingNo: "", heatNo: "", material: "",
+  thickness: "", width: "", length: "", qty: "1",
+  steelWeight: "", useWeight: "",
+});
+
 /* ── 강재등록 탭 ─────────────────────────────────────────────────────────── */
 function UploadTab({
   projectOptions,
@@ -147,6 +159,7 @@ function UploadTab({
   router: ReturnType<typeof useRouter>;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const [mode, setMode] = useState<"excel" | "manual">("excel");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
@@ -154,6 +167,53 @@ function UploadTab({
   const [showPresetManager, setShowPresetManager] = useState(false);
   const [selectedPresetId, setSelectedPresetId] = useState<string>("__default__");
   const [presets, setPresets] = useState<Preset[]>([]);
+
+  // 추가등록 수동 행 목록
+  const [manualRows, setManualRows] = useState<ManualRow[]>([emptyManualRow()]);
+  const [manualLoading, setManualLoading] = useState(false);
+  const [manualResult, setManualResult] = useState<UploadResult | null>(null);
+
+  const updateRow = (i: number, field: keyof ManualRow, val: string) =>
+    setManualRows(prev => prev.map((r, idx) => idx === i ? { ...r, [field]: val } : r));
+  const addRow = () => setManualRows(prev => [...prev, emptyManualRow()]);
+  const removeRow = (i: number) => setManualRows(prev => prev.length === 1 ? prev : prev.filter((_, idx) => idx !== i));
+
+  const submitManual = async () => {
+    if (!selectedProjectId) { setManualResult({ success: false, message: "호선을 먼저 선택하세요." }); return; }
+    const invalid = manualRows.find(r => !r.material.trim() || !r.thickness || !r.width || !r.length || !r.qty);
+    if (invalid) { setManualResult({ success: false, message: "재질, 두께, 폭, 길이, 수량은 필수입니다." }); return; }
+    setManualLoading(true); setManualResult(null);
+    try {
+      const res = await fetch("/api/drawings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: selectedProjectId,
+          rows: manualRows.map(r => ({
+            block: r.block || null,
+            drawingNo: r.drawingNo || null,
+            heatNo: r.heatNo || null,
+            material: r.material,
+            thickness: Number(r.thickness),
+            width: Number(r.width),
+            length: Number(r.length),
+            qty: Number(r.qty),
+            steelWeight: r.steelWeight ? Number(r.steelWeight) : null,
+            useWeight: r.useWeight ? Number(r.useWeight) : null,
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setManualResult({ success: true, message: `${data.data.count}행이 추가되었습니다.` });
+        setManualRows([emptyManualRow()]);
+        router.refresh();
+      } else {
+        setManualResult({ success: false, message: data.error });
+      }
+    } catch { setManualResult({ success: false, message: "서버 연결 오류" }); }
+    finally { setManualLoading(false); }
+  };
 
   useEffect(() => {
     fetch("/api/excel-presets")
@@ -206,7 +266,116 @@ function UploadTab({
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-xl border p-6 space-y-5">
+      <div className="bg-white rounded-xl border overflow-hidden">
+        {/* 신규등록 / 추가등록 서브탭 */}
+        <div className="flex border-b border-gray-100">
+          <button
+            onClick={() => { setMode("excel"); setResult(null); setManualResult(null); }}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${
+              mode === "excel" ? "border-blue-600 text-blue-600 bg-blue-50/40" : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            <Upload size={14} /> 신규등록 (Excel)
+          </button>
+          <button
+            onClick={() => { setMode("manual"); setResult(null); setManualResult(null); }}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${
+              mode === "manual" ? "border-blue-600 text-blue-600 bg-blue-50/40" : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            <Plus size={14} /> 추가등록 (직접 입력)
+          </button>
+        </div>
+
+        {/* 추가등록 (수동 다중 행) */}
+        {mode === "manual" && (
+          <div className="p-5 space-y-4">
+            <p className="text-xs text-gray-500">호선을 선택하고 추가할 강재 정보를 입력한 뒤 일괄 저장합니다.</p>
+
+            {/* 호선 선택 */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                <span className="bg-blue-600 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">1</span>
+                호선 선택
+              </label>
+              <Select value={selectedProjectId} onValueChange={v => { setSelectedProjectId(v ?? ""); setManualResult(null); }}>
+                <SelectTrigger className="w-full max-w-sm">
+                  {selectedProjectId && projectOptions.find(p => p.id === selectedProjectId) ? (
+                    <span>{projectOptions.find(p => p.id === selectedProjectId)!.projectCode} - {projectOptions.find(p => p.id === selectedProjectId)!.projectName}</span>
+                  ) : (
+                    <span className="text-muted-foreground">호선 및 블록을 선택하세요</span>
+                  )}
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries((() => { const g: Record<string, ProjectOption[]> = {}; for (const p of projectOptions) { if (!g[p.projectCode]) g[p.projectCode] = []; g[p.projectCode].push(p); } return g; })()).map(([code, blocks]) => (
+                    <SelectGroup key={code}>
+                      <SelectLabel className="text-xs font-bold text-gray-500">호선 [{code}]</SelectLabel>
+                      {blocks.map(p => <SelectItem key={p.id} value={p.id}>{p.projectName} <span className="text-gray-400 text-xs ml-1">(현재 {p.drawingCount}행)</span></SelectItem>)}
+                    </SelectGroup>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* 행 입력 테이블 */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                <span className="bg-blue-600 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">2</span>
+                강재 정보 입력
+              </label>
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="w-full text-xs min-w-[900px]">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      {["블록", "도면번호/NEST", "Heat NO", "재질*", "두께(mm)*", "폭(mm)*", "길이(mm)*", "수량*", "강재중량(kg)", "사용중량(kg)", ""].map((h, i) => (
+                        <th key={i} className={`px-2 py-2 font-semibold text-gray-500 whitespace-nowrap ${i >= 4 && i <= 9 ? "text-right" : "text-left"}`}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {manualRows.map((r, i) => (
+                      <tr key={i} className="bg-white hover:bg-blue-50/30">
+                        <td className="px-1 py-1"><input className="w-20 h-7 px-2 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="FR20" value={r.block} onChange={e => updateRow(i, "block", e.target.value)} /></td>
+                        <td className="px-1 py-1"><input className="w-28 h-7 px-2 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="도면번호" value={r.drawingNo} onChange={e => updateRow(i, "drawingNo", e.target.value)} /></td>
+                        <td className="px-1 py-1"><input className="w-24 h-7 px-2 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="Heat NO" value={r.heatNo} onChange={e => updateRow(i, "heatNo", e.target.value)} /></td>
+                        <td className="px-1 py-1"><input className="w-20 h-7 px-2 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 font-semibold" placeholder="SS400" value={r.material} onChange={e => updateRow(i, "material", e.target.value)} /></td>
+                        <td className="px-1 py-1"><input type="number" className="w-16 h-7 px-2 border border-gray-200 rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="0" value={r.thickness} onChange={e => updateRow(i, "thickness", e.target.value)} /></td>
+                        <td className="px-1 py-1"><input type="number" className="w-20 h-7 px-2 border border-gray-200 rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="0" value={r.width} onChange={e => updateRow(i, "width", e.target.value)} /></td>
+                        <td className="px-1 py-1"><input type="number" className="w-20 h-7 px-2 border border-gray-200 rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="0" value={r.length} onChange={e => updateRow(i, "length", e.target.value)} /></td>
+                        <td className="px-1 py-1"><input type="number" className="w-14 h-7 px-2 border border-gray-200 rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="1" value={r.qty} onChange={e => updateRow(i, "qty", e.target.value)} /></td>
+                        <td className="px-1 py-1"><input type="number" className="w-20 h-7 px-2 border border-gray-200 rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="-" value={r.steelWeight} onChange={e => updateRow(i, "steelWeight", e.target.value)} /></td>
+                        <td className="px-1 py-1"><input type="number" className="w-20 h-7 px-2 border border-gray-200 rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="-" value={r.useWeight} onChange={e => updateRow(i, "useWeight", e.target.value)} /></td>
+                        <td className="px-1 py-1">
+                          <button onClick={() => removeRow(i)} disabled={manualRows.length === 1} className="p-1 text-gray-300 hover:text-red-500 disabled:cursor-not-allowed">
+                            <Trash2 size={13} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <button onClick={addRow} className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 mt-1 px-1">
+                <Plus size={13} /> 행 추가
+              </button>
+            </div>
+
+            {manualResult && (
+              <div className={`flex items-center gap-2 p-3 rounded-lg text-sm ${manualResult.success ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+                {manualResult.success ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
+                {manualResult.message}
+              </div>
+            )}
+
+            <Button onClick={submitManual} disabled={manualLoading || !selectedProjectId} className="w-full flex items-center gap-2">
+              <Plus size={15} /> {manualLoading ? "저장 중..." : `${manualRows.length}행 추가 저장`}
+            </Button>
+          </div>
+        )}
+
+        {/* 신규등록 (Excel) */}
+        {mode === "excel" && (
+        <div className="p-6 space-y-5">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold text-gray-800 flex items-center gap-2">
             <Upload size={16} className="text-blue-500" /> 강재리스트 등록
@@ -340,6 +509,8 @@ function UploadTab({
             </Button>
           </div>
         )}
+        </div>
+        )} {/* end mode === "excel" */}
       </div>
 
       {/* 최근 등록 현황 */}
