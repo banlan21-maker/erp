@@ -87,7 +87,10 @@ export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
       {/* 내비게이션 */}
       <nav className="flex-1 px-2 py-4 space-y-1">
         {items.map(({ href, label, icon: Icon }) => {
-          const isActive = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
+          const isActive = pathname === href ||
+            (href !== "/dashboard" &&
+             pathname.startsWith(href) &&
+             !items.some(other => other.href !== href && other.href.startsWith(href) && pathname.startsWith(other.href)));
           return (
             <Link
               key={href}

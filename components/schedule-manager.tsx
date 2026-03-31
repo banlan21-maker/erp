@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import {
-  CalendarDays, Plus, RefreshCw, AlertTriangle, Zap,
-  Edit2, Trash2, X, Save, ChevronDown, Archive, BarChart2,
+  CalendarDays, Plus, RefreshCw, AlertTriangle,
+  Edit2, Trash2, X, Save, BarChart2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,20 +46,6 @@ interface LoadItem {
   schedules: string[];
 }
 
-interface UrgentWork {
-  id: string;
-  title: string;
-  projectId: string | null;
-  project: { projectCode: string; projectName: string } | null;
-  requestDate: string;
-  dueDate: string | null;
-  material: string | null;
-  thickness: number | null;
-  weight: number | null;
-  status: string;
-  memo: string | null;
-}
-
 // ─── 상수 ──────────────────────────────────────────────────────────────────
 
 const STATUS_LABEL: Record<string, string> = {
@@ -72,11 +58,6 @@ const STATUS_COLOR: Record<string, string> = {
   COMPLETED:   "bg-gray-100 text-gray-600",
   HOLD:        "bg-yellow-100 text-yellow-700",
   CANCELLED:   "bg-red-100 text-red-600",
-};
-const URGENT_STATUS_COLOR: Record<string, string> = {
-  PENDING:     "bg-gray-100 text-gray-600",
-  IN_PROGRESS: "bg-blue-100 text-blue-700",
-  COMPLETED:   "bg-green-100 text-green-700",
 };
 const HOLD_REASON_LABEL: Record<string, string> = {
   MATERIAL_DELAY: "강재지연", URGENT: "긴급작업", REVISION: "도면개정", OTHER: "기타",
@@ -296,138 +277,6 @@ function ScheduleFormModal({
   );
 }
 
-// ─── 돌발작업 폼 모달 ──────────────────────────────────────────────────────
-
-function UrgentFormModal({
-  mode, item, projects, onClose, onSaved,
-}: {
-  mode: "add" | "edit";
-  item: UrgentWork | null;
-  projects: Project[];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [form, setForm] = useState({
-    title:       item?.title       ?? "",
-    projectId:   item?.projectId   ?? "",
-    requestDate: toInputDate(item?.requestDate ?? new Date().toISOString()),
-    dueDate:     toInputDate(item?.dueDate     ?? null),
-    material:    item?.material    ?? "",
-    thickness:   String(item?.thickness ?? ""),
-    weight:      String(item?.weight    ?? ""),
-    status:      item?.status      ?? "PENDING",
-    memo:        item?.memo        ?? "",
-  });
-  const [saving, setSaving] = useState(false);
-  const [error,  setError]  = useState<string | null>(null);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    if (!form.title.trim()) { setError("작업명을 입력해주세요."); return; }
-    setSaving(true);
-    try {
-      const url    = mode === "add" ? "/api/urgent-works" : `/api/urgent-works/${item!.id}`;
-      const method = mode === "add" ? "POST" : "PATCH";
-      const res  = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title:       form.title,
-          projectId:   form.projectId   || null,
-          requestDate: form.requestDate || null,
-          dueDate:     form.dueDate     || null,
-          material:    form.material    || null,
-          thickness:   form.thickness   || null,
-          weight:      form.weight      || null,
-          status:      form.status,
-          memo:        form.memo        || null,
-        }),
-      });
-      const data = await res.json();
-      if (!data.success) { setError(data.error); return; }
-      onSaved();
-    } catch { setError("서버 오류"); }
-    finally { setSaving(false); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
-        <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50 rounded-t-xl">
-          <h3 className="font-bold text-lg flex items-center gap-2">
-            <Zap size={18} className="text-orange-500" />
-            {mode === "add" ? "돌발작업 등록" : "돌발작업 수정"}
-          </h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-full"><X size={18} /></button>
-        </div>
-        {error && (
-          <div className="mx-6 mt-4 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">{error}</div>
-        )}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">작업명 <span className="text-red-500">*</span></label>
-            <Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="예: 치공구 절단, 긴급 납품" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">연관 호선/블록 <span className="text-gray-400 font-normal">(없으면 독립 작업)</span></label>
-            <select value={form.projectId} onChange={e => setForm(f => ({ ...f, projectId: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">-- 없음 (독립 작업) --</option>
-              {projects.map(p => <option key={p.id} value={p.id}>[{p.projectCode}] {p.projectName}</option>)}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">요청일</label>
-              <Input type="date" value={form.requestDate} onChange={e => setForm(f => ({ ...f, requestDate: e.target.value }))} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">납기일</label>
-              <Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">재질</label>
-              <Input value={form.material} onChange={e => setForm(f => ({ ...f, material: e.target.value }))} placeholder="예: SS400" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">두께 (t)</label>
-              <Input type="number" value={form.thickness} onChange={e => setForm(f => ({ ...f, thickness: e.target.value }))} placeholder="예: 12" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">중량 (kg)</label>
-              <Input type="number" value={form.weight} onChange={e => setForm(f => ({ ...f, weight: e.target.value }))} placeholder="예: 500" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">상태</label>
-              <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="PENDING">대기</option>
-                <option value="IN_PROGRESS">진행중</option>
-                <option value="COMPLETED">완료</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">비고</label>
-            <textarea value={form.memo} onChange={e => setForm(f => ({ ...f, memo: e.target.value }))}
-              rows={2} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
-            <Button type="button" variant="outline" onClick={onClose}>취소</Button>
-            <Button type="submit" disabled={saving} className="bg-orange-500 hover:bg-orange-600 font-bold">
-              <Save size={14} className="mr-1.5" />
-              {saving ? "저장 중..." : mode === "add" ? "등록" : "저장"}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
 // ─── 부하 그래프 ────────────────────────────────────────────────────────────
 
 function LoadChart({ loadData }: { loadData: LoadItem[] }) {
@@ -437,7 +286,7 @@ function LoadChart({ loadData }: { loadData: LoadItem[] }) {
       <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
         <BarChart2 size={15} className="text-blue-500" /> 일별 CNC 부하 (플라즈마 4대 기준)
       </h3>
-      <div className="flex items-end gap-1 h-20 overflow-x-auto pb-2">
+      <div className="flex items-end gap-1.5 h-48 overflow-x-auto pb-2">
         {loadData.map(d => {
           const height = Math.round((d.count / max) * 100);
           const color  = d.loadRate >= 100 ? "bg-red-500" : d.loadRate >= 75 ? "bg-yellow-400" : "bg-blue-400";
@@ -472,17 +321,14 @@ function LoadChart({ loadData }: { loadData: LoadItem[] }) {
 // ─── 메인 컴포넌트 ─────────────────────────────────────────────────────────
 
 export default function ScheduleManager({ projects }: { projects: Project[] }) {
-  const [ganttData,   setGanttData]   = useState<GanttItem[]>([]);
-  const [loadData,    setLoadData]    = useState<LoadItem[]>([]);
-  const [urgentWorks, setUrgentWorks] = useState<UrgentWork[]>([]);
-  const [loading,     setLoading]     = useState(true);
+  const [ganttData,  setGanttData]  = useState<GanttItem[]>([]);
+  const [loadData,   setLoadData]   = useState<LoadItem[]>([]);
+  const [loading,    setLoading]    = useState(true);
 
-  const [showArchive,    setShowArchive]    = useState(false);
-  const [showCompleted,  setShowCompleted]  = useState(false);
+  const [showArchive,   setShowArchive]   = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
 
   const [scheduleModal, setScheduleModal] = useState<{ open: boolean; mode: "add" | "edit"; item: GanttItem | null }>
-    ({ open: false, mode: "add", item: null });
-  const [urgentModal,   setUrgentModal]   = useState<{ open: boolean; mode: "add" | "edit"; item: UrgentWork | null }>
     ({ open: false, mode: "add", item: null });
 
   // 부하 그래프 기간 (오늘부터 60일)
@@ -492,17 +338,15 @@ export default function ScheduleManager({ projects }: { projects: Project[] }) {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [ganttRes, loadRes, urgentRes] = await Promise.all([
+      const [ganttRes, loadRes] = await Promise.all([
         fetch(`/api/schedules/gantt?includeArchive=${showArchive}&includeCompleted=${showCompleted}`),
         fetch(`/api/schedules/load?from=${loadFrom}&to=${loadTo}`),
-        fetch("/api/urgent-works"),
       ]);
-      const [ganttJson, loadJson, urgentJson] = await Promise.all([
-        ganttRes.json(), loadRes.json(), urgentRes.json(),
+      const [ganttJson, loadJson] = await Promise.all([
+        ganttRes.json(), loadRes.json(),
       ]);
-      if (ganttJson.success)   setGanttData(ganttJson.data);
-      if (loadJson.success)    setLoadData(loadJson.data);
-      if (urgentJson.success)  setUrgentWorks(urgentJson.data);
+      if (ganttJson.success) setGanttData(ganttJson.data);
+      if (loadJson.success)  setLoadData(loadJson.data);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, [showArchive, showCompleted]);
@@ -512,11 +356,6 @@ export default function ScheduleManager({ projects }: { projects: Project[] }) {
   const handleDeleteSchedule = async (id: string) => {
     if (!confirm("이 스케줄을 취소 처리하시겠습니까?")) return;
     await fetch(`/api/schedules/${id}`, { method: "DELETE" });
-    fetchAll();
-  };
-  const handleDeleteUrgent = async (id: string) => {
-    if (!confirm("이 돌발작업을 삭제하시겠습니까?")) return;
-    await fetch(`/api/urgent-works/${id}`, { method: "DELETE" });
     fetchAll();
   };
 
@@ -591,91 +430,38 @@ export default function ScheduleManager({ projects }: { projects: Project[] }) {
             </div>
           )}
 
-          {/* 하단: 미배치 블록 + 돌발작업 */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {/* 미배치 블록 */}
+          {/* 미배치 블록 */}
+          {unscheduled.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+              <div className="px-4 py-3 border-b bg-gray-50">
                 <span className="text-sm font-semibold text-gray-700 flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-gray-400" />
                   미배치 블록 ({unscheduled.length}건)
                 </span>
               </div>
-              {unscheduled.length === 0 ? (
-                <p className="text-center text-sm text-gray-400 py-8">미배치 항목이 없습니다.</p>
-              ) : (
-                <div className="divide-y divide-gray-50">
-                  {unscheduled.map(item => (
-                    <div key={item.id} className="px-4 py-3 flex items-center justify-between hover:bg-gray-50">
-                      <div>
-                        <p className="text-sm font-semibold text-gray-800">[{item.vesselCode}] {item.blockName}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[item.status]}`}>
-                            {STATUS_LABEL[item.status]}
-                          </span>
-                          {item.workType === "REVISION" && (
-                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">도면개정</span>
-                          )}
-                        </div>
+              <div className="divide-y divide-gray-50">
+                {unscheduled.map(item => (
+                  <div key={item.id} className="px-4 py-3 flex items-center justify-between hover:bg-gray-50">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">[{item.vesselCode}] {item.blockName}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[item.status]}`}>
+                          {STATUS_LABEL[item.status]}
+                        </span>
+                        {item.workType === "REVISION" && (
+                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">도면개정</span>
+                        )}
                       </div>
-                      <button onClick={() => setScheduleModal({ open: true, mode: "edit", item })}
-                        className="text-xs px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md font-semibold transition-colors">
-                        일정 배치
-                      </button>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* 돌발작업 */}
-            <div className="bg-white rounded-xl border border-orange-200 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 border-b bg-orange-50/50 flex items-center justify-between">
-                <span className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                  <Zap size={14} className="text-orange-500" />
-                  돌발작업 ({urgentWorks.filter(w => w.status !== "COMPLETED").length}건 진행중)
-                </span>
-                <button onClick={() => setUrgentModal({ open: true, mode: "add", item: null })}
-                  className="text-xs px-2.5 py-1 bg-orange-500 hover:bg-orange-600 text-white rounded-md font-semibold flex items-center gap-1">
-                  <Plus size={11} /> 등록
-                </button>
+                    <button onClick={() => setScheduleModal({ open: true, mode: "edit", item })}
+                      className="text-xs px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md font-semibold transition-colors">
+                      일정 배치
+                    </button>
+                  </div>
+                ))}
               </div>
-              {urgentWorks.length === 0 ? (
-                <p className="text-center text-sm text-gray-400 py-8">등록된 돌발작업이 없습니다.</p>
-              ) : (
-                <div className="divide-y divide-gray-50 max-h-80 overflow-y-auto">
-                  {urgentWorks.map(w => (
-                    <div key={w.id} className="px-4 py-3 hover:bg-orange-50/30">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-sm font-semibold text-gray-800">{w.title}</p>
-                            <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${URGENT_STATUS_COLOR[w.status]}`}>
-                              {w.status === "PENDING" ? "대기" : w.status === "IN_PROGRESS" ? "진행중" : "완료"}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-400">
-                            {w.project && <span>[{w.project.projectCode}] {w.project.projectName}</span>}
-                            {w.dueDate && (
-                              <span className={`font-medium ${new Date(w.dueDate) < new Date() && w.status !== "COMPLETED" ? "text-red-500" : "text-gray-500"}`}>
-                                납기 {fmtDate(w.dueDate)} ({dDayStr(w.dueDate)})
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button onClick={() => setUrgentModal({ open: true, mode: "edit", item: w })}
-                            className="p-1.5 text-blue-400 hover:bg-blue-50 rounded-md"><Edit2 size={12} /></button>
-                          <button onClick={() => handleDeleteUrgent(w.id)}
-                            className="p-1.5 text-red-400 hover:bg-red-50 rounded-md"><Trash2 size={12} /></button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
-          </div>
+          )}
 
           {/* 전체 스케줄 목록 (테이블) */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
@@ -775,15 +561,6 @@ export default function ScheduleManager({ projects }: { projects: Project[] }) {
           projects={projects}
           onClose={() => setScheduleModal(m => ({ ...m, open: false }))}
           onSaved={() => { setScheduleModal(m => ({ ...m, open: false })); fetchAll(); }}
-        />
-      )}
-      {urgentModal.open && (
-        <UrgentFormModal
-          mode={urgentModal.mode}
-          item={urgentModal.item}
-          projects={projects}
-          onClose={() => setUrgentModal(m => ({ ...m, open: false }))}
-          onSaved={() => { setUrgentModal(m => ({ ...m, open: false })); fetchAll(); }}
         />
       )}
     </div>

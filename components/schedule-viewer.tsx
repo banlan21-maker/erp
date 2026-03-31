@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
-import { Eye, RefreshCw, CalendarDays, Zap, BarChart2 } from "lucide-react";
+import { Eye, RefreshCw, CalendarDays, BarChart2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const FrappeGantt = dynamic(() => import("@/components/frappe-gantt-wrapper"), { ssr: false });
@@ -32,20 +32,6 @@ interface GanttItem {
   logCount: number;
 }
 
-interface UrgentWork {
-  id: string;
-  title: string;
-  projectId: string | null;
-  project: { projectCode: string; projectName: string } | null;
-  requestDate: string;
-  dueDate: string | null;
-  material: string | null;
-  thickness: number | null;
-  weight: number | null;
-  status: string;
-  memo: string | null;
-}
-
 // ─── 상수 ──────────────────────────────────────────────────────────────────
 
 const STATUS_LABEL: Record<string, string> = {
@@ -58,11 +44,6 @@ const STATUS_COLOR: Record<string, string> = {
   COMPLETED:   "bg-gray-100 text-gray-600",
   HOLD:        "bg-yellow-100 text-yellow-700",
   CANCELLED:   "bg-red-100 text-red-600",
-};
-const URGENT_STATUS: Record<string, { label: string; color: string }> = {
-  PENDING:     { label: "대기",   color: "bg-gray-100 text-gray-600" },
-  IN_PROGRESS: { label: "진행중", color: "bg-blue-100 text-blue-700" },
-  COMPLETED:   { label: "완료",   color: "bg-green-100 text-green-700" },
 };
 
 function fmtDate(iso: string | null) {
@@ -113,24 +94,17 @@ function SummaryBar({ data }: { data: GanttItem[] }) {
 // ─── 메인 ─────────────────────────────────────────────────────────────────
 
 export default function ScheduleViewer() {
-  const [ganttData,   setGanttData]   = useState<GanttItem[]>([]);
-  const [urgentWorks, setUrgentWorks] = useState<UrgentWork[]>([]);
-  const [loading,     setLoading]     = useState(true);
-  const [tab,         setTab]         = useState<"gantt" | "list" | "urgent">("gantt");
+  const [ganttData, setGanttData] = useState<GanttItem[]>([]);
+  const [loading,   setLoading]   = useState(true);
+  const [tab,       setTab]       = useState<"gantt" | "list">("gantt");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [ganttRes, urgentRes] = await Promise.all([
-        fetch("/api/schedules/gantt?includeArchive=false&includeCompleted=true"),
-        fetch("/api/urgent-works"),
-      ]);
-      const [ganttJson, urgentJson] = await Promise.all([
-        ganttRes.json(), urgentRes.json(),
-      ]);
-      if (ganttJson.success)  setGanttData(ganttJson.data);
-      if (urgentJson.success) setUrgentWorks(urgentJson.data);
+      const res  = await fetch("/api/schedules/gantt?includeArchive=false&includeCompleted=true");
+      const json = await res.json();
+      if (json.success) setGanttData(json.data);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, []);
@@ -178,15 +152,6 @@ export default function ScheduleViewer() {
             </button>
             <button className={tabClass("list")} onClick={() => setTab("list")}>
               <BarChart2 size={14} className="inline mr-1" />목록
-            </button>
-            <button className={tabClass("urgent")} onClick={() => setTab("urgent")}>
-              <Zap size={14} className="inline mr-1" />
-              돌발작업
-              {urgentWorks.filter(w => w.status !== "COMPLETED").length > 0 && (
-                <span className="ml-1 bg-orange-500 text-white text-[10px] rounded-full px-1.5 py-0.5 font-bold">
-                  {urgentWorks.filter(w => w.status !== "COMPLETED").length}
-                </span>
-              )}
             </button>
           </div>
 
@@ -317,57 +282,6 @@ export default function ScheduleViewer() {
             </div>
           )}
 
-          {/* 돌발작업 탭 */}
-          {tab === "urgent" && (
-            <div className="bg-white rounded-xl border border-orange-200 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 border-b bg-orange-50/50">
-                <span className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                  <Zap size={14} className="text-orange-500" />
-                  돌발작업 목록 ({urgentWorks.length}건)
-                </span>
-              </div>
-              {urgentWorks.length === 0 ? (
-                <p className="text-center text-sm text-gray-400 py-12">등록된 돌발작업이 없습니다.</p>
-              ) : (
-                <div className="divide-y divide-gray-50">
-                  {urgentWorks.map(w => {
-                    const st = URGENT_STATUS[w.status] ?? URGENT_STATUS.PENDING;
-                    const isLate = w.dueDate && w.status !== "COMPLETED" && new Date(w.dueDate) < new Date();
-                    return (
-                      <div key={w.id} className="px-4 py-4 hover:bg-orange-50/20">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <p className="text-sm font-semibold text-gray-800">{w.title}</p>
-                              <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${st.color}`}>
-                                {st.label}
-                              </span>
-                              {w.project && (
-                                <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                                  [{w.project.projectCode}] {w.project.projectName}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-4 mt-1 text-xs text-gray-400 flex-wrap">
-                              <span>요청일: {fmtDate(w.requestDate)}</span>
-                              {w.dueDate && (
-                                <span className={isLate ? "text-red-500 font-semibold" : ""}>
-                                  납기: {fmtDate(w.dueDate)} ({dDayStr(w.dueDate)})
-                                </span>
-                              )}
-                              {w.material && <span>재질: {w.material}{w.thickness ? ` t${w.thickness}` : ""}</span>}
-                              {w.weight && <span>중량: {w.weight.toLocaleString()}kg</span>}
-                            </div>
-                            {w.memo && <p className="mt-1 text-xs text-gray-400">{w.memo}</p>}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
         </>
       )}
     </div>
