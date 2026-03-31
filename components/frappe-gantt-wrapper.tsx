@@ -38,38 +38,56 @@ function toFrappeDate(iso: string | null): string {
   return iso.slice(0, 10);
 }
 
+const STATUS_COLOR: Record<string, string> = {
+  PLANNED:     "#3b82f6",
+  IN_PROGRESS: "#10b981",
+  COMPLETED:   "#6b7280",
+  HOLD:        "#f59e0b",
+  CANCELLED:   "#ef4444",
+};
+
+function buildTasks(items: GanttItem[]) {
+  return items
+    .filter(item => item.plannedStart)
+    .map(item => ({
+      id:           item.id,
+      name:         `[${item.vesselCode}] ${item.blockName}`,
+      start:        toFrappeDate(item.plannedStart),
+      end:          toFrappeDate(item.plannedEnd) || toFrappeDate(item.plannedStart),
+      progress:     item.completionRate,
+      custom_class: `status-${item.status.toLowerCase()}`,
+      color:        STATUS_COLOR[item.status] ?? "#3b82f6",
+      _data:        item,
+    }));
+}
+
 export default function FrappeGanttWrapper({ items, onItemClick, onDateChange, readOnly }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const ganttRef     = useRef<any>(null);
+  const containerRef  = useRef<HTMLDivElement>(null);
+  const ganttRef      = useRef<any>(null);
+  const prevIdsRef    = useRef<string>("");
+  // keep latest callbacks in refs so they never become stale deps
+  const onClickRef      = useRef(onItemClick);
+  const onDateChangeRef = useRef(onDateChange);
+  useEffect(() => { onClickRef.current = onItemClick; }, [onItemClick]);
+  useEffect(() => { onDateChangeRef.current = onDateChange; }, [onDateChange]);
 
   useEffect(() => {
-    if (!containerRef.current || items.length === 0) return;
+    if (!containerRef.current) return;
 
-    const tasks = items
-      .filter(item => item.plannedStart)
-      .map(item => {
-        const statusColor: Record<string, string> = {
-          PLANNED:     "#3b82f6",
-          IN_PROGRESS: "#10b981",
-          COMPLETED:   "#6b7280",
-          HOLD:        "#f59e0b",
-          CANCELLED:   "#ef4444",
-        };
-        return {
-          id:         item.id,
-          name:       `[${item.vesselCode}] ${item.blockName}`,
-          start:      toFrappeDate(item.plannedStart),
-          end:        toFrappeDate(item.plannedEnd) || toFrappeDate(item.plannedStart),
-          progress:   item.completionRate,
-          custom_class: `status-${item.status.toLowerCase()}`,
-          color:      statusColor[item.status] ?? "#3b82f6",
-          _data:      item,
-        };
-      });
-
+    const tasks = buildTasks(items);
     if (tasks.length === 0) return;
 
-    // clear previous
+    const currentIds = tasks.map(t => t.id).join(",");
+
+    // 아이템 구조(ID 목록)가 같으면 전체 재빌드 없이 refresh만
+    if (prevIdsRef.current === currentIds && ganttRef.current) {
+      try { ganttRef.current.refresh(tasks); } catch { /* ignore */ }
+      return;
+    }
+
+    prevIdsRef.current = currentIds;
+
+    // 전체 재빌드 (아이템 추가/삭제 시에만)
     containerRef.current.innerHTML = "";
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     containerRef.current.appendChild(svg);
@@ -81,12 +99,12 @@ export default function FrappeGanttWrapper({ items, onItemClick, onDateChange, r
         popup_on: "click",
         readonly: readOnly ?? false,
         on_click: (task: any) => {
-          if (onItemClick) onItemClick(task._data);
+          onClickRef.current?.(task._data);
         },
         on_date_change: (task: any, start: Date, end: Date) => {
-          if (onDateChange) {
+          if (onDateChangeRef.current) {
             const fmt = (d: Date) => d.toISOString().slice(0, 10);
-            onDateChange(task.id, fmt(start), fmt(end));
+            onDateChangeRef.current(task.id, fmt(start), fmt(end));
           }
         },
         popup: (task: any) => {
@@ -108,6 +126,7 @@ export default function FrappeGanttWrapper({ items, onItemClick, onDateChange, r
 
     return () => {
       if (containerRef.current) containerRef.current.innerHTML = "";
+      prevIdsRef.current = "";
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);

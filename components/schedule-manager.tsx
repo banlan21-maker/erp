@@ -413,12 +413,15 @@ export default function ScheduleManager({ projects }: { projects: Project[] }) {
                   items={scheduled}
                   onItemClick={(item) => setScheduleModal({ open: true, mode: "edit", item })}
                   onDateChange={async (id, start, end) => {
+                    // 낙관적 로컬 업데이트 → Gantt가 refresh()만 하고 재빌드 안 함
+                    setGanttData(prev => prev.map(item =>
+                      item.id === id ? { ...item, plannedStart: start, plannedEnd: end } : item
+                    ));
                     await fetch(`/api/schedules/${id}`, {
                       method: "PATCH",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ plannedStart: start, plannedEnd: end }),
                     });
-                    fetchAll();
                   }}
                 />
               </div>
