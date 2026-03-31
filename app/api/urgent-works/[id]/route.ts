@@ -8,24 +8,37 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const body = await request.json();
-    const { title, projectId, requestDate, dueDate, material, thickness, weight, status, memo } = body;
+    const body   = await request.json();
+    const {
+      title, urgency, requester, department,
+      projectId, vesselName,
+      requestDate, dueDate,
+      materialMemo, drawingNo, destination,
+      remnantId, status, registeredBy, memo,
+    } = body;
 
     const updated = await prisma.urgentWork.update({
       where: { id },
       data: {
-        ...(title       !== undefined ? { title:       title.trim() }                      : {}),
-        ...(projectId   !== undefined ? { projectId:   projectId || null }                 : {}),
-        ...(requestDate !== undefined ? { requestDate: new Date(requestDate) }             : {}),
-        ...(dueDate     !== undefined ? { dueDate:     dueDate ? new Date(dueDate) : null } : {}),
-        ...(material    !== undefined ? { material:    material  || null }                 : {}),
-        ...(thickness   !== undefined ? { thickness:   thickness ? Number(thickness) : null } : {}),
-        ...(weight      !== undefined ? { weight:      weight    ? Number(weight)    : null } : {}),
-        ...(status      !== undefined ? { status }                                         : {}),
-        ...(memo        !== undefined ? { memo:        memo || null }                      : {}),
+        ...(title        !== undefined ? { title:        title.trim() }                          : {}),
+        ...(urgency      !== undefined ? { urgency }                                             : {}),
+        ...(requester    !== undefined ? { requester:    requester    || null }                  : {}),
+        ...(department   !== undefined ? { department:   department   || null }                  : {}),
+        ...(projectId    !== undefined ? { projectId:    projectId    || null }                  : {}),
+        ...(vesselName   !== undefined ? { vesselName:   vesselName   || null }                  : {}),
+        ...(requestDate  !== undefined ? { requestDate:  new Date(requestDate) }                 : {}),
+        ...(dueDate      !== undefined ? { dueDate:      dueDate ? new Date(dueDate) : null }    : {}),
+        ...(materialMemo !== undefined ? { materialMemo: materialMemo || null }                  : {}),
+        ...(drawingNo    !== undefined ? { drawingNo:    drawingNo    || null }                  : {}),
+        ...(destination  !== undefined ? { destination:  destination  || null }                  : {}),
+        ...(remnantId    !== undefined ? { remnantId:    remnantId    || null }                  : {}),
+        ...(status       !== undefined ? { status }                                              : {}),
+        ...(registeredBy !== undefined ? { registeredBy: registeredBy || null }                  : {}),
+        ...(memo         !== undefined ? { memo:         memo         || null }                  : {}),
       },
       include: {
         project: { select: { id: true, projectCode: true, projectName: true } },
+        remnant: { select: { id: true, remnantNo: true, material: true, thickness: true, needsConsult: true } },
       },
     });
 

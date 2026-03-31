@@ -49,6 +49,27 @@ enum UrgentWorkStatus {
   COMPLETED    // 완료
 }
 
+// ── 잔재 관리 ──────────────────────────────────────────────
+
+enum RemnantType {
+  REMNANT    // 잔재 (정규 작업 후 남은 자투리)
+  SURPLUS    // 여유재 (입고했지만 미사용 판재)
+  REGISTERED // 등록잔재 (도면번호 부여, 사용 전 협의 필요)
+}
+
+enum RemnantShape {
+  RECTANGLE  // 사각형
+  L_SHAPE    // L자형
+  STRIP      // 띠형
+  IRREGULAR  // 불규칙형
+}
+
+enum RemnantStatus {
+  IN_STOCK   // 재고있음
+  IN_USE     // 사용중
+  EXHAUSTED  // 소진
+}
+
 enum EquipmentStatus {
   ACTIVE
   MAINTENANCE
@@ -127,6 +148,7 @@ model Project {
   cuttingLogs  CuttingLog[]
   schedules    CncSchedule[]
   urgentWorks  UrgentWork[]
+  remnants     Remnant[]
 
   @@unique([projectCode, projectName])
 }
@@ -343,22 +365,75 @@ model CncSchedule {
 
 model UrgentWork {
   id           String           @id @default(cuid())
+  urgentNo     String           @unique  // URG-2026-001 자동채번
   title        String           // 작업명
+  urgency      String           @default("URGENT")  // URGENT / FLEXIBLE / PRECUT
 
-  // 호선/블록 연관 (없으면 독립 작업)
+  requester    String?          // 요청자
+  department   String?          // 부서
+
+  // 호선/블록 연관
   projectId    String?
   project      Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  vesselName   String?          // 직접 입력 호선명
 
-  requestDate  DateTime         @default(now())  // 요청일
-  dueDate      DateTime?        // 납기일
+  requestDate  DateTime         @default(now())
+  dueDate      DateTime?
 
-  material     String?          // 재질
-  thickness    Float?           // 두께
-  weight       Float?           // 중량 (kg)
+  materialMemo String?          // 재질 메모 (자유 텍스트)
+  drawingNo    String?          // 도면번호
+  destination  String?          // 도착지
+
+  // 사용 예정 잔재 연결
+  remnantId    String?
+  remnant      Remnant?         @relation(fields: [remnantId], references: [id], onDelete: SetNull)
 
   status       UrgentWorkStatus @default(PENDING)
+  registeredBy String?
   memo         String?
 
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
+}
+
+// ── 잔재 모델 ──────────────────────────────────────────────
+
+model Remnant {
+  id           String        @id @default(cuid())
+  remnantNo    String        @unique  // REM-2026-001 자동채번
+
+  type         RemnantType
+  shape        RemnantShape
+
+  material     String        // 재질
+  thickness    Float         // 두께 (mm)
+  weight       Float         // 중량 (kg)
+
+  // 치수 (형태별 입력)
+  width1       Float?        // W 또는 W1 (사각형·L자형 전체폭·띠형폭)
+  length1      Float?        // L 또는 L1 (사각형·L자형 전체길이·띠형길이)
+  width2       Float?        // W2 (L자형 절단폭)
+  length2      Float?        // L2 (L자형 절단길이)
+
+  // 발생 출처
+  sourceProjectId  String?
+  sourceProject    Project?  @relation(fields: [sourceProjectId], references: [id], onDelete: SetNull)
+  sourceVesselName String?   // 직접 입력 호선명
+
+  // 보관 및 기타
+  location     String?       // 보관 위치
+  photoUrl     String?       // 사진
+  status       RemnantStatus @default(IN_STOCK)
+  registeredBy String        // 등록자
+
+  // 등록잔재 전용
+  originalVesselName String? // 원래 호선명
+  drawingNo          String? // 도면번호
+  consultPerson      String? // 협의 담당자
+  needsConsult       Boolean @default(false)
+
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  urgentWorks  UrgentWork[]
 }

@@ -13,9 +13,10 @@ import {
   SelectLabel,
   SelectTrigger,
 } from "@/components/ui/select";
-import { Upload, FileSpreadsheet, FolderOpen, CheckCircle2, AlertCircle, Settings2, List, ArrowLeft } from "lucide-react";
+import { Upload, FileSpreadsheet, FolderOpen, CheckCircle2, AlertCircle, Settings2, List, ArrowLeft, PackagePlus, Package } from "lucide-react";
 import PresetManager from "./preset-manager";
 import DrawingTable from "./drawing-table";
+import { RemnantRegisterTab, RemnantManageTab } from "./remnant-tabs";
 import type { DrawingList } from "@prisma/client";
 
 interface ProjectOption {
@@ -81,27 +82,25 @@ export default function DrawingsMain({
       </div>
 
       {/* 탭 */}
-      <div className="flex border-b border-gray-200">
-        <button
-          onClick={() => goTab("upload")}
-          className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            tab === "upload"
-              ? "border-blue-600 text-blue-600"
-              : "border-transparent text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          <Upload size={15} /> 강재등록
-        </button>
-        <button
-          onClick={() => goTab("list")}
-          className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            tab === "list"
-              ? "border-blue-600 text-blue-600"
-              : "border-transparent text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          <List size={15} /> 강재리스트
-        </button>
+      <div className="flex border-b border-gray-200 gap-0 overflow-x-auto">
+        {[
+          { key: "upload",  icon: <Upload size={14} />,       label: "강재등록" },
+          { key: "list",    icon: <List size={14} />,          label: "강재리스트" },
+          { key: "remnant-add",    icon: <PackagePlus size={14} />, label: "잔재등록" },
+          { key: "remnant-manage", icon: <Package size={14} />,     label: "잔재관리" },
+        ].map(({ key, icon, label }) => (
+          <button
+            key={key}
+            onClick={() => goTab(key)}
+            className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+              tab === key
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {icon} {label}
+          </button>
+        ))}
       </div>
 
       {/* 강재등록 탭 */}
@@ -122,6 +121,16 @@ export default function DrawingsMain({
           projectId={projectId}
           router={router}
         />
+      )}
+
+      {/* 잔재등록 탭 */}
+      {tab === "remnant-add" && (
+        <RemnantRegisterTab projects={projectOptions} />
+      )}
+
+      {/* 잔재관리 탭 */}
+      {tab === "remnant-manage" && (
+        <RemnantManageTab projects={projectOptions} />
       )}
     </div>
   );
