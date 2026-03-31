@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, FolderOpen, FileSpreadsheet, ClipboardList,
   Users, BarChart2, ChevronLeft, ChevronRight, Smartphone,
-  ExternalLink, ShoppingCart, Package, Truck, History, Settings
+  ExternalLink, Package, Truck, History,
 } from "lucide-react";
 
 export type ModuleType = "cnc" | "material" | "management";
@@ -105,7 +105,7 @@ export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
           );
         })}
 
-        {/* CNC 모듈일 때만 현장 작업일보 링크 표시 */}
+        {/* CNC 모듈 - 현장 작업일보 링크 */}
         {module === "cnc" && (
           <div className="pt-2 mt-2 border-t border-gray-700">
             <a
@@ -123,6 +123,31 @@ export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
               {!isMini && (
                 <span className="flex-1 flex items-center justify-between">
                   현장 작업일보
+                  <ExternalLink size={12} className="opacity-60" />
+                </span>
+              )}
+            </a>
+          </div>
+        )}
+
+        {/* 구매/자재 모듈 - 현장 입출고 링크 */}
+        {module === "material" && (
+          <div className="pt-2 mt-2 border-t border-gray-700">
+            <a
+              href="/field/supply"
+              target="_blank"
+              rel="noopener noreferrer"
+              title={isMini ? "현장 입출고 (새창)" : undefined}
+              className={`
+                flex items-center gap-3 rounded-lg text-sm font-medium transition-colors
+                text-emerald-400 hover:bg-gray-800 hover:text-emerald-300
+                ${isMini ? "justify-center px-0 py-2.5" : "px-3 py-2"}
+              `}
+            >
+              <Smartphone size={18} className="flex-shrink-0" />
+              {!isMini && (
+                <span className="flex-1 flex items-center justify-between">
+                  현장 입출고
                   <ExternalLink size={12} className="opacity-60" />
                 </span>
               )}
