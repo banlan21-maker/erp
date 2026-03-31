@@ -90,8 +90,8 @@ function calcWeight(
   } else {
     return null; // 불규칙형: 직접 입력
   }
-  const weightG = area * thickness * d; // g
-  return Math.round((weightG / 1000) * 100) / 100; // kg, 소수점 2자리
+  const weightKg = area * thickness * d; // kg (d 단위: kg/mm³)
+  return Math.round(weightKg * 100) / 100; // kg, 소수점 2자리
 }
 
 // ─── L자형 도식 ────────────────────────────────────────────────────────────
