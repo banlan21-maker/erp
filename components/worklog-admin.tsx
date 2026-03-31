@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { ClipboardList, RefreshCw, Plus, Edit2, Trash2, AlertCircle, Search, X, Save, ChevronDown, ChevronUp } from "lucide-react";
+import { ClipboardList, RefreshCw, Plus, Edit2, Trash2, AlertCircle, Search, X, Save, ChevronDown, ChevronUp, Zap, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -10,6 +10,27 @@ import { Input } from "@/components/ui/input";
 interface Equipment { id: string; name: string; type: string }
 interface Project   { id: string; projectCode: string; projectName: string }
 interface Worker    { id: string; name: string }
+
+interface UrgentWork {
+  id: string;
+  urgentNo: string;
+  title: string;
+  urgency: string;
+  requester: string | null;
+  department: string | null;
+  dueDate: string | null;
+  status: string;
+  registeredBy: string | null;
+  memo: string | null;
+  materialMemo: string | null;
+  drawingNo: string | null;
+  destination: string | null;
+  vesselName: string | null;
+  project: { projectCode: string; projectName: string } | null;
+  remnant: { remnantNo: string; material: string; thickness: number; needsConsult: boolean } | null;
+  requestDate: string;
+  createdAt: string;
+}
 
 interface Drawing {
   id: string;
@@ -45,6 +66,328 @@ interface CuttingLog {
 }
 
 // ─── 헬퍼 ──────────────────────────────────────────────────────────────────
+
+const URGENCY_LABEL: Record<string, string>  = { URGENT: "⚡ 긴급", FLEXIBLE: "✅ 여유있음", PRECUT: "📦 선행절단" };
+const URGENCY_COLOR: Record<string, string>  = {
+  URGENT:   "bg-red-100 text-red-700 border-red-300",
+  FLEXIBLE: "bg-green-100 text-green-700 border-green-300",
+  PRECUT:   "bg-blue-100 text-blue-700 border-blue-300",
+};
+const USTATUS_LABEL: Record<string, string>  = { PENDING: "대기", IN_PROGRESS: "진행중", COMPLETED: "완료" };
+const USTATUS_COLOR: Record<string, string>  = {
+  PENDING:     "bg-yellow-100 text-yellow-700",
+  IN_PROGRESS: "bg-blue-100 text-blue-700",
+  COMPLETED:   "bg-green-100 text-green-700",
+};
+
+// ─── 돌발 수정 모달 ────────────────────────────────────────────────────────
+
+function UrgentEditModal({
+  work, onClose, onSaved,
+}: { work: UrgentWork; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({
+    title:        work.title,
+    urgency:      work.urgency,
+    requester:    work.requester ?? "",
+    department:   work.department ?? "",
+    dueDate:      work.dueDate ? work.dueDate.slice(0, 10) : "",
+    materialMemo: work.materialMemo ?? "",
+    drawingNo:    work.drawingNo ?? "",
+    destination:  work.destination ?? "",
+    registeredBy: work.registeredBy ?? "",
+    memo:         work.memo ?? "",
+    status:       work.status,
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState<string | null>(null);
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.title.trim()) { setError("작업명을 입력해주세요."); return; }
+    setSaving(true);
+    try {
+      const res  = await fetch(`/api/urgent-works/${work.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title:        form.title,
+          urgency:      form.urgency,
+          requester:    form.requester    || null,
+          department:   form.department   || null,
+          dueDate:      form.dueDate      || null,
+          materialMemo: form.materialMemo || null,
+          drawingNo:    form.drawingNo    || null,
+          destination:  form.destination  || null,
+          registeredBy: form.registeredBy || null,
+          memo:         form.memo         || null,
+          status:       form.status,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) { setError(data.error); return; }
+      onSaved();
+    } catch { setError("서버 오류"); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg my-4">
+        <div className="px-6 py-4 border-b flex items-center justify-between bg-orange-50 rounded-t-xl">
+          <h3 className="font-bold text-lg flex items-center gap-2 text-orange-700">
+            <Zap size={18} className="text-orange-500" /> 돌발작업 수정
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-orange-100 rounded-full"><X size={18} /></button>
+        </div>
+        {error && (
+          <div className="mx-6 mt-4 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm flex items-center gap-2">
+            <AlertCircle size={14} /> {error}
+          </div>
+        )}
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">작업명 <span className="text-red-500">*</span></label>
+            <Input value={form.title} onChange={e => set("title", e.target.value)} />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {["URGENT","FLEXIBLE","PRECUT"].map(v => (
+              <label key={v} className={`flex flex-col items-center px-2 py-2 rounded-xl border-2 cursor-pointer text-xs font-semibold transition-all ${
+                form.urgency === v ? URGENCY_COLOR[v] : "border-gray-200 text-gray-500"
+              }`}>
+                <input type="radio" className="hidden" name="urgency-edit" value={v} checked={form.urgency === v} onChange={() => set("urgency", v)} />
+                {URGENCY_LABEL[v]}
+              </label>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">요청자</label>
+              <Input value={form.requester} onChange={e => set("requester", e.target.value)} placeholder="이름" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">부서</label>
+              <Input value={form.department} onChange={e => set("department", e.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">납기일</label>
+              <Input type="date" value={form.dueDate} onChange={e => set("dueDate", e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">상태</label>
+              <select value={form.status} onChange={e => set("status", e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="PENDING">대기</option>
+                <option value="IN_PROGRESS">진행중</option>
+                <option value="COMPLETED">완료</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">재질 메모</label>
+              <Input value={form.materialMemo} onChange={e => set("materialMemo", e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">도면번호</label>
+              <Input value={form.drawingNo} onChange={e => set("drawingNo", e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">도착지</label>
+              <Input value={form.destination} onChange={e => set("destination", e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">등록자</label>
+              <Input value={form.registeredBy} onChange={e => set("registeredBy", e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">비고</label>
+            <textarea value={form.memo} onChange={e => set("memo", e.target.value)} rows={2}
+              className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
+            <Button type="button" variant="outline" onClick={onClose}>취소</Button>
+            <Button type="submit" disabled={saving} className="bg-orange-500 hover:bg-orange-600 font-bold">
+              <Save size={14} className="mr-1.5" />{saving ? "저장 중..." : "수정 저장"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── 돌발 탭 ───────────────────────────────────────────────────────────────
+
+function UrgentWorkTab() {
+  const [works,          setWorks]          = useState<UrgentWork[]>([]);
+  const [loading,        setLoading]        = useState(false);
+  const [statusFilter,   setStatusFilter]   = useState("");
+  const [urgencyFilter,  setUrgencyFilter]  = useState("");
+  const [editWork,       setEditWork]       = useState<UrgentWork | null>(null);
+
+  const fetchWorks = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (statusFilter)  params.set("status",  statusFilter);
+      if (urgencyFilter) params.set("urgency", urgencyFilter);
+      const res  = await fetch(`/api/urgent-works?${params}`);
+      const data = await res.json();
+      if (data.success) setWorks(data.data);
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { fetchWorks(); }, [statusFilter, urgencyFilter]);
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("이 돌발작업을 삭제할까요?")) return;
+    await fetch(`/api/urgent-works/${id}`, { method: "DELETE" });
+    fetchWorks();
+  };
+
+  const handleStatusChange = async (id: string, status: string) => {
+    await fetch(`/api/urgent-works/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    fetchWorks();
+  };
+
+  const pendingCount = works.filter(w => w.status === "PENDING").length;
+  const inProgCount  = works.filter(w => w.status === "IN_PROGRESS").length;
+
+  return (
+    <div className="space-y-4">
+      {/* 요약 */}
+      <div className="flex flex-wrap items-center gap-4 bg-white border border-gray-200 rounded-xl px-5 py-3 shadow-sm text-sm">
+        <span className="text-gray-500">전체 <strong className="text-gray-900">{works.length}</strong>건</span>
+        <span className="text-yellow-600">대기 <strong>{pendingCount}</strong>건</span>
+        <span className="text-blue-600">진행중 <strong>{inProgCount}</strong>건</span>
+        <span className="text-green-600">완료 <strong>{works.filter(w => w.status === "COMPLETED").length}</strong>건</span>
+        <button onClick={fetchWorks} className="ml-auto flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-600">
+          <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> 새로고침
+        </button>
+      </div>
+
+      {/* 필터 */}
+      <div className="flex flex-wrap gap-3">
+        <div className="flex gap-1.5">
+          {[["", "전체"], ["PENDING", "대기"], ["IN_PROGRESS", "진행중"], ["COMPLETED", "완료"]].map(([v, l]) => (
+            <button key={v} onClick={() => setStatusFilter(v)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                statusFilter === v ? "bg-gray-800 text-white border-gray-800" : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+              }`}>{l}</button>
+          ))}
+        </div>
+        <div className="flex gap-1.5 ml-auto">
+          {[["", "전체"], ["URGENT", "⚡ 긴급"], ["FLEXIBLE", "✅ 여유"], ["PRECUT", "📦 선행"]].map(([v, l]) => (
+            <button key={v} onClick={() => setUrgencyFilter(v)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                urgencyFilter === v ? "bg-orange-500 text-white border-orange-500" : "bg-white text-gray-600 border-gray-200 hover:border-orange-300"
+              }`}>{l}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* 목록 */}
+      {loading ? (
+        <div className="flex justify-center items-center py-20 text-gray-400 gap-3">
+          <RefreshCw className="animate-spin text-blue-500" size={24} /> 불러오는 중...
+        </div>
+      ) : works.length === 0 ? (
+        <div className="text-center py-16 bg-white rounded-xl border border-dashed border-gray-200 text-gray-400">
+          <Zap size={36} className="mx-auto mb-3 opacity-20" />
+          <p>등록된 돌발작업이 없습니다.</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left whitespace-nowrap">
+              <thead className="bg-gray-50 border-b border-gray-100 text-xs text-gray-500 uppercase">
+                <tr>
+                  <th className="px-4 py-2.5">돌발번호</th>
+                  <th className="px-4 py-2.5">작업명</th>
+                  <th className="px-4 py-2.5">긴급도</th>
+                  <th className="px-4 py-2.5">요청자/부서</th>
+                  <th className="px-4 py-2.5">납기일</th>
+                  <th className="px-4 py-2.5">호선</th>
+                  <th className="px-4 py-2.5">재질메모</th>
+                  <th className="px-4 py-2.5">잔재</th>
+                  <th className="px-4 py-2.5">상태</th>
+                  <th className="px-4 py-2.5 text-center">액션</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {works.map(w => (
+                  <tr key={w.id} className={`transition-colors ${w.urgency === "URGENT" ? "hover:bg-red-50/30" : "hover:bg-gray-50"}`}>
+                    <td className="px-4 py-3 font-mono text-xs font-bold text-gray-700">{w.urgentNo}</td>
+                    <td className="px-4 py-3 font-semibold text-gray-900 max-w-[160px] truncate">{w.title}</td>
+                    <td className="px-4 py-3">
+                      <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold border ${URGENCY_COLOR[w.urgency] ?? "bg-gray-100 text-gray-600 border-gray-200"}`}>
+                        {URGENCY_LABEL[w.urgency] ?? w.urgency}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-600">
+                      {w.requester || "-"}
+                      {w.department && <span className="text-gray-400 ml-1">/ {w.department}</span>}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-600">{w.dueDate ? w.dueDate.slice(0,10) : "-"}</td>
+                    <td className="px-4 py-3 text-xs text-gray-600">
+                      {w.project ? `[${w.project.projectCode}] ${w.project.projectName}` : w.vesselName || "-"}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-500 max-w-[120px] truncate">{w.materialMemo || "-"}</td>
+                    <td className="px-4 py-3 text-xs">
+                      {w.remnant ? (
+                        <span className={w.remnant.needsConsult ? "text-purple-700 flex items-center gap-1" : "text-gray-600"}>
+                          {w.remnant.needsConsult && <AlertTriangle size={11} />}
+                          {w.remnant.remnantNo}
+                        </span>
+                      ) : <span className="text-gray-400">-</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <select
+                        value={w.status}
+                        onChange={e => handleStatusChange(w.id, e.target.value)}
+                        className={`text-[11px] px-2 py-1 rounded-full font-semibold border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 ${USTATUS_COLOR[w.status] ?? "bg-gray-100 text-gray-600"}`}
+                      >
+                        <option value="PENDING">대기</option>
+                        <option value="IN_PROGRESS">진행중</option>
+                        <option value="COMPLETED">완료</option>
+                      </select>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => setEditWork(w)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md" title="수정">
+                          <Edit2 size={13} />
+                        </button>
+                        <button onClick={() => handleDelete(w.id)} className="p-1.5 text-red-400 hover:bg-red-50 rounded-md" title="삭제">
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {editWork && (
+        <UrgentEditModal
+          work={editWork}
+          onClose={() => setEditWork(null)}
+          onSaved={() => { setEditWork(null); fetchWorks(); }}
+        />
+      )}
+    </div>
+  );
+}
 
 const TYPE_LABEL: Record<string, string> = { PLASMA: "플라즈마", GAS: "가스" };
 const STATUS_LABEL: Record<string, string> = {
@@ -309,6 +652,7 @@ export default function WorklogAdmin({
   projects: Project[];
   workers: Worker[];
 }) {
+  const [mainTab, setMainTab] = useState<"normal" | "urgent">("normal");
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [dateFilter, setDateFilter] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -405,6 +749,36 @@ export default function WorklogAdmin({
           <p className="text-sm text-gray-500 mt-1">강재 리스트 기준으로 작업 현황을 확인하고 누락 항목을 등록합니다.</p>
         </div>
       </div>
+
+      {/* 탭 전환 */}
+      <div className="flex gap-1 border-b border-gray-200">
+        <button
+          onClick={() => setMainTab("normal")}
+          className={`px-5 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
+            mainTab === "normal"
+              ? "border-blue-600 text-blue-600"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          <ClipboardList size={14} className="inline mr-1.5 mb-0.5" />정규 작업일보
+        </button>
+        <button
+          onClick={() => setMainTab("urgent")}
+          className={`px-5 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
+            mainTab === "urgent"
+              ? "border-orange-500 text-orange-600"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          <Zap size={14} className="inline mr-1.5 mb-0.5" />돌발 작업
+        </button>
+      </div>
+
+      {/* 돌발 탭 */}
+      {mainTab === "urgent" && <UrgentWorkTab />}
+
+      {/* 정규 탭 */}
+      {mainTab === "normal" && (<>
 
       {/* 프로젝트 + 날짜 선택 */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-4">
@@ -693,6 +1067,7 @@ export default function WorklogAdmin({
           }}
         />
       )}
+      </>)}
     </div>
   );
 }

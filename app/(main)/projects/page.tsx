@@ -5,12 +5,19 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import ProjectTree from "@/components/project-tree";
+import UrgentRegisterButton from "@/components/urgent-register-button";
 
 export default async function ProjectsPage() {
   const projects = await prisma.project.findMany({
     orderBy: [{ projectCode: "asc" }, { projectName: "asc" }],
     include: { _count: { select: { drawingLists: true } } },
   });
+
+  const projectsForButton = projects.map(p => ({
+    id: p.id,
+    projectCode: p.projectCode,
+    projectName: p.projectName,
+  }));
 
   // 호선코드 기준 그룹핑
   const grouped: Record<string, { code: string; totalDrawings: number; blocks: typeof projects }> = {};
@@ -46,11 +53,14 @@ export default async function ProjectsPage() {
             호선 {vessels.length}개 · 블록 {projects.length}건
           </p>
         </div>
-        <Link href="/projects/new">
-          <Button className="flex items-center gap-2">
-            <Plus size={16} /> 호선 등록
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <UrgentRegisterButton projects={projectsForButton} />
+          <Link href="/projects/new">
+            <Button className="flex items-center gap-2">
+              <Plus size={16} /> 호선 등록
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <ProjectTree vessels={vessels} />

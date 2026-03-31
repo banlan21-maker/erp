@@ -224,6 +224,11 @@ model CuttingLog {
   endAt         DateTime?     // 절단 종료 시각
   memo          String?
 
+  // 돌발작업 연결 (기존 컬럼 불변 원칙)
+  isUrgent      Boolean       @default(false)
+  urgentWorkId  String?
+  urgentWork    UrgentWork?   @relation(fields: [urgentWorkId], references: [id], onDelete: SetNull)
+
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 }
@@ -394,6 +399,8 @@ model UrgentWork {
 
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
+
+  cuttingLogs  CuttingLog[]
 }
 
 // ── 잔재 모델 ──────────────────────────────────────────────

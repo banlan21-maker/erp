@@ -55,13 +55,14 @@ export async function POST(request: NextRequest) {
     const {
       equipmentId, projectId, drawingListId,
       heatNo, material, thickness, width, length, qty, drawingNo,
-      operator, memo,
+      operator, memo, isUrgent, urgentWorkId,
     } = body;
 
     if (!equipmentId) {
       return NextResponse.json({ success: false, error: "장비를 선택하세요." }, { status: 400 });
     }
-    if (!heatNo?.trim()) {
+    // heatNo는 돌발작업일 때는 선택 사항
+    if (!isUrgent && !heatNo?.trim()) {
       return NextResponse.json({ success: false, error: "Heat NO는 필수입니다." }, { status: 400 });
     }
     if (!operator?.trim()) {
@@ -84,7 +85,7 @@ export async function POST(request: NextRequest) {
         equipmentId,
         projectId: projectId || null,
         drawingListId: drawingListId || null,
-        heatNo: heatNo.trim(),
+        heatNo: heatNo?.trim() || "",
         material: material?.trim() || null,
         thickness: thickness != null ? Number(thickness) : null,
         width: width != null ? Number(width) : null,
@@ -93,6 +94,8 @@ export async function POST(request: NextRequest) {
         drawingNo: drawingNo?.trim() || null,
         operator: operator.trim(),
         memo: memo?.trim() || null,
+        isUrgent: isUrgent === true,
+        urgentWorkId: urgentWorkId || null,
         startAt: new Date(),
       },
       include: {
