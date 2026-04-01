@@ -286,7 +286,7 @@ function LoadChart({ loadData }: { loadData: LoadItem[] }) {
       <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
         <BarChart2 size={15} className="text-blue-500" /> 일별 CNC 부하 (플라즈마 4대 기준)
       </h3>
-      <div className="flex items-end gap-1.5 h-48 overflow-x-auto pb-2">
+      <div className="flex items-end gap-1.5 h-28 overflow-x-auto pb-2">
         {loadData.map(d => {
           const height = Math.round((d.count / max) * 100);
           const color  = d.loadRate >= 100 ? "bg-red-500" : d.loadRate >= 75 ? "bg-yellow-400" : "bg-blue-400";
@@ -408,7 +408,7 @@ export default function ScheduleManager({ projects }: { projects: Project[] }) {
                 <span className="text-sm font-semibold text-gray-700">간트차트 ({scheduled.length}건)</span>
                 <span className="text-xs text-gray-400">블록 클릭 시 상세 편집</span>
               </div>
-              <div className="p-4">
+              <div className="p-4" style={{ minHeight: 720 }}>
                 <FrappeGantt
                   items={scheduled}
                   onItemClick={(item) => setScheduleModal({ open: true, mode: "edit", item })}

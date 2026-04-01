@@ -129,6 +129,18 @@
   }
 }
 
+/* frappe-gantt: 빈 행 (팝업 잘림 방지용) */
+.gantt .bar-wrapper.phantom-row .bar,
+.gantt .bar-wrapper.phantom-row .bar-progress,
+.gantt .bar-wrapper.phantom-row .bar-label {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+.gantt .bar-wrapper.phantom-row {
+  pointer-events: none !important;
+  cursor: default !important;
+}
+
 /* frappe-gantt: 클릭 후 남는 핸들(흰 사각형) 완전 제거
    .active / .visible 모두 기본 hidden, 호버 시에만 표시 */
 .gantt .handle,
