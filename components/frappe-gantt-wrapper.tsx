@@ -46,8 +46,10 @@ const STATUS_COLOR: Record<string, string> = {
   CANCELLED:   "#ef4444",
 };
 
+const PHANTOM_ROW_COUNT = 5;
+
 function buildTasks(items: GanttItem[]) {
-  return items
+  const real = items
     .filter(item => item.plannedStart)
     .map(item => ({
       id:           item.id,
@@ -59,6 +61,20 @@ function buildTasks(items: GanttItem[]) {
       color:        STATUS_COLOR[item.status] ?? "#3b82f6",
       _data:        item,
     }));
+
+  // 팝업 잘림 방지용 빈 행 (투명 바)
+  const today = new Date().toISOString().slice(0, 10);
+  const phantoms = Array.from({ length: PHANTOM_ROW_COUNT }, (_, i) => ({
+    id:           `__phantom_${i}`,
+    name:         "",
+    start:        today,
+    end:          today,
+    progress:     0,
+    custom_class: "phantom-row",
+    color:        "transparent",
+  }));
+
+  return [...real, ...phantoms];
 }
 
 export default function FrappeGanttWrapper({ items, onItemClick, onDateChange, readOnly }: Props) {
@@ -115,12 +131,26 @@ export default function FrappeGanttWrapper({ items, onItemClick, onDateChange, r
     containerRef.current.appendChild(svg);
 
     import("frappe-gantt").then(({ default: Gantt }) => {
+      // 클릭 후 남는 핸들(흰 사각형) JS로 강제 제거
+      const hideHandles = () => {
+        requestAnimationFrame(() => {
+          containerRef.current?.querySelectorAll<SVGElement>(".handle").forEach(el => {
+            el.style.opacity = "0";
+          });
+        });
+      };
+      containerRef.current?.addEventListener("pointerup", hideHandles);
+      containerRef.current?.addEventListener("click", hideHandles);
+
       ganttRef.current = new Gantt(svg, tasks, {
         view_mode: "Week",
         date_format: "YYYY-MM-DD",
         popup_on: "click",
         readonly: readOnly ?? false,
+        bar_height: 30,
+        padding: 20,
         on_click: (task: any) => {
+          if (String(task.id).startsWith("__phantom_")) return;
           // 드래그 직후 발생하는 클릭은 무시
           if (wasDragRef.current) {
             wasDragRef.current = false;
@@ -146,9 +176,11 @@ export default function FrappeGanttWrapper({ items, onItemClick, onDateChange, r
             onDateChangeRef.current(task.id, fmt(start), fmt(end));
           }
         },
-        popup: (task: any) => {
-          const d = itemsRef.current.find(i => i.id === task.id) ?? task._data;
-          if (!d) return "";
+        popup: ({ task }: any) => {
+          if (String(task.id).startsWith("__phantom_")) return false;
+          // _data는 buildTasks 시점에 항상 세팅, itemsRef는 최신 날짜 반영용 fallback
+          const d = task._data ?? itemsRef.current.find(i => i.id === task.id);
+          if (!d) return false; // 빈 문자열("") 반환 시 흰 박스가 뜨므로 false로 숨김
           const rate  = d.completionRate;
           const delay = d.delayDays;
           const delayStr = delay === null ? "-" : delay > 0 ? `<span style="color:#ef4444">+${delay}일 지연</span>` : delay < 0 ? `<span style="color:#10b981">${delay}일 앞당김</span>` : "정시";
@@ -178,7 +210,7 @@ export default function FrappeGanttWrapper({ items, onItemClick, onDateChange, r
     <div
       ref={containerRef}
       className="frappe-gantt-container overflow-x-auto"
-      style={{ minHeight: 200 }}
+      style={{ minHeight: 700 }}
     />
   );
 }
