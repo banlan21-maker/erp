@@ -329,16 +329,28 @@ export default function InOutPage() {
                 onChange={(val) => setFormData(prev => ({ ...prev, itemId: val }))}
                 placeholder={`-- ${deptFilter === "all" ? "전체" : DEPT_LABELS[deptFilter]} 품목 중 선택 --`}
                 renderItem={(item) => (
-                  <span className="flex items-center gap-2">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${DEPT_COLORS[item.department] || "bg-gray-100 text-gray-600"}`}>
+                  <span className="flex items-center gap-2 flex-wrap">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold shrink-0 ${DEPT_COLORS[item.department] || "bg-gray-100 text-gray-600"}`}>
                       {DEPT_LABELS[item.department] || item.department}
                     </span>
-                    <span className="text-xs text-gray-400">{item.category === "CONSUMABLE" ? "소모품" : "비품"}</span>
-                    <span>{item.name}</span>
-                    <span className="text-gray-400 text-xs ml-auto">({item.unit}) 재고: {item.stockQty}</span>
+                    <span className="text-xs text-gray-400 shrink-0">{item.category === "CONSUMABLE" ? "소모품" : "비품"}</span>
+                    {item.subCategory && <span className="text-xs text-blue-600 font-medium shrink-0">[{item.subCategory}]</span>}
+                    <span className="font-medium">{item.name}</span>
+                    {item.location && <span className="text-xs text-gray-400 shrink-0">📍{item.location}</span>}
+                    <span className="text-gray-400 text-xs ml-auto shrink-0">({item.unit}) 재고: {item.stockQty}</span>
                   </span>
                 )}
-                renderSelected={(item) => `${DEPT_LABELS[item.department]} | ${item.category === "CONSUMABLE" ? "소모품" : "비품"} | ${item.name} (${item.unit}) - 재고: ${item.stockQty}`}
+                renderSelected={(item) => {
+                  const parts = [
+                    DEPT_LABELS[item.department] || item.department,
+                    item.category === "CONSUMABLE" ? "소모품" : "비품",
+                    item.subCategory ? `[${item.subCategory}]` : null,
+                    item.name,
+                    item.location ? `📍${item.location}` : null,
+                    `(${item.unit}) 재고: ${item.stockQty}`,
+                  ].filter(Boolean);
+                  return parts.join(" | ");
+                }}
                 disabled={filteredItems.length === 0}
               />
               {filteredItems.length === 0 && (

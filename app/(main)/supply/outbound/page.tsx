@@ -131,9 +131,18 @@ export default function OutboundPage() {
                 <option value="">-- 소모품을 선택하세요 --</option>
                 {items.map(item => {
                   const isInsufficient = item.stockQty === 0;
+                  const label = [
+                    item.department === 'CUTTING' ? '절단' : item.department === 'FACILITY' ? '공무' : item.department,
+                    '소모품',
+                    item.subCategory ? `[${item.subCategory}]` : null,
+                    item.name,
+                    item.location ? `📍${item.location}` : null,
+                    `(${item.unit}) 재고: ${item.stockQty}`,
+                    isInsufficient ? '[품절/불가]' : null,
+                  ].filter(Boolean).join(' | ');
                   return (
                     <option key={item.id} value={item.id} disabled={isInsufficient}>
-                      {item.name} ({item.unit}) - 현재재고: {item.stockQty} {isInsufficient ? "[품절/불가]" : ""}
+                      {label}
                     </option>
                   );
                 })}

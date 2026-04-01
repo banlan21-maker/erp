@@ -10,9 +10,11 @@ interface Item {
   name: string;
   category: string;
   department: string;
+  subCategory: string | null;
   unit: string;
   stockQty: number;
   reorderPoint: number | null;
+  location: string | null;
 }
 interface Vendor { id: number; name: string; contact: string | null }
 
@@ -295,14 +297,20 @@ export default function FieldSupply({
             placeholder={`품목을 검색/선택하세요`}
             renderItem={(item) => (
               <div className="flex items-center justify-between gap-2">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold ${DEPT_COLOR[item.department] ?? ""}`}>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold shrink-0 ${DEPT_COLOR[item.department] ?? ""}`}>
                       {DEPT_LABEL[item.department] ?? item.department}
                     </span>
-                    <span className="text-xs text-gray-400">{CAT_LABEL[item.category] ?? item.category}</span>
+                    <span className="text-xs text-gray-400 shrink-0">{CAT_LABEL[item.category] ?? item.category}</span>
+                    {item.subCategory && (
+                      <span className="text-xs text-blue-300 shrink-0">[{item.subCategory}]</span>
+                    )}
                   </div>
                   <p className="text-white font-semibold mt-0.5">{item.name}</p>
+                  {item.location && (
+                    <p className="text-xs text-gray-400 mt-0.5">보관: {item.location}</p>
+                  )}
                 </div>
                 <div className="text-right shrink-0">
                   <p className={`text-sm font-bold ${item.reorderPoint !== null && item.stockQty <= item.reorderPoint ? "text-red-400" : "text-emerald-400"}`}>

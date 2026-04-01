@@ -9,7 +9,7 @@ export default async function FieldSupplyPage() {
       orderBy: { name: "asc" },
       select: {
         id: true, name: true, category: true, department: true,
-        unit: true, stockQty: true, reorderPoint: true,
+        subCategory: true, unit: true, stockQty: true, reorderPoint: true, location: true,
       },
     }),
     prisma.vendor.findMany({

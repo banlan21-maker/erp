@@ -124,12 +124,30 @@ export default function InboundPage() {
                 {/* 카테고리별로 분리해서 보여줌 */}
                 <optgroup label="■ 소모품">
                   {items.filter(i => i.category === 'CONSUMABLE').map(item => (
-                    <option key={item.id} value={item.id}>소모품 | {item.name} ({item.unit}) - [현재 {item.stockQty}]</option>
+                    <option key={item.id} value={item.id}>
+                      {[
+                        item.department === 'CUTTING' ? '절단' : item.department === 'FACILITY' ? '공무' : item.department,
+                        '소모품',
+                        item.subCategory ? `[${item.subCategory}]` : null,
+                        item.name,
+                        item.location ? `📍${item.location}` : null,
+                        `(${item.unit}) 현재 ${item.stockQty}`,
+                      ].filter(Boolean).join(' | ')}
+                    </option>
                   ))}
                 </optgroup>
                 <optgroup label="■ 비품">
-                   {items.filter(i => i.category === 'FIXTURE').map(item => (
-                    <option key={item.id} value={item.id}>비품 | {item.name} ({item.unit}) - [보유 {item.stockQty}]</option>
+                  {items.filter(i => i.category === 'FIXTURE').map(item => (
+                    <option key={item.id} value={item.id}>
+                      {[
+                        item.department === 'CUTTING' ? '절단' : item.department === 'FACILITY' ? '공무' : item.department,
+                        '비품',
+                        item.subCategory ? `[${item.subCategory}]` : null,
+                        item.name,
+                        item.location ? `📍${item.location}` : null,
+                        `(${item.unit}) 보유 ${item.stockQty}`,
+                      ].filter(Boolean).join(' | ')}
+                    </option>
                   ))}
                 </optgroup>
               </select>

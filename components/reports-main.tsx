@@ -143,7 +143,7 @@ export default function ReportsMain({
         .print-only { display: none; }
       `}</style>
 
-      <div className="space-y-4">
+      <div className="space-y-6">
 
         {/* 인쇄 전용 헤더 */}
         <div className="print-only mb-4 pb-3 border-b text-center">
@@ -171,7 +171,7 @@ export default function ReportsMain({
         </div>
 
         {/* 기간 필터 */}
-        <div className="bg-white border rounded-xl p-4 mb-4 no-print">
+        <div className="bg-white border rounded-xl p-4 no-print">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-medium text-gray-700">조회 기간</span>
             <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="h-8 text-sm w-36" />
@@ -184,7 +184,7 @@ export default function ReportsMain({
         </div>
 
         {/* 요약 카드 */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 no-print">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 no-print">
           {[
             { label: "총 절단 건수", value: `${logs.length}건`,                color: "text-blue-700 bg-blue-50" },
             { label: "총 수량",      value: `${totalQty.toLocaleString()}매`,   color: "text-green-700 bg-green-50" },
