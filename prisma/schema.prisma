@@ -412,6 +412,97 @@ model UrgentWork {
 
 // ── 잔재 모델 ──────────────────────────────────────────────
 
+// ==========================================
+// 관리 파트 — 장비관리
+// ==========================================
+
+enum MgmtEquipmentKind {
+  CNC_MACHINE      // CNC설비
+  CRANE            // 크레인
+  PRESSURE_VESSEL  // 압력용기
+  COMPRESSOR       // 컴프레샤
+  OTHER            // 기타
+}
+
+enum MgmtEquipmentUsage {
+  IN_USE       // 사용중
+  MAINTENANCE  // 점검중
+  DISPOSED     // 폐기
+}
+
+// 장비 마스터 (관리 파트 전용)
+model MgmtEquipment {
+  id           String              @id @default(cuid())
+  code         String              @unique  // EQP-001 자동채번
+  name         String              // 장비명
+  kind         MgmtEquipmentKind   // 장비 종류
+  maker        String?             // 제조사
+  modelName    String?             // 모델명
+  madeYear     Int?                // 제조년도
+  acquiredAt   DateTime?           // 취득일
+  acquiredCost Int?                // 취득금액
+  location     String?             // 설치 위치
+  usage        MgmtEquipmentUsage  @default(IN_USE)
+  memo         String?             // 비고
+
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  specs        MgmtEquipmentSpec[]
+  inspections  MgmtInspectionItem[]
+  repairs      MgmtRepairLog[]
+}
+
+// 사양 (항목명 + 값 쌍)
+model MgmtEquipmentSpec {
+  id          String        @id @default(cuid())
+  equipmentId String
+  equipment   MgmtEquipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  specKey     String        // 항목명
+  specValue   String        // 값
+  sortOrder   Int           @default(0)
+}
+
+// 검사 항목 (한 장비에 여러 개)
+model MgmtInspectionItem {
+  id              String        @id @default(cuid())
+  equipmentId     String
+  equipment       MgmtEquipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  itemName        String        // 검사 항목명
+  periodMonth     Int           // 주기 (월)
+  lastInspectedAt DateTime?     // 최종 검사일
+  nextInspectAt   DateTime?     // 다음 검사 예정일 (자동계산)
+  inspector       String?       // 담당 기관/담당자
+  memo            String?       // 비고
+
+  logs            MgmtInspectionLog[]
+}
+
+// 검사 이력 (누적 보관, 삭제 금지)
+model MgmtInspectionLog {
+  id          String             @id @default(cuid())
+  itemId      String
+  item        MgmtInspectionItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  completedAt DateTime           // 완료일
+  memo        String?
+
+  createdAt   DateTime           @default(now())
+}
+
+// 수선 이력 (누적 보관, 삭제 금지)
+model MgmtRepairLog {
+  id          String        @id @default(cuid())
+  equipmentId String
+  equipment   MgmtEquipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  repairedAt  DateTime      // 수선일
+  content     String        // 수선 내용
+  contractor  String?       // 수선 업체/담당자
+  cost        Int?          // 비용
+  memo        String?       // 비고
+
+  createdAt   DateTime      @default(now())
+}
+
 model Remnant {
   id           String        @id @default(cuid())
   remnantNo    String        @unique  // REM-2026-001 자동채번

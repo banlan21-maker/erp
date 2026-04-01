@@ -1,12 +1,32 @@
 export const dynamic = "force-dynamic";
 
 import { prisma } from "@/lib/prisma";
-import { LayoutDashboard, AlertTriangle, Clock, CheckCircle } from "lucide-react";
+import { LayoutDashboard, AlertTriangle, Clock, CheckCircle, Wrench, XCircle, MinusCircle } from "lucide-react";
 import Link from "next/link";
 
 export default async function ManagementDashboardPage() {
   const today = new Date();
   const in90days = new Date(today.getTime() + 90 * 86400000);
+  const in60days = new Date(today.getTime() + 60 * 86400000);
+
+  // 장비 검사 알림: 다음 검사 예정일이 60일 이내인 항목
+  const alertInspections = await prisma.mgmtInspectionItem.findMany({
+    where: { nextInspectAt: { not: null, lte: in60days } },
+    orderBy: { nextInspectAt: "asc" },
+    include: { equipment: { select: { id: true, name: true, code: true } } },
+  });
+
+  function inspDDay(d: Date) {
+    const diff = Math.floor((d.getTime() - today.getTime()) / 86400000);
+    if (diff < 0)  return { label: `D+${Math.abs(diff)}`, color: "text-red-700 bg-red-100" };
+    if (diff === 0) return { label: "D-day",              color: "text-red-700 bg-red-100" };
+    if (diff <= 30) return { label: `D-${diff}`,          color: "text-orange-700 bg-orange-100" };
+    return           { label: `D-${diff}`,                color: "text-yellow-700 bg-yellow-100" };
+  }
+
+  // 초과(overdue) 먼저, 그다음 임박/주의 날짜 오름차순
+  const overdueInsp  = alertInspections.filter(i => i.nextInspectAt! < today);
+  const upcomingInsp = alertInspections.filter(i => i.nextInspectAt! >= today);
 
   // 비자만기일이 있는 외국인 전체 (만기일 오름차순)
   const foreignWorkers = await prisma.worker.findMany({
@@ -117,6 +137,99 @@ export default async function ManagementDashboardPage() {
                           </span>
                         </div>
                       </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      {/* 장비 검사 알림 위젯 */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b bg-gray-50 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Wrench size={18} className="text-blue-500" />
+            <span className="font-semibold text-gray-800">장비 검사 알림</span>
+            {overdueInsp.length > 0 && (
+              <span className="ml-1 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold">
+                {overdueInsp.length}건 초과
+              </span>
+            )}
+          </div>
+          <Link href="/management/equipment" className="text-xs text-blue-600 hover:underline">장비관리 →</Link>
+        </div>
+
+        {alertInspections.length === 0 ? (
+          <div className="py-12 text-center text-gray-400 text-sm">
+            60일 이내 도래하는 검사 항목이 없습니다.
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {/* 초과 항목 */}
+            {overdueInsp.length > 0 && (
+              <div className="p-5">
+                <p className="text-xs font-bold text-red-600 mb-3 flex items-center gap-1">
+                  <XCircle size={13} /> 검사 기한 초과 — 즉시 조치 필요
+                </p>
+                <div className="space-y-2">
+                  {overdueInsp.map(ins => {
+                    const { label, color } = inspDDay(ins.nextInspectAt!);
+                    return (
+                      <Link
+                        key={ins.id}
+                        href={`/management/equipment/${ins.equipment.id}`}
+                        className="flex items-center justify-between bg-red-50 rounded-lg px-4 py-3 hover:bg-red-100 transition-colors"
+                      >
+                        <div>
+                          <p className="text-sm font-bold text-gray-900">
+                            {ins.equipment.name}
+                            <span className="ml-1 text-xs text-gray-500 font-normal">— {ins.itemName}</span>
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5 font-mono">{ins.equipment.code}</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-gray-500 font-mono">
+                            {ins.nextInspectAt!.toISOString().slice(0, 10)}
+                          </span>
+                          <span className={`text-xs font-bold px-2 py-1 rounded-full ${color}`}>{label}</span>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 임박/주의 항목 */}
+            {upcomingInsp.length > 0 && (
+              <div className="p-5">
+                <p className="text-xs font-bold text-orange-600 mb-3 flex items-center gap-1">
+                  <MinusCircle size={13} /> 60일 이내 도래
+                </p>
+                <div className="space-y-2">
+                  {upcomingInsp.map(ins => {
+                    const { label, color } = inspDDay(ins.nextInspectAt!);
+                    return (
+                      <Link
+                        key={ins.id}
+                        href={`/management/equipment/${ins.equipment.id}`}
+                        className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-2.5 hover:bg-gray-100 transition-colors"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-gray-800">
+                            {ins.equipment.name}
+                            <span className="ml-1 text-xs text-gray-400 font-normal">— {ins.itemName}</span>
+                          </p>
+                          <p className="text-xs text-gray-400 font-mono">{ins.equipment.code}</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-gray-400 font-mono">
+                            {ins.nextInspectAt!.toISOString().slice(0, 10)}
+                          </span>
+                          <span className={`text-xs font-bold px-2 py-1 rounded-full ${color}`}>{label}</span>
+                        </div>
+                      </Link>
                     );
                   })}
                 </div>

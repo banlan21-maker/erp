@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, FolderOpen, FileSpreadsheet, ClipboardList,
   Users, BarChart2, ChevronLeft, ChevronRight, Smartphone,
-  ExternalLink, Package, Truck, History, CalendarDays, Eye,
+  ExternalLink, Package, Truck, History, CalendarDays, Eye, Wrench,
 } from "lucide-react";
 
 export type ModuleType = "cnc" | "material" | "management";
@@ -38,6 +38,7 @@ const menuGroups = {
   management: [
     { href: "/management/dashboard", label: "관리 대시보드", icon: LayoutDashboard },
     { href: "/workers",              label: "인원관리",      icon: Users },
+    { href: "/management/equipment", label: "장비관리",      icon: Wrench },
   ]
 };
 
