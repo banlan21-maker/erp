@@ -176,7 +176,7 @@ export default function FrappeGanttWrapper({ items, onItemClick, onDateChange, r
             onDateChangeRef.current(task.id, fmt(start), fmt(end));
           }
         },
-        popup: ({ task }: any) => {
+        popup: (({ task }: any): any => {
           if (String(task.id).startsWith("__phantom_")) return false;
           // _data는 buildTasks 시점에 항상 세팅, itemsRef는 최신 날짜 반영용 fallback
           const d = task._data ?? itemsRef.current.find(i => i.id === task.id);
@@ -192,7 +192,7 @@ export default function FrappeGanttWrapper({ items, onItemClick, onDateChange, r
               ${d.memo ? `<span style="color:#9ca3af">${d.memo}</span>` : ""}
             </div>
           `;
-        },
+        }),
       });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
