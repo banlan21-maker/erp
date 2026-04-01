@@ -10,8 +10,9 @@ COPY . .
 # Prisma 클라이언트 생성
 RUN npx prisma generate
 
-# Next.js 빌드
+# Next.js 빌드 (빌드 단계용 더미 DATABASE_URL — 실제 연결 안 함)
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV DATABASE_URL="postgresql://build:build@localhost:5432/build"
 RUN npm run build
 
 # ─── 실행 스테이지 ────────────────────────────────────────────
