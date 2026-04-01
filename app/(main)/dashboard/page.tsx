@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FolderOpen, FileSpreadsheet, Layers, CheckCircle2 } from "lucide-react";
+import { FolderOpen, FileSpreadsheet, Layers, CheckCircle2, LayoutDashboard } from "lucide-react";
 import Link from "next/link";
 import { DashboardEquipmentProgress } from "@/components/dashboard-equipment-progress";
 
@@ -60,7 +60,10 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">절단 대시보드</h2>
+        <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <LayoutDashboard size={24} className="text-blue-600" />
+          절단 대시보드
+        </h2>
         <p className="text-sm text-gray-500 mt-1">CNC 절단 파트 ERP 실시간 현황</p>
       </div>
 

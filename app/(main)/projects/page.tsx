@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { Plus, Anchor } from "lucide-react";
 import ProjectTree from "@/components/project-tree";
 import UrgentRegisterButton from "@/components/urgent-register-button";
 
@@ -49,7 +49,10 @@ export default async function ProjectsPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">호선 · 프로젝트</h2>
+          <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <Anchor size={24} className="text-blue-600" />
+            호선 · 프로젝트
+          </h2>
           <p className="text-sm text-gray-500 mt-0.5">
             호선 {vessels.length}개 · 블록 {projects.length}건
           </p>

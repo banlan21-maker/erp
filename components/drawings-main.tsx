@@ -78,7 +78,10 @@ export default function DrawingsMain({
     <div className="space-y-4">
       {/* 헤더 */}
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">강재관리</h2>
+        <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <FileSpreadsheet size={24} className="text-blue-600" />
+          강재관리
+        </h2>
         <p className="text-sm text-gray-500 mt-0.5">강재 등록 및 현황을 관리합니다.</p>
       </div>
 

@@ -2,7 +2,7 @@
 
 import { useRouter, usePathname } from "next/navigation";
 import { useState } from "react";
-import { Printer, Search, FileDown, Trash2 } from "lucide-react";
+import { Printer, Search, FileDown, Trash2, BarChart2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import * as XLSX from "xlsx";
@@ -154,7 +154,10 @@ export default function ReportsMain({
         {/* 헤더 */}
         <div className="flex items-center justify-between mb-5 no-print">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">절단 작업 보고서</h1>
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+              <BarChart2 size={24} className="text-blue-600" />
+              절단 작업 보고서
+            </h1>
             <p className="text-sm text-gray-500 mt-0.5">완료된 절단 작업 내역 조회 및 출력</p>
           </div>
           <div className="flex gap-2">
