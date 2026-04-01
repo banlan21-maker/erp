@@ -8,11 +8,13 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const { name, nationality, birthDate, phone, role, position, joinDate, bloodType, shoeSize, winterTop, winterBottom, summerTop, summerBottom } = await request.json();
+    const { name, nationality, birthDate, phone, role, position, joinDate, bloodType, shoeSize, winterTop, winterBottom, summerTop, summerBottom, nickname, englishName, visaType, foreignIdNo, passportNo, visaExpiry } = await request.json();
 
     if (!name?.trim()) {
       return NextResponse.json({ success: false, error: "이름은 필수입니다." }, { status: 400 });
     }
+
+    const isForeigner = nationality && nationality !== "한국";
 
     const updated = await prisma.worker.update({
       where: { id },
@@ -30,6 +32,12 @@ export async function PATCH(
         winterBottom: winterBottom?.trim() || null,
         summerTop: summerTop?.trim() || null,
         summerBottom: summerBottom?.trim() || null,
+        nickname: isForeigner ? nickname?.trim() || null : null,
+        englishName: isForeigner ? englishName?.trim() || null : null,
+        visaType: isForeigner ? visaType?.trim() || null : null,
+        foreignIdNo: isForeigner ? foreignIdNo?.trim() || null : null,
+        passportNo: isForeigner ? passportNo?.trim() || null : null,
+        visaExpiry: isForeigner && visaExpiry ? new Date(visaExpiry) : null,
       },
     });
 

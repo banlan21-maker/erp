@@ -249,6 +249,13 @@ model Worker {
   winterBottom  String?                       // 동복 하의
   summerTop     String?                       // 하계 상의
   summerBottom  String?                       // 하계 하의
+  // 외국인 전용 필드
+  nickname      String?                       // 닉네임
+  englishName   String?                       // 영문이름
+  visaType      String?                       // 비자타입
+  foreignIdNo   String?                       // 외국인등록증번호
+  passportNo    String?                       // 여권번호
+  visaExpiry    DateTime?                     // 비자만기일
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
