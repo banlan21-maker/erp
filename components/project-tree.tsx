@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronRight, FolderOpen, Folder, FileSpreadsheet, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, FolderOpen, Folder, FileSpreadsheet, Plus, MapPin } from "lucide-react";
 import ProjectDeleteButton from "@/components/project-delete-button";
 
 interface Block {
@@ -14,6 +14,7 @@ interface Block {
   status: string;
   drawingCount: number;
   createdAt: Date;
+  storageLocation?: string | null;
 }
 
 interface VesselGroup {
@@ -118,6 +119,12 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
                           <span className={`text-xs px-1.5 py-0.5 rounded font-bold ${TYPE_COLOR[block.type]}`}>
                             {block.type}
                           </span>
+                          {block.storageLocation && (
+                            <span className="flex items-center gap-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                              <MapPin size={10} />
+                              보관장소: {block.storageLocation}
+                            </span>
+                          )}
                           <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLOR[block.status]}`}>
                             {STATUS_LABEL[block.status]}
                           </span>

@@ -41,6 +41,7 @@ export default async function ProjectsPage() {
       status: p.status,
       drawingCount: p._count.drawingLists,
       createdAt: p.createdAt,
+      storageLocation: p.storageLocation ?? null,
     })),
   }));
 

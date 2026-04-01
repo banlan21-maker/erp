@@ -133,15 +133,16 @@ model ExcelPreset {
 
 // 호선(프로젝트) 마스터
 model Project {
-  id          String        @id @default(cuid())
-  projectCode String
-  projectName String
-  type        ProjectType
-  client      String
-  status      ProjectStatus @default(ACTIVE)
-  memo        String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id              String        @id @default(cuid())
+  projectCode     String
+  projectName     String
+  type            ProjectType
+  client          String
+  status          ProjectStatus @default(ACTIVE)
+  memo            String?
+  storageLocation String?       // 보관 위치 (야드 구역)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   drawingLists DrawingList[]
   workOrders   WorkOrder[]

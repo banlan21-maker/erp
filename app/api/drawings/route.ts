@@ -85,6 +85,7 @@ export async function POST(request: NextRequest) {
     const file = formData.get("file") as File | null;
     const projectId = formData.get("projectId") as string | null;
     const presetId = formData.get("presetId") as string | null;
+    const storageLocation = formData.get("storageLocation") as string | null;
 
     if (!file || !projectId) {
       return NextResponse.json(
@@ -128,6 +129,14 @@ export async function POST(request: NextRequest) {
         },
         { status: 422 }
       );
+    }
+
+    // 보관위치 업데이트 (입력된 경우)
+    if (storageLocation?.trim()) {
+      await prisma.project.update({
+        where: { id: projectId },
+        data: { storageLocation: storageLocation.trim() },
+      });
     }
 
     // DB 저장 (배치 insert)

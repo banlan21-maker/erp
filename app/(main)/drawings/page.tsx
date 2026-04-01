@@ -21,11 +21,12 @@ export default async function DrawingsPage({
     projectName: p.projectName,
     drawingCount: p._count.drawingLists,
     status: p.status,
+    storageLocation: p.storageLocation ?? null,
   }));
 
   // 강재리스트 탭에서 특정 프로젝트 선택 시 해당 도면 목록 로드
   let drawings: Awaited<ReturnType<typeof prisma.drawingList.findMany>> = [];
-  let activeProject: { id: string; projectCode: string; projectName: string } | null = null;
+  let activeProject: { id: string; projectCode: string; projectName: string; storageLocation: string | null } | null = null;
 
   if (tab === "list" && projectId) {
     const proj = await prisma.project.findUnique({
@@ -34,7 +35,7 @@ export default async function DrawingsPage({
     });
     if (proj) {
       drawings = proj.drawingLists;
-      activeProject = { id: proj.id, projectCode: proj.projectCode, projectName: proj.projectName };
+      activeProject = { id: proj.id, projectCode: proj.projectCode, projectName: proj.projectName, storageLocation: proj.storageLocation ?? null };
     }
   }
 
