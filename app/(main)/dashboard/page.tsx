@@ -90,12 +90,9 @@ export default async function DashboardPage() {
           icon={<FileSpreadsheet size={20} className="text-purple-500" />}
           bg="bg-purple-50"
         />
-        <SummaryCard
-          title="유형 A / B"
-          value={typeMap["A"] ?? 0}
-          sub={`유형 B: ${typeMap["B"] ?? 0}건`}
-          icon={<Layers size={20} className="text-orange-500" />}
-          bg="bg-orange-50"
+        <TypeCard
+          countA={typeMap["A"] ?? 0}
+          countB={typeMap["B"] ?? 0}
         />
       </div>
 
@@ -171,6 +168,35 @@ export default async function DashboardPage() {
       </div>
 
     </div>
+  );
+}
+
+function TypeCard({ countA, countB }: { countA: number; countB: number }) {
+  return (
+    <Card className="bg-orange-50">
+      <CardContent className="pt-5">
+        <div className="flex items-start justify-between mb-3">
+          <p className="text-xs text-gray-500 font-medium">유형 A / B</p>
+          <div className="p-2 bg-white rounded-lg shadow-sm">
+            <Layers size={20} className="text-orange-500" />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <div>
+            <p className="text-sm font-semibold text-gray-800">
+              유형A <span className="text-xl font-bold text-gray-900">{countA.toLocaleString()}</span>건
+            </p>
+            <p className="text-xs text-gray-400">일반 절단 블록</p>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-800">
+              유형B <span className="text-xl font-bold text-gray-900">{countB.toLocaleString()}</span>건
+            </p>
+            <p className="text-xs text-gray-400">특수 절단 블록</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
