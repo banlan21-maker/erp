@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       name, kind, maker, modelName, madeYear, acquiredAt, acquiredCost,
-      location, usage, memo, specs, inspections,
+      location, usage, memo, specs, inspections, managementNo,
     } = body;
 
     if (!name?.trim()) {
@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
     const equipment = await prisma.mgmtEquipment.create({
       data: {
         code,
+        managementNo: managementNo?.trim() || null,
         name: name.trim(),
         kind,
         maker: maker?.trim() || null,

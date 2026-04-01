@@ -36,6 +36,7 @@ export interface SpecItem {
 export interface Equipment {
   id: string;
   code: string;
+  managementNo: string | null;
   name: string;
   kind: string;
   maker: string | null;
@@ -210,6 +211,7 @@ function KindSelect({
 
 interface FormState {
   name: string;
+  managementNo: string;
   kind: string;
   maker: string;
   modelName: string;
@@ -224,7 +226,7 @@ interface FormState {
 }
 
 const emptyForm = (): FormState => ({
-  name: "", kind: "", maker: "", modelName: "", madeYear: "",
+  name: "", managementNo: "", kind: "", maker: "", modelName: "", madeYear: "",
   acquiredAt: "", acquiredCost: "", location: "", usage: "IN_USE", memo: "",
   specs: [], inspections: [],
 });
@@ -312,6 +314,10 @@ function RegisterForm({
           <div className="col-span-2 sm:col-span-1">
             <label className={labelCls}>장비명 *</label>
             <input className={inputCls} value={form.name} onChange={e => setField("name", e.target.value)} placeholder="예: 플라즈마 1호기" />
+          </div>
+          <div className="col-span-2 sm:col-span-1">
+            <label className={labelCls}>관리번호 <span className="text-gray-400 font-normal">(선택)</span></label>
+            <input className={inputCls} value={form.managementNo} onChange={e => setField("managementNo", e.target.value)} placeholder="예: KCS-2018-001" />
           </div>
           <div className="col-span-2 sm:col-span-1">
             <label className={labelCls}>장비 종류 *</label>

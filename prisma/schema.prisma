@@ -434,6 +434,7 @@ enum MgmtEquipmentUsage {
 model MgmtEquipment {
   id           String              @id @default(cuid())
   code         String              @unique  // EQP-001 자동채번
+  managementNo String?             // 관리번호 (외부 부여 관리번호, 선택)
   name         String              // 장비명
   kind         String              // 장비 종류 (MgmtEquipmentKindPreset.label 참조)
   maker        String?             // 제조사

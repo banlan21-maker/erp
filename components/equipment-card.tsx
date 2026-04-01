@@ -51,6 +51,7 @@ interface Equipment {
   code: string;
   name: string;
   kind: string;
+  managementNo: string | null;
   maker: string | null;
   modelName: string | null;
   madeYear: number | null;
@@ -313,6 +314,7 @@ export default function EquipmentCard({ equipment: initial }: { equipment: Equip
           </div>
           <div className="p-5 grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
             {[
+              ["관리번호", eq.managementNo],
               ["제조사", eq.maker],
               ["모델명", eq.modelName],
               ["제조년도", eq.madeYear ? String(eq.madeYear) + "년" : null],

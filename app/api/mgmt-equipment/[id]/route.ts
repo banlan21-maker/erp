@@ -46,7 +46,7 @@ export async function PATCH(
     const body = await request.json();
     const {
       name, kind, maker, modelName, madeYear, acquiredAt, acquiredCost,
-      location, usage, memo, specs, inspections,
+      location, usage, memo, specs, inspections, managementNo,
     } = body;
 
     if (!name?.trim()) {
@@ -71,6 +71,7 @@ export async function PATCH(
       const eq = await tx.mgmtEquipment.update({
         where: { id },
         data: {
+          managementNo: managementNo?.trim() || null,
           name: name.trim(),
           kind,
           maker: maker?.trim() || null,
