@@ -9,7 +9,6 @@ import {
 
 // ── 타입 ────────────────────────────────────────────────────
 
-type MgmtEquipmentKind = "CNC_MACHINE" | "CRANE" | "PRESSURE_VESSEL" | "COMPRESSOR" | "OTHER";
 type MgmtEquipmentUsage = "IN_USE" | "MAINTENANCE" | "DISPOSED";
 type InspStatus = "overdue" | "imminent" | "caution" | "ok" | "none";
 
@@ -51,7 +50,7 @@ interface Equipment {
   id: string;
   code: string;
   name: string;
-  kind: MgmtEquipmentKind;
+  kind: string;
   maker: string | null;
   modelName: string | null;
   madeYear: number | null;
@@ -69,10 +68,6 @@ interface Equipment {
 
 // ── 상수 ────────────────────────────────────────────────────
 
-const KIND_LABELS: Record<MgmtEquipmentKind, string> = {
-  CNC_MACHINE: "CNC설비", CRANE: "크레인", PRESSURE_VESSEL: "압력용기",
-  COMPRESSOR: "컴프레샤", OTHER: "기타",
-};
 const USAGE_LABELS: Record<MgmtEquipmentUsage, string> = {
   IN_USE: "사용중", MAINTENANCE: "점검중", DISPOSED: "폐기",
 };
@@ -305,7 +300,7 @@ export default function EquipmentCard({ equipment: initial }: { equipment: Equip
                 {USAGE_LABELS[eq.usage]}
               </span>
             </div>
-            <p className="text-sm text-gray-500 mt-0.5">{KIND_LABELS[eq.kind]}{eq.location ? ` · ${eq.location}` : ""}</p>
+            <p className="text-sm text-gray-500 mt-0.5">{eq.kind}{eq.location ? ` · ${eq.location}` : ""}</p>
           </div>
         </div>
 

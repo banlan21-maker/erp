@@ -416,12 +416,11 @@ model UrgentWork {
 // 관리 파트 — 장비관리
 // ==========================================
 
-enum MgmtEquipmentKind {
-  CNC_MACHINE      // CNC설비
-  CRANE            // 크레인
-  PRESSURE_VESSEL  // 압력용기
-  COMPRESSOR       // 컴프레샤
-  OTHER            // 기타
+// 장비 종류 프리셋 (사용자 추가 가능)
+model MgmtEquipmentKindPreset {
+  id        String @id @default(cuid())
+  label     String @unique  // 표시 이름 (예: CNC설비, 크레인)
+  sortOrder Int    @default(0)
 }
 
 enum MgmtEquipmentUsage {
@@ -435,7 +434,7 @@ model MgmtEquipment {
   id           String              @id @default(cuid())
   code         String              @unique  // EQP-001 자동채번
   name         String              // 장비명
-  kind         MgmtEquipmentKind   // 장비 종류
+  kind         String              // 장비 종류 (MgmtEquipmentKindPreset.label 참조)
   maker        String?             // 제조사
   modelName    String?             // 모델명
   madeYear     Int?                // 제조년도

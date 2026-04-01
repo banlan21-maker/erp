@@ -9,8 +9,13 @@ import {
 
 // ── 타입 ────────────────────────────────────────────────────
 
-export type MgmtEquipmentKind = "CNC_MACHINE" | "CRANE" | "PRESSURE_VESSEL" | "COMPRESSOR" | "OTHER";
 export type MgmtEquipmentUsage = "IN_USE" | "MAINTENANCE" | "DISPOSED";
+
+export interface KindPreset {
+  id: string;
+  label: string;
+  sortOrder: number;
+}
 
 export interface InspectionItem {
   id?: string;
@@ -32,7 +37,7 @@ export interface Equipment {
   id: string;
   code: string;
   name: string;
-  kind: MgmtEquipmentKind;
+  kind: string;
   maker: string | null;
   modelName: string | null;
   madeYear: number | null;
@@ -48,14 +53,6 @@ export interface Equipment {
 }
 
 // ── 상수 ────────────────────────────────────────────────────
-
-const KIND_LABELS: Record<MgmtEquipmentKind, string> = {
-  CNC_MACHINE: "CNC설비",
-  CRANE: "크레인",
-  PRESSURE_VESSEL: "압력용기",
-  COMPRESSOR: "컴프레샤",
-  OTHER: "기타",
-};
 
 const USAGE_LABELS: Record<MgmtEquipmentUsage, string> = {
   IN_USE: "사용중",
@@ -84,8 +81,8 @@ function getInspStatus(nextInspectAt: string | null | undefined): InspStatus {
 
 function nearestInspStatus(inspections: InspectionItem[]): InspStatus {
   if (!inspections.length) return "none";
-  const statuses: InspStatus[] = inspections.map(i => getInspStatus(i.nextInspectAt));
   const priority: InspStatus[] = ["overdue", "imminent", "caution", "ok", "none"];
+  const statuses = inspections.map(i => getInspStatus(i.nextInspectAt));
   for (const s of priority) {
     if (statuses.includes(s)) return s;
   }
@@ -93,11 +90,11 @@ function nearestInspStatus(inspections: InspectionItem[]): InspStatus {
 }
 
 const STATUS_BADGE: Record<InspStatus, { label: string; cls: string; icon: React.ReactNode }> = {
-  overdue:  { label: "초과",   cls: "bg-red-100 text-red-700",      icon: <XCircle size={11} /> },
-  imminent: { label: "임박",   cls: "bg-orange-100 text-orange-700", icon: <AlertTriangle size={11} /> },
-  caution:  { label: "주의",   cls: "bg-yellow-100 text-yellow-700", icon: <Clock size={11} /> },
-  ok:       { label: "정상",   cls: "bg-green-100 text-green-700",   icon: <CheckCircle size={11} /> },
-  none:     { label: "해당없음", cls: "bg-gray-100 text-gray-500",   icon: <MinusCircle size={11} /> },
+  overdue:  { label: "초과",    cls: "bg-red-100 text-red-700",      icon: <XCircle size={11} /> },
+  imminent: { label: "임박",    cls: "bg-orange-100 text-orange-700", icon: <AlertTriangle size={11} /> },
+  caution:  { label: "주의",    cls: "bg-yellow-100 text-yellow-700", icon: <Clock size={11} /> },
+  ok:       { label: "정상",    cls: "bg-green-100 text-green-700",   icon: <CheckCircle size={11} /> },
+  none:     { label: "해당없음", cls: "bg-gray-100 text-gray-500",    icon: <MinusCircle size={11} /> },
 };
 
 // ── 입력 스타일 ────────────────────────────────────────────
@@ -105,11 +102,115 @@ const STATUS_BADGE: Record<InspStatus, { label: string; cls: string; icon: React
 const inputCls = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400";
 const labelCls = "block text-xs font-medium text-gray-600 mb-1";
 
-// ── 초기 폼 상태 ────────────────────────────────────────────
+// ── 다음 검사 예정일 미리보기 ────────────────────────────────
+
+function previewNext(lastDate: string, period: string | number): string {
+  if (!lastDate || !period) return "";
+  const d = new Date(lastDate);
+  d.setMonth(d.getMonth() + Number(period));
+  return d.toISOString().split("T")[0];
+}
+
+// ── 장비 종류 선택 컴포넌트 (드롭다운 + 직접 추가) ────────────
+
+function KindSelect({
+  value,
+  kinds,
+  onChange,
+  onKindAdded,
+}: {
+  value: string;
+  kinds: KindPreset[];
+  onChange: (v: string) => void;
+  onKindAdded: (k: KindPreset) => void;
+}) {
+  const ADD_TOKEN = "__add__";
+  const [adding, setAdding] = useState(false);
+  const [newLabel, setNewLabel] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  const handleSelect = (v: string) => {
+    if (v === ADD_TOKEN) {
+      setAdding(true);
+    } else {
+      onChange(v);
+    }
+  };
+
+  const handleAdd = async () => {
+    setErr("");
+    if (!newLabel.trim()) { setErr("종류명을 입력하세요."); return; }
+    setSaving(true);
+    const res = await fetch("/api/mgmt-equipment-kind", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label: newLabel.trim() }),
+    });
+    const json = await res.json();
+    setSaving(false);
+    if (!json.success) { setErr(json.error || "추가 실패"); return; }
+    onKindAdded(json.data);
+    onChange(json.data.label);
+    setNewLabel("");
+    setAdding(false);
+  };
+
+  const handleCancel = () => {
+    setAdding(false);
+    setNewLabel("");
+    setErr("");
+  };
+
+  if (adding) {
+    return (
+      <div className="space-y-1.5">
+        <div className="flex gap-2">
+          <input
+            className={inputCls}
+            placeholder="새 종류명 입력 (예: 유압프레스)"
+            value={newLabel}
+            onChange={e => setNewLabel(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleAdd()}
+            autoFocus
+          />
+          <button
+            type="button"
+            onClick={handleAdd}
+            disabled={saving}
+            className="px-3 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
+          >
+            {saving ? "저장 중" : "추가"}
+          </button>
+          <button
+            type="button"
+            onClick={handleCancel}
+            className="px-3 py-2 text-xs text-gray-500 border border-gray-300 rounded-lg hover:bg-gray-50"
+          >
+            취소
+          </button>
+        </div>
+        {err && <p className="text-xs text-red-600">{err}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <select className={inputCls} value={value} onChange={e => handleSelect(e.target.value)}>
+      <option value="">선택</option>
+      {kinds.map(k => (
+        <option key={k.id} value={k.label}>{k.label}</option>
+      ))}
+      <option value={ADD_TOKEN}>+ 직접 추가...</option>
+    </select>
+  );
+}
+
+// ── 폼 상태 ────────────────────────────────────────────────
 
 interface FormState {
   name: string;
-  kind: MgmtEquipmentKind | "";
+  kind: string;
   maker: string;
   modelName: string;
   madeYear: string;
@@ -123,32 +224,22 @@ interface FormState {
 }
 
 const emptyForm = (): FormState => ({
-  name: "",
-  kind: "",
-  maker: "",
-  modelName: "",
-  madeYear: "",
-  acquiredAt: "",
-  acquiredCost: "",
-  location: "",
-  usage: "IN_USE",
-  memo: "",
-  specs: [],
-  inspections: [],
+  name: "", kind: "", maker: "", modelName: "", madeYear: "",
+  acquiredAt: "", acquiredCost: "", location: "", usage: "IN_USE", memo: "",
+  specs: [], inspections: [],
 });
-
-// ── 다음 검사 예정일 미리보기 ────────────────────────────────
-
-function previewNext(lastDate: string, period: string | number): string {
-  if (!lastDate || !period) return "";
-  const d = new Date(lastDate);
-  d.setMonth(d.getMonth() + Number(period));
-  return d.toISOString().split("T")[0];
-}
 
 // ── 등록 폼 컴포넌트 ────────────────────────────────────────
 
-function RegisterForm({ onCreated }: { onCreated: () => void }) {
+function RegisterForm({
+  kinds,
+  onKindAdded,
+  onCreated,
+}: {
+  kinds: KindPreset[];
+  onKindAdded: (k: KindPreset) => void;
+  onCreated: () => void;
+}) {
   const [form, setForm] = useState<FormState>(emptyForm());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -156,9 +247,10 @@ function RegisterForm({ onCreated }: { onCreated: () => void }) {
   const setField = (name: string, value: string) =>
     setForm(f => ({ ...f, [name]: value }));
 
-  // 사양 행 관리
-  const addSpec = () => setForm(f => ({ ...f, specs: [...f.specs, { specKey: "", specValue: "" }] }));
-  const removeSpec = (i: number) => setForm(f => ({ ...f, specs: f.specs.filter((_, idx) => idx !== i) }));
+  const addSpec = () =>
+    setForm(f => ({ ...f, specs: [...f.specs, { specKey: "", specValue: "" }] }));
+  const removeSpec = (i: number) =>
+    setForm(f => ({ ...f, specs: f.specs.filter((_, idx) => idx !== i) }));
   const setSpec = (i: number, field: "specKey" | "specValue", val: string) =>
     setForm(f => {
       const specs = [...f.specs];
@@ -166,12 +258,13 @@ function RegisterForm({ onCreated }: { onCreated: () => void }) {
       return { ...f, specs };
     });
 
-  // 검사항목 행 관리
-  const addInsp = () => setForm(f => ({
-    ...f,
-    inspections: [...f.inspections, { itemName: "", periodMonth: 12, lastInspectedAt: "", inspector: "", memo: "" }],
-  }));
-  const removeInsp = (i: number) => setForm(f => ({ ...f, inspections: f.inspections.filter((_, idx) => idx !== i) }));
+  const addInsp = () =>
+    setForm(f => ({
+      ...f,
+      inspections: [...f.inspections, { itemName: "", periodMonth: 12, lastInspectedAt: "", inspector: null, memo: null }],
+    }));
+  const removeInsp = (i: number) =>
+    setForm(f => ({ ...f, inspections: f.inspections.filter((_, idx) => idx !== i) }));
   const setInsp = (i: number, field: keyof InspectionItem, val: string) =>
     setForm(f => {
       const inspections = [...f.inspections];
@@ -208,7 +301,9 @@ function RegisterForm({ onCreated }: { onCreated: () => void }) {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      {error && <div className="bg-red-50 text-red-700 text-sm px-4 py-2 rounded-lg border border-red-200">{error}</div>}
+      {error && (
+        <div className="bg-red-50 text-red-700 text-sm px-4 py-2 rounded-lg border border-red-200">{error}</div>
+      )}
 
       {/* 기본 정보 */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
@@ -220,12 +315,12 @@ function RegisterForm({ onCreated }: { onCreated: () => void }) {
           </div>
           <div className="col-span-2 sm:col-span-1">
             <label className={labelCls}>장비 종류 *</label>
-            <select className={inputCls} value={form.kind} onChange={e => setField("kind", e.target.value)}>
-              <option value="">선택</option>
-              {(Object.entries(KIND_LABELS) as [MgmtEquipmentKind, string][]).map(([v, l]) => (
-                <option key={v} value={v}>{l}</option>
-              ))}
-            </select>
+            <KindSelect
+              value={form.kind}
+              kinds={kinds}
+              onChange={v => setField("kind", v)}
+              onKindAdded={onKindAdded}
+            />
           </div>
           <div>
             <label className={labelCls}>제조사</label>
@@ -357,30 +452,28 @@ function RegisterForm({ onCreated }: { onCreated: () => void }) {
 // ── 장비 목록 ────────────────────────────────────────────────
 
 function nearestNextDate(inspections: InspectionItem[]): string | null {
-  const dates = inspections
-    .map(i => i.nextInspectAt)
-    .filter(Boolean) as string[];
+  const dates = inspections.map(i => i.nextInspectAt).filter(Boolean) as string[];
   if (!dates.length) return null;
   return dates.sort()[0];
 }
 
-interface EquipmentListProps {
+function EquipmentList({
+  equipments,
+  filterKind,
+  filterStatus,
+  filterUsage,
+}: {
   equipments: Equipment[];
-  filterKind: MgmtEquipmentKind | "ALL";
+  filterKind: string;
   filterStatus: InspStatus | "ALL";
   filterUsage: MgmtEquipmentUsage | "ALL";
-}
-
-function EquipmentList({ equipments, filterKind, filterStatus, filterUsage }: EquipmentListProps) {
+}) {
   const router = useRouter();
 
   const filtered = equipments.filter(eq => {
     if (filterKind !== "ALL" && eq.kind !== filterKind) return false;
     if (filterUsage !== "ALL" && eq.usage !== filterUsage) return false;
-    if (filterStatus !== "ALL") {
-      const s = nearestInspStatus(eq.inspections);
-      if (s !== filterStatus) return false;
-    }
+    if (filterStatus !== "ALL" && nearestInspStatus(eq.inspections) !== filterStatus) return false;
     return true;
   });
 
@@ -414,7 +507,7 @@ function EquipmentList({ equipments, filterKind, filterStatus, filterUsage }: Eq
                   </span>
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-xs text-gray-500">{KIND_LABELS[eq.kind]}</span>
+                  <span className="text-xs text-gray-500">{eq.kind}</span>
                   {eq.location && <span className="text-xs text-gray-400">· {eq.location}</span>}
                   {nextDate && (
                     <span className="text-xs text-gray-400">
@@ -439,10 +532,17 @@ function EquipmentList({ equipments, filterKind, filterStatus, filterUsage }: Eq
 
 // ── 메인 컴포넌트 ────────────────────────────────────────────
 
-export default function EquipmentMain({ initialEquipments }: { initialEquipments: Equipment[] }) {
+export default function EquipmentMain({
+  initialEquipments,
+  initialKinds,
+}: {
+  initialEquipments: Equipment[];
+  initialKinds: KindPreset[];
+}) {
   const [tab, setTab] = useState<"register" | "list">("list");
   const [equipments, setEquipments] = useState<Equipment[]>(initialEquipments);
-  const [filterKind, setFilterKind] = useState<MgmtEquipmentKind | "ALL">("ALL");
+  const [kinds, setKinds] = useState<KindPreset[]>(initialKinds);
+  const [filterKind, setFilterKind] = useState("ALL");
   const [filterStatus, setFilterStatus] = useState<InspStatus | "ALL">("ALL");
   const [filterUsage, setFilterUsage] = useState<MgmtEquipmentUsage | "ALL">("ALL");
 
@@ -452,6 +552,9 @@ export default function EquipmentMain({ initialEquipments }: { initialEquipments
     if (json.success) setEquipments(json.data);
     setTab("list");
   };
+
+  const handleKindAdded = (k: KindPreset) =>
+    setKinds(prev => [...prev, k]);
 
   return (
     <div className="space-y-5">
@@ -479,7 +582,9 @@ export default function EquipmentMain({ initialEquipments }: { initialEquipments
         ))}
       </div>
 
-      {tab === "register" && <RegisterForm onCreated={reload} />}
+      {tab === "register" && (
+        <RegisterForm kinds={kinds} onKindAdded={handleKindAdded} onCreated={reload} />
+      )}
 
       {tab === "list" && (
         <div className="space-y-4">
@@ -488,11 +593,11 @@ export default function EquipmentMain({ initialEquipments }: { initialEquipments
             <select
               className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
               value={filterKind}
-              onChange={e => setFilterKind(e.target.value as MgmtEquipmentKind | "ALL")}
+              onChange={e => setFilterKind(e.target.value)}
             >
               <option value="ALL">전체 종류</option>
-              {(Object.entries(KIND_LABELS) as [MgmtEquipmentKind, string][]).map(([v, l]) => (
-                <option key={v} value={v}>{l}</option>
+              {kinds.map(k => (
+                <option key={k.id} value={k.label}>{k.label}</option>
               ))}
             </select>
             <select
