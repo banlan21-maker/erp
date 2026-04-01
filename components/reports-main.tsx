@@ -143,7 +143,7 @@ export default function ReportsMain({
         .print-only { display: none; }
       `}</style>
 
-      <div className="p-6 max-w-7xl mx-auto">
+      <div className="space-y-4">
 
         {/* 인쇄 전용 헤더 */}
         <div className="print-only mb-4 pb-3 border-b text-center">

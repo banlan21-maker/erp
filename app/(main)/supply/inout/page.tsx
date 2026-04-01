@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { PackageCheck, PackageMinus, Save, AlertCircle, RefreshCw, History, Search, ChevronDown } from "lucide-react";
+import { PackageCheck, PackageMinus, Save, AlertCircle, RefreshCw, History, Search, ChevronDown, ArrowLeftRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -240,6 +240,13 @@ export default function InOutPage() {
 
   return (
     <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
+          <ArrowLeftRight size={24} className="text-blue-600" />
+          입출고관리
+        </h2>
+        <p className="text-sm text-gray-500 mt-1">소모품 및 비품의 입고 · 출고 내역을 등록하고 최근 이력을 확인합니다.</p>
+      </div>
 
       {/* 관리주체 필터 */}
       <div className="flex items-center gap-3">

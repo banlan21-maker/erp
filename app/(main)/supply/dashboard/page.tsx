@@ -57,7 +57,7 @@ export default function SupplyDashboardPage() {
       <div>
         <h2 className="text-2xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
           <LayoutDashboard size={24} className="text-blue-600" />
-          자재 대시보드
+          구매/자재 대시보드
         </h2>
         <p className="text-sm text-gray-500 mt-1">
           소모품 및 비품의 통합 재고 현황과 최근 입출고 내역을 요약하여 파악합니다.

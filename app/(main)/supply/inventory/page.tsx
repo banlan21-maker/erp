@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Package, ClipboardList, PackagePlus } from "lucide-react";
+import { Package, ClipboardList, PackagePlus, Archive } from "lucide-react";
 
 // 기존 페이지 컴포넌트들을 직접 가져옵니다. (내용과 API 연결 그대로 사용)
 import ConsumablesPage from "../consumables/page";
@@ -13,6 +13,14 @@ export default function InventoryPage() {
 
   return (
     <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
+          <Archive size={24} className="text-blue-600" />
+          재고관리
+        </h2>
+        <p className="text-sm text-gray-500 mt-1">소모품 및 비품의 현재 재고 현황을 조회하고 신규 품목을 등록합니다.</p>
+      </div>
+
       <div className="flex border-b border-gray-200 bg-white rounded-t-xl px-2 pt-2">
         <button 
           onClick={() => setActiveTab("consumables")} 

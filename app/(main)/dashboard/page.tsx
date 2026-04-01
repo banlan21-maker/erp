@@ -60,7 +60,7 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">현황 대시보드</h2>
+        <h2 className="text-2xl font-bold text-gray-900">절단 대시보드</h2>
         <p className="text-sm text-gray-500 mt-1">CNC 절단 파트 ERP 실시간 현황</p>
       </div>
 
