@@ -325,7 +325,6 @@ export default function ScheduleManager({ projects }: { projects: Project[] }) {
   const [loadData,   setLoadData]   = useState<LoadItem[]>([]);
   const [loading,    setLoading]    = useState(true);
 
-  const [showArchive,   setShowArchive]   = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
 
   const [scheduleModal, setScheduleModal] = useState<{ open: boolean; mode: "add" | "edit"; item: GanttItem | null }>
@@ -339,7 +338,7 @@ export default function ScheduleManager({ projects }: { projects: Project[] }) {
     setLoading(true);
     try {
       const [ganttRes, loadRes] = await Promise.all([
-        fetch(`/api/schedules/gantt?includeArchive=${showArchive}&includeCompleted=${showCompleted}`),
+        fetch(`/api/schedules/gantt?includeArchive=false&includeCompleted=${showCompleted}`),
         fetch(`/api/schedules/load?from=${loadFrom}&to=${loadTo}`),
       ]);
       const [ganttJson, loadJson] = await Promise.all([
@@ -349,12 +348,12 @@ export default function ScheduleManager({ projects }: { projects: Project[] }) {
       if (loadJson.success)  setLoadData(loadJson.data);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
-  }, [showArchive, showCompleted]);
+  }, [showCompleted]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   const handleDeleteSchedule = async (id: string) => {
-    if (!confirm("이 스케줄을 취소 처리하시겠습니까?")) return;
+    if (!confirm("이 스케줄을 삭제하시겠습니까?")) return;
     await fetch(`/api/schedules/${id}`, { method: "DELETE" });
     fetchAll();
   };
@@ -377,10 +376,6 @@ export default function ScheduleManager({ projects }: { projects: Project[] }) {
           <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
             <input type="checkbox" checked={showCompleted} onChange={e => setShowCompleted(e.target.checked)} className="rounded" />
             완료 포함
-          </label>
-          <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
-            <input type="checkbox" checked={showArchive} onChange={e => setShowArchive(e.target.checked)} className="rounded" />
-            취소 포함
           </label>
           <Button variant="outline" size="sm" onClick={fetchAll} className="text-xs">
             <RefreshCw size={13} className="mr-1" /> 새로고침

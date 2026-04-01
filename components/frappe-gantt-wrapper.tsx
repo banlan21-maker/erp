@@ -46,7 +46,7 @@ const STATUS_COLOR: Record<string, string> = {
   CANCELLED:   "#ef4444",
 };
 
-const PHANTOM_ROW_COUNT = 5;
+const PHANTOM_ROW_COUNT = 2;
 
 function buildTasks(items: GanttItem[]) {
   const real = items

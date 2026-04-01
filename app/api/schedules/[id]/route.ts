@@ -40,18 +40,15 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/schedules/[id] — 상태를 CANCELLED로만 변경 (데이터 삭제 금지)
+// DELETE /api/schedules/[id] — 실제 삭제
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-    const updated = await prisma.cncSchedule.update({
-      where: { id },
-      data: { status: "CANCELLED" },
-    });
-    return NextResponse.json({ success: true, data: updated });
+    await prisma.cncSchedule.delete({ where: { id } });
+    return NextResponse.json({ success: true });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
