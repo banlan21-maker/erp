@@ -8,6 +8,49 @@ import { Input } from "@/components/ui/input";
 
 const NATIONALITIES = ["한국", "태국", "미얀마", "베트남"];
 
+const inputCls = "w-full px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500";
+const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
+
+function ForeignFields({ form, onChange }: {
+  form: FormState;
+  onChange: (name: string, value: string) => void;
+}) {
+  return (
+    <div className="mt-6">
+      <h4 className="font-bold text-orange-700 border-b border-orange-200 pb-2 mb-4 flex items-center gap-2">
+        <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-semibold">외국인</span>
+        비자 및 체류 정보
+      </h4>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div>
+          <label className={labelCls}>닉네임</label>
+          <input name="nickname" value={form.nickname} onChange={e => onChange("nickname", e.target.value)} placeholder="현장에서 불리는 이름" className={inputCls} />
+        </div>
+        <div>
+          <label className={labelCls}>영문이름</label>
+          <input name="englishName" value={form.englishName} onChange={e => onChange("englishName", e.target.value)} placeholder="여권상 영문 이름" className={inputCls} />
+        </div>
+        <div>
+          <label className={labelCls}>비자타입</label>
+          <input name="visaType" value={form.visaType} onChange={e => onChange("visaType", e.target.value)} placeholder="E-9, E-7, H-2 등" className={inputCls} />
+        </div>
+        <div>
+          <label className={labelCls}>외국인등록증번호</label>
+          <input name="foreignIdNo" value={form.foreignIdNo} onChange={e => onChange("foreignIdNo", e.target.value)} placeholder="000000-0000000" className={inputCls} />
+        </div>
+        <div>
+          <label className={labelCls}>여권번호</label>
+          <input name="passportNo" value={form.passportNo} onChange={e => onChange("passportNo", e.target.value)} placeholder="여권번호 입력" className={inputCls} />
+        </div>
+        <div>
+          <label className={labelCls}>비자만기일</label>
+          <input type="date" name="visaExpiry" value={form.visaExpiry} onChange={e => onChange("visaExpiry", e.target.value)} className={inputCls} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface Worker {
   id: string;
   name: string;
@@ -58,9 +101,6 @@ function formatDate(dateStr: string | null | undefined): string {
 function isForeigner(nationality: string) {
   return nationality && nationality !== "한국";
 }
-
-const inputCls = "w-full px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500";
-const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
 
 export default function WorkersMain({ workers }: { workers: Worker[] }) {
   const router = useRouter();
@@ -163,45 +203,6 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
       setIsEditModalOpen(false);
     } catch { alert("서버 오류"); } finally { setDeletingId(null); }
   };
-
-  // 외국인 섹션 공통 렌더러
-  const ForeignFields = ({ form, onChange }: {
-    form: FormState;
-    onChange: (name: string, value: string) => void;
-  }) => (
-    <div className="mt-6">
-      <h4 className="font-bold text-orange-700 border-b border-orange-200 pb-2 mb-4 flex items-center gap-2">
-        <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-semibold">외국인</span>
-        비자 및 체류 정보
-      </h4>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        <div>
-          <label className={labelCls}>닉네임</label>
-          <input name="nickname" value={form.nickname} onChange={e => onChange("nickname", e.target.value)} placeholder="현장에서 불리는 이름" className={inputCls} />
-        </div>
-        <div>
-          <label className={labelCls}>영문이름</label>
-          <input name="englishName" value={form.englishName} onChange={e => onChange("englishName", e.target.value)} placeholder="여권상 영문 이름" className={inputCls} />
-        </div>
-        <div>
-          <label className={labelCls}>비자타입</label>
-          <input name="visaType" value={form.visaType} onChange={e => onChange("visaType", e.target.value)} placeholder="E-9, E-7, H-2 등" className={inputCls} />
-        </div>
-        <div>
-          <label className={labelCls}>외국인등록증번호</label>
-          <input name="foreignIdNo" value={form.foreignIdNo} onChange={e => onChange("foreignIdNo", e.target.value)} placeholder="000000-0000000" className={inputCls} />
-        </div>
-        <div>
-          <label className={labelCls}>여권번호</label>
-          <input name="passportNo" value={form.passportNo} onChange={e => onChange("passportNo", e.target.value)} placeholder="여권번호 입력" className={inputCls} />
-        </div>
-        <div>
-          <label className={labelCls}>비자만기일</label>
-          <input type="date" name="visaExpiry" value={form.visaExpiry} onChange={e => onChange("visaExpiry", e.target.value)} className={inputCls} />
-        </div>
-      </div>
-    </div>
-  );
 
   return (
     <div className="space-y-6">
