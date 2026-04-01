@@ -66,6 +66,7 @@ interface Worker {
   winterBottom: string | null;
   summerTop: string | null;
   summerBottom: string | null;
+  isCncOp: boolean;
   nickname: string | null;
   englishName: string | null;
   visaType: string | null;
@@ -80,6 +81,7 @@ interface FormState {
   role: string; position: string; joinDate: string; bloodType: string;
   shoeSize: string; winterTop: string; winterBottom: string;
   summerTop: string; summerBottom: string;
+  isCncOp: boolean;
   nickname: string; englishName: string; visaType: string;
   foreignIdNo: string; passportNo: string; visaExpiry: string;
 }
@@ -89,6 +91,7 @@ const emptyForm: FormState = {
   role: "", position: "", joinDate: "", bloodType: "",
   shoeSize: "", winterTop: "", winterBottom: "",
   summerTop: "", summerBottom: "",
+  isCncOp: false,
   nickname: "", englishName: "", visaType: "",
   foreignIdNo: "", passportNo: "", visaExpiry: "",
 };
@@ -169,6 +172,7 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
       joinDate: w.joinDate?.slice(0,10) || "", bloodType: w.bloodType || "", shoeSize: w.shoeSize || "",
       winterTop: w.winterTop || "", winterBottom: w.winterBottom || "",
       summerTop: w.summerTop || "", summerBottom: w.summerBottom || "",
+      isCncOp: w.isCncOp,
       nickname: w.nickname || "", englishName: w.englishName || "",
       visaType: w.visaType || "", foreignIdNo: w.foreignIdNo || "",
       passportNo: w.passportNo || "", visaExpiry: w.visaExpiry?.slice(0,10) || "",
@@ -269,6 +273,7 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
                     <th className="px-4 py-3 font-semibold text-xs text-gray-500">입사일</th>
                     <th className="px-4 py-3 font-semibold text-xs text-gray-500">생년월일</th>
                     <th className="px-4 py-3 font-semibold text-xs text-gray-500">비자만기일</th>
+                    <th className="px-4 py-3 font-semibold text-xs text-gray-500 text-center">CNC OP</th>
                     <th className="px-4 py-3 font-semibold text-xs text-gray-500">혈액형</th>
                     <th className="px-4 py-3 font-semibold text-xs text-gray-500">신발</th>
                     <th className="px-4 py-3 font-semibold text-xs text-gray-500 text-center">동복상의</th>
@@ -281,7 +286,7 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
                 <tbody className="divide-y divide-gray-100">
                   {filteredWorkers.length === 0 ? (
                     <tr>
-                      <td colSpan={15} className="px-6 py-12 text-center text-gray-500">
+                      <td colSpan={16} className="px-6 py-12 text-center text-gray-500">
                         {workers.length === 0 ? "등록된 인원이 없습니다. '신규 인원 등록' 탭을 이용해 추가하세요." : "검색 조건에 맞는 인원이 없습니다."}
                       </td>
                     </tr>
@@ -320,6 +325,11 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
                                 {visaUrgent && <span className="ml-1 text-xs bg-red-100 text-red-600 px-1 rounded">D-{daysToExpiry}</span>}
                               </span>
                             ) : <span className="text-gray-300">-</span>}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {w.isCncOp ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">CNC OP</span>
+                            ) : <span className="text-gray-300 text-xs">—</span>}
                           </td>
                           <td className="px-4 py-3 text-gray-500 text-sm font-semibold">{w.bloodType || "-"}</td>
                           <td className="px-4 py-3 text-gray-500 font-mono text-sm">{w.shoeSize || "-"}</td>
@@ -397,6 +407,21 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
                       <option value="O">O형</option><option value="AB">AB형</option>
                     </select>
                   </div>
+                  <div className="flex flex-col justify-center">
+                    <label className={labelCls}>CNC 플라즈마 운전</label>
+                    <button
+                      type="button"
+                      onClick={() => setRegisterForm(prev => ({ ...prev, isCncOp: !prev.isCncOp }))}
+                      className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-colors border ${
+                        registerForm.isCncOp
+                          ? "bg-blue-600 text-white border-blue-600 hover:bg-blue-700"
+                          : "bg-white text-gray-400 border-gray-200 hover:border-blue-300"
+                      }`}
+                    >
+                      <span className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${registerForm.isCncOp ? "bg-white border-white" : "border-gray-300"}`} />
+                      {registerForm.isCncOp ? "CNC OP 지정됨" : "CNC OP 아님"}
+                    </button>
+                  </div>
                 </div>
 
                 {isForeigner(registerForm.nationality) && (
@@ -473,6 +498,21 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
                     <select value={editForm.bloodType} onChange={e => handleEditChange("bloodType", e.target.value)} className="w-full h-9 px-3 py-1 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                       <option value="">선택안함</option><option value="A">A형</option><option value="B">B형</option><option value="O">O형</option><option value="AB">AB형</option>
                     </select>
+                  </div>
+                  <div className="space-y-1.5 flex flex-col justify-end">
+                    <label className="text-xs font-semibold text-gray-700">CNC 플라즈마 운전</label>
+                    <button
+                      type="button"
+                      onClick={() => setEditForm(prev => ({ ...prev, isCncOp: !prev.isCncOp }))}
+                      className={`h-9 px-3 rounded-md text-sm font-bold transition-colors border flex items-center gap-2 ${
+                        editForm.isCncOp
+                          ? "bg-blue-600 text-white border-blue-600 hover:bg-blue-700"
+                          : "bg-white text-gray-400 border-gray-200 hover:border-blue-300"
+                      }`}
+                    >
+                      <span className={`w-3.5 h-3.5 rounded-full border-2 flex-shrink-0 ${editForm.isCncOp ? "bg-white border-white" : "border-gray-300"}`} />
+                      {editForm.isCncOp ? "CNC OP 지정됨" : "CNC OP 아님"}
+                    </button>
                   </div>
                 </div>
 

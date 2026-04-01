@@ -249,6 +249,7 @@ model Worker {
   winterBottom  String?                       // 동복 하의
   summerTop     String?                       // 하계 상의
   summerBottom  String?                       // 하계 하의
+  isCncOp       Boolean   @default(false)       // CNC 플라즈마 운전 가능 여부
   // 외국인 전용 필드
   nickname      String?                       // 닉네임
   englishName   String?                       // 영문이름

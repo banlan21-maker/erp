@@ -8,7 +8,7 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const { name, nationality, birthDate, phone, role, position, joinDate, bloodType, shoeSize, winterTop, winterBottom, summerTop, summerBottom, nickname, englishName, visaType, foreignIdNo, passportNo, visaExpiry } = await request.json();
+    const { name, nationality, birthDate, phone, role, position, joinDate, bloodType, shoeSize, winterTop, winterBottom, summerTop, summerBottom, nickname, englishName, visaType, foreignIdNo, passportNo, visaExpiry, isCncOp } = await request.json();
 
     if (!name?.trim()) {
       return NextResponse.json({ success: false, error: "이름은 필수입니다." }, { status: 400 });
@@ -32,6 +32,7 @@ export async function PATCH(
         winterBottom: winterBottom?.trim() || null,
         summerTop: summerTop?.trim() || null,
         summerBottom: summerBottom?.trim() || null,
+        isCncOp: isCncOp === true,
         nickname: isForeigner ? nickname?.trim() || null : null,
         englishName: isForeigner ? englishName?.trim() || null : null,
         visaType: isForeigner ? visaType?.trim() || null : null,

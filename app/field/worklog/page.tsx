@@ -16,6 +16,7 @@ export default async function FieldWorklogPage() {
       select: { id: true, projectCode: true, projectName: true },
     }),
     prisma.worker.findMany({
+      where: { isCncOp: true },
       orderBy: { name: "asc" },
       select: { id: true, name: true, nationality: true },
     }),
