@@ -346,14 +346,6 @@ function RegisterForm({
             <label className={labelCls}>설치 위치</label>
             <input className={inputCls} value={form.location} onChange={e => setField("location", e.target.value)} placeholder="예: 절단동 1번" />
           </div>
-          <div>
-            <label className={labelCls}>사용 여부</label>
-            <select className={inputCls} value={form.usage} onChange={e => setField("usage", e.target.value)}>
-              {(Object.entries(USAGE_LABELS) as [MgmtEquipmentUsage, string][]).map(([v, l]) => (
-                <option key={v} value={v}>{l}</option>
-              ))}
-            </select>
-          </div>
           <div className="col-span-2">
             <label className={labelCls}>비고</label>
             <textarea className={inputCls} rows={2} value={form.memo} onChange={e => setField("memo", e.target.value)} />
