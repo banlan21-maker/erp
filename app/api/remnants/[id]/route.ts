@@ -24,8 +24,8 @@ export async function PATCH(
     const {
       type, shape, material, thickness, weight,
       width1, length1, width2, length2,
-      sourceProjectId, sourceVesselName, location, status,
-      registeredBy, originalVesselName, drawingNo, consultPerson, needsConsult,
+      sourceProjectId, sourceVesselName, sourceBlock,
+      location, status, registeredBy, memo,
     } = body;
 
     const updated = await prisma.remnant.update({
@@ -40,15 +40,13 @@ export async function PATCH(
         ...(length1  !== undefined ? { length1:   length1 ? Number(length1) : null } : {}),
         ...(width2   !== undefined ? { width2:    width2  ? Number(width2)  : null } : {}),
         ...(length2  !== undefined ? { length2:   length2 ? Number(length2) : null } : {}),
-        ...(sourceProjectId  !== undefined ? { sourceProjectId: sourceProjectId || null }         : {}),
+        ...(sourceProjectId  !== undefined ? { sourceProjectId: sourceProjectId || null }           : {}),
         ...(sourceVesselName !== undefined ? { sourceVesselName: sourceVesselName?.trim() || null } : {}),
-        ...(location         !== undefined ? { location: location?.trim() || null }               : {}),
-        ...(status           !== undefined ? { status }                                            : {}),
-        ...(registeredBy     !== undefined ? { registeredBy: registeredBy.trim() }                : {}),
-        ...(originalVesselName !== undefined ? { originalVesselName: originalVesselName?.trim() || null } : {}),
-        ...(drawingNo        !== undefined ? { drawingNo: drawingNo?.trim() || null }             : {}),
-        ...(consultPerson    !== undefined ? { consultPerson: consultPerson?.trim() || null }     : {}),
-        ...(needsConsult     !== undefined ? { needsConsult }                                      : {}),
+        ...(sourceBlock      !== undefined ? { sourceBlock: sourceBlock?.trim() || null }           : {}),
+        ...(location         !== undefined ? { location: location?.trim() || null }                 : {}),
+        ...(status           !== undefined ? { status }                                              : {}),
+        ...(registeredBy     !== undefined ? { registeredBy: registeredBy.trim() }                  : {}),
+        ...(memo             !== undefined ? { memo: memo?.trim() || null }                         : {}),
       },
       include: {
         sourceProject: { select: { id: true, projectCode: true, projectName: true } },

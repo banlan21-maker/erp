@@ -52,9 +52,9 @@ enum UrgentWorkStatus {
 // ── 잔재 관리 ──────────────────────────────────────────────
 
 enum RemnantType {
-  REMNANT    // 잔재 (정규 작업 후 남은 자투리)
-  SURPLUS    // 여유재 (입고했지만 미사용 판재)
-  REGISTERED // 등록잔재 (도면번호 부여, 사용 전 협의 필요)
+  REMNANT    // 현장잔재 (정규 작업 후 남은 자투리)
+  SURPLUS    // 여유원재 (입고했지만 미사용 판재)
+  REGISTERED // 등록잔재 (등록된 잔재)
 }
 
 enum RemnantShape {
@@ -526,17 +526,19 @@ model Remnant {
   sourceProjectId  String?
   sourceProject    Project?  @relation(fields: [sourceProjectId], references: [id], onDelete: SetNull)
   sourceVesselName String?   // 직접 입력 호선명
+  sourceBlock      String?   // 직접 입력 블록 번호
 
   // 보관 및 기타
   location     String?       // 보관 위치
   photoUrl     String?       // 사진
+  memo         String?       // 메모사항
   status       RemnantStatus @default(IN_STOCK)
   registeredBy String        // 등록자
 
-  // 등록잔재 전용
-  originalVesselName String? // 원래 호선명
-  drawingNo          String? // 도면번호
-  consultPerson      String? // 협의 담당자
+  // 레거시 필드 (미사용, 데이터 보존용)
+  originalVesselName String?
+  drawingNo          String?
+  consultPerson      String?
   needsConsult       Boolean @default(false)
 
   createdAt    DateTime      @default(now())

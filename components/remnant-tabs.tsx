@@ -31,25 +31,23 @@ interface Remnant {
   sourceProjectId: string | null;
   sourceProject: { id: string; projectCode: string; projectName: string } | null;
   sourceVesselName: string | null;
+  sourceBlock: string | null;
   location: string | null;
+  memo: string | null;
   status: string;
   registeredBy: string;
-  needsConsult: boolean;
-  originalVesselName: string | null;
-  drawingNo: string | null;
-  consultPerson: string | null;
   createdAt: string;
 }
 
 // ─── 상수 ──────────────────────────────────────────────────────────────────
 
-const TYPE_LABEL: Record<string, string>  = { REMNANT: "잔재", SURPLUS: "여유재", REGISTERED: "등록잔재" };
+const TYPE_LABEL: Record<string, string>  = { REMNANT: "현장잔재", SURPLUS: "여유원재", REGISTERED: "등록잔재" };
 const TYPE_COLOR: Record<string, string>  = {
   REMNANT:    "bg-blue-100 text-blue-700",
   SURPLUS:    "bg-green-100 text-green-700",
   REGISTERED: "bg-purple-100 text-purple-700",
 };
-const SHAPE_LABEL: Record<string, string> = { RECTANGLE: "사각형", L_SHAPE: "L자형", STRIP: "띠형", IRREGULAR: "불규칙형" };
+const SHAPE_LABEL: Record<string, string> = { RECTANGLE: "사각형", L_SHAPE: "L자형", IRREGULAR: "불규칙형" };
 const STATUS_LABEL: Record<string, string>= { IN_STOCK: "재고있음", IN_USE: "사용중", EXHAUSTED: "소진" };
 const STATUS_COLOR: Record<string, string>= {
   IN_STOCK:  "bg-emerald-100 text-emerald-700",
@@ -80,7 +78,7 @@ function calcWeight(
   const d = getDensity(material);
   if (!thickness || thickness <= 0) return null;
   let area = 0;
-  if (shape === "RECTANGLE" || shape === "STRIP") {
+  if (shape === "RECTANGLE") {
     if (!w1 || !l1) return null;
     area = w1 * l1;
   } else if (shape === "L_SHAPE") {
@@ -137,9 +135,8 @@ const INIT_FORM = {
   type: "REMNANT", shape: "RECTANGLE",
   material: "", thickness: "",
   width1: "", length1: "", width2: "", length2: "",
-  sourceProjectId: "", sourceVesselName: "",
-  location: "", registeredBy: "",
-  originalVesselName: "", drawingNo: "", consultPerson: "",
+  sourceProjectId: "", sourceVesselName: "", sourceBlock: "",
+  location: "", registeredBy: "", memo: "",
   manualWeight: "",
 };
 
@@ -190,11 +187,10 @@ export function RemnantRegisterTab({ projects }: { projects: ProjectOption[] }) 
           length2: form.length2 || null,
           sourceProjectId: form.sourceProjectId || null,
           sourceVesselName: form.sourceVesselName || null,
+          sourceBlock: form.sourceBlock || null,
           location: form.location || null,
           registeredBy: form.registeredBy,
-          originalVesselName: form.originalVesselName || null,
-          drawingNo: form.drawingNo || null,
-          consultPerson: form.consultPerson || null,
+          memo: form.memo || null,
         }),
       });
       const data = await res.json();
@@ -237,11 +233,6 @@ export function RemnantRegisterTab({ projects }: { projects: ProjectOption[] }) 
             </label>
           ))}
         </div>
-        {form.type === "REGISTERED" && (
-          <p className="mt-2 text-xs text-purple-600 bg-purple-50 border border-purple-200 rounded-md px-3 py-2 flex items-center gap-1.5">
-            <AlertTriangle size={12} /> 등록잔재는 사용 전 담당자 협의가 필요합니다.
-          </p>
-        )}
       </div>
 
       {/* ② 형태 */}
@@ -316,22 +307,6 @@ export function RemnantRegisterTab({ projects }: { projects: ProjectOption[] }) 
         </div>
       )}
 
-      {form.shape === "STRIP" && (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">치수 (mm) <span className="text-xs text-gray-400">— 띠형: 폭 300mm 이하</span></label>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">폭 (W, ≤300mm)</label>
-              <Input type="number" min="0" max="300" value={form.width1} onChange={e => set("width1", e.target.value)} placeholder="폭 mm" />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">길이 (L)</label>
-              <Input type="number" min="0" value={form.length1} onChange={e => set("length1", e.target.value)} placeholder="길이 mm" />
-            </div>
-          </div>
-        </div>
-      )}
-
       {form.shape === "IRREGULAR" && (
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">치수 (mm) <span className="text-xs text-gray-400">— 바운딩박스 기준</span></label>
@@ -386,31 +361,15 @@ export function RemnantRegisterTab({ projects }: { projects: ProjectOption[] }) 
             <Input value={form.sourceVesselName} onChange={e => set("sourceVesselName", e.target.value)}
               placeholder="예: 4560호" disabled={!!form.sourceProjectId} />
           </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">블록 번호</label>
+            <Input value={form.sourceBlock} onChange={e => set("sourceBlock", e.target.value)}
+              placeholder="예: 101-1" />
+          </div>
         </div>
       </div>
 
-      {/* ⑦ 등록잔재 전용 */}
-      {form.type === "REGISTERED" && (
-        <div className="border border-purple-200 rounded-xl p-4 bg-purple-50/50 space-y-3">
-          <p className="text-xs font-semibold text-purple-700">등록잔재 추가 정보</p>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">원래 호선명</label>
-              <Input value={form.originalVesselName} onChange={e => set("originalVesselName", e.target.value)} placeholder="예: 4560호" />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">도면번호</label>
-              <Input value={form.drawingNo} onChange={e => set("drawingNo", e.target.value)} placeholder="예: D-101-A" />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">협의 담당자</label>
-              <Input value={form.consultPerson} onChange={e => set("consultPerson", e.target.value)} placeholder="담당자명" />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ⑧ 보관 위치 / 등록자 */}
+      {/* ⑦ 보관 위치 / 등록자 */}
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">보관 위치 <span className="text-gray-400 text-xs">(선택)</span></label>
@@ -420,6 +379,18 @@ export function RemnantRegisterTab({ projects }: { projects: ProjectOption[] }) 
           <label className="block text-sm font-medium text-gray-700 mb-1.5">등록자 <span className="text-red-500">*</span></label>
           <Input value={form.registeredBy} onChange={e => set("registeredBy", e.target.value)} placeholder="이름" />
         </div>
+      </div>
+
+      {/* ⑧ 메모사항 */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">메모사항 <span className="text-gray-400 text-xs">(선택)</span></label>
+        <textarea
+          value={form.memo}
+          onChange={e => set("memo", e.target.value)}
+          rows={2}
+          placeholder="특이사항, 사용 이력 등 자유롭게 입력"
+          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+        />
       </div>
 
       <div className="flex justify-end pt-2">
@@ -555,11 +526,10 @@ function ReregisterModal({
           width2:   remnant.width2, length2: remnant.length2,
           sourceProjectId: remnant.sourceProjectId,
           sourceVesselName: remnant.sourceVesselName,
+          sourceBlock: remnant.sourceBlock,
           location: location || null,
           registeredBy: remnant.registeredBy,
-          originalVesselName: remnant.originalVesselName,
-          drawingNo: remnant.drawingNo,
-          consultPerson: remnant.consultPerson,
+          memo: remnant.memo,
         }),
       });
       const data = await res.json();
@@ -708,15 +678,11 @@ export function RemnantManageTab({ projects }: { projects: ProjectOption[] }) {
                 {remnants.map(r => (
                   <tr key={r.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-xs font-bold text-gray-700">{r.remnantNo}</span>
-                        {r.needsConsult && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-semibold">협의필요</span>
-                        )}
-                      </div>
+                      <span className="font-mono text-xs font-bold text-gray-700">{r.remnantNo}</span>
                       <p className="text-[11px] text-gray-400 mt-0.5">
                         {new Date(r.createdAt).toLocaleDateString("ko-KR")} · {r.registeredBy}
                       </p>
+                      {r.memo && <p className="text-[11px] text-gray-400 mt-0.5 truncate max-w-[140px]" title={r.memo}>{r.memo}</p>}
                     </td>
                     <td className="px-4 py-3">
                       <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${TYPE_COLOR[r.type]}`}>
@@ -730,9 +696,10 @@ export function RemnantManageTab({ projects }: { projects: ProjectOption[] }) {
                     </td>
                     <td className="px-4 py-3 text-right text-xs font-bold text-gray-700">{r.weight.toLocaleString()} kg</td>
                     <td className="px-4 py-3 text-xs text-gray-500">
-                      {r.sourceProject
+                      <p>{r.sourceProject
                         ? `[${r.sourceProject.projectCode}] ${r.sourceProject.projectName}`
-                        : (r.sourceVesselName || "-")}
+                        : (r.sourceVesselName || "-")}</p>
+                      {r.sourceBlock && <p className="text-[11px] text-gray-400">블록 {r.sourceBlock}</p>}
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-500">{r.location || "-"}</td>
                     <td className="px-4 py-3">

@@ -51,10 +51,8 @@ export async function POST(request: NextRequest) {
     const {
       type, shape, material, thickness, weight,
       width1, length1, width2, length2,
-      sourceProjectId, sourceVesselName, location,
-      registeredBy,
-      // 등록잔재 전용
-      originalVesselName, drawingNo, consultPerson, needsConsult,
+      sourceProjectId, sourceVesselName, sourceBlock,
+      location, registeredBy, memo,
     } = body;
 
     if (!type || !shape || !material || thickness == null || weight == null || !registeredBy) {
@@ -77,13 +75,10 @@ export async function POST(request: NextRequest) {
         length2:   length2   != null ? Number(length2) : null,
         sourceProjectId: sourceProjectId || null,
         sourceVesselName: sourceVesselName?.trim() || null,
+        sourceBlock: sourceBlock?.trim() || null,
         location:  location?.trim() || null,
         registeredBy: registeredBy.trim(),
-        // 등록잔재 전용
-        originalVesselName: originalVesselName?.trim() || null,
-        drawingNo:     drawingNo?.trim() || null,
-        consultPerson: consultPerson?.trim() || null,
-        needsConsult:  type === "REGISTERED" ? true : (needsConsult ?? false),
+        memo: memo?.trim() || null,
       },
       include: {
         sourceProject: { select: { id: true, projectCode: true, projectName: true } },
