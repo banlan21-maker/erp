@@ -63,17 +63,23 @@ export async function PATCH(
 // 이 route는 PATCH로 처리: action = "exhaust_and_reregister"
 // 실제로는 별도 action 파라미터로 분기
 
-// DELETE /api/remnants/[id] — 상태를 EXHAUSTED로 변경 (물리 삭제 금지)
+// DELETE /api/remnants/[id]
+// ?force=true → 소진 상태인 잔재를 완전 물리 삭제
+// 기본 → 상태를 EXHAUSTED로 변경
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-    await prisma.remnant.update({
-      where: { id },
-      data: { status: "EXHAUSTED" },
-    });
+    const force = new URL(request.url).searchParams.get("force") === "true";
+
+    if (force) {
+      await prisma.remnant.delete({ where: { id } });
+    } else {
+      await prisma.remnant.update({ where: { id }, data: { status: "EXHAUSTED" } });
+    }
+
     return NextResponse.json({ success: true });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

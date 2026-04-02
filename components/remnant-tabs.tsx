@@ -476,7 +476,7 @@ export function RemnantRegisterTab({ projects }: { projects: ProjectOption[] }) 
 
 // ─── 수정 모달 ─────────────────────────────────────────────────────────────
 
-function EditModal({ remnant, onClose, onSaved }: { remnant: Remnant; onClose: () => void; onSaved: () => void }) {
+function EditModal({ remnant, onClose, onSaved, onPermanentDeleted }: { remnant: Remnant; onClose: () => void; onSaved: () => void; onPermanentDeleted?: () => void }) {
   const [form, setForm] = useState({
     status:    remnant.status,
     location:  remnant.location ?? "",
@@ -485,8 +485,21 @@ function EditModal({ remnant, onClose, onSaved }: { remnant: Remnant; onClose: (
     weight:    String(remnant.weight),
     memo:      remnant.memo ?? "",
   });
-  const [saving, setSaving] = useState(false);
-  const [error,  setError]  = useState<string | null>(null);
+  const [saving,   setSaving]   = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error,    setError]    = useState<string | null>(null);
+
+  const handlePermanentDelete = async () => {
+    if (!confirm(`"${remnant.remnantNo}" 잔재를 완전히 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/remnants/${remnant.id}?force=true`, { method: "DELETE" });
+      const data = await res.json();
+      if (!data.success) { setError(data.error || "삭제 실패"); return; }
+      onPermanentDeleted?.();
+    } catch { setError("서버 오류"); }
+    finally { setDeleting(false); }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -525,7 +538,6 @@ function EditModal({ remnant, onClose, onSaved }: { remnant: Remnant; onClose: (
               <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
                 className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="IN_STOCK">재고있음</option>
-                <option value="IN_USE">사용중</option>
                 <option value="EXHAUSTED">소진</option>
               </select>
             </div>
@@ -552,11 +564,23 @@ function EditModal({ remnant, onClose, onSaved }: { remnant: Remnant; onClose: (
               rows={2} placeholder="메모 입력"
               className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
           </div>
-          <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
-            <Button variant="outline" onClick={onClose}>취소</Button>
-            <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700 font-bold">
-              {saving ? "저장 중..." : "저장"}
-            </Button>
+          <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+            <div>
+              <Button
+                variant="outline"
+                onClick={handlePermanentDelete}
+                disabled={deleting}
+                className="border-red-300 text-red-600 hover:bg-red-50 font-bold"
+              >
+                {deleting ? "삭제 중..." : "완전 삭제"}
+              </Button>
+            </div>
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={onClose}>취소</Button>
+              <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700 font-bold">
+                {saving ? "저장 중..." : "저장"}
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -697,12 +721,6 @@ function DetailModal({
             <Button onClick={onReregister}
               className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 gap-1.5">
               <RotateCcw size={13} /> 잔여등록
-            </Button>
-          )}
-          {remnant.status !== "EXHAUSTED" && (
-            <Button onClick={onExhaust}
-              className="bg-red-500 hover:bg-red-600 text-white text-xs font-bold px-4 gap-1.5">
-              <Trash2 size={13} /> 삭제
             </Button>
           )}
         </div>
@@ -926,13 +944,6 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
                               <RotateCcw size={11} /> 잔여
                             </button>
                           )}
-                          {r.status !== "EXHAUSTED" && (
-                            <button
-                              onClick={e => handleExhaust(r.id, e)}
-                              className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold rounded-md bg-red-500 text-white hover:bg-red-600 transition-colors">
-                              <Trash2 size={11} /> 삭제
-                            </button>
-                          )}
                         </div>
                       </td>
                     </tr>
@@ -961,6 +972,7 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
           remnant={editItem}
           onClose={() => setEditItem(null)}
           onSaved={() => { setEditItem(null); fetchRemnants(); }}
+          onPermanentDeleted={() => { setEditItem(null); fetchRemnants(); }}
         />
       )}
 

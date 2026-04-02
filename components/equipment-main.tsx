@@ -330,17 +330,32 @@ function EditModal({
   kinds,
   onKindAdded,
   onSaved,
+  onDeleted,
   onClose,
 }: {
   eq: Equipment;
   kinds: KindPreset[];
   onKindAdded: (k: KindPreset) => void;
   onSaved: (updated: Equipment) => void;
+  onDeleted: () => void;
   onClose: () => void;
 }) {
   const [form, setForm] = useState<FormState>(equipmentToForm(eq));
-  const [saving, setSaving] = useState(false);
+  const [saving,   setSaving]   = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
+
+  const handleDelete = async () => {
+    if (!confirm(`"${eq.name}" 장비를 목록에서 완전히 제거하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
+    setDeleting(true);
+    try {
+      const res  = await fetch(`/api/mgmt-equipment/${eq.id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!json.success) { setError(json.error || "삭제 실패"); return; }
+      onDeleted();
+    } catch { setError("서버 오류"); }
+    finally { setDeleting(false); }
+  };
 
   const setField = (name: string, value: string) =>
     setForm(f => ({ ...f, [name]: value }));
@@ -483,12 +498,20 @@ function EditModal({
         </div>
 
         {/* 푸터 */}
-        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl flex justify-end gap-3 flex-shrink-0">
-          <button onClick={onClose} className="px-5 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-100">취소</button>
-          <button onClick={handleSave} disabled={saving}
-            className="px-6 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2">
-            <Save size={14} /> {saving ? "저장 중..." : "수정 저장"}
+        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl flex items-center justify-between flex-shrink-0">
+          {/* 제거 버튼 (좌측) */}
+          <button onClick={handleDelete} disabled={deleting || saving}
+            className="px-4 py-2 text-sm font-bold text-white bg-red-500 rounded-lg hover:bg-red-600 disabled:opacity-50 flex items-center gap-2">
+            <Trash2 size={14} /> {deleting ? "제거 중..." : "장비 제거"}
           </button>
+          {/* 취소 / 저장 (우측) */}
+          <div className="flex gap-3">
+            <button onClick={onClose} className="px-5 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-100">취소</button>
+            <button onClick={handleSave} disabled={saving || deleting}
+              className="px-6 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2">
+              <Save size={14} /> {saving ? "저장 중..." : "수정 저장"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -680,6 +703,10 @@ export default function EquipmentMain({
           kinds={kinds}
           onKindAdded={handleKindAdded}
           onSaved={handleSaved}
+          onDeleted={() => {
+            setEquipments(prev => prev.filter(e => e.id !== editTarget.id));
+            setEditTarget(null);
+          }}
           onClose={() => setEditTarget(null)}
         />
       )}
