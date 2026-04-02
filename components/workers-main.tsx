@@ -2,9 +2,14 @@
 
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { UserPlus, Pencil, Trash2, Users, Search, Filter, X, Save, List, Plus } from "lucide-react";
+import { UserPlus, Pencil, Trash2, Users, Search, Filter, X, Save, List, Plus, GitBranch, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import dynamic from "next/dynamic";
+import EmergencyTab from "@/components/emergency-tab";
+
+// React Flow SSR 비활성화 (브라우저 전용)
+const OrgChartTab = dynamic(() => import("@/components/org-chart-tab"), { ssr: false });
 
 const NATIONALITIES = ["한국", "태국", "미얀마", "베트남"];
 
@@ -108,7 +113,7 @@ function isForeigner(nationality: string) {
 export default function WorkersMain({ workers }: { workers: Worker[] }) {
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState<"list" | "register">("list");
+  const [activeTab, setActiveTab] = useState<"list" | "register" | "org" | "emergency">("list");
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [posFilter, setPosFilter] = useState("all");
@@ -228,6 +233,14 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
         <button onClick={() => setActiveTab("register")} className={`px-5 py-3 text-sm font-semibold flex items-center gap-2 relative transition-colors ${activeTab === "register" ? "text-blue-600" : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"}`}>
           <Plus size={16} />신규 인원 등록
           {activeTab === "register" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-md" />}
+        </button>
+        <button onClick={() => setActiveTab("org")} className={`px-5 py-3 text-sm font-semibold flex items-center gap-2 relative transition-colors ${activeTab === "org" ? "text-blue-600" : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"}`}>
+          <GitBranch size={16} />조직도
+          {activeTab === "org" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-md" />}
+        </button>
+        <button onClick={() => setActiveTab("emergency")} className={`px-5 py-3 text-sm font-semibold flex items-center gap-2 relative transition-colors ${activeTab === "emergency" ? "text-blue-600" : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"}`}>
+          <Phone size={16} />비상연락망
+          {activeTab === "emergency" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-md" />}
         </button>
       </div>
 
@@ -462,6 +475,24 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
                 </button>
               </div>
             </form>
+          </div>
+        )}
+
+        {/* 조직도 탭 */}
+        {activeTab === "org" && (
+          <div className="p-6">
+            <OrgChartTab workers={workers.map(w => ({
+              id: w.id, name: w.name, role: w.role, position: w.position, phone: w.phone, nationality: w.nationality,
+            }))} />
+          </div>
+        )}
+
+        {/* 비상연락망 탭 */}
+        {activeTab === "emergency" && (
+          <div className="p-6">
+            <EmergencyTab workers={workers.map(w => ({
+              id: w.id, name: w.name, role: w.role, position: w.position, phone: w.phone,
+            }))} />
           </div>
         )}
       </div>

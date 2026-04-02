@@ -506,6 +506,49 @@ model MgmtRepairLog {
 }
 
 // ==========================================
+// 관리 파트 — 조직도 & 비상연락망
+// ==========================================
+
+// 조직도 레이아웃 (Worker 테이블 미수정 — workerId는 plain string)
+model OrgChartNode {
+  id        String   @id @default(cuid())
+  workerId  String   @unique  // Worker.id 참조 (plain String, 인원 테이블 구조 불변)
+  x         Float    @default(0)
+  y         Float    @default(0)
+  parentId  String?  // 상위 노드의 workerId (상하관계)
+  visible   Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// 비상연락망 그룹
+model EmergencyGroup {
+  id        String             @id @default(cuid())
+  name      String
+  sortOrder Int                @default(0)
+
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  contacts  EmergencyContact[]
+}
+
+// 비상연락망 항목
+model EmergencyContact {
+  id          String         @id @default(cuid())
+  groupId     String
+  group       EmergencyGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  workerId    String?        // Worker.id 참조 (plain String, 인원 테이블 구조 불변)
+  directName  String?        // 직접 입력 이름 (외부 기관용)
+  directPhone String?        // 직접 입력 연락처 (외부 기관용)
+  sortOrder   Int            @default(0)
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+// ==========================================
 // 관리 파트 — 운송관리
 // ==========================================
 
