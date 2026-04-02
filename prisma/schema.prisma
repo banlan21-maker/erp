@@ -505,6 +505,174 @@ model MgmtRepairLog {
   createdAt   DateTime      @default(now())
 }
 
+// ==========================================
+// 관리 파트 — 운송관리
+// ==========================================
+
+enum TransportVehicleType {
+  VEHICLE    // 일반차량
+  EQUIPMENT  // 운송장비
+}
+
+enum TransportUsage {
+  IN_USE       // 사용중
+  MAINTENANCE  // 점검중
+  DISPOSED     // 폐기
+}
+
+enum TransportFactory {
+  FACTORY1  // 1공장
+  FACTORY2  // 2공장
+}
+
+enum FuelType {
+  GASOLINE  // 휘발유
+  DIESEL    // 경유
+  LPG       // LPG
+  ELECTRIC  // 전기
+}
+
+enum EquipSubType {
+  FORKLIFT  // 지게차
+  CRANE     // 크레인 차량
+  OTHER     // 기타
+}
+
+enum TransportPowerType {
+  ENGINE    // 엔진
+  ELECTRIC  // 전동
+  LPG       // LPG
+}
+
+enum ConsumableBasis {
+  MILEAGE  // 주행거리
+  PERIOD   // 기간
+  BOTH     // 둘 다
+}
+
+// 운송차량/장비 마스터
+model TransportVehicle {
+  id               String               @id @default(cuid())
+  code             String               @unique  // VEH-001 자동채번
+  vehicleType      TransportVehicleType
+  name             String               // 차량/장비명
+  plateNo          String?              // 차량번호(번호판)
+  maker            String?              // 제조사
+  modelName        String?              // 모델명
+  madeYear         Int?                 // 연식
+  acquiredAt       DateTime?            // 취득일
+  acquiredCost     Int?                 // 취득금액
+  factory          TransportFactory     // 보관 공장
+  factoryLocation  String?              // 세부 위치
+  manager          String?              // 담당자
+  usage            TransportUsage       @default(IN_USE)
+  memo             String?              // 비고
+
+  // 일반차량 전용
+  fuelType         FuelType?            // 연료 종류
+  displacement     Int?                 // 배기량 (cc)
+  mileage          Int?                 // 현재 주행거리 (km)
+  insuranceExpiry  DateTime?            // 보험 만료일
+  inspExpiry       DateTime?            // 정기검사 만료일
+
+  // 운송장비 전용
+  equipSubType     EquipSubType?        // 장비 세부 종류
+  maxLoad          Float?               // 최대 하중 (톤)
+  powerType        TransportPowerType?  // 동력 방식
+  mastHeight       Float?               // 마스트 높이 (m, 지게차)
+
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  specs            TransportVehicleSpec[]
+  consumables      TransportConsumable[]
+  consumableLogs   TransportConsumableLog[]
+  inspections      TransportInspectionItem[]
+  repairs          TransportRepairLog[]
+}
+
+// 기타 사양 (운송장비 전용)
+model TransportVehicleSpec {
+  id          String           @id @default(cuid())
+  vehicleId   String
+  vehicle     TransportVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  specKey     String
+  specValue   String
+  sortOrder   Int              @default(0)
+}
+
+// 소모품 교체 주기 (일반차량 전용)
+model TransportConsumable {
+  id                  String           @id @default(cuid())
+  vehicleId           String
+  vehicle             TransportVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  itemName            String           // 소모품명
+  basis               ConsumableBasis  // 교체 기준 종류
+  intervalKm          Int?             // 교체 기준값 (km)
+  intervalMonth       Int?             // 교체 기준값 (월)
+  lastReplacedAt      DateTime?        // 최종 교체일
+  lastReplacedMileage Int?             // 최종 교체 시 주행거리
+  nextReplaceMileage  Int?             // 다음 교체 예정 주행거리 (자동계산)
+  nextReplaceAt       DateTime?        // 다음 교체 예정일 (자동계산)
+  sortOrder           Int              @default(0)
+
+  logs                TransportConsumableLog[]
+}
+
+// 소모품 교체 이력 (누적 보관, 삭제 금지)
+model TransportConsumableLog {
+  id           String              @id @default(cuid())
+  consumableId String
+  consumable   TransportConsumable @relation(fields: [consumableId], references: [id], onDelete: Cascade)
+  vehicleId    String
+  vehicle      TransportVehicle    @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  replacedAt   DateTime            // 교체일
+  mileageAt    Int?                // 교체 시 주행거리
+  memo         String?
+
+  createdAt    DateTime            @default(now())
+}
+
+// 운송장비 정기검사 항목 (운송장비 전용)
+model TransportInspectionItem {
+  id              String           @id @default(cuid())
+  vehicleId       String
+  vehicle         TransportVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  itemName        String           // 검사 항목명
+  periodMonth     Int              // 주기 (월)
+  lastInspectedAt DateTime?        // 최종 검사일
+  nextInspectAt   DateTime?        // 다음 검사 예정일 (자동계산)
+  inspector       String?          // 담당 기관/담당자
+  memo            String?
+
+  logs            TransportInspectionLog[]
+}
+
+// 운송장비 검사 이력 (누적 보관, 삭제 금지)
+model TransportInspectionLog {
+  id          String                  @id @default(cuid())
+  itemId      String
+  item        TransportInspectionItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  completedAt DateTime
+  memo        String?
+
+  createdAt   DateTime                @default(now())
+}
+
+// 수선/정비 이력 (공통, 누적 보관, 삭제 금지)
+model TransportRepairLog {
+  id          String           @id @default(cuid())
+  vehicleId   String
+  vehicle     TransportVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  repairedAt  DateTime         // 수선일
+  content     String           // 수선 내용
+  contractor  String?          // 수선 업체/담당자
+  cost        Int?             // 비용
+  memo        String?
+
+  createdAt   DateTime         @default(now())
+}
+
 model Remnant {
   id           String        @id @default(cuid())
   remnantNo    String        @unique  // REM-2026-001 자동채번

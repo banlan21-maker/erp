@@ -35,10 +35,11 @@ const menuGroups = {
     { href: "/supply/stats",       label: "월별 사용량",        icon: BarChart2 },
   ],
   management: [
-    { href: "/management/dashboard", label: "관리 대시보드", icon: LayoutDashboard },
+    { href: "/management/dashboard",  label: "관리 대시보드", icon: LayoutDashboard },
     { href: "/management/workers",    label: "인원관리",      icon: Users },
-    { href: "/management/equipment", label: "장비관리",      icon: Wrench },
-    { href: "/management/vendors",   label: "거래처 관리",   icon: Truck },
+    { href: "/management/equipment",  label: "장비관리",      icon: Wrench },
+    { href: "/management/transport",  label: "운송관리",      icon: Truck },
+    { href: "/management/vendors",    label: "거래처 관리",   icon: Package },
   ]
 };
 
