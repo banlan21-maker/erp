@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import Sidebar, { ModuleType } from "@/components/sidebar";
 
@@ -47,9 +48,12 @@ export default function MainLayoutClient({ children }: { children: React.ReactNo
       <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 sticky top-0 z-40 shadow-sm">
         <div className="flex items-center gap-12">
           <div className="flex items-center pl-1 w-[220px] shrink-0">
-            <span className="font-bold text-[19px] tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-blue-500">
+            <Link
+              href="/"
+              className="font-bold text-[19px] tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-blue-500 hover:opacity-75 transition-opacity"
+            >
               한국테크 ERP 시스템
-            </span>
+            </Link>
           </div>
           
           <nav className="flex items-center gap-2 h-14">

@@ -506,6 +506,27 @@ model MgmtRepairLog {
 }
 
 // ==========================================
+// 랜딩페이지 — 공지사항 & 전달사항
+// ==========================================
+
+enum NoticeCategory {
+  NOTICE      // 공지사항
+  MANAGEMENT  // 경영진/관리자 전달사항
+}
+
+model Notice {
+  id        String         @id @default(cuid())
+  category  NoticeCategory
+  title     String
+  content   String
+  author    String
+  isPinned  Boolean        @default(false)
+
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+}
+
+// ==========================================
 // 관리 파트 — 조직도 & 비상연락망
 // ==========================================
 
