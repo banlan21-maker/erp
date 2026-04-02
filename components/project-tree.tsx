@@ -82,7 +82,7 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
               <div>
                 {/* ── 전체 강재리스트 링크 ── */}
                 <Link
-                  href={`/projects/vessel/${encodeURIComponent(vessel.code)}`}
+                  href={`/cutpart/projects/vessel/${encodeURIComponent(vessel.code)}`}
                   className="flex items-center gap-2 px-6 py-2 bg-gray-50 border-b hover:bg-blue-50 transition-colors group"
                 >
                   <span className="w-3 h-3 border-l-2 border-b-2 border-gray-300 inline-block ml-1 mr-1 flex-shrink-0" />
@@ -110,7 +110,7 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
 
                           {/* 블록명 클릭 → 상세 */}
                           <Link
-                            href={`/projects/${block.id}`}
+                            href={`/cutpart/projects/${block.id}`}
                             className="text-sm font-semibold text-gray-800 hover:text-blue-600 hover:underline"
                           >
                             {block.projectName}
@@ -134,7 +134,7 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
                         {/* 강재리스트 수 + 등록일 + 삭제 */}
                         <div className="flex items-center gap-3 ml-auto flex-shrink-0">
                           <Link
-                            href={`/projects/${block.id}`}
+                            href={`/cutpart/projects/${block.id}`}
                             className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600"
                           >
                             <FileSpreadsheet size={12} />
@@ -155,7 +155,7 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
 
                 {/* ── 블록 추가 버튼 ── */}
                 <Link
-                  href={`/projects/new?code=${encodeURIComponent(vessel.code)}`}
+                  href={`/cutpart/projects/new?code=${encodeURIComponent(vessel.code)}`}
                   className="flex items-center gap-2 px-6 py-2 text-xs text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors border-t"
                 >
                   <span className="w-3 ml-1 mr-1" />
