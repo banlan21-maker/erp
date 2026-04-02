@@ -142,11 +142,23 @@ const INIT_FORM = {
 
 export function RemnantRegisterTab({ projects }: { projects: ProjectOption[] }) {
   const [form,   setForm]   = useState({ ...INIT_FORM });
-  const [saving, setSaving] = useState(false);
-  const [error,  setError]  = useState<string | null>(null);
-  const [ok,     setOk]     = useState(false);
+  const [saving,        setSaving]        = useState(false);
+  const [error,         setError]         = useState<string | null>(null);
+  const [ok,            setOk]            = useState(false);
+  const [projectBlocks, setProjectBlocks] = useState<string[]>([]);
 
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  // 프로젝트 선택 시 블록 목록 조회
+  const handleProjectChange = async (projectId: string) => {
+    setForm(f => ({ ...f, sourceProjectId: projectId, sourceBlock: "" }));
+    if (!projectId) { setProjectBlocks([]); return; }
+    try {
+      const res  = await fetch(`/api/projects/blocks?projectId=${projectId}`);
+      const data = await res.json();
+      setProjectBlocks(data.success ? data.data : []);
+    } catch { setProjectBlocks([]); }
+  };
 
   // 중량 자동계산
   const autoWeight = calcWeight(
@@ -348,7 +360,7 @@ export function RemnantRegisterTab({ projects }: { projects: ProjectOption[] }) 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs text-gray-500 mb-1">기존 호선 연결</label>
-            <select value={form.sourceProjectId} onChange={e => set("sourceProjectId", e.target.value)}
+            <select value={form.sourceProjectId} onChange={e => handleProjectChange(e.target.value)}
               className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="">-- 없음 --</option>
               {projects.map(p => (
@@ -356,16 +368,36 @@ export function RemnantRegisterTab({ projects }: { projects: ProjectOption[] }) 
               ))}
             </select>
           </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">호선명 직접 입력</label>
-            <Input value={form.sourceVesselName} onChange={e => set("sourceVesselName", e.target.value)}
-              placeholder="예: 4560호" disabled={!!form.sourceProjectId} />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">블록 번호</label>
-            <Input value={form.sourceBlock} onChange={e => set("sourceBlock", e.target.value)}
-              placeholder="예: 101-1" />
-          </div>
+
+          {/* 호선 선택 시 블록이 있으면 블록 드롭다운, 없으면 숨김 */}
+          {form.sourceProjectId && projectBlocks.length > 0 && (
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">블록 선택</label>
+              <select value={form.sourceBlock} onChange={e => set("sourceBlock", e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">-- 전체 --</option>
+                {projectBlocks.map(b => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* 기존 호선 미선택 시 직접 입력 */}
+          {!form.sourceProjectId && (
+            <>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">호선명 직접 입력</label>
+                <Input value={form.sourceVesselName} onChange={e => set("sourceVesselName", e.target.value)}
+                  placeholder="예: 4560호" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">블록 번호 직접 입력</label>
+                <Input value={form.sourceBlock} onChange={e => set("sourceBlock", e.target.value)}
+                  placeholder="예: 101-1" />
+              </div>
+            </>
+          )}
         </div>
       </div>
 
