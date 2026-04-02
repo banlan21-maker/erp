@@ -104,7 +104,7 @@ export default async function DashboardPage() {
         <Card>
           <CardHeader className="pb-3 flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-semibold text-gray-700">최근 등록 블록</CardTitle>
-            <Link href="/projects" className="text-xs text-blue-600 hover:underline">전체보기</Link>
+            <Link href="/cutpart/projects" className="text-xs text-blue-600 hover:underline">전체보기</Link>
           </CardHeader>
           <CardContent>
             {recentProjects.length === 0 ? (
@@ -114,7 +114,7 @@ export default async function DashboardPage() {
                 {recentProjects.map((p) => (
                   <Link
                     key={p.id}
-                    href={`/projects/${p.id}`}
+                    href={`/cutpart/projects/${p.id}`}
                     className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 transition-colors"
                   >
                     <span className={`text-xs px-1.5 py-0.5 rounded font-bold ${TYPE_COLOR[p.type]}`}>
@@ -139,7 +139,7 @@ export default async function DashboardPage() {
         <Card>
           <CardHeader className="pb-3 flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-semibold text-gray-700">최근 등록 강재</CardTitle>
-            <Link href="/drawings" className="text-xs text-blue-600 hover:underline">전체보기</Link>
+            <Link href="/cutpart/drawings" className="text-xs text-blue-600 hover:underline">전체보기</Link>
           </CardHeader>
           <CardContent>
             {recentDrawings.length === 0 ? (
@@ -149,7 +149,7 @@ export default async function DashboardPage() {
                 {recentDrawings.map((d) => (
                   <Link
                     key={d.id}
-                    href={`/projects/${d.project.id}`}
+                    href={`/cutpart/projects/${d.project.id}`}
                     className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 transition-colors"
                   >
                     <span className="text-xs px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded font-mono">

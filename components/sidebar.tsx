@@ -20,13 +20,13 @@ interface SidebarProps {
 
 const menuGroups = {
   cnc: [
-    { href: "/dashboard", label: "절단 대시보드",  icon: LayoutDashboard },
-    { href: "/projects",  label: "프로젝트",       icon: FolderOpen },
-    { href: "/drawings",  label: "강재관리",       icon: FileSpreadsheet },
-    { href: "/worklog",    label: "작업일보",       icon: ClipboardList },
-    { href: "/reports",    label: "보고서",         icon: BarChart2 },
-    { href: "/schedule",   label: "스케줄 생성",    icon: CalendarDays },
-    { href: "/schedule/view", label: "스케줄 확인", icon: Eye },
+    { href: "/cutpart/dashboard",      label: "절단 대시보드",  icon: LayoutDashboard },
+    { href: "/cutpart/projects",       label: "프로젝트",       icon: FolderOpen },
+    { href: "/cutpart/drawings",       label: "강재관리",       icon: FileSpreadsheet },
+    { href: "/cutpart/worklog",        label: "작업일보",       icon: ClipboardList },
+    { href: "/cutpart/reports",        label: "보고서",         icon: BarChart2 },
+    { href: "/cutpart/schedule",       label: "스케줄 생성",    icon: CalendarDays },
+    { href: "/cutpart/schedule/view",  label: "스케줄 확인",    icon: Eye },
   ],
   material: [
     { href: "/supply/dashboard",   label: "구매/자재 대시보드", icon: LayoutDashboard },
@@ -36,7 +36,7 @@ const menuGroups = {
   ],
   management: [
     { href: "/management/dashboard", label: "관리 대시보드", icon: LayoutDashboard },
-    { href: "/workers",              label: "인원관리",      icon: Users },
+    { href: "/management/workers",    label: "인원관리",      icon: Users },
     { href: "/management/equipment", label: "장비관리",      icon: Wrench },
     { href: "/management/vendors",   label: "거래처 관리",   icon: Truck },
   ]
@@ -89,7 +89,7 @@ export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
       <nav className="flex-1 px-2 py-4 space-y-1">
         {items.map(({ href, label, icon: Icon }) => {
           const isActive = pathname === href ||
-            (href !== "/dashboard" &&
+            (href !== "/cutpart/dashboard" &&
              pathname.startsWith(href) &&
              !items.some(other => other.href !== href && other.href.startsWith(href) && pathname.startsWith(other.href)));
           return (

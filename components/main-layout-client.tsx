@@ -8,7 +8,7 @@ import Sidebar, { ModuleType } from "@/components/sidebar";
 type SidebarMode = "full" | "mini" | "hidden";
 
 const moduleDashboardMap: Record<ModuleType, string> = {
-  cnc: "/dashboard",
+  cnc: "/cutpart/dashboard",
   material: "/supply/dashboard",
   management: "/management/dashboard",
 };

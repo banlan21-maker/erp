@@ -33,7 +33,7 @@ export default async function VesselDrawingsPage({
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Link href="/projects">
+        <Link href="/cutpart/projects">
           <Button variant="ghost" size="sm" className="flex items-center gap-1 text-gray-500">
             <ArrowLeft size={14} /> 목록
           </Button>
@@ -53,7 +53,7 @@ export default async function VesselDrawingsPage({
         {projects.map((p) => (
           <Link
             key={p.id}
-            href={`/projects/${p.id}`}
+            href={`/cutpart/projects/${p.id}`}
             className="flex items-center gap-2 px-3 py-1.5 bg-white border rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors text-sm"
           >
             <span className="font-semibold text-gray-800">{p.projectName}</span>
@@ -70,7 +70,7 @@ export default async function VesselDrawingsPage({
               블록 [{p.projectName}]
             </h3>
             <span className="text-xs text-gray-400">{p.drawingLists.length}행</span>
-            <Link href={`/projects/${p.id}`} className="text-xs text-blue-500 hover:underline ml-auto">
+            <Link href={`/cutpart/projects/${p.id}`} className="text-xs text-blue-500 hover:underline ml-auto">
               상세 →
             </Link>
           </div>

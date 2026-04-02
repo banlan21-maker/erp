@@ -39,7 +39,7 @@ export default async function ProjectDetailPage({
       {/* 헤더 */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
-          <Link href="/projects">
+          <Link href="/cutpart/projects">
             <Button variant="ghost" size="sm" className="flex items-center gap-1 text-gray-500">
               <ArrowLeft size={14} /> 목록
             </Button>
@@ -70,7 +70,7 @@ export default async function ProjectDetailPage({
 
       {/* 강재리스트 바로가기 */}
       <Link
-        href={`/drawings?tab=list&projectId=${project.id}`}
+        href={`/cutpart/drawings?tab=list&projectId=${project.id}`}
         className="flex items-center justify-between bg-white border rounded-xl px-5 py-4 hover:bg-blue-50 transition-colors group"
       >
         <div className="flex items-center gap-3">

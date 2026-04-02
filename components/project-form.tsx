@@ -50,7 +50,7 @@ export default function ProjectForm({ defaultCode }: { defaultCode?: string }) {
         return;
       }
 
-      router.push(`/projects/${data.data.id}`);
+      router.push(`/cutpart/projects/${data.data.id}`);
       router.refresh();
     } catch {
       setError("서버 연결 오류가 발생했습니다.");

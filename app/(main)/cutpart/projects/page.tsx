@@ -59,7 +59,7 @@ export default async function ProjectsPage() {
         </div>
         <div className="flex items-center gap-2">
           <UrgentRegisterButton projects={projectsForButton} />
-          <Link href="/projects/new">
+          <Link href="/cutpart/projects/new">
             <Button className="flex items-center gap-2">
               <Plus size={16} /> 호선 등록
             </Button>

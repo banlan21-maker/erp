@@ -115,7 +115,7 @@ export default function WorkOrderForm({
         return;
       }
 
-      router.push("/workorders");
+      router.push("/cutpart/workorders");
       router.refresh();
     } catch {
       setError("서버 연결 오류가 발생했습니다.");

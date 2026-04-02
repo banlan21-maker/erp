@@ -45,7 +45,7 @@ export default async function WorkOrdersPage() {
           <h2 className="text-2xl font-bold text-gray-900">작업지시</h2>
           <p className="text-sm text-gray-500 mt-0.5">전체 {workOrders.length}건</p>
         </div>
-        <Link href="/workorders/new">
+        <Link href="/cutpart/workorders/new">
           <Button className="flex items-center gap-2">
             <Plus size={16} /> 작업지시 생성
           </Button>

@@ -72,7 +72,7 @@ export default function DrawingsMain({
 }) {
   const router = useRouter();
 
-  const goTab = (t: string) => router.push(`/drawings?tab=${t}`);
+  const goTab = (t: string) => router.push(`/cutpart/drawings?tab=${t}`);
 
   return (
     <div className="space-y-4">
@@ -395,7 +395,7 @@ function UploadTab({
           <div className="text-center py-6 text-gray-400 border-2 border-dashed rounded-xl">
             <FolderOpen size={28} className="mx-auto mb-2 opacity-50" />
             <p className="text-sm">등록된 호선이 없습니다.</p>
-            <Link href="/projects/new" className="text-xs text-blue-500 hover:underline mt-1 inline-block">호선 먼저 등록하기 →</Link>
+            <Link href="/cutpart/projects/new" className="text-xs text-blue-500 hover:underline mt-1 inline-block">호선 먼저 등록하기 →</Link>
           </div>
         ) : (
           <div className="space-y-4">
@@ -548,7 +548,7 @@ function UploadTab({
             {recentUploads.map((u) => (
               <Link
                 key={u.projectId}
-                href={`/drawings?tab=list&projectId=${u.projectId}`}
+                href={`/cutpart/drawings?tab=list&projectId=${u.projectId}`}
                 className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 <FileSpreadsheet size={14} className="text-green-500 flex-shrink-0" />
@@ -621,7 +621,7 @@ function ListTab({
       <div className="space-y-4">
         <div className="flex items-center gap-3 flex-wrap">
           <button
-            onClick={() => router.push("/drawings?tab=list")}
+            onClick={() => router.push("/cutpart/drawings?tab=list")}
             className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft size={15} /> 목록으로
@@ -684,7 +684,7 @@ function ListTab({
       <div className="text-center py-16 text-gray-400 bg-white rounded-xl border text-sm">
         <FolderOpen size={28} className="mx-auto mb-2 opacity-50" />
         <p>등록된 호선이 없습니다.</p>
-        <Link href="/projects/new" className="text-xs text-blue-500 hover:underline mt-1 inline-block">호선 먼저 등록하기 →</Link>
+        <Link href="/cutpart/projects/new" className="text-xs text-blue-500 hover:underline mt-1 inline-block">호선 먼저 등록하기 →</Link>
       </div>
     );
   }
@@ -700,7 +700,7 @@ function ListTab({
             {blocks.map((p) => (
               <Link
                 key={p.id}
-                href={`/drawings?tab=list&projectId=${p.id}`}
+                href={`/cutpart/drawings?tab=list&projectId=${p.id}`}
                 className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition-colors group"
               >
                 <FileSpreadsheet size={15} className="text-gray-400 group-hover:text-blue-500 flex-shrink-0" />

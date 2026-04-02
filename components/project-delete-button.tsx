@@ -16,7 +16,7 @@ export default function ProjectDeleteButton({ projectId, projectCode }: { projec
       const res = await fetch(`/api/projects/${projectId}`, { method: "DELETE" });
       const data = await res.json();
       if (data.success) {
-        router.push("/projects");
+        router.push("/cutpart/projects");
         router.refresh();
       } else {
         alert(data.error ?? "삭제 실패");

@@ -260,7 +260,7 @@ export default function WorklogMain({
             {new Date().toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "long" })}
           </p>
         </div>
-        <Link href="/equipment" className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600">
+        <Link href="/cutpart/equipment" className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600">
           <Settings size={13} /> 장비 설정
         </Link>
       </div>
@@ -268,7 +268,7 @@ export default function WorklogMain({
       {equipment.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-xl border text-gray-400">
           <p>등록된 장비가 없습니다.</p>
-          <Link href="/equipment" className="text-sm text-blue-500 hover:underline mt-2 inline-block">장비 등록하기 →</Link>
+          <Link href="/cutpart/equipment" className="text-sm text-blue-500 hover:underline mt-2 inline-block">장비 등록하기 →</Link>
         </div>
       ) : (
         <div className="flex gap-5 items-start">
@@ -384,7 +384,7 @@ export default function WorklogMain({
                     <Label className="text-xs text-gray-600 flex items-center gap-1"><User size={11} /> 작업자 선택</Label>
                     {workers.length === 0 ? (
                       <p className="text-xs text-gray-400">
-                        <Link href="/workers" className="text-blue-500 hover:underline">인원관리</Link>에서 먼저 등록하세요.
+                        <Link href="/management/workers" className="text-blue-500 hover:underline">인원관리</Link>에서 먼저 등록하세요.
                       </p>
                     ) : (
                       <Select value={step1.operatorId} onValueChange={(v) => setStep1((s) => ({ ...s, operatorId: (v ?? "") === "__none__" ? "" : (v ?? "") }))}>
