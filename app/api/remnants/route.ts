@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const {
+      remnantNo: customNo,
       type, shape, material, thickness, weight,
       width1, length1, width2, length2,
       sourceProjectId, sourceVesselName, sourceBlock,
@@ -59,7 +60,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "필수 항목이 누락됐습니다." }, { status: 400 });
     }
 
-    const remnantNo = await generateRemnantNo();
+    // 잔재번호: 사용자 입력 우선, 없으면 자동채번
+    let remnantNo: string;
+    if (customNo?.trim()) {
+      const exists = await prisma.remnant.findUnique({ where: { remnantNo: customNo.trim() } });
+      if (exists) return NextResponse.json({ success: false, error: `잔재번호 '${customNo.trim()}'이 이미 사용 중입니다.` }, { status: 409 });
+      remnantNo = customNo.trim();
+    } else {
+      remnantNo = await generateRemnantNo();
+    }
 
     const remnant = await prisma.remnant.create({
       data: {

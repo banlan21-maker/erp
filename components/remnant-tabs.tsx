@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  Plus, RefreshCw, X, Save, AlertTriangle, Edit2,
-  Package, Archive, Filter,
+  RefreshCw, X, Save, AlertTriangle, Edit2,
+  Package, Archive, Filter, StickyNote, Trash2, Search, RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +54,30 @@ const STATUS_COLOR: Record<string, string>= {
   IN_USE:    "bg-yellow-100 text-yellow-700",
   EXHAUSTED: "bg-gray-100 text-gray-500",
 };
+
+// ─── 표시 헬퍼 ────────────────────────────────────────────────────────────
+
+function sizeText(r: Remnant): string {
+  if (r.shape === "RECTANGLE") {
+    return (r.width1 && r.length1) ? `${r.width1}×${r.length1}` : "-";
+  }
+  if (r.shape === "L_SHAPE") {
+    const full = (r.width1 && r.length1) ? `${r.width1}×${r.length1}` : "";
+    const cut  = (r.width2 && r.length2) ? `(절${r.width2}×${r.length2})` : "";
+    return full ? `${full} ${cut}`.trim() : "-";
+  }
+  if (r.shape === "IRREGULAR") {
+    return (r.width1 && r.length1) ? `최대 ${r.width1}×${r.length1}` : "-";
+  }
+  return "-";
+}
+
+function sourceInfo(r: Remnant): { vessel: string; block: string } {
+  const vessel = r.sourceProject
+    ? `[${r.sourceProject.projectCode}] ${r.sourceProject.projectName}`
+    : (r.sourceVesselName || "");
+  return { vessel: vessel || "-", block: r.sourceBlock || "" };
+}
 
 // 재질 비중 (g/mm³)
 const DENSITY: Record<string, number> = {
@@ -132,6 +156,7 @@ function LShapeDiagram() {
 // ─── 잔재 등록 폼 ──────────────────────────────────────────────────────────
 
 const INIT_FORM = {
+  remnantNo: "",
   type: "REMNANT", shape: "RECTANGLE",
   material: "", thickness: "",
   width1: "", length1: "", width2: "", length2: "",
@@ -190,6 +215,7 @@ export function RemnantRegisterTab({ projects }: { projects: ProjectOption[] }) 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          remnantNo: form.remnantNo.trim() || null,
           type: form.type, shape: form.shape,
           material: form.material, thickness: form.thickness,
           weight,
@@ -232,7 +258,20 @@ export function RemnantRegisterTab({ projects }: { projects: ProjectOption[] }) 
         </div>
       )}
 
-      {/* ① 종류 */}
+      {/* ① 잔재번호 */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+          잔재번호 <span className="text-gray-400 text-xs">(비워두면 자동 부여)</span>
+        </label>
+        <Input
+          value={form.remnantNo}
+          onChange={e => set("remnantNo", e.target.value)}
+          placeholder="예: REM-2026-001  또는  현장-001"
+          className="font-mono"
+        />
+      </div>
+
+      {/* ② 종류 */}
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-2">종류 <span className="text-red-500">*</span></label>
         <div className="flex gap-3 flex-wrap">
@@ -435,22 +474,16 @@ export function RemnantRegisterTab({ projects }: { projects: ProjectOption[] }) 
   );
 }
 
-// ─── 잔재 관리 탭 ──────────────────────────────────────────────────────────
+// ─── 수정 모달 ─────────────────────────────────────────────────────────────
 
-interface EditModalProps {
-  remnant: Remnant;
-  projects: ProjectOption[];
-  onClose: () => void;
-  onSaved: () => void;
-}
-
-function EditModal({ remnant, projects, onClose, onSaved }: EditModalProps) {
+function EditModal({ remnant, onClose, onSaved }: { remnant: Remnant; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState({
-    status:   remnant.status,
-    location: remnant.location ?? "",
-    material: remnant.material,
+    status:    remnant.status,
+    location:  remnant.location ?? "",
+    material:  remnant.material,
     thickness: String(remnant.thickness),
-    weight:   String(remnant.weight),
+    weight:    String(remnant.weight),
+    memo:      remnant.memo ?? "",
   });
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState<string | null>(null);
@@ -458,15 +491,16 @@ function EditModal({ remnant, projects, onClose, onSaved }: EditModalProps) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const res  = await fetch(`/api/remnants/${remnant.id}`, {
+      const res = await fetch(`/api/remnants/${remnant.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          status:   form.status,
-          location: form.location || null,
-          material: form.material,
+          status:    form.status,
+          location:  form.location  || null,
+          material:  form.material,
           thickness: form.thickness,
-          weight:   form.weight,
+          weight:    form.weight,
+          memo:      form.memo || null,
         }),
       });
       const data = await res.json();
@@ -477,7 +511,7 @@ function EditModal({ remnant, projects, onClose, onSaved }: EditModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
         <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50 rounded-t-xl">
           <h3 className="font-bold text-base">{remnant.remnantNo} 수정</h3>
@@ -512,6 +546,12 @@ function EditModal({ remnant, projects, onClose, onSaved }: EditModalProps) {
               <Input type="number" step="0.01" value={form.weight} onChange={e => setForm(f => ({ ...f, weight: e.target.value }))} />
             </div>
           </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">메모사항</label>
+            <textarea value={form.memo} onChange={e => setForm(f => ({ ...f, memo: e.target.value }))}
+              rows={2} placeholder="메모 입력"
+              className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+          </div>
           <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
             <Button variant="outline" onClick={onClose}>취소</Button>
             <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700 font-bold">
@@ -526,9 +566,7 @@ function EditModal({ remnant, projects, onClose, onSaved }: EditModalProps) {
 
 // ─── 잔여분 재등록 모달 ────────────────────────────────────────────────────
 
-function ReregisterModal({
-  remnant, onClose, onSaved,
-}: { remnant: Remnant; onClose: () => void; onSaved: () => void }) {
+function ReregisterModal({ remnant, onClose, onSaved }: { remnant: Remnant; onClose: () => void; onSaved: () => void }) {
   const [weight,   setWeight]   = useState("");
   const [location, setLocation] = useState(remnant.location ?? "");
   const [saving,   setSaving]   = useState(false);
@@ -538,24 +576,17 @@ function ReregisterModal({
     if (!weight || Number(weight) <= 0) { setError("남은 중량을 입력해주세요."); return; }
     setSaving(true);
     try {
-      // 1. 기존 잔재 소진 처리
       await fetch(`/api/remnants/${remnant.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "EXHAUSTED" }),
       });
-      // 2. 새 잔재 등록 (동일 속성, 새 중량·번호)
-      const res  = await fetch("/api/remnants", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch("/api/remnants", {
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type:     remnant.type,
-          shape:    remnant.shape,
-          material: remnant.material,
-          thickness: remnant.thickness,
-          weight:   Number(weight),
-          width1:   remnant.width1, length1: remnant.length1,
-          width2:   remnant.width2, length2: remnant.length2,
+          type: remnant.type, shape: remnant.shape, material: remnant.material,
+          thickness: remnant.thickness, weight: Number(weight),
+          width1: remnant.width1, length1: remnant.length1,
+          width2: remnant.width2, length2: remnant.length2,
           sourceProjectId: remnant.sourceProjectId,
           sourceVesselName: remnant.sourceVesselName,
           sourceBlock: remnant.sourceBlock,
@@ -572,7 +603,7 @@ function ReregisterModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm">
         <div className="px-5 py-4 border-b flex items-center justify-between bg-gray-50 rounded-t-xl">
           <h3 className="font-bold text-sm">잔여분 재등록</h3>
@@ -603,16 +634,95 @@ function ReregisterModal({
   );
 }
 
+// ─── 상세 모달 ─────────────────────────────────────────────────────────────
+
+function DetailRow({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div>
+      <p className="text-[11px] text-gray-400 mb-0.5">{label}</p>
+      <p className="text-sm text-gray-800 font-medium">{value}</p>
+      {sub && <p className="text-[11px] text-gray-400 mt-0.5">{sub}</p>}
+    </div>
+  );
+}
+
+function DetailModal({
+  remnant, onClose, onEdit, onReregister, onExhaust,
+}: { remnant: Remnant; onClose: () => void; onEdit: () => void; onReregister: () => void; onExhaust: () => void }) {
+  const src = sourceInfo(remnant);
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+        {/* 헤더 */}
+        <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50 rounded-t-xl">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-mono font-bold text-gray-800 text-base">{remnant.remnantNo}</span>
+            <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-semibold ${TYPE_COLOR[remnant.type]}`}>{TYPE_LABEL[remnant.type]}</span>
+            <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-semibold ${STATUS_COLOR[remnant.status]}`}>{STATUS_LABEL[remnant.status]}</span>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-full ml-2"><X size={16} /></button>
+        </div>
+
+        {/* 본문 */}
+        <div className="p-6 space-y-5">
+          <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+            <DetailRow label="형태" value={SHAPE_LABEL[remnant.shape] ?? remnant.shape} />
+            <DetailRow label="재질" value={remnant.material} />
+            <DetailRow label="두께" value={`${remnant.thickness} mm`} />
+            <DetailRow label="사이즈 (mm)" value={sizeText(remnant)} />
+            <DetailRow label="중량" value={`${remnant.weight.toLocaleString()} kg`} />
+            <DetailRow label="발생 출처" value={src.vessel} sub={src.block ? `블록: ${src.block}` : undefined} />
+            <DetailRow label="보관 위치" value={remnant.location || "-"} />
+            <DetailRow label="등록자" value={remnant.registeredBy} />
+            <DetailRow label="등록일" value={new Date(remnant.createdAt).toLocaleDateString("ko-KR")} />
+          </div>
+
+          {/* 메모 */}
+          <div className="border-t pt-4">
+            <p className="text-xs font-semibold text-gray-500 mb-2">메모사항</p>
+            {remnant.memo
+              ? <p className="text-sm text-gray-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 leading-relaxed whitespace-pre-wrap">{remnant.memo}</p>
+              : <p className="text-xs text-gray-400 italic">메모 없음</p>
+            }
+          </div>
+        </div>
+
+        {/* 액션 버튼 */}
+        <div className="px-6 pb-5 pt-2 flex gap-2 justify-end border-t border-gray-100">
+          <Button onClick={onEdit}
+            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 gap-1.5">
+            <Edit2 size={13} /> 수정
+          </Button>
+          {remnant.status !== "EXHAUSTED" && (
+            <Button onClick={onReregister}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 gap-1.5">
+              <RotateCcw size={13} /> 잔여등록
+            </Button>
+          )}
+          {remnant.status !== "EXHAUSTED" && (
+            <Button onClick={onExhaust}
+              className="bg-red-500 hover:bg-red-600 text-white text-xs font-bold px-4 gap-1.5">
+              <Trash2 size={13} /> 삭제
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── 잔재 관리 탭 (목록) ───────────────────────────────────────────────────
 
-export function RemnantManageTab({ projects }: { projects: ProjectOption[] }) {
-  const [remnants,  setRemnants]  = useState<Remnant[]>([]);
-  const [loading,   setLoading]   = useState(true);
-  const [status,    setStatus]    = useState("IN_STOCK");
-  const [typeF,     setTypeF]     = useState("");
-  const [shapeF,    setShapeF]    = useState("");
-  const [editItem,  setEditItem]  = useState<Remnant | null>(null);
-  const [reregItem, setReregItem] = useState<Remnant | null>(null);
+export function RemnantManageTab({ projects: _projects }: { projects: ProjectOption[] }) {
+  const [remnants,    setRemnants]    = useState<Remnant[]>([]);
+  const [loading,     setLoading]     = useState(true);
+  const [status,      setStatus]      = useState("IN_STOCK");
+  const [typeF,       setTypeF]       = useState("");
+  const [shapeF,      setShapeF]      = useState("");
+  const [search,      setSearch]      = useState("");
+  const [detailItem,  setDetailItem]  = useState<Remnant | null>(null);
+  const [editItem,    setEditItem]    = useState<Remnant | null>(null);
+  const [reregItem,   setReregItem]   = useState<Remnant | null>(null);
 
   const fetchRemnants = useCallback(async () => {
     setLoading(true);
@@ -630,18 +740,35 @@ export function RemnantManageTab({ projects }: { projects: ProjectOption[] }) {
 
   useEffect(() => { fetchRemnants(); }, [fetchRemnants]);
 
-  const handleExhaust = async (id: string) => {
-    if (!confirm("이 잔재를 소진 처리하시겠습니까?")) return;
+  // 검색 필터 (클라이언트)
+  const filtered = remnants.filter(r => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      r.remnantNo.toLowerCase().includes(q) ||
+      r.material.toLowerCase().includes(q) ||
+      (r.sourceVesselName  ?? "").toLowerCase().includes(q) ||
+      (r.sourceProject?.projectName ?? "").toLowerCase().includes(q) ||
+      (r.sourceBlock ?? "").toLowerCase().includes(q) ||
+      (r.location    ?? "").toLowerCase().includes(q) ||
+      (r.registeredBy ?? "").toLowerCase().includes(q) ||
+      (r.memo ?? "").toLowerCase().includes(q)
+    );
+  });
+
+  const handleExhaust = async (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!confirm("이 잔재를 소진(삭제) 처리하시겠습니까?")) return;
     await fetch(`/api/remnants/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "EXHAUSTED" }),
     });
+    setDetailItem(null);
     fetchRemnants();
   };
 
-  const filterBtn = (val: string, cur: string, set: (v: string) => void, label: string) => (
-    <button key={val} onClick={() => set(cur === val ? "" : val)}
+  const filterBtn = (val: string, cur: string, setter: (v: string) => void, label: string) => (
+    <button key={val} onClick={() => setter(cur === val ? "" : val)}
       className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
         cur === val ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
       }`}>
@@ -655,28 +782,36 @@ export function RemnantManageTab({ projects }: { projects: ProjectOption[] }) {
       <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs font-semibold text-gray-500 flex items-center gap-1"><Filter size={11} /> 상태</span>
-          {[["IN_STOCK","재고있음"],["IN_USE","사용중"],["EXHAUSTED","소진"]].map(([v, l]) =>
-            filterBtn(v, status, setStatus, l)
-          )}
+          {[["IN_STOCK","재고있음"],["IN_USE","사용중"],["EXHAUSTED","소진"]].map(([v,l]) => filterBtn(v, status, setStatus, l))}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs font-semibold text-gray-500 flex items-center gap-1"><Filter size={11} /> 종류</span>
-          {Object.entries(TYPE_LABEL).map(([v, l]) => filterBtn(v, typeF, setTypeF, l))}
+          {Object.entries(TYPE_LABEL).map(([v,l]) => filterBtn(v, typeF, setTypeF, l))}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs font-semibold text-gray-500 flex items-center gap-1"><Filter size={11} /> 형태</span>
-          {Object.entries(SHAPE_LABEL).map(([v, l]) => filterBtn(v, shapeF, setShapeF, l))}
+          {Object.entries(SHAPE_LABEL).map(([v,l]) => filterBtn(v, shapeF, setShapeF, l))}
         </div>
       </div>
 
-      {/* 목록 */}
+      {/* 목록 카드 */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
-          <span className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-            <Package size={14} className="text-blue-500" />
-            잔재 목록 ({remnants.length}건)
+        {/* 헤더: 검색 + 새로고침 */}
+        <div className="px-4 py-3 border-b bg-gray-50 flex items-center gap-3">
+          <Package size={14} className="text-blue-500 shrink-0" />
+          <span className="text-sm font-semibold text-gray-700 shrink-0">
+            잔재 목록 ({filtered.length}/{remnants.length}건)
           </span>
-          <Button variant="outline" size="sm" onClick={fetchRemnants} className="text-xs">
+          <div className="relative flex-1 max-w-xs">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="잔재번호·재질·호선·위치 검색"
+              className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+          </div>
+          <Button variant="outline" size="sm" onClick={fetchRemnants} className="text-xs shrink-0 ml-auto">
             <RefreshCw size={12} className="mr-1" /> 새로고침
           </Button>
         </div>
@@ -685,90 +820,158 @@ export function RemnantManageTab({ projects }: { projects: ProjectOption[] }) {
           <div className="flex justify-center py-12 text-gray-400 gap-2">
             <RefreshCw className="animate-spin" size={18} /> 불러오는 중...
           </div>
-        ) : remnants.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div className="text-center py-12 text-gray-400">
             <Package size={32} className="mx-auto mb-2 opacity-30" />
-            <p className="text-sm">해당하는 잔재가 없습니다.</p>
+            <p className="text-sm">{search ? "검색 결과가 없습니다." : "해당하는 잔재가 없습니다."}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left whitespace-nowrap">
-              <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+              <thead className="bg-gray-50 border-b text-[11px] text-gray-500 uppercase tracking-wide">
                 <tr>
                   <th className="px-4 py-2.5">잔재번호</th>
-                  <th className="px-4 py-2.5">종류</th>
-                  <th className="px-4 py-2.5">형태</th>
-                  <th className="px-4 py-2.5">재질·두께</th>
-                  <th className="px-4 py-2.5 text-right">중량</th>
-                  <th className="px-4 py-2.5">출처</th>
-                  <th className="px-4 py-2.5">위치</th>
-                  <th className="px-4 py-2.5">상태</th>
-                  <th className="px-4 py-2.5 text-center">액션</th>
+                  <th className="px-3 py-2.5">종류</th>
+                  <th className="px-3 py-2.5">형태</th>
+                  <th className="px-3 py-2.5">재질</th>
+                  <th className="px-3 py-2.5 text-right">두께</th>
+                  <th className="px-3 py-2.5">사이즈(mm)</th>
+                  <th className="px-3 py-2.5 text-right">중량</th>
+                  <th className="px-3 py-2.5">출처</th>
+                  <th className="px-3 py-2.5">위치</th>
+                  <th className="px-3 py-2.5">상태</th>
+                  <th className="px-3 py-2.5 text-center">메모</th>
+                  <th className="px-4 py-2.5 text-center">설정</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
-                {remnants.map(r => (
-                  <tr key={r.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <span className="font-mono text-xs font-bold text-gray-700">{r.remnantNo}</span>
-                      <p className="text-[11px] text-gray-400 mt-0.5">
-                        {new Date(r.createdAt).toLocaleDateString("ko-KR")} · {r.registeredBy}
-                      </p>
-                      {r.memo && <p className="text-[11px] text-gray-400 mt-0.5 truncate max-w-[140px]" title={r.memo}>{r.memo}</p>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${TYPE_COLOR[r.type]}`}>
-                        {TYPE_LABEL[r.type]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-600">{SHAPE_LABEL[r.shape]}</td>
-                    <td className="px-4 py-3">
-                      <p className="text-xs font-semibold text-gray-800">{r.material}</p>
-                      <p className="text-[11px] text-gray-400">t{r.thickness}</p>
-                    </td>
-                    <td className="px-4 py-3 text-right text-xs font-bold text-gray-700">{r.weight.toLocaleString()} kg</td>
-                    <td className="px-4 py-3 text-xs text-gray-500">
-                      <p>{r.sourceProject
-                        ? `[${r.sourceProject.projectCode}] ${r.sourceProject.projectName}`
-                        : (r.sourceVesselName || "-")}</p>
-                      {r.sourceBlock && <p className="text-[11px] text-gray-400">블록 {r.sourceBlock}</p>}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-500">{r.location || "-"}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[r.status]}`}>
-                        {STATUS_LABEL[r.status]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-center gap-1">
-                        <button onClick={() => setEditItem(r)}
-                          className="p-1.5 text-blue-400 hover:bg-blue-50 rounded-md" title="수정">
-                          <Edit2 size={12} />
-                        </button>
-                        {r.status !== "EXHAUSTED" && (
-                          <>
-                            <button onClick={() => setReregItem(r)}
-                              className="p-1.5 text-emerald-500 hover:bg-emerald-50 rounded-md text-[10px] font-semibold px-2" title="잔여분 재등록">
-                              잔여
+              <tbody className="divide-y divide-gray-100">
+                {filtered.map(r => {
+                  const src = sourceInfo(r);
+                  return (
+                    <tr key={r.id}
+                      onClick={() => setDetailItem(r)}
+                      className="hover:bg-blue-50/40 cursor-pointer transition-colors">
+
+                      {/* 잔재번호 */}
+                      <td className="px-4 py-3">
+                        <p className="font-mono text-xs font-bold text-gray-800">{r.remnantNo}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                          {new Date(r.createdAt).toLocaleDateString("ko-KR")} · {r.registeredBy}
+                        </p>
+                      </td>
+
+                      {/* 종류 */}
+                      <td className="px-3 py-3">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${TYPE_COLOR[r.type]}`}>
+                          {TYPE_LABEL[r.type]}
+                        </span>
+                      </td>
+
+                      {/* 형태 */}
+                      <td className="px-3 py-3 text-xs text-gray-600">{SHAPE_LABEL[r.shape] ?? r.shape}</td>
+
+                      {/* 재질 */}
+                      <td className="px-3 py-3 text-xs font-semibold text-gray-800">{r.material}</td>
+
+                      {/* 두께 */}
+                      <td className="px-3 py-3 text-xs text-gray-600 text-right">t{r.thickness}</td>
+
+                      {/* 사이즈 */}
+                      <td className="px-3 py-3 text-xs text-gray-600 font-mono">{sizeText(r)}</td>
+
+                      {/* 중량 */}
+                      <td className="px-3 py-3 text-xs font-bold text-gray-800 text-right">{r.weight.toLocaleString()} kg</td>
+
+                      {/* 출처 */}
+                      <td className="px-3 py-3 text-xs text-gray-500">
+                        <p>{src.vessel}</p>
+                        {src.block && <p className="text-[10px] text-gray-400">블록 {src.block}</p>}
+                      </td>
+
+                      {/* 위치 */}
+                      <td className="px-3 py-3 text-xs text-gray-500">{r.location || "-"}</td>
+
+                      {/* 상태 */}
+                      <td className="px-3 py-3">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${STATUS_COLOR[r.status]}`}>
+                          {STATUS_LABEL[r.status]}
+                        </span>
+                      </td>
+
+                      {/* 메모 */}
+                      <td className="px-3 py-3 text-center">
+                        {r.memo
+                          ? (
+                            <span title={r.memo}
+                              className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-amber-100 text-amber-600 hover:bg-amber-200 transition-colors cursor-help">
+                              <StickyNote size={13} />
+                            </span>
+                          )
+                          : <span className="text-[10px] text-gray-300">없음</span>
+                        }
+                      </td>
+
+                      {/* 설정 버튼 */}
+                      <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={e => { e.stopPropagation(); setEditItem(r); }}
+                            className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors">
+                            <Edit2 size={11} /> 수정
+                          </button>
+                          {r.status !== "EXHAUSTED" && (
+                            <button
+                              onClick={e => { e.stopPropagation(); setReregItem(r); }}
+                              className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition-colors">
+                              <RotateCcw size={11} /> 잔여
                             </button>
-                            <button onClick={() => handleExhaust(r.id)}
-                              className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-md" title="소진처리">
-                              <Archive size={12} />
+                          )}
+                          {r.status !== "EXHAUSTED" && (
+                            <button
+                              onClick={e => handleExhaust(r.id, e)}
+                              className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold rounded-md bg-red-500 text-white hover:bg-red-600 transition-colors">
+                              <Trash2 size={11} /> 삭제
                             </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
 
-      {editItem  && <EditModal remnant={editItem}  projects={projects} onClose={() => setEditItem(null)}  onSaved={() => { setEditItem(null);  fetchRemnants(); }} />}
-      {reregItem && <ReregisterModal remnant={reregItem} onClose={() => setReregItem(null)} onSaved={() => { setReregItem(null); fetchRemnants(); }} />}
+      {/* 상세 모달 */}
+      {detailItem && !editItem && !reregItem && (
+        <DetailModal
+          remnant={detailItem}
+          onClose={() => setDetailItem(null)}
+          onEdit={() => { setEditItem(detailItem); setDetailItem(null); }}
+          onReregister={() => { setReregItem(detailItem); setDetailItem(null); }}
+          onExhaust={() => handleExhaust(detailItem.id)}
+        />
+      )}
+
+      {/* 수정 모달 */}
+      {editItem && (
+        <EditModal
+          remnant={editItem}
+          onClose={() => setEditItem(null)}
+          onSaved={() => { setEditItem(null); fetchRemnants(); }}
+        />
+      )}
+
+      {/* 잔여 재등록 모달 */}
+      {reregItem && (
+        <ReregisterModal
+          remnant={reregItem}
+          onClose={() => setReregItem(null)}
+          onSaved={() => { setReregItem(null); fetchRemnants(); }}
+        />
+      )}
     </div>
   );
 }
