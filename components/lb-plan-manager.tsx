@@ -131,7 +131,7 @@ function parseDate(val: string | null | undefined): Date | null {
 function isNonWorkingDay(dateStr: string, calendar: CalendarDay[], isYard: boolean): boolean {
   const d = new Date(dateStr + "T00:00:00");
   const dow = d.getDay();
-  if (dow === 0 || dow === 6) return true; // 주말
+  if (dow === 0) return true; // 일요일만 휴무 (주 6일 근무 기준)
   return calendar.some(c => {
     if (c.date !== dateStr) return false;
     if (c.type === "RAIN") return isYard; // 장마는 야드만
