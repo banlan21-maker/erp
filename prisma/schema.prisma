@@ -747,20 +747,20 @@ model LbProcessSetting {
   vesselCode            String   @unique  // 호선번호 (예: 4506)
   isDefault             Boolean  @default(false) // 기본값 여부
 
-  cutLeadDays           Int      @default(7)   // 절단 선행일수 (조립착수일 기준)
-  cutDuration           Int      @default(5)   // 절단 기간 (일)
+  cutLeadDays           Float    @default(7)   // 절단 선행일수 (조립착수일 기준)
+  cutDuration           Float    @default(5)   // 절단 기간 (일)
 
-  assemblySmallDays     Int      @default(10)  // 소조 소요일수
-  assemblyMidDays       Int      @default(10)  // 중조 소요일수
-  assemblyLargeDays     Int      @default(15)  // 대조 소요일수
+  assemblySmallDays     Float    @default(10)  // 소조 소요일수
+  assemblyMidDays       Float    @default(10)  // 중조 소요일수
+  assemblyLargeDays     Float    @default(15)  // 대조 소요일수
 
-  hullInspLeadDays      Int      @default(3)   // 대조F 이후 최소 여유일수 (선각검사 배정 기준)
-  hullInspIntervalDays  Int      @default(7)   // 선각검사 주기 (일)
-  hullInspBlocksPerSession Int   @default(2)   // 회당 검사 블록 수
-  paintLeadDays         Int      @default(2)   // 도장 착수 선행일수 (선각검사 기준)
-  paintDuration         Int      @default(7)   // 도장 기간
-  peLeadDays            Int      @default(1)   // P-E 착수 선행일수 (도장완료 기준)
-  peDuration            Int      @default(3)   // P-E 기간
+  hullInspLeadDays      Float    @default(3)   // 대조F 이후 최소 여유일수 (선각검사 배정 기준)
+  hullInspIntervalDays  Float    @default(7)   // 선각검사 주기 (일)
+  hullInspBlocksPerSession Float @default(2)   // 회당 검사 블록 수
+  paintLeadDays         Float    @default(2)   // 도장 착수 선행일수 (선각검사 기준)
+  paintDuration         Float    @default(7)   // 도장 기간
+  peLeadDays            Float    @default(1)   // P-E 착수 선행일수 (도장완료 기준)
+  peDuration            Float    @default(3)   // P-E 기간
 
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt

@@ -141,7 +141,7 @@ function isNonWorkingDay(dateStr: string, calendar: CalendarDay[], isYard: boole
 
 function addWorkingDays(start: Date, days: number, calendar: CalendarDay[], isYard: boolean): Date {
   let d = new Date(start);
-  let rem = days;
+  let rem = Math.round(days); // 소수점 반올림 (예: 1.5 → 2일)
   while (rem > 0) {
     d = addDays(d, 1);
     if (!isNonWorkingDay(d.toISOString().slice(0, 10), calendar, isYard)) rem--;
@@ -151,7 +151,7 @@ function addWorkingDays(start: Date, days: number, calendar: CalendarDay[], isYa
 
 function subWorkingDays(start: Date, days: number, calendar: CalendarDay[], isYard: boolean): Date {
   let d = new Date(start);
-  let rem = days;
+  let rem = Math.round(days); // 소수점 반올림 (예: 1.5 → 2일)
   while (rem > 0) {
     d = subDays(d, 1);
     if (!isNonWorkingDay(d.toISOString().slice(0, 10), calendar, isYard)) rem--;
@@ -394,7 +394,7 @@ function ProcessSettingModal({
     <div key={key} className="flex flex-col gap-1">
       <label className="text-xs text-gray-500 font-medium">{label}</label>
       <Input
-        type="number" min={0}
+        type="number" min={0} step={0.5}
         value={(form as unknown as Record<string, number>)[key]}
         onChange={e => setForm(f => ({ ...f, [key]: Number(e.target.value) }))}
         className="h-8 text-sm w-24"
