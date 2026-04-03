@@ -1132,18 +1132,6 @@ export default function LbPlanManager() {
     });
   };
 
-  const addRow = () => {
-    const tempId = `new_${Math.random().toString(36).slice(2)}`;
-    setRows(prev => [...prev, {
-      id: tempId, vesselCode: "", blk: "", no: null, weeklyQty: null,
-      erectionDate: null, assemblyStart: null,
-      pnd: null, cutS: null, cutF: null,
-      smallS: null, smallF: null, midS: null, midF: null,
-      largeS: null, largeF: null, hullInspDate: null,
-      paintStart: null, paintEnd: null, peStart: null, peEnd: null,
-      delayDays: null, isNew: true, isDirty: true,
-    }]);
-  };
 
   const deleteRow = async (row: LbRow) => {
     if (row.isNew) {
@@ -1685,9 +1673,6 @@ export default function LbPlanManager() {
         <Button size="sm" variant="outline" onClick={downloadTemplate}>
           <Download size={14} className="mr-1" /> 양식 다운로드
         </Button>
-        <Button size="sm" onClick={addRow}>
-          <Plus size={14} className="mr-1" /> 행 추가
-        </Button>
         <Button size="sm" onClick={() => {
           const now = new Date();
           const pad = (n: number) => String(n).padStart(2, "0");
@@ -1774,7 +1759,7 @@ export default function LbPlanManager() {
               <tr><td colSpan={26} className="text-center py-8 text-gray-400">불러오는 중...</td></tr>
             )}
             {!loading && filtered.length === 0 && (
-              <tr><td colSpan={26} className="text-center py-8 text-gray-400">데이터가 없습니다. 행 추가 또는 엑셀 가져오기로 시작하세요.</td></tr>
+              <tr><td colSpan={26} className="text-center py-8 text-gray-400">데이터가 없습니다. 엑셀 가져오기로 시작하세요.</td></tr>
             )}
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={filtered.map(r => r.id)} strategy={verticalListSortingStrategy}>
