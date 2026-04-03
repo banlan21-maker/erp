@@ -6,8 +6,9 @@ import { prisma } from "@/lib/prisma";
 // PUT: 호선 공정 설정 수정
 export async function PUT(
   req: Request,
-  { params }: { params: { vesselCode: string } }
+  { params }: { params: Promise<{ vesselCode: string }> }
 ) {
+  const { vesselCode } = await params;
   const body = await req.json();
   const {
     isDefault,
@@ -18,7 +19,7 @@ export async function PUT(
   } = body;
 
   const setting = await prisma.lbProcessSetting.update({
-    where: { vesselCode: params.vesselCode },
+    where: { vesselCode },
     data: {
       isDefault: isDefault ?? false,
       cutLeadDays: Number(cutLeadDays),
@@ -39,8 +40,9 @@ export async function PUT(
 // DELETE: 호선 공정 설정 삭제
 export async function DELETE(
   _req: Request,
-  { params }: { params: { vesselCode: string } }
+  { params }: { params: Promise<{ vesselCode: string }> }
 ) {
-  await prisma.lbProcessSetting.delete({ where: { vesselCode: params.vesselCode } });
+  const { vesselCode } = await params;
+  await prisma.lbProcessSetting.delete({ where: { vesselCode } });
   return NextResponse.json({ ok: true });
 }

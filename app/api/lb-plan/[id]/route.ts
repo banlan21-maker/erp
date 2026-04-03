@@ -8,8 +8,9 @@ const toDate = (v: unknown) => (v ? new Date(v as string) : null);
 // PATCH: 행 수정
 export async function PATCH(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const body = await req.json();
   const {
     vesselCode, blk, no, weeklyQty,
@@ -20,7 +21,7 @@ export async function PATCH(
   } = body;
 
   const plan = await prisma.lbPlan.update({
-    where: { id: params.id },
+    where: { id },
     data: {
       vesselCode: vesselCode?.trim(),
       blk: blk?.trim(),
@@ -45,8 +46,9 @@ export async function PATCH(
 // DELETE: 행 삭제
 export async function DELETE(
   _req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  await prisma.lbPlan.delete({ where: { id: params.id } });
+  const { id } = await params;
+  await prisma.lbPlan.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }
