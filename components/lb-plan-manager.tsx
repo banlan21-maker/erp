@@ -737,9 +737,9 @@ function EditCell({
   green?: boolean;
   isManual?: boolean;
 }) {
-  const base = "h-7 text-xs border-0 rounded-none focus:ring-1 focus:ring-inset focus:ring-blue-400 px-1.5 w-full";
+  const base = "h-7 text-xs border-0 rounded-none focus:ring-1 focus:ring-inset focus:ring-blue-400 px-1.5 w-full text-center";
   const content = readOnly ? (
-    <div className={`${base} flex items-center ${green ? "bg-green-50 text-green-800 font-semibold" : "bg-gray-50 text-gray-600"}`}>
+    <div className={`${base} flex items-center justify-center ${green ? "bg-green-50 text-green-800 font-semibold" : "bg-gray-50 text-gray-600"}`}>
       {value || "-"}
     </div>
   ) : (
@@ -1697,15 +1697,15 @@ export default function LbPlanManager() {
 
       {/* 테이블 */}
       <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
-        <table className="text-xs border-collapse" style={{ tableLayout: "fixed", width: "2222px" }}>
+        <table className="text-xs border-collapse" style={{ tableLayout: "fixed", width: "2174px" }}>
           <colgroup>
             <col style={{ width: "32px" }} />   {/* 드래그 핸들 */}
             <col style={{ width: "32px" }} />   {/* 체크박스 */}
             <col style={{ width: "56px" }} />   {/* 상태 */}
-            <col style={{ width: "72px" }} />   {/* 호선 */}
-            <col style={{ width: "64px" }} />   {/* BLK */}
+            <col style={{ width: "48px" }} />   {/* 호선 */}
+            <col style={{ width: "48px" }} />   {/* BLK */}
             <col style={{ width: "48px" }} />   {/* NO */}
-            <col style={{ width: "72px" }} />   {/* 주당생산량 */}
+            <col style={{ width: "48px" }} />   {/* 주당생산량 */}
             <col style={{ width: "110px" }} />  {/* 탑재일 */}
             <col style={{ width: "110px" }} />  {/* PND */}
             <col style={{ width: "110px" }} />  {/* 조립착수일 */}
