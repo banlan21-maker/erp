@@ -17,7 +17,7 @@ import * as XLSX from "xlsx"; // 엑셀 내보내기 전용 (가져오기는 서
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
-type HolidayType = "LEGAL" | "SUBSTITUTE" | "COMPANY" | "RAIN";
+type HolidayType = "LEGAL" | "SUBSTITUTE" | "COMPANY" | "RAIN" | "VACATION";
 
 interface CalendarDay {
   id: string;
@@ -32,12 +32,14 @@ const HOLIDAY_TYPE_LABEL: Record<HolidayType, string> = {
   SUBSTITUTE: "대체공휴일",
   COMPANY:    "회사휴무",
   RAIN:       "장마/우천",
+  VACATION:   "회사휴가",
 };
 const HOLIDAY_TYPE_COLOR: Record<HolidayType, string> = {
   LEGAL:      "bg-red-100 text-red-700",
   SUBSTITUTE: "bg-orange-100 text-orange-700",
   COMPANY:    "bg-blue-100 text-blue-700",
   RAIN:       "bg-cyan-100 text-cyan-700",
+  VACATION:   "bg-purple-100 text-purple-700",
 };
 
 interface ProcessSetting {
@@ -439,7 +441,7 @@ function ProcessSettingModal({
     setCalSaving(true);
     const items: Array<{ date: string; type: string; label: string; year: number }> = [];
 
-    if (newEntry.type === "RAIN" && newEntry.dateEnd && newEntry.dateEnd >= newEntry.dateStart) {
+    if ((newEntry.type === "RAIN" || newEntry.type === "VACATION") && newEntry.dateEnd && newEntry.dateEnd >= newEntry.dateStart) {
       // 범위 → 개별 일자 전개
       let cur = new Date(newEntry.dateStart + "T00:00:00");
       const end = new Date(newEntry.dateEnd + "T00:00:00");
@@ -618,14 +620,16 @@ function ProcessSettingModal({
                     </select>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs text-gray-500">{newEntry.type === "RAIN" ? "시작일" : "날짜"}</label>
+                    <label className="text-xs text-gray-500">
+                      {(newEntry.type === "RAIN" || newEntry.type === "VACATION") ? "시작일" : "날짜"}
+                    </label>
                     <Input
                       type="date" className="h-8 text-sm w-36"
                       value={newEntry.dateStart}
                       onChange={e => setNewEntry(n => ({ ...n, dateStart: e.target.value }))}
                     />
                   </div>
-                  {newEntry.type === "RAIN" && (
+                  {(newEntry.type === "RAIN" || newEntry.type === "VACATION") && (
                     <div className="flex flex-col gap-1">
                       <label className="text-xs text-gray-500">종료일</label>
                       <Input
@@ -639,7 +643,7 @@ function ProcessSettingModal({
                     <label className="text-xs text-gray-500">메모</label>
                     <Input
                       className="h-8 text-sm w-36"
-                      placeholder="예: 회사 창립기념일"
+                      placeholder="예: 하계휴가"
                       value={newEntry.label}
                       onChange={e => setNewEntry(n => ({ ...n, label: e.target.value }))}
                     />
