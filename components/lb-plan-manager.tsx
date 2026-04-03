@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Settings2, Download, Upload, Save, Trash2, X, Check } from "lucide-react";
+import { Plus, Settings2, Download, Upload, Save, Trash2, X, Check, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import * as XLSX from "xlsx"; // 엑셀 내보내기 전용 (가져오기는 서버사이드)
@@ -686,16 +686,20 @@ export default function LbPlanManager() {
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const loadSettings = useCallback(async () => {
+  const loadSettings = useCallback(async (): Promise<ProcessSetting[]> => {
     const res = await fetch("/api/lb-process-setting");
-    setSettings(await res.json());
+    const data: ProcessSetting[] = await res.json();
+    setSettings(data);
+    return data;
   }, []);
 
-  const loadCalendar = useCallback(async () => {
-    // 현재 연도 ±1 범위 로드 (넉넉하게)
+  const loadCalendar = useCallback(async (): Promise<CalendarDay[]> => {
     const y = new Date().getFullYear();
     const res = await fetch(`/api/lb-calendar?year=${y}`);
-    if (res.ok) setCalendarDays(await res.json());
+    if (!res.ok) return [];
+    const data: CalendarDay[] = await res.json();
+    setCalendarDays(data);
+    return data;
   }, []);
 
   const loadPlans = useCallback(async () => {
@@ -714,39 +718,80 @@ export default function LbPlanManager() {
   useEffect(() => { loadPlans(); }, [loadPlans]);
 
   // 해당 호선의 설정 찾기 (없으면 기본값, 그것도 없으면 undefined)
-  const getSettingFor = (vesselCode: string): ProcessSetting | undefined => {
-    return settings.find(s => s.vesselCode === vesselCode)
-        ?? settings.find(s => s.isDefault);
-  };
+  const getSettingFor = useCallback((vesselCode: string, settingsList: ProcessSetting[]): ProcessSetting | undefined => {
+    return settingsList.find(s => s.vesselCode === vesselCode)
+        ?? settingsList.find(s => s.isDefault);
+  }, []);
+
+  // ── 전체 재계산: 설정/캘린더 변경 시 모든 행 날짜 재산출 ──────────────────
+  const recalcAll = useCallback((settingsList: ProcessSetting[], cal: CalendarDay[]) => {
+    setRows(prev => {
+      // 1단계: 각 행별 절단~대조 재계산
+      const pass1 = prev.map(row => {
+        const s = getSettingFor(row.vesselCode, settingsList);
+        if (!s || !row.erectionDate || !row.assemblyStart) return row;
+        return { ...row, ...calcUpToLarge(row, s, cal), isDirty: true };
+      });
+
+      // 2단계: 호선별 선각검사~지연일수 재배정
+      const vessels = Array.from(new Set(pass1.map(r => r.vesselCode).filter(Boolean)));
+      let result = [...pass1];
+      for (const vc of vessels) {
+        const s = getSettingFor(vc, settingsList);
+        if (!s) continue;
+        const vesselRows = result.filter(r => r.vesselCode === vc);
+        const hullMap = calcHullAndDownstream(vesselRows, s, cal);
+        result = result.map(r => {
+          if (r.vesselCode !== vc) return r;
+          const downstream = hullMap.get(r.id);
+          return downstream ? { ...r, ...downstream, isDirty: true } : r;
+        });
+      }
+      return result;
+    });
+  }, [getSettingFor]);
 
   const updateRow = (id: string, patch: Partial<LbRow>) => {
     setRows(prev => {
+      const prevRow = prev.find(r => r.id === id);
+      const oldVc = prevRow?.vesselCode ?? "";
+
       // 1단계: 해당 행 패치 + 절단~대조 재계산
       const next = prev.map(r => {
         if (r.id !== id) return r;
         const updated = { ...r, ...patch, isDirty: true };
         if ("erectionDate" in patch || "assemblyStart" in patch) {
-          const s = getSettingFor(updated.vesselCode);
+          const s = getSettingFor(updated.vesselCode, settings);
           if (s) return { ...updated, ...calcUpToLarge(updated, s, calendarDays) };
         }
         return updated;
       });
 
-      // 2단계: 영향받은 호선의 모든 행에 선각검사~지연일수 재배정
+      // 2단계: 영향받은 호선(들)에 선각검사~지연일수 재배정
+      // vesselCode가 바뀐 경우 이전 호선도 재계산 (그룹 재배정)
       const changedRow = next.find(r => r.id === id);
       if (!changedRow) return next;
-      const vc = changedRow.vesselCode;
-      const s = getSettingFor(vc);
-      if (!s) return next;
+      const newVc = changedRow.vesselCode;
 
-      const vesselRows = next.filter(r => r.vesselCode === vc);
-      const hullMap = calcHullAndDownstream(vesselRows, s, calendarDays);
+      const vesselsToRecalc = (newVc !== oldVc && oldVc)
+        ? [newVc, oldVc]
+        : [newVc];
 
-      return next.map(r => {
-        if (r.vesselCode !== vc) return r;
-        const downstream = hullMap.get(r.id);
-        return downstream ? { ...r, ...downstream, isDirty: true } : r;
-      });
+      let result = next;
+      for (const vc of vesselsToRecalc) {
+        if (!vc) continue;
+        const s = getSettingFor(vc, settings);
+        if (!s) continue;
+        const vesselRows = result.filter(r => r.vesselCode === vc);
+        const hullMap = calcHullAndDownstream(vesselRows, s, calendarDays);
+        result = result.map(r => {
+          if (r.vesselCode !== vc) return r;
+          const downstream = hullMap.get(r.id);
+          return downstream ? { ...r, ...downstream, isDirty: true } : r;
+        });
+      }
+
+      return result;
     });
   };
 
@@ -982,6 +1027,10 @@ export default function LbPlanManager() {
         <Button size="sm" variant="outline" onClick={() => setShowSettings(true)}>
           <Settings2 size={14} className="mr-1" /> 설정
         </Button>
+        <Button size="sm" variant="outline" onClick={() => recalcAll(settings, calendarDays)}
+          title="설정·캘린더 기준으로 모든 행 날짜 재계산">
+          <RefreshCw size={14} className="mr-1" /> 전체 재계산
+        </Button>
         <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={importing}>
           <Upload size={14} className="mr-1" /> {importing ? "가져오는 중..." : "엑셀 가져오기"}
         </Button>
@@ -1114,10 +1163,16 @@ export default function LbPlanManager() {
       {showSettings && (
         <ProcessSettingModal
           onClose={() => setShowSettings(false)}
-          onSaved={() => { loadSettings(); loadPlans(); }}
+          onSaved={async () => {
+            const newSettings = await loadSettings();
+            recalcAll(newSettings, calendarDays);
+          }}
           dataStartRow={dataStartRow}
           onDataStartRowChange={setDataStartRow}
-          onCalendarChange={loadCalendar}
+          onCalendarChange={async () => {
+            const newCal = await loadCalendar();
+            recalcAll(settings, newCal);
+          }}
         />
       )}
     </div>
