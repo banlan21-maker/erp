@@ -1070,37 +1070,18 @@ export default function LbPlanManager() {
     }
   };
 
-  // 엑셀 내보내기
-  const exportExcel = () => {
-    const headers = [
-      "NO", "호선", "BLK", "주당생산량",
-      "탑재일", "PND", "조립착수일",
-      "절단S", "절단F", "소조S", "소조F",
-      "중조S", "중조F", "대조S", "대조F",
-      "선각검사", "도장착수", "도장완료", "P-E착수", "P-E완료",
-      "지연일수",
-    ];
-    const data = rows.map(r => [
-      r.no, r.vesselCode, r.blk, r.weeklyQty,
-      fmtDate(r.erectionDate), fmtDate(r.pnd), fmtDate(r.assemblyStart),
-      fmtDate(r.cutS), fmtDate(r.cutF), fmtDate(r.smallS), fmtDate(r.smallF),
-      fmtDate(r.midS), fmtDate(r.midF), fmtDate(r.largeS), fmtDate(r.largeF),
-      fmtDate(r.hullInspDate), fmtDate(r.paintStart), fmtDate(r.paintEnd),
-      fmtDate(r.peStart), fmtDate(r.peEnd),
-      r.delayDays,
-    ]);
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+  // 양식 다운로드 (헤더만 있는 빈 양식)
+  const downloadTemplate = () => {
+    const headers = ["호선", "BLK", "NO", "주당생산량", "탑재일", "PND", "조립착수일"];
+    const ws = XLSX.utils.aoa_to_sheet([headers]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "LB생산계획");
-    const today = new Date();
-    const mm = String(today.getMonth() + 1).padStart(2, "0");
-    const dd = String(today.getDate()).padStart(2, "0");
-    XLSX.writeFile(wb, `생산계획_${mm}월${dd}일_.xlsx`);
+    XLSX.writeFile(wb, "LB생산계획_양식.xlsx");
   };
 
   // 엑셀 가져오기 — 서버사이드 파싱 (수식 계산값 정확히 읽음)
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{ created: number; updated: number; skipped: number } | null>(null);
+  const [importResult, setImportResult] = useState<{ created: number; updated: number; skipped: number; newVessels: number } | null>(null);
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1214,7 +1195,27 @@ export default function LbPlanManager() {
         return result;
       });
 
-      setImportResult({ created, updated, skipped });
+      // 업로드된 파일의 호선번호 중 설정에 없는 것 자동 등록
+      const uploadedVessels = Array.from(new Set(parsed.map(r => r.vesselCode).filter(Boolean)));
+      const existingVesselCodes = new Set(settings.map(s => s.vesselCode));
+      const newVesselCodes = uploadedVessels.filter(vc => !existingVesselCodes.has(vc));
+
+      let newVessels = 0;
+      if (newVesselCodes.length > 0) {
+        const registerResults = await Promise.allSettled(
+          newVesselCodes.map(vc =>
+            fetch("/api/lb-process-setting", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ vesselCode: vc, isDefault: false, ...DEFAULT_SETTING }),
+            })
+          )
+        );
+        newVessels = registerResults.filter(r => r.status === "fulfilled").length;
+        if (newVessels > 0) await loadSettings();
+      }
+
+      setImportResult({ created, updated, skipped, newVessels });
     } finally {
       setImporting(false);
       e.target.value = "";
@@ -1310,10 +1311,13 @@ export default function LbPlanManager() {
         {importResult && (
           <span className="text-xs text-gray-600 bg-gray-100 rounded px-2 py-1">
             신규 {importResult.created}건 / 업데이트 {importResult.updated}건 / 건너뜀 {importResult.skipped}건
+            {importResult.newVessels > 0 && (
+              <span className="ml-1.5 text-blue-600 font-semibold">· 새로운 호선 {importResult.newVessels}개 설정에 추가됨</span>
+            )}
           </span>
         )}
-        <Button size="sm" variant="outline" onClick={exportExcel}>
-          <Download size={14} className="mr-1" /> 엑셀 내보내기
+        <Button size="sm" variant="outline" onClick={downloadTemplate}>
+          <Download size={14} className="mr-1" /> 양식 다운로드
         </Button>
         <Button size="sm" onClick={addRow}>
           <Plus size={14} className="mr-1" /> 행 추가
