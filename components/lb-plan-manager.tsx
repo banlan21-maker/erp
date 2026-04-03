@@ -17,7 +17,9 @@ interface ProcessSetting {
   assemblySmallDays: number;
   assemblyMidDays: number;
   assemblyLargeDays: number;
-  hullInspLeadDays: number;
+  hullInspLeadDays: number;        // 대조F 이후 최소 여유일수
+  hullInspIntervalDays: number;    // 검사 주기 (일)
+  hullInspBlocksPerSession: number; // 회당 검사 블록 수
   paintLeadDays: number;
   paintDuration: number;
   peLeadDays: number;
@@ -76,26 +78,21 @@ function parseDate(val: string | null | undefined): Date | null {
 
 // ─── 자동계산 ─────────────────────────────────────────────────────────────────
 
-function calcPlan(row: LbRow, s: ProcessSetting): Partial<LbRow> {
+// 절단~대조까지만 계산 (선각검사 이후는 vessel 전체 기반으로 별도 계산)
+function calcUpToLarge(row: LbRow, s: ProcessSetting): Partial<LbRow> {
   const erection = parseDate(row.erectionDate);
   const assembly = parseDate(row.assemblyStart);
   if (!erection || !assembly) return {};
 
-  const pnd      = subDays(erection, 1);
-  const cutS     = subDays(assembly, s.cutLeadDays);
-  const cutF     = addDays(cutS, s.cutDuration);
-  const smallS   = subDays(cutS, s.assemblySmallDays);
-  const smallF   = cutS;
-  const midS     = subDays(smallS, s.assemblyMidDays);
-  const midF     = smallS;
-  const largeS   = subDays(midS, s.assemblyLargeDays);
-  const largeF   = erection; // 대조F = 탑재일
-  const hullInsp = subDays(largeF, s.hullInspLeadDays);
-  const paintSt  = addDays(hullInsp, s.paintLeadDays);
-  const paintEnd = addDays(paintSt, s.paintDuration);
-  const peSt     = addDays(paintEnd, s.peLeadDays);
-  const peEnd    = addDays(peSt, s.peDuration);
-  const delay    = Math.round((pnd.getTime() - peEnd.getTime()) / 86400000);
+  const pnd    = subDays(erection, 1);
+  const cutS   = subDays(assembly, s.cutLeadDays);
+  const cutF   = addDays(cutS, s.cutDuration);
+  const smallS = subDays(cutS, s.assemblySmallDays);
+  const smallF = cutS;
+  const midS   = subDays(smallS, s.assemblyMidDays);
+  const midF   = smallS;
+  const largeS = subDays(midS, s.assemblyLargeDays);
+  const largeF = erection; // 대조F = 탑재일
 
   return {
     pnd: toISO(pnd),
@@ -103,11 +100,79 @@ function calcPlan(row: LbRow, s: ProcessSetting): Partial<LbRow> {
     smallS: toISO(smallS), smallF: toISO(smallF),
     midS: toISO(midS), midF: toISO(midF),
     largeS: toISO(largeS), largeF: toISO(largeF),
-    hullInspDate: toISO(hullInsp),
-    paintStart: toISO(paintSt), paintEnd: toISO(paintEnd),
-    peStart: toISO(peSt), peEnd: toISO(peEnd),
-    delayDays: delay,
   };
+}
+
+// 선각검사 ~ 지연일수: vessel 전체 행을 받아 행별로 계산 (선각검사 그룹 배정 포함)
+// rows: 해당 호선의 모든 행 (largeF 및 erectionDate 이미 계산된 상태)
+// 반환: row.id → { hullInspDate, paintStart, paintEnd, peStart, peEnd, delayDays }
+function calcHullAndDownstream(
+  vesselRows: LbRow[],
+  s: ProcessSetting
+): Map<string, Partial<LbRow>> {
+  const result = new Map<string, Partial<LbRow>>();
+
+  // largeF 있는 행만 대상, no → largeF 순으로 정렬
+  const eligible = vesselRows
+    .filter(r => r.largeF && r.pnd)
+    .sort((a, b) => {
+      // no가 있으면 no 순, 없으면 largeF 순
+      if (a.no != null && b.no != null) return a.no - b.no;
+      return new Date(a.largeF!).getTime() - new Date(b.largeF!).getTime();
+    });
+
+  const perSession = s.hullInspBlocksPerSession;
+  const interval   = s.hullInspIntervalDays;
+  const leadDays   = s.hullInspLeadDays;
+
+  let currentInspDate: Date | null = null;
+  let sessionCount = 0; // 현재 세션에서 배정된 블록 수
+
+  for (const row of eligible) {
+    const largeF = parseDate(row.largeF)!;
+    const pnd    = parseDate(row.pnd)!;
+    const earliest = addDays(largeF, leadDays); // 대조F + 최소 여유
+
+    if (currentInspDate === null || sessionCount >= perSession) {
+      // 새 세션 시작
+      if (currentInspDate === null) {
+        currentInspDate = earliest;
+      } else {
+        const nextSlot = addDays(currentInspDate, interval);
+        currentInspDate = nextSlot >= earliest ? nextSlot : earliest;
+      }
+      sessionCount = 1;
+    } else {
+      // 기존 세션에 추가 (날짜 동일)
+      sessionCount++;
+    }
+
+    const hullInsp = currentInspDate;
+    const paintSt  = addDays(hullInsp, s.paintLeadDays);
+    const paintEnd = addDays(paintSt, s.paintDuration);
+    const peSt     = addDays(paintEnd, s.peLeadDays);
+    const peEnd    = addDays(peSt, s.peDuration);
+    const delay    = Math.round((pnd.getTime() - peEnd.getTime()) / 86400000);
+
+    result.set(row.id, {
+      hullInspDate: toISO(hullInsp),
+      paintStart: toISO(paintSt), paintEnd: toISO(paintEnd),
+      peStart: toISO(peSt), peEnd: toISO(peEnd),
+      delayDays: delay,
+    });
+  }
+
+  // largeF 없는 행은 해당 필드 null
+  for (const row of vesselRows) {
+    if (!result.has(row.id)) {
+      result.set(row.id, {
+        hullInspDate: null, paintStart: null, paintEnd: null,
+        peStart: null, peEnd: null, delayDays: null,
+      });
+    }
+  }
+
+  return result;
 }
 
 // ─── 행 상태 배지 ─────────────────────────────────────────────────────────────
@@ -126,9 +191,10 @@ function StatusBadge({ row }: { row: LbRow }) {
 // ─── 공정 설정 모달 ───────────────────────────────────────────────────────────
 
 const DEFAULT_SETTING: Omit<ProcessSetting, "id" | "vesselCode" | "isDefault"> = {
-  cutLeadDays: 7, cutDuration: 5,
-  assemblySmallDays: 10, assemblyMidDays: 10, assemblyLargeDays: 15,
-  hullInspLeadDays: 3, paintLeadDays: 2, paintDuration: 7, peLeadDays: 1, peDuration: 3,
+  cutLeadDays: 7, cutDuration: 10,
+  assemblySmallDays: 10, assemblyMidDays: 7, assemblyLargeDays: 6,
+  hullInspLeadDays: 3, hullInspIntervalDays: 7, hullInspBlocksPerSession: 2,
+  paintLeadDays: 2, paintDuration: 10, peLeadDays: 2, peDuration: 13,
 };
 
 function ProcessSettingModal({
@@ -156,7 +222,7 @@ function ProcessSettingModal({
 
   const startEdit = (s: ProcessSetting) => {
     setEditing(s.vesselCode);
-    setForm({ vesselCode: s.vesselCode, isDefault: s.isDefault, cutLeadDays: s.cutLeadDays, cutDuration: s.cutDuration, assemblySmallDays: s.assemblySmallDays, assemblyMidDays: s.assemblyMidDays, assemblyLargeDays: s.assemblyLargeDays, hullInspLeadDays: s.hullInspLeadDays, paintLeadDays: s.paintLeadDays, paintDuration: s.paintDuration, peLeadDays: s.peLeadDays, peDuration: s.peDuration });
+    setForm({ vesselCode: s.vesselCode, isDefault: s.isDefault, cutLeadDays: s.cutLeadDays, cutDuration: s.cutDuration, assemblySmallDays: s.assemblySmallDays, assemblyMidDays: s.assemblyMidDays, assemblyLargeDays: s.assemblyLargeDays, hullInspLeadDays: s.hullInspLeadDays, hullInspIntervalDays: s.hullInspIntervalDays ?? 7, hullInspBlocksPerSession: s.hullInspBlocksPerSession ?? 2, paintLeadDays: s.paintLeadDays, paintDuration: s.paintDuration, peLeadDays: s.peLeadDays, peDuration: s.peDuration });
   };
 
   const saveEdit = async () => {
@@ -212,7 +278,9 @@ function ProcessSettingModal({
                   <th className="border px-2 py-1.5">소조</th>
                   <th className="border px-2 py-1.5">중조</th>
                   <th className="border px-2 py-1.5">대조</th>
-                  <th className="border px-2 py-1.5">선각검사</th>
+                  <th className="border px-2 py-1.5">대조F여유</th>
+                  <th className="border px-2 py-1.5">검사주기</th>
+                  <th className="border px-2 py-1.5">회당블록</th>
                   <th className="border px-2 py-1.5">도장선행</th>
                   <th className="border px-2 py-1.5">도장기간</th>
                   <th className="border px-2 py-1.5">PE선행</th>
@@ -231,6 +299,8 @@ function ProcessSettingModal({
                     <td className="border px-2 py-1.5 text-center">{s.assemblyMidDays}일</td>
                     <td className="border px-2 py-1.5 text-center">{s.assemblyLargeDays}일</td>
                     <td className="border px-2 py-1.5 text-center">{s.hullInspLeadDays}일</td>
+                    <td className="border px-2 py-1.5 text-center">{s.hullInspIntervalDays ?? 7}일</td>
+                    <td className="border px-2 py-1.5 text-center">{s.hullInspBlocksPerSession ?? 2}개</td>
                     <td className="border px-2 py-1.5 text-center">{s.paintLeadDays}일</td>
                     <td className="border px-2 py-1.5 text-center">{s.paintDuration}일</td>
                     <td className="border px-2 py-1.5 text-center">{s.peLeadDays}일</td>
@@ -242,7 +312,7 @@ function ProcessSettingModal({
                   </tr>
                 ))}
                 {settings.length === 0 && (
-                  <tr><td colSpan={13} className="border px-2 py-4 text-center text-gray-400">설정된 호선이 없습니다.</td></tr>
+                  <tr><td colSpan={15} className="border px-2 py-4 text-center text-gray-400">설정된 호선이 없습니다.</td></tr>
                 )}
               </tbody>
             </table>
@@ -276,7 +346,9 @@ function ProcessSettingModal({
                 {numField("assemblySmallDays", "소조 소요일수")}
                 {numField("assemblyMidDays", "중조 소요일수")}
                 {numField("assemblyLargeDays", "대조 소요일수")}
-                {numField("hullInspLeadDays", "선각검사 선행")}
+                {numField("hullInspLeadDays", "대조F 이후 여유")}
+                {numField("hullInspIntervalDays", "검사 주기(일)")}
+                {numField("hullInspBlocksPerSession", "회당 블록 수")}
                 {numField("paintLeadDays", "도장 착수 선행")}
                 {numField("paintDuration", "도장 기간")}
                 {numField("peLeadDays", "P-E 착수 선행")}
@@ -385,19 +457,34 @@ export default function LbPlanManager() {
   };
 
   const updateRow = (id: string, patch: Partial<LbRow>) => {
-    setRows(prev => prev.map(r => {
-      if (r.id !== id) return r;
-      const updated = { ...r, ...patch, isDirty: true };
-      // 탑재일 또는 조립착수일 변경 시 자동계산
-      if ("erectionDate" in patch || "assemblyStart" in patch) {
-        const s = getSettingFor(updated.vesselCode);
-        if (s) {
-          const calc = calcPlan(updated, s);
-          return { ...updated, ...calc };
+    setRows(prev => {
+      // 1단계: 해당 행 패치 + 절단~대조 재계산
+      const next = prev.map(r => {
+        if (r.id !== id) return r;
+        const updated = { ...r, ...patch, isDirty: true };
+        if ("erectionDate" in patch || "assemblyStart" in patch) {
+          const s = getSettingFor(updated.vesselCode);
+          if (s) return { ...updated, ...calcUpToLarge(updated, s) };
         }
-      }
-      return updated;
-    }));
+        return updated;
+      });
+
+      // 2단계: 영향받은 호선의 모든 행에 선각검사~지연일수 재배정
+      const changedRow = next.find(r => r.id === id);
+      if (!changedRow) return next;
+      const vc = changedRow.vesselCode;
+      const s = getSettingFor(vc);
+      if (!s) return next;
+
+      const vesselRows = next.filter(r => r.vesselCode === vc);
+      const hullMap = calcHullAndDownstream(vesselRows, s);
+
+      return next.map(r => {
+        if (r.vesselCode !== vc) return r;
+        const downstream = hullMap.get(r.id);
+        return downstream ? { ...r, ...downstream, isDirty: true } : r;
+      });
+    });
   };
 
   const addRow = () => {

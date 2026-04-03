@@ -11,14 +11,15 @@ export async function GET() {
   return NextResponse.json(settings);
 }
 
-// POST: 신규 호선 공정 설정 생성
+// POST: 신규 호선 공정 설정 생성/갱신
 export async function POST(req: Request) {
   const body = await req.json();
   const {
     vesselCode, isDefault,
     cutLeadDays, cutDuration,
     assemblySmallDays, assemblyMidDays, assemblyLargeDays,
-    hullInspLeadDays, paintLeadDays, paintDuration,
+    hullInspLeadDays, hullInspIntervalDays, hullInspBlocksPerSession,
+    paintLeadDays, paintDuration,
     peLeadDays, peDuration,
   } = body;
 
@@ -26,35 +27,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "호선번호 필수" }, { status: 400 });
   }
 
+  const data = {
+    isDefault: isDefault ?? false,
+    cutLeadDays: Number(cutLeadDays),
+    cutDuration: Number(cutDuration),
+    assemblySmallDays: Number(assemblySmallDays),
+    assemblyMidDays: Number(assemblyMidDays),
+    assemblyLargeDays: Number(assemblyLargeDays),
+    hullInspLeadDays: Number(hullInspLeadDays),
+    hullInspIntervalDays: Number(hullInspIntervalDays ?? 7),
+    hullInspBlocksPerSession: Number(hullInspBlocksPerSession ?? 2),
+    paintLeadDays: Number(paintLeadDays),
+    paintDuration: Number(paintDuration),
+    peLeadDays: Number(peLeadDays),
+    peDuration: Number(peDuration),
+  };
+
   const setting = await prisma.lbProcessSetting.upsert({
     where: { vesselCode: vesselCode.trim() },
-    update: {
-      isDefault: isDefault ?? false,
-      cutLeadDays: Number(cutLeadDays),
-      cutDuration: Number(cutDuration),
-      assemblySmallDays: Number(assemblySmallDays),
-      assemblyMidDays: Number(assemblyMidDays),
-      assemblyLargeDays: Number(assemblyLargeDays),
-      hullInspLeadDays: Number(hullInspLeadDays),
-      paintLeadDays: Number(paintLeadDays),
-      paintDuration: Number(paintDuration),
-      peLeadDays: Number(peLeadDays),
-      peDuration: Number(peDuration),
-    },
-    create: {
-      vesselCode: vesselCode.trim(),
-      isDefault: isDefault ?? false,
-      cutLeadDays: Number(cutLeadDays),
-      cutDuration: Number(cutDuration),
-      assemblySmallDays: Number(assemblySmallDays),
-      assemblyMidDays: Number(assemblyMidDays),
-      assemblyLargeDays: Number(assemblyLargeDays),
-      hullInspLeadDays: Number(hullInspLeadDays),
-      paintLeadDays: Number(paintLeadDays),
-      paintDuration: Number(paintDuration),
-      peLeadDays: Number(peLeadDays),
-      peDuration: Number(peDuration),
-    },
+    update: data,
+    create: { vesselCode: vesselCode.trim(), ...data },
   });
   return NextResponse.json(setting);
 }

@@ -754,7 +754,9 @@ model LbProcessSetting {
   assemblyMidDays       Int      @default(10)  // 중조 소요일수
   assemblyLargeDays     Int      @default(15)  // 대조 소요일수
 
-  hullInspLeadDays      Int      @default(3)   // 선각검사 선행일수 (대조F 기준)
+  hullInspLeadDays      Int      @default(3)   // 대조F 이후 최소 여유일수 (선각검사 배정 기준)
+  hullInspIntervalDays  Int      @default(7)   // 선각검사 주기 (일)
+  hullInspBlocksPerSession Int   @default(2)   // 회당 검사 블록 수
   paintLeadDays         Int      @default(2)   // 도장 착수 선행일수 (선각검사 기준)
   paintDuration         Int      @default(7)   // 도장 기간
   peLeadDays            Int      @default(1)   // P-E 착수 선행일수 (도장완료 기준)

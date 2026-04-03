@@ -14,7 +14,8 @@ export async function PUT(
     isDefault,
     cutLeadDays, cutDuration,
     assemblySmallDays, assemblyMidDays, assemblyLargeDays,
-    hullInspLeadDays, paintLeadDays, paintDuration,
+    hullInspLeadDays, hullInspIntervalDays, hullInspBlocksPerSession,
+    paintLeadDays, paintDuration,
     peLeadDays, peDuration,
   } = body;
 
@@ -28,6 +29,8 @@ export async function PUT(
       assemblyMidDays: Number(assemblyMidDays),
       assemblyLargeDays: Number(assemblyLargeDays),
       hullInspLeadDays: Number(hullInspLeadDays),
+      hullInspIntervalDays: Number(hullInspIntervalDays ?? 7),
+      hullInspBlocksPerSession: Number(hullInspBlocksPerSession ?? 2),
       paintLeadDays: Number(paintLeadDays),
       paintDuration: Number(paintDuration),
       peLeadDays: Number(peLeadDays),
