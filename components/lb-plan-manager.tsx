@@ -809,16 +809,16 @@ function SortableRow({
       </td>
       <td className={`${colCls} text-center py-1`}><StatusBadge row={row} /></td>
       <td className={colCls}>
-        <EditCell value={row.no != null ? String(row.no) : ""} type="number"
-          onChange={v => updateRow(row.id, { no: v ? Number(v) : null })} />
-      </td>
-      <td className={colCls}>
         <EditCell value={row.vesselCode}
           onChange={v => updateRow(row.id, { vesselCode: v })} />
       </td>
       <td className={colCls}>
         <EditCell value={row.blk}
           onChange={v => updateRow(row.id, { blk: v })} />
+      </td>
+      <td className={colCls}>
+        <EditCell value={row.no != null ? String(row.no) : ""} type="number"
+          onChange={v => updateRow(row.id, { no: v ? Number(v) : null })} />
       </td>
       <td className={colCls}>
         <EditCell value={row.weeklyQty != null ? String(row.weeklyQty) : ""} type="number"
@@ -1704,9 +1704,9 @@ export default function LbPlanManager() {
             <col style={{ width: "32px" }} />   {/* 드래그 핸들 */}
             <col style={{ width: "32px" }} />   {/* 체크박스 */}
             <col style={{ width: "56px" }} />   {/* 상태 */}
-            <col style={{ width: "48px" }} />   {/* NO */}
             <col style={{ width: "72px" }} />   {/* 호선 */}
             <col style={{ width: "64px" }} />   {/* BLK */}
+            <col style={{ width: "48px" }} />   {/* NO */}
             <col style={{ width: "72px" }} />   {/* 주당생산량 */}
             <col style={{ width: "110px" }} />  {/* 탑재일 */}
             <col style={{ width: "110px" }} />  {/* PND */}
@@ -1742,9 +1742,9 @@ export default function LbPlanManager() {
                 />
               </th>
               <th className={thCls}>상태</th>
-              <th className={thCls}>NO</th>
               <th className={`${thCls} bg-blue-50`}>호선</th>
               <th className={`${thCls} bg-blue-50`}>BLK</th>
+              <th className={thCls}>NO</th>
               <th className={`${thCls} bg-blue-50`}>주당<br/>생산량</th>
               <th className={thCls}>탑재일</th>
               <th className={thCls}>PND</th>
