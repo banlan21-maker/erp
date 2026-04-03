@@ -17,7 +17,7 @@ export async function GET() {
 // POST /api/workers
 export async function POST(request: NextRequest) {
   try {
-    const { name, nationality, birthDate, phone, role, position, joinDate, bloodType, shoeSize, winterTop, winterBottom, summerTop, summerBottom, nickname, englishName, visaType, foreignIdNo, passportNo, visaExpiry, isCncOp } = await request.json();
+    const { name, nationality, birthDate, phone, role, position, worksite, joinDate, bloodType, shoeSize, winterTop, winterBottom, summerTop, summerBottom, nickname, englishName, visaType, foreignIdNo, passportNo, visaExpiry, isCncOp } = await request.json();
 
     if (!name?.trim()) {
       return NextResponse.json({ success: false, error: "이름은 필수입니다." }, { status: 400 });
@@ -33,6 +33,7 @@ export async function POST(request: NextRequest) {
         phone: phone?.trim() || null,
         role: role?.trim() || null,
         position: position?.trim() || null,
+        worksite: worksite?.trim() || null,
         joinDate: joinDate ? new Date(joinDate) : null,
         bloodType: bloodType?.trim() || null,
         shoeSize: shoeSize?.toString().trim() || null,

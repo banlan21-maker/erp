@@ -234,6 +234,13 @@ model CuttingLog {
   updatedAt     DateTime      @updatedAt
 }
 
+// 근무지 옵션
+model WorksiteOption {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+}
+
 // 인원 마스터
 model Worker {
   id            String    @id @default(cuid())
@@ -243,6 +250,7 @@ model Worker {
   phone         String?                       // 전화번호
   role          String?                       // 담당
   position      String?                       // 직책
+  worksite      String?                       // 근무지
   joinDate      DateTime?                     // 입사일
   bloodType     String?                       // 혈액형
   shoeSize      String?                       // 신발사이즈
