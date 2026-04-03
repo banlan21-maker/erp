@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 // GET: 버전 목록 (최신순)
 export async function GET() {
@@ -13,8 +14,9 @@ export async function GET() {
 
 // POST: 새 버전 저장 (현재 rows를 스냅샷)
 export async function POST(req: Request) {
-  const { name, rows } = await req.json() as {
+  const { name, rows, settingsSnapshot } = await req.json() as {
     name: string;
+    settingsSnapshot?: unknown;
     rows: Array<{
       vesselCode: string; blk: string; no: number | null; weeklyQty: number | null;
       erectionDate: string | null; assemblyStart: string | null;
@@ -24,6 +26,7 @@ export async function POST(req: Request) {
       largeS: string | null; largeF: string | null;
       hullInspDate: string | null; paintStart: string | null; paintEnd: string | null;
       peStart: string | null; peEnd: string | null; delayDays: number | null;
+      manualFields?: string[] | null;
     }>;
   };
 
@@ -36,6 +39,7 @@ export async function POST(req: Request) {
     data: {
       name: name.trim(),
       blockCount: rows.length,
+      settingsSnapshot: settingsSnapshot !== undefined ? (settingsSnapshot as Prisma.InputJsonValue) : Prisma.JsonNull,
       plans: {
         create: rows.map(r => ({
           vesselCode: r.vesselCode,
@@ -53,6 +57,7 @@ export async function POST(req: Request) {
           paintStart: toDate(r.paintStart), paintEnd: toDate(r.paintEnd),
           peStart: toDate(r.peStart), peEnd: toDate(r.peEnd),
           delayDays: r.delayDays ?? null,
+          manualFields: r.manualFields ? (r.manualFields as Prisma.InputJsonValue) : Prisma.JsonNull,
         })),
       },
     },

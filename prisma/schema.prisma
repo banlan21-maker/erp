@@ -787,11 +787,12 @@ model LbCalendarDay {
 
 // LB 생산계획 버전 관리
 model LbPlanVersion {
-  id          String   @id @default(cuid())
-  name        String                        // 버전명 (예: "2026-04-03 14:32 저장본")
-  isDeployed  Boolean  @default(false)      // 배포 여부 (L/B확인 탭에 표시)
-  blockCount  Int      @default(0)          // 블록 수
-  createdAt   DateTime @default(now())
+  id               String   @id @default(cuid())
+  name             String                        // 버전명 (예: "2026-04-03 14:32 저장본")
+  isDeployed       Boolean  @default(false)      // 배포 여부 (L/B확인 탭에 표시)
+  blockCount       Int      @default(0)          // 블록 수
+  settingsSnapshot Json?                         // 스냅샷: processSettings + dataStartRow
+  createdAt        DateTime @default(now())
 
   plans       LbPlan[]
 }
@@ -824,6 +825,7 @@ model LbPlan {
   peStart         DateTime?   // P-E 착수
   peEnd           DateTime?   // P-E 완료
   delayDays       Int?        // 지연일수 (PND - P-E완료)
+  manualFields    Json?       // 수동수정된 필드명 목록 (예: ["cutS", "hullInspDate"])
 
   // 버전 연결
   versionId       String?

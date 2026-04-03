@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 const toDate = (v: unknown) => (v ? new Date(v as string) : null);
 
@@ -18,6 +19,7 @@ export async function PATCH(
     pnd, cutS, cutF,
     smallS, smallF, midS, midF, largeS, largeF,
     hullInspDate, paintStart, paintEnd, peStart, peEnd, delayDays,
+    manualFields,
   } = body;
 
   const plan = await prisma.lbPlan.update({
@@ -38,6 +40,7 @@ export async function PATCH(
       paintStart: toDate(paintStart), paintEnd: toDate(paintEnd),
       peStart: toDate(peStart), peEnd: toDate(peEnd),
       delayDays: delayDays != null ? Number(delayDays) : null,
+      manualFields: manualFields ? (manualFields as Prisma.InputJsonValue) : Prisma.JsonNull,
     },
   });
   return NextResponse.json(plan);

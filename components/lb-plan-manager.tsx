@@ -72,6 +72,7 @@ interface LbRow {
   peStart: string | null;
   peEnd: string | null;
   delayDays: number | null;
+  manualFields?: string[]; // 수동수정된 필드명 목록
   isNew?: boolean; // 아직 저장되지 않은 임시 행
   isDirty?: boolean;
 }
@@ -82,6 +83,10 @@ interface LbPlanVersion {
   isDeployed: boolean;
   blockCount: number;
   createdAt: string;
+  settingsSnapshot?: {
+    processSettings: ProcessSetting[];
+    dataStartRow: number;
+  } | null;
 }
 
 // ─── 날짜 유틸 ────────────────────────────────────────────────────────────────
@@ -160,15 +165,37 @@ function calcUpToLarge(row: LbRow, s: ProcessSetting, calendar: CalendarDay[] = 
   const assembly = parseDate(row.assemblyStart);
   if (!erection || !assembly) return {};
 
-  const pnd    = subDays(erection, 1);                                    // PND: 캘린더 무관
-  const cutS   = subWorkingDays(assembly, s.cutLeadDays, calendar, false); // 절단: 실내
-  const cutF   = addWorkingDays(cutS, s.cutDuration, calendar, false);
-  const smallS = subWorkingDays(cutS, s.assemblySmallDays, calendar, true);// 소조: 야드
+  const manual = new Set(row.manualFields ?? []);
+
+  const pnd = subDays(erection, 1);
+  const largeF = erection; // always = erectionDate
+
+  // cutS: 수동값 있으면 유지, 없으면 계산
+  const cutS = (manual.has("cutS") && row.cutS)
+    ? parseDate(row.cutS)!
+    : subWorkingDays(assembly, s.cutLeadDays, calendar, false);
+
+  const cutF = (manual.has("cutF") && row.cutF)
+    ? parseDate(row.cutF)!
+    : addWorkingDays(cutS, s.cutDuration, calendar, false);
+
+  // smallF는 항상 cutS (수동 오버라이드 없음)
   const smallF = cutS;
-  const midS   = subWorkingDays(smallS, s.assemblyMidDays, calendar, true);
-  const midF   = smallS;
-  const largeS = subWorkingDays(midS, s.assemblyLargeDays, calendar, true);
-  const largeF = erection; // 대조F = 탑재일 (고정)
+
+  const smallS = (manual.has("smallS") && row.smallS)
+    ? parseDate(row.smallS)!
+    : subWorkingDays(cutS, s.assemblySmallDays, calendar, true);
+
+  // midF는 항상 smallS (수동 오버라이드 없음)
+  const midF = smallS;
+
+  const midS = (manual.has("midS") && row.midS)
+    ? parseDate(row.midS)!
+    : subWorkingDays(smallS, s.assemblyMidDays, calendar, true);
+
+  const largeS = (manual.has("largeS") && row.largeS)
+    ? parseDate(row.largeS)!
+    : subWorkingDays(midS, s.assemblyLargeDays, calendar, true);
 
   return {
     pnd: toISO(pnd),
@@ -189,11 +216,9 @@ function calcHullAndDownstream(
 ): Map<string, Partial<LbRow>> {
   const result = new Map<string, Partial<LbRow>>();
 
-  // largeF 있는 행만 대상, no → largeF 순으로 정렬
   const eligible = vesselRows
     .filter(r => r.largeF && r.pnd)
     .sort((a, b) => {
-      // no가 있으면 no 순, 없으면 largeF 순
       if (a.no != null && b.no != null) return a.no - b.no;
       return new Date(a.largeF!).getTime() - new Date(b.largeF!).getTime();
     });
@@ -203,34 +228,53 @@ function calcHullAndDownstream(
   const leadDays   = s.hullInspLeadDays;
 
   let currentInspDate: Date | null = null;
-  let sessionCount = 0; // 현재 세션에서 배정된 블록 수
+  let sessionCount = 0;
 
   for (const row of eligible) {
+    const manual = new Set(row.manualFields ?? []);
     const largeF = parseDate(row.largeF)!;
     const pnd    = parseDate(row.pnd)!;
-    const earliest = addDays(largeF, leadDays); // 대조F + 최소 여유
 
-    if (currentInspDate === null || sessionCount >= perSession) {
-      // 새 세션 시작
-      if (currentInspDate === null) {
-        currentInspDate = nextWorkingDay(earliest, calendar, true);
-      } else {
-        const nextSlot = addDays(currentInspDate, interval);
-        const candidate = nextSlot >= earliest ? nextSlot : earliest;
-        currentInspDate = nextWorkingDay(candidate, calendar, true);
-      }
-      sessionCount = 1;
+    let hullInsp: Date;
+
+    if (manual.has("hullInspDate") && row.hullInspDate) {
+      // 수동으로 지정된 선각검사일 사용 (그룹 스케줄링 스킵)
+      hullInsp = parseDate(row.hullInspDate)!;
     } else {
-      // 기존 세션에 추가 (날짜 동일)
-      sessionCount++;
+      // 그룹 스케줄링
+      const earliest = addDays(largeF, leadDays);
+      if (currentInspDate === null || sessionCount >= perSession) {
+        if (currentInspDate === null) {
+          currentInspDate = nextWorkingDay(earliest, calendar, true);
+        } else {
+          const nextSlot = addDays(currentInspDate, interval);
+          const candidate = nextSlot >= earliest ? nextSlot : earliest;
+          currentInspDate = nextWorkingDay(candidate, calendar, true);
+        }
+        sessionCount = 1;
+      } else {
+        sessionCount++;
+      }
+      hullInsp = currentInspDate;
     }
 
-    const hullInsp = currentInspDate;
-    const paintSt  = addWorkingDays(hullInsp, s.paintLeadDays, calendar, true);
-    const paintEnd = addWorkingDays(paintSt, s.paintDuration, calendar, true);
-    const peSt     = addWorkingDays(paintEnd, s.peLeadDays, calendar, true);
-    const peEnd    = addWorkingDays(peSt, s.peDuration, calendar, true);
-    const delay    = Math.round((pnd.getTime() - peEnd.getTime()) / 86400000);
+    const paintSt = (manual.has("paintStart") && row.paintStart)
+      ? parseDate(row.paintStart)!
+      : addWorkingDays(hullInsp, s.paintLeadDays, calendar, true);
+
+    const paintEnd = (manual.has("paintEnd") && row.paintEnd)
+      ? parseDate(row.paintEnd)!
+      : addWorkingDays(paintSt, s.paintDuration, calendar, true);
+
+    const peSt = (manual.has("peStart") && row.peStart)
+      ? parseDate(row.peStart)!
+      : addWorkingDays(paintEnd, s.peLeadDays, calendar, true);
+
+    const peEnd = (manual.has("peEnd") && row.peEnd)
+      ? parseDate(row.peEnd)!
+      : addWorkingDays(peSt, s.peDuration, calendar, true);
+
+    const delay = Math.round((pnd.getTime() - peEnd.getTime()) / 86400000);
 
     result.set(row.id, {
       hullInspDate: toISO(hullInsp),
@@ -651,32 +695,45 @@ function ProcessSettingModal({
   );
 }
 
+// ─── 수동 수정 가능한 날짜 필드 목록 (모듈 레벨) ────────────────────────────
+const MANUAL_DATE_FIELDS = ["cutS", "cutF", "smallS", "midS", "largeS", "hullInspDate", "paintStart", "paintEnd", "peStart", "peEnd"] as const;
+type ManualDateField = typeof MANUAL_DATE_FIELDS[number];
+
 // ─── 인라인 편집 셀 ───────────────────────────────────────────────────────────
 
 function EditCell({
-  value, onChange, type = "text", readOnly = false, green = false,
+  value, onChange, type = "text", readOnly = false, green = false, isManual = false,
 }: {
   value: string;
   onChange?: (v: string) => void;
   type?: string;
   readOnly?: boolean;
   green?: boolean;
+  isManual?: boolean;
 }) {
   const base = "h-7 text-xs border-0 rounded-none focus:ring-1 focus:ring-inset focus:ring-blue-400 px-1.5 w-full";
-  if (readOnly) {
-    return (
-      <div className={`${base} flex items-center ${green ? "bg-green-50 text-green-800 font-semibold" : "bg-gray-50 text-gray-600"}`}>
-        {value || "-"}
-      </div>
-    );
-  }
-  return (
+  const content = readOnly ? (
+    <div className={`${base} flex items-center ${green ? "bg-green-50 text-green-800 font-semibold" : "bg-gray-50 text-gray-600"}`}>
+      {value || "-"}
+    </div>
+  ) : (
     <input
       type={type}
       value={value}
       onChange={e => onChange?.(e.target.value)}
-      className={`${base} bg-blue-50 text-blue-900 font-semibold outline-none`}
+      className={`${base} ${isManual ? "bg-indigo-50 text-indigo-900 font-semibold" : "bg-blue-50 text-blue-900 font-semibold"} outline-none`}
     />
+  );
+
+  if (!isManual) return content;
+  return (
+    <div className="relative">
+      {content}
+      <span
+        className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-blue-500 pointer-events-none"
+        title="수동 수정됨"
+      />
+    </div>
   );
 }
 
@@ -769,6 +826,41 @@ export default function LbPlanManager() {
     });
   }, [getSettingFor]);
 
+  const setManual = (id: string, field: ManualDateField, value: string | null) => {
+    setRows(prev => {
+      // 1. 해당 행 업데이트 + manual 플래그 추가/제거
+      const next = prev.map(r => {
+        if (r.id !== id) return r;
+        const current = new Set(r.manualFields ?? []);
+        if (value === null || value === "") {
+          current.delete(field);
+        } else {
+          current.add(field);
+        }
+        return {
+          ...r,
+          [field]: value ? new Date(value).toISOString() : null,
+          manualFields: Array.from(current),
+          isDirty: true,
+        };
+      });
+
+      // 2. 해당 호선의 hull downstream 재배정
+      const row = next.find(r => r.id === id);
+      if (!row) return next;
+      const vc = row.vesselCode;
+      const s = getSettingFor(vc, settings);
+      if (!s) return next;
+      const vesselRows = next.filter(r => r.vesselCode === vc);
+      const hullMap = calcHullAndDownstream(vesselRows, s, calendarDays);
+      return next.map(r => {
+        if (r.vesselCode !== vc) return r;
+        const downstream = hullMap.get(r.id);
+        return downstream ? { ...r, ...downstream, isDirty: true } : r;
+      });
+    });
+  };
+
   const updateRow = (id: string, patch: Partial<LbRow>) => {
     setRows(prev => {
       const prevRow = prev.find(r => r.id === id);
@@ -786,7 +878,6 @@ export default function LbPlanManager() {
       });
 
       // 2단계: 영향받은 호선(들)에 선각검사~지연일수 재배정
-      // vesselCode가 바뀐 경우 이전 호선도 재계산 (그룹 재배정)
       const changedRow = next.find(r => r.id === id);
       if (!changedRow) return next;
       const newVc = changedRow.vesselCode;
@@ -836,6 +927,40 @@ export default function LbPlanManager() {
     setRows(prev => prev.filter(r => r.id !== row.id));
   };
 
+  // 행 초기화: 해당 행의 수동수정 플래그 제거 후 재계산
+  const resetRow = (id: string) => {
+    setRows(prev => {
+      const next = prev.map(r => {
+        if (r.id !== id) return r;
+        const cleared = { ...r, manualFields: [], isDirty: true };
+        const s = getSettingFor(cleared.vesselCode, settings);
+        if (s) return { ...cleared, ...calcUpToLarge(cleared, s, calendarDays) };
+        return cleared;
+      });
+      // hull downstream 재계산
+      const row = next.find(r => r.id === id);
+      if (!row) return next;
+      const vc = row.vesselCode;
+      const s = getSettingFor(vc, settings);
+      if (!s) return next;
+      const vesselRows = next.filter(r => r.vesselCode === vc);
+      const hullMap = calcHullAndDownstream(vesselRows, s, calendarDays);
+      return next.map(r => {
+        if (r.vesselCode !== vc) return r;
+        const downstream = hullMap.get(r.id);
+        return downstream ? { ...r, ...downstream, isDirty: true } : r;
+      });
+    });
+  };
+
+  // 전체 초기화: 모든 행의 수동수정 플래그 제거 후 재계산
+  const resetAllRows = () => {
+    if (!confirm("모든 행의 수동수정을 초기화하고 설정값 기준으로 재계산합니까?")) return;
+    setRows(prev => prev.map(r => ({ ...r, manualFields: [], isDirty: true })));
+    // 다음 tick에 recalcAll 호출 (state 업데이트 후)
+    setTimeout(() => recalcAll(settings, calendarDays), 0);
+  };
+
   const saveAll = async () => {
     const dirty = rows.filter(r => r.isDirty);
     if (dirty.length === 0) return;
@@ -869,7 +994,11 @@ export default function LbPlanManager() {
     const res = await fetch("/api/lb-plan-version", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: saveVersionName.trim(), rows }),
+      body: JSON.stringify({
+        name: saveVersionName.trim(),
+        rows,
+        settingsSnapshot: { processSettings: settings, dataStartRow },
+      }),
     });
     if (res.ok) {
       await loadVersions();
@@ -885,11 +1014,34 @@ export default function LbPlanManager() {
 
   const loadVersion = async (versionId: string) => {
     setLoading(true);
+    // 해당 버전의 rows 로드
     const res = await fetch(`/api/lb-plan?versionId=${versionId}`);
     if (res.ok) {
       const data: LbRow[] = await res.json();
-      setRows(data.map(r => ({ ...r, isDirty: false })));
+      setRows(data.map(r => ({
+        ...r,
+        manualFields: Array.isArray(r.manualFields) ? r.manualFields : [],
+        isDirty: false,
+      })));
     }
+
+    // 버전의 설정 스냅샷 복원
+    const version = versions.find(v => v.id === versionId);
+    if (version?.settingsSnapshot) {
+      const { processSettings, dataStartRow: dr } = version.settingsSnapshot;
+      // 로컬 상태 업데이트
+      setSettings(processSettings);
+      setDataStartRow(dr);
+      // DB에도 복원 (현재 작업 설정으로)
+      await fetch("/api/lb-process-setting/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(processSettings),
+      });
+      // 복원된 설정으로 전체 재계산
+      recalcAll(processSettings, calendarDays);
+    }
+
     setLoading(false);
   };
 
@@ -1147,6 +1299,10 @@ export default function LbPlanManager() {
           title="설정·캘린더 기준으로 모든 행 날짜 재계산">
           <RefreshCw size={14} className="mr-1" /> 전체 재계산
         </Button>
+        <Button size="sm" variant="outline" onClick={resetAllRows}
+          title="모든 행의 수동수정을 제거하고 설정값으로 재계산">
+          <RefreshCw size={14} className="mr-1" /> 전체 초기화
+        </Button>
         <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={importing}>
           <Upload size={14} className="mr-1" /> {importing ? "가져오는 중..." : "엑셀 가져오기"}
         </Button>
@@ -1175,7 +1331,33 @@ export default function LbPlanManager() {
 
       {/* 테이블 */}
       <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
-        <table className="min-w-max w-full text-xs border-collapse">
+        <table className="text-xs border-collapse" style={{ tableLayout: "fixed", width: "2126px" }}>
+          <colgroup>
+            <col style={{ width: "56px" }} />   {/* 상태 */}
+            <col style={{ width: "48px" }} />   {/* NO */}
+            <col style={{ width: "72px" }} />   {/* 호선 */}
+            <col style={{ width: "64px" }} />   {/* BLK */}
+            <col style={{ width: "72px" }} />   {/* 주당생산량 */}
+            <col style={{ width: "110px" }} />  {/* 탑재일 */}
+            <col style={{ width: "110px" }} />  {/* PND */}
+            <col style={{ width: "110px" }} />  {/* 조립착수일 */}
+            <col style={{ width: "100px" }} />  {/* 절단S */}
+            <col style={{ width: "100px" }} />  {/* 절단F */}
+            <col style={{ width: "100px" }} />  {/* 소조S */}
+            <col style={{ width: "100px" }} />  {/* 소조F */}
+            <col style={{ width: "100px" }} />  {/* 중조S */}
+            <col style={{ width: "100px" }} />  {/* 중조F */}
+            <col style={{ width: "100px" }} />  {/* 대조S */}
+            <col style={{ width: "100px" }} />  {/* 대조F */}
+            <col style={{ width: "100px" }} />  {/* 선각검사 */}
+            <col style={{ width: "100px" }} />  {/* 도장착수 */}
+            <col style={{ width: "100px" }} />  {/* 도장완료 */}
+            <col style={{ width: "100px" }} />  {/* P-E착수 */}
+            <col style={{ width: "100px" }} />  {/* P-E완료 */}
+            <col style={{ width: "72px" }} />   {/* 지연일수 */}
+            <col style={{ width: "56px" }} />   {/* 초기화 */}
+            <col style={{ width: "56px" }} />   {/* 삭제 */}
+          </colgroup>
           <thead>
             <tr>
               <th className={thCls}>상태</th>
@@ -1200,15 +1382,16 @@ export default function LbPlanManager() {
               <th className={thCls}>P-E착수</th>
               <th className={thCls}>P-E완료</th>
               <th className={thCls}>지연일수</th>
+              <th className={thCls}>초기화</th>
               <th className={thCls}>삭제</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={23} className="text-center py-8 text-gray-400">불러오는 중...</td></tr>
+              <tr><td colSpan={24} className="text-center py-8 text-gray-400">불러오는 중...</td></tr>
             )}
             {!loading && filtered.length === 0 && (
-              <tr><td colSpan={23} className="text-center py-8 text-gray-400">데이터가 없습니다. 행 추가 또는 엑셀 가져오기로 시작하세요.</td></tr>
+              <tr><td colSpan={24} className="text-center py-8 text-gray-400">데이터가 없습니다. 행 추가 또는 엑셀 가져오기로 시작하세요.</td></tr>
             )}
             {filtered.map(row => {
               const delay = row.delayDays;
@@ -1245,24 +1428,51 @@ export default function LbPlanManager() {
                       onChange={v => updateRow(row.id, { assemblyStart: v ? new Date(v).toISOString() : null })} />
                   </td>
                   <td className={colCls}>
-                    <EditCell value={fmtDate(row.cutS)} readOnly green />
+                    <EditCell value={row.cutS?.slice(0,10) ?? ""} type="date" green
+                      isManual={row.manualFields?.includes("cutS")}
+                      onChange={v => setManual(row.id, "cutS", v || null)} />
                   </td>
                   <td className={colCls}>
-                    <EditCell value={fmtDate(row.cutF)} readOnly green />
+                    <EditCell value={row.cutF?.slice(0,10) ?? ""} type="date" green
+                      isManual={row.manualFields?.includes("cutF")}
+                      onChange={v => setManual(row.id, "cutF", v || null)} />
                   </td>
-                  <td className={colCls}><EditCell value={fmtDate(row.smallS)} readOnly /></td>
+                  <td className={colCls}><EditCell value={row.smallS?.slice(0,10) ?? ""} type="date"
+                    isManual={row.manualFields?.includes("smallS")}
+                    onChange={v => setManual(row.id, "smallS", v || null)} /></td>
                   <td className={colCls}><EditCell value={fmtDate(row.smallF)} readOnly /></td>
-                  <td className={colCls}><EditCell value={fmtDate(row.midS)} readOnly /></td>
+                  <td className={colCls}><EditCell value={row.midS?.slice(0,10) ?? ""} type="date"
+                    isManual={row.manualFields?.includes("midS")}
+                    onChange={v => setManual(row.id, "midS", v || null)} /></td>
                   <td className={colCls}><EditCell value={fmtDate(row.midF)} readOnly /></td>
-                  <td className={colCls}><EditCell value={fmtDate(row.largeS)} readOnly /></td>
+                  <td className={colCls}><EditCell value={row.largeS?.slice(0,10) ?? ""} type="date"
+                    isManual={row.manualFields?.includes("largeS")}
+                    onChange={v => setManual(row.id, "largeS", v || null)} /></td>
                   <td className={colCls}><EditCell value={fmtDate(row.largeF)} readOnly /></td>
-                  <td className={colCls}><EditCell value={fmtDate(row.hullInspDate)} readOnly /></td>
-                  <td className={colCls}><EditCell value={fmtDate(row.paintStart)} readOnly /></td>
-                  <td className={colCls}><EditCell value={fmtDate(row.paintEnd)} readOnly /></td>
-                  <td className={colCls}><EditCell value={fmtDate(row.peStart)} readOnly /></td>
-                  <td className={colCls}><EditCell value={fmtDate(row.peEnd)} readOnly /></td>
+                  <td className={colCls}><EditCell value={row.hullInspDate?.slice(0,10) ?? ""} type="date"
+                    isManual={row.manualFields?.includes("hullInspDate")}
+                    onChange={v => setManual(row.id, "hullInspDate", v || null)} /></td>
+                  <td className={colCls}><EditCell value={row.paintStart?.slice(0,10) ?? ""} type="date"
+                    isManual={row.manualFields?.includes("paintStart")}
+                    onChange={v => setManual(row.id, "paintStart", v || null)} /></td>
+                  <td className={colCls}><EditCell value={row.paintEnd?.slice(0,10) ?? ""} type="date"
+                    isManual={row.manualFields?.includes("paintEnd")}
+                    onChange={v => setManual(row.id, "paintEnd", v || null)} /></td>
+                  <td className={colCls}><EditCell value={row.peStart?.slice(0,10) ?? ""} type="date"
+                    isManual={row.manualFields?.includes("peStart")}
+                    onChange={v => setManual(row.id, "peStart", v || null)} /></td>
+                  <td className={colCls}><EditCell value={row.peEnd?.slice(0,10) ?? ""} type="date"
+                    isManual={row.manualFields?.includes("peEnd")}
+                    onChange={v => setManual(row.id, "peEnd", v || null)} /></td>
                   <td className={`${colCls} text-center ${delayCls} py-1 px-1`}>
                     {delay != null ? (delay >= 0 ? `+${delay}일` : `${delay}일`) : "-"}
+                  </td>
+                  <td className="text-center py-1 px-1">
+                    <button onClick={() => resetRow(row.id)}
+                      className="text-xs text-gray-400 hover:text-blue-600"
+                      title="이 행의 수동수정 초기화">
+                      ↺
+                    </button>
                   </td>
                   <td className="text-center py-1 px-1">
                     <button onClick={() => deleteRow(row)} className="text-red-400 hover:text-red-600">

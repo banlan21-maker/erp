@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 // GET: LB 생산계획 목록
 export async function GET(req: Request) {
@@ -47,6 +48,7 @@ export async function POST(req: Request) {
     pnd, cutS, cutF,
     smallS, smallF, midS, midF, largeS, largeF,
     hullInspDate, paintStart, paintEnd, peStart, peEnd, delayDays,
+    manualFields,
     createdBy,
   } = body;
 
@@ -73,6 +75,7 @@ export async function POST(req: Request) {
       paintStart: toDate(paintStart), paintEnd: toDate(paintEnd),
       peStart: toDate(peStart), peEnd: toDate(peEnd),
       delayDays: delayDays != null ? Number(delayDays) : null,
+      manualFields: manualFields ? (manualFields as Prisma.InputJsonValue) : Prisma.JsonNull,
       createdBy: createdBy ?? null,
     },
   });
