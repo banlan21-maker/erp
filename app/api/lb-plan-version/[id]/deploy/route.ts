@@ -18,3 +18,13 @@ export async function POST(
   const version = await prisma.lbPlanVersion.findUnique({ where: { id } });
   return NextResponse.json(version);
 }
+
+// DELETE: 배포 취소
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  await prisma.lbPlanVersion.update({ where: { id }, data: { isDeployed: false } });
+  return NextResponse.json({ ok: true });
+}

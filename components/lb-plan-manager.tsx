@@ -1384,6 +1384,12 @@ export default function LbPlanManager() {
     await loadVersions();
   };
 
+  const undeployVersion = async (v: LbPlanVersion) => {
+    if (!confirm(`"${v.name}" 배포를 취소하시겠습니까?\nL/B확인 탭에서 더 이상 표시되지 않습니다.`)) return;
+    await fetch(`/api/lb-plan-version/${v.id}/deploy`, { method: "DELETE" });
+    await loadVersions();
+  };
+
   const deleteVersion = async (v: LbPlanVersion) => {
     if (v.isDeployed) {
       alert("배포 중인 버전은 삭제할 수 없습니다. 배포를 해제한 후 삭제하세요.");
@@ -1589,13 +1595,21 @@ export default function LbPlanManager() {
                   >
                     불러오기
                   </button>
-                  <button
-                    onClick={() => deployVersion(v)}
-                    disabled={v.isDeployed}
-                    className={`text-xs px-2 py-1 rounded border transition-colors ${v.isDeployed ? "border-green-300 text-green-600 bg-green-50 cursor-default" : "border-blue-300 text-blue-600 hover:bg-blue-50"}`}
-                  >
-                    {v.isDeployed ? "배포중" : "배포"}
-                  </button>
+                  {v.isDeployed ? (
+                    <button
+                      onClick={() => undeployVersion(v)}
+                      className="text-xs px-2 py-1 rounded border border-orange-300 text-orange-600 hover:bg-orange-50 transition-colors"
+                    >
+                      배포취소
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => deployVersion(v)}
+                      className="text-xs px-2 py-1 rounded border border-blue-300 text-blue-600 hover:bg-blue-50 transition-colors"
+                    >
+                      배포
+                    </button>
+                  )}
                   <button
                     onClick={() => deleteVersion(v)}
                     className={`text-xs px-2 py-1 rounded border transition-colors ${v.isDeployed ? "border-gray-200 text-gray-300 cursor-not-allowed" : "border-red-200 text-red-500 hover:bg-red-50"}`}
