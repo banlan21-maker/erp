@@ -25,8 +25,15 @@ interface LbRow {
   peStart: string | null;
   peEnd: string | null;
   delayDays: number | null;
-  // 작업일보 연동 (API에서 추가)
   actualCutStart?: string | null;
+}
+
+interface LbPlanVersion {
+  id: string;
+  name: string;
+  isDeployed: boolean;
+  blockCount: number;
+  createdAt: string;
 }
 
 function fmtDate(iso: string | null | undefined): string {
@@ -55,27 +62,35 @@ function StatusBadge({ row }: { row: LbRow }) {
 
 export default function LbPlanViewer() {
   const [rows, setRows] = useState<LbRow[]>([]);
+  const [deployedVersion, setDeployedVersion] = useState<LbPlanVersion | null>(null);
   const [vesselFilter, setVesselFilter] = useState("ALL");
-  const [yearFilter, setYearFilter] = useState(String(new Date().getFullYear()));
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (vesselFilter !== "ALL") params.set("vesselCode", vesselFilter);
-    if (yearFilter) params.set("year", yearFilter);
-    // LB 계획 조회
+    // 배포된 버전 정보 먼저 조회
+    const verRes = await fetch("/api/lb-plan-version");
+    const versions: LbPlanVersion[] = verRes.ok ? await verRes.json() : [];
+    const deployed = versions.find(v => v.isDeployed) ?? null;
+    setDeployedVersion(deployed);
+
+    if (!deployed) {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
+
+    // 배포 버전 rows + 실제 절단일 연동
     const [planRes, logRes] = await Promise.all([
-      fetch(`/api/lb-plan?${params}`),
-      fetch(`/api/lb-actual-cut?${params}`),
+      fetch(`/api/lb-plan?versionId=${deployed.id}`),
+      fetch(`/api/lb-actual-cut`),
     ]);
     const plans: LbRow[] = await planRes.json();
     const actuals: { vesselCode: string; blk: string; actualCutStart: string }[] = logRes.ok ? await logRes.json() : [];
-    // 실제 절단일 연동
     const actualMap = new Map(actuals.map(a => [`${a.vesselCode}|${a.blk}`, a.actualCutStart]));
     setRows(plans.map(p => ({ ...p, actualCutStart: actualMap.get(`${p.vesselCode}|${p.blk}`) ?? null })));
     setLoading(false);
-  }, [vesselFilter, yearFilter]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -87,15 +102,31 @@ export default function LbPlanViewer() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* 배포 버전 정보 */}
+      {deployedVersion ? (
+        <div className="flex items-center gap-3 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700">배포중</span>
+          <span className="text-sm font-semibold text-green-800">{deployedVersion.name}</span>
+          <span className="text-xs text-green-600">{new Date(deployedVersion.createdAt).toLocaleString("ko-KR")} · {deployedVersion.blockCount}블록</span>
+          <div className="flex-1" />
+          <button onClick={load} className="text-xs text-green-600 hover:underline">새로고침</button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
+          <span className="text-sm text-gray-500">배포된 스케줄이 없습니다.</span>
+          <span className="text-xs text-gray-400">L/B생성 탭에서 버전을 저장하고 배포하세요.</span>
+        </div>
+      )}
+
       {/* 필터 */}
-      <div className="flex flex-wrap items-center gap-2">
-        <select className="border rounded-md text-sm px-2 h-9" value={vesselFilter} onChange={e => setVesselFilter(e.target.value)}>
-          <option value="ALL">전체 호선</option>
-          {vesselCodes.map(v => <option key={v} value={v}>{v}</option>)}
-        </select>
-        <input type="number" className="border rounded-md text-sm px-2 h-9 w-24" value={yearFilter} onChange={e => setYearFilter(e.target.value)} placeholder="연도" />
-        <button onClick={load} className="text-sm text-blue-500 hover:underline">새로고침</button>
-      </div>
+      {deployedVersion && (
+        <div className="flex flex-wrap items-center gap-2">
+          <select className="border rounded-md text-sm px-2 h-9" value={vesselFilter} onChange={e => setVesselFilter(e.target.value)}>
+            <option value="ALL">전체 호선</option>
+            {vesselCodes.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+      )}
 
       {/* 테이블 */}
       <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
@@ -125,8 +156,11 @@ export default function LbPlanViewer() {
           </thead>
           <tbody>
             {loading && <tr><td colSpan={19} className="text-center py-8 text-gray-400">불러오는 중...</td></tr>}
-            {!loading && filtered.length === 0 && (
-              <tr><td colSpan={19} className="text-center py-8 text-gray-400">데이터가 없습니다. L/B생성 탭에서 계획을 등록하세요.</td></tr>
+            {!loading && !deployedVersion && (
+              <tr><td colSpan={19} className="text-center py-8 text-gray-400">배포된 스케줄이 없습니다.</td></tr>
+            )}
+            {!loading && deployedVersion && filtered.length === 0 && (
+              <tr><td colSpan={19} className="text-center py-8 text-gray-400">데이터가 없습니다.</td></tr>
             )}
             {filtered.map(row => {
               const delay = row.delayDays;

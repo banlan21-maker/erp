@@ -76,6 +76,14 @@ interface LbRow {
   isDirty?: boolean;
 }
 
+interface LbPlanVersion {
+  id: string;
+  name: string;
+  isDeployed: boolean;
+  blockCount: number;
+  createdAt: string;
+}
+
 // ─── 날짜 유틸 ────────────────────────────────────────────────────────────────
 
 function addDays(date: Date, days: number): Date {
@@ -685,6 +693,10 @@ export default function LbPlanManager() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [versions, setVersions] = useState<LbPlanVersion[]>([]);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [saveVersionName, setSaveVersionName] = useState("");
+  const [savingVersion, setSavingVersion] = useState(false);
 
   const loadSettings = useCallback(async (): Promise<ProcessSetting[]> => {
     const res = await fetch("/api/lb-process-setting");
@@ -713,9 +725,15 @@ export default function LbPlanManager() {
     setLoading(false);
   }, [vesselFilter, yearFilter]);
 
+  const loadVersions = useCallback(async () => {
+    const res = await fetch("/api/lb-plan-version");
+    if (res.ok) setVersions(await res.json());
+  }, []);
+
   useEffect(() => { loadSettings(); }, [loadSettings]);
   useEffect(() => { loadCalendar(); }, [loadCalendar]);
   useEffect(() => { loadPlans(); }, [loadPlans]);
+  useEffect(() => { loadVersions(); }, [loadVersions]);
 
   // 해당 호선의 설정 찾기 (없으면 기본값, 그것도 없으면 undefined)
   const getSettingFor = useCallback((vesselCode: string, settingsList: ProcessSetting[]): ProcessSetting | undefined => {
@@ -843,6 +861,61 @@ export default function LbPlanManager() {
       }
     }));
     setSaving(false);
+  };
+
+  const saveVersion = async () => {
+    if (!saveVersionName.trim()) return;
+    setSavingVersion(true);
+    const res = await fetch("/api/lb-plan-version", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: saveVersionName.trim(), rows }),
+    });
+    if (res.ok) {
+      await loadVersions();
+      setRows(prev => prev.map(r => ({ ...r, isDirty: false })));
+      setShowSaveDialog(false);
+      setSaveVersionName("");
+    } else {
+      const err = await res.json();
+      alert(err.error ?? "저장 실패");
+    }
+    setSavingVersion(false);
+  };
+
+  const loadVersion = async (versionId: string) => {
+    setLoading(true);
+    const res = await fetch(`/api/lb-plan?versionId=${versionId}`);
+    if (res.ok) {
+      const data: LbRow[] = await res.json();
+      setRows(data.map(r => ({ ...r, isDirty: false })));
+    }
+    setLoading(false);
+  };
+
+  const deployVersion = async (v: LbPlanVersion) => {
+    if (v.isDeployed) return;
+    const deployed = versions.find(ver => ver.isDeployed);
+    if (deployed) {
+      if (!confirm(`현재 "${deployed.name}"이 배포 중입니다.\n"${v.name}"으로 교체하시겠습니까?`)) return;
+    }
+    await fetch(`/api/lb-plan-version/${v.id}/deploy`, { method: "POST" });
+    await loadVersions();
+  };
+
+  const deleteVersion = async (v: LbPlanVersion) => {
+    if (v.isDeployed) {
+      alert("배포 중인 버전은 삭제할 수 없습니다. 배포를 해제한 후 삭제하세요.");
+      return;
+    }
+    if (!confirm(`"${v.name}" 버전을 삭제하시겠습니까?\n해당 버전의 모든 데이터가 삭제됩니다.`)) return;
+    const res = await fetch(`/api/lb-plan-version/${v.id}`, { method: "DELETE" });
+    if (res.ok) {
+      await loadVersions();
+    } else {
+      const err = await res.json();
+      alert(err.error ?? "삭제 실패");
+    }
   };
 
   // 엑셀 내보내기
@@ -1007,6 +1080,49 @@ export default function LbPlanManager() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* 버전 목록 패널 */}
+      {versions.length > 0 && (
+        <div className="border border-gray-200 rounded-lg bg-gray-50 p-3">
+          <p className="text-xs font-semibold text-gray-600 mb-2">저장된 버전</p>
+          <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto">
+            {versions.map(v => (
+              <div key={v.id}
+                className="flex items-center gap-2 bg-white border border-gray-200 rounded-md px-3 py-2 hover:border-blue-300 cursor-pointer"
+                onClick={() => loadVersion(v.id)}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-sm font-medium text-gray-800 truncate">{v.name}</span>
+                    {v.isDeployed
+                      ? <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700 shrink-0">배포중</span>
+                      : <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-500 shrink-0">초안</span>
+                    }
+                  </div>
+                  <div className="text-[10px] text-gray-400 mt-0.5">
+                    {new Date(v.createdAt).toLocaleString("ko-KR")} · {v.blockCount}블록
+                  </div>
+                </div>
+                <div className="flex gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                  <button
+                    onClick={() => deployVersion(v)}
+                    disabled={v.isDeployed}
+                    className={`text-xs px-2 py-1 rounded border transition-colors ${v.isDeployed ? "border-green-300 text-green-600 bg-green-50 cursor-default" : "border-blue-300 text-blue-600 hover:bg-blue-50"}`}
+                  >
+                    {v.isDeployed ? "배포중" : "배포"}
+                  </button>
+                  <button
+                    onClick={() => deleteVersion(v)}
+                    className={`text-xs px-2 py-1 rounded border transition-colors ${v.isDeployed ? "border-gray-200 text-gray-300 cursor-not-allowed" : "border-red-200 text-red-500 hover:bg-red-50"}`}
+                  >
+                    삭제
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* 툴바 */}
       <div className="flex flex-wrap items-center gap-2">
         <select
@@ -1046,9 +1162,14 @@ export default function LbPlanManager() {
         <Button size="sm" onClick={addRow}>
           <Plus size={14} className="mr-1" /> 행 추가
         </Button>
-        <Button size="sm" onClick={saveAll} disabled={saving || dirtyCount === 0}
-          className={dirtyCount > 0 ? "bg-blue-600 hover:bg-blue-700 text-white" : ""}>
-          <Save size={14} className="mr-1" /> 저장{dirtyCount > 0 ? ` (${dirtyCount})` : ""}
+        <Button size="sm" onClick={() => {
+          const now = new Date();
+          const pad = (n: number) => String(n).padStart(2, "0");
+          const defaultName = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())} 저장본`;
+          setSaveVersionName(defaultName);
+          setShowSaveDialog(true);
+        }} disabled={rows.length === 0} className="bg-blue-600 hover:bg-blue-700 text-white">
+          <Save size={14} className="mr-1" /> 버전 저장
         </Button>
       </div>
 
@@ -1159,6 +1280,33 @@ export default function LbPlanManager() {
         파란색 셀: 직접 입력 / 초록색: 우리 담당(절단) / 회색: 자동계산 (수정 불가)
         {dirtyCount > 0 && <span className="ml-2 text-amber-600 font-semibold">미저장 {dirtyCount}행 있음 — 저장 버튼을 눌러주세요</span>}
       </p>
+
+      {/* 버전 저장 다이얼로그 */}
+      {showSaveDialog && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
+            <h3 className="text-base font-bold text-gray-900 mb-4">버전 저장</h3>
+            <div className="flex flex-col gap-2 mb-4">
+              <label className="text-sm text-gray-600">버전명</label>
+              <Input
+                value={saveVersionName}
+                onChange={e => setSaveVersionName(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") saveVersion(); }}
+                placeholder="예: 4월 초안"
+                className="text-sm"
+                autoFocus
+              />
+              <p className="text-xs text-gray-400">총 {rows.length}블록이 저장됩니다.</p>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={() => setShowSaveDialog(false)}>취소</Button>
+              <Button size="sm" onClick={saveVersion} disabled={savingVersion || !saveVersionName.trim()}>
+                {savingVersion ? "저장 중..." : "저장"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showSettings && (
         <ProcessSettingModal
