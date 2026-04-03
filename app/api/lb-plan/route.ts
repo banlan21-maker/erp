@@ -22,7 +22,12 @@ export async function GET(req: Request) {
   }
 
   const where: Record<string, unknown> = {};
-  if (resolvedVersionId) where.versionId = resolvedVersionId;
+  if (resolvedVersionId) {
+    where.versionId = resolvedVersionId;
+  } else {
+    // versionId 없이 조회하면 초안(draft) 행만 반환 — 버전 저장된 행 제외
+    where.versionId = null;
+  }
   if (vesselCode && vesselCode !== "ALL") where.vesselCode = vesselCode;
   if (year) {
     const y = Number(year);
