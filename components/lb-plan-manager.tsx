@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, Settings2, Download, Upload, Save, Trash2, X, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import * as XLSX from "xlsx";
+import * as XLSX from "xlsx"; // 엑셀 내보내기 전용 (가져오기는 서버사이드)
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -453,71 +453,126 @@ export default function LbPlanManager() {
     XLSX.writeFile(wb, `생산계획_${mm}월${dd}일_.xlsx`);
   };
 
-  // 엑셀 가져오기
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // 엑셀 가져오기 — 서버사이드 파싱 (수식 계산값 정확히 읽음)
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ created: number; updated: number; skipped: number } | null>(null);
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async ev => {
-      const wb = XLSX.read(ev.target?.result, { type: "binary", cellDates: true });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rawRows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
-      // 헤더 건너뛰기 (첫 행)
-      const imported: LbRow[] = rawRows.slice(1)
-        .filter(r => r[1] && r[2]) // 호선+BLK 필수
-        .map((r, idx) => {
-          const toStr = (v: unknown): string | null => {
-            if (!v) return null;
-            if (v instanceof Date) return v.toISOString();
-            if (typeof v === "string") return new Date(v).toISOString();
-            return null;
-          };
-          return {
-            id: `import_${idx}_${Date.now()}`,
-            no: r[0] ? Number(r[0]) : null,
-            vesselCode: String(r[1]),
-            blk: String(r[2]),
-            weeklyQty: r[3] ? Number(r[3]) : null,
-            erectionDate: toStr(r[4]),
-            pnd: toStr(r[5]),
-            assemblyStart: toStr(r[6]),
-            cutS: toStr(r[7]), cutF: toStr(r[8]),
-            smallS: toStr(r[9]), smallF: toStr(r[10]),
-            midS: toStr(r[11]), midF: toStr(r[12]),
-            largeS: toStr(r[13]), largeF: toStr(r[14]),
-            hullInspDate: toStr(r[15]),
-            paintStart: toStr(r[16]), paintEnd: toStr(r[17]),
-            peStart: toStr(r[18]), peEnd: toStr(r[19]),
-            delayDays: r[20] ? Number(r[20]) : null,
-            isNew: true, isDirty: true,
-          };
-        });
+    setImporting(true);
+    setImportResult(null);
+
+    try {
+      // 서버로 파일 업로드 → 서버에서 파싱 후 rows 반환
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/lb-import", { method: "POST", body: formData });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(`가져오기 실패: ${err.error ?? "알 수 없는 오류"}`);
+        return;
+      }
+      const { rows: parsed, totalRows, sheetName } = await res.json() as {
+        rows: Array<{
+          vesselCode: string; blk: string; no: number | null; weeklyQty: number | null;
+          erectionDate: string | null; pnd: string | null; assemblyStart: string | null;
+          cutS: string | null; cutF: string | null;
+          smallS: string | null; smallF: string | null;
+          midS: string | null; midF: string | null;
+          largeS: string | null; largeF: string | null;
+          hullInspDate: string | null; paintStart: string | null; paintEnd: string | null;
+          peStart: string | null; peEnd: string | null; delayDays: number | null;
+        }>;
+        totalRows: number;
+        sheetName: string;
+      };
+
+      if (totalRows === 0) {
+        alert(`시트 "${sheetName}"에서 데이터를 찾지 못했습니다.\n(6행부터 데이터, A열이 숫자인 행만 인식)`);
+        return;
+      }
 
       // 중복 확인
       const existingKeys = new Set(rows.filter(r => !r.isNew).map(r => `${r.vesselCode}|${r.blk}`));
-      const dupes = imported.filter(r => existingKeys.has(`${r.vesselCode}|${r.blk}`));
+      const dupes = parsed.filter(r => existingKeys.has(`${r.vesselCode}|${r.blk}`));
       let action = "skip";
       if (dupes.length > 0) {
-        const ans = confirm(`중복된 호선+BLK가 ${dupes.length}건 있습니다.\n확인: 덮어쓰기 / 취소: 건너뛰기`);
+        const ans = confirm(
+          `시트: ${sheetName} / 총 ${totalRows}건\n중복된 호선+BLK가 ${dupes.length}건 있습니다.\n\n확인 → 덮어쓰기\n취소 → 건너뛰기`
+        );
         action = ans ? "overwrite" : "skip";
       }
 
+      let created = 0, updated = 0, skipped = 0;
+
       setRows(prev => {
         const result = [...prev];
-        for (const imp of imported) {
+        for (const imp of parsed) {
           const key = `${imp.vesselCode}|${imp.blk}`;
           const existIdx = result.findIndex(r => !r.isNew && `${r.vesselCode}|${r.blk}` === key);
           if (existIdx >= 0) {
-            if (action === "overwrite") result[existIdx] = { ...imp, id: result[existIdx].id, isNew: false, isDirty: true };
+            if (action === "overwrite") {
+              result[existIdx] = {
+                ...result[existIdx],
+                ...imp,
+                // 날짜를 ISO 문자열로 변환 (서버는 YYYY-MM-DD 반환)
+                erectionDate: imp.erectionDate ? new Date(imp.erectionDate).toISOString() : null,
+                pnd:          imp.pnd          ? new Date(imp.pnd).toISOString()          : null,
+                assemblyStart:imp.assemblyStart? new Date(imp.assemblyStart).toISOString(): null,
+                cutS:  imp.cutS  ? new Date(imp.cutS).toISOString()  : null,
+                cutF:  imp.cutF  ? new Date(imp.cutF).toISOString()  : null,
+                smallS:imp.smallS? new Date(imp.smallS).toISOString(): null,
+                smallF:imp.smallF? new Date(imp.smallF).toISOString(): null,
+                midS:  imp.midS  ? new Date(imp.midS).toISOString()  : null,
+                midF:  imp.midF  ? new Date(imp.midF).toISOString()  : null,
+                largeS:imp.largeS? new Date(imp.largeS).toISOString(): null,
+                largeF:imp.largeF? new Date(imp.largeF).toISOString(): null,
+                hullInspDate: imp.hullInspDate ? new Date(imp.hullInspDate).toISOString() : null,
+                paintStart: imp.paintStart ? new Date(imp.paintStart).toISOString() : null,
+                paintEnd:   imp.paintEnd   ? new Date(imp.paintEnd).toISOString()   : null,
+                peStart:    imp.peStart    ? new Date(imp.peStart).toISOString()    : null,
+                peEnd:      imp.peEnd      ? new Date(imp.peEnd).toISOString()      : null,
+                isNew: false, isDirty: true,
+              };
+              updated++;
+            } else {
+              skipped++;
+            }
           } else {
-            result.push(imp);
+            const ts = Date.now();
+            result.push({
+              id: `import_${ts}_${imp.blk}`,
+              ...imp,
+              erectionDate: imp.erectionDate ? new Date(imp.erectionDate).toISOString() : null,
+              pnd:          imp.pnd          ? new Date(imp.pnd).toISOString()          : null,
+              assemblyStart:imp.assemblyStart? new Date(imp.assemblyStart).toISOString(): null,
+              cutS:  imp.cutS  ? new Date(imp.cutS).toISOString()  : null,
+              cutF:  imp.cutF  ? new Date(imp.cutF).toISOString()  : null,
+              smallS:imp.smallS? new Date(imp.smallS).toISOString(): null,
+              smallF:imp.smallF? new Date(imp.smallF).toISOString(): null,
+              midS:  imp.midS  ? new Date(imp.midS).toISOString()  : null,
+              midF:  imp.midF  ? new Date(imp.midF).toISOString()  : null,
+              largeS:imp.largeS? new Date(imp.largeS).toISOString(): null,
+              largeF:imp.largeF? new Date(imp.largeF).toISOString(): null,
+              hullInspDate: imp.hullInspDate ? new Date(imp.hullInspDate).toISOString() : null,
+              paintStart: imp.paintStart ? new Date(imp.paintStart).toISOString() : null,
+              paintEnd:   imp.paintEnd   ? new Date(imp.paintEnd).toISOString()   : null,
+              peStart:    imp.peStart    ? new Date(imp.peStart).toISOString()    : null,
+              peEnd:      imp.peEnd      ? new Date(imp.peEnd).toISOString()      : null,
+              isNew: true, isDirty: true,
+            });
+            created++;
           }
         }
         return result;
       });
-    };
-    reader.readAsBinaryString(file);
-    e.target.value = "";
+
+      setImportResult({ created, updated, skipped });
+    } finally {
+      setImporting(false);
+      e.target.value = "";
+    }
   };
 
   // 호선 목록 (필터용)
@@ -551,10 +606,15 @@ export default function LbPlanManager() {
         <Button size="sm" variant="outline" onClick={() => setShowSettings(true)}>
           <Settings2 size={14} className="mr-1" /> 공정 설정
         </Button>
-        <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}>
-          <Upload size={14} className="mr-1" /> 엑셀 가져오기
+        <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={importing}>
+          <Upload size={14} className="mr-1" /> {importing ? "가져오는 중..." : "엑셀 가져오기"}
         </Button>
         <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImport} />
+        {importResult && (
+          <span className="text-xs text-gray-600 bg-gray-100 rounded px-2 py-1">
+            신규 {importResult.created}건 / 업데이트 {importResult.updated}건 / 건너뜀 {importResult.skipped}건
+          </span>
+        )}
         <Button size="sm" variant="outline" onClick={exportExcel}>
           <Download size={14} className="mr-1" /> 엑셀 내보내기
         </Button>
