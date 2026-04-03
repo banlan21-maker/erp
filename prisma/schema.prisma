@@ -766,6 +766,25 @@ model LbProcessSetting {
   updatedAt             DateTime @updatedAt
 }
 
+// 공장 캘린더 — 비작업일 등록
+enum LbHolidayType {
+  LEGAL      // 법정공휴일 (고정일)
+  SUBSTITUTE // 대체공휴일
+  COMPANY    // 회사 자체 휴무 (하계/동계 등)
+  RAIN       // 장마/우천 (야드 공정에만 적용)
+}
+
+model LbCalendarDay {
+  id        String        @id @default(cuid())
+  date      String        // YYYY-MM-DD
+  type      LbHolidayType
+  label     String        // 설명 (신정, 설날, 하계휴가 등)
+  year      Int           // 필터용
+  createdAt DateTime      @default(now())
+
+  @@unique([date, type])
+}
+
 // LB 생산계획 (호선 + 블록 단위)
 model LbPlan {
   id              String   @id @default(cuid())

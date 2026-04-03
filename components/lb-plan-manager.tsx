@@ -8,6 +8,29 @@ import * as XLSX from "xlsx"; // 엑셀 내보내기 전용 (가져오기는 서
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
+type HolidayType = "LEGAL" | "SUBSTITUTE" | "COMPANY" | "RAIN";
+
+interface CalendarDay {
+  id: string;
+  date: string;       // YYYY-MM-DD
+  type: HolidayType;
+  label: string;
+  year: number;
+}
+
+const HOLIDAY_TYPE_LABEL: Record<HolidayType, string> = {
+  LEGAL:      "법정공휴일",
+  SUBSTITUTE: "대체공휴일",
+  COMPANY:    "회사휴무",
+  RAIN:       "장마/우천",
+};
+const HOLIDAY_TYPE_COLOR: Record<HolidayType, string> = {
+  LEGAL:      "bg-red-100 text-red-700",
+  SUBSTITUTE: "bg-orange-100 text-orange-700",
+  COMPANY:    "bg-blue-100 text-blue-700",
+  RAIN:       "bg-cyan-100 text-cyan-700",
+};
+
 interface ProcessSetting {
   id: string;
   vesselCode: string;
@@ -76,23 +99,68 @@ function parseDate(val: string | null | undefined): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
+// ─── 캘린더 유틸 ─────────────────────────────────────────────────────────────
+
+// 비작업일 여부 확인
+// isYard=false(절단, 실내): RAIN 타입 제외, 주말+나머지 공휴일만
+// isYard=true(야드 공정): 모든 비작업일 적용
+function isNonWorkingDay(dateStr: string, calendar: CalendarDay[], isYard: boolean): boolean {
+  const d = new Date(dateStr + "T00:00:00");
+  const dow = d.getDay();
+  if (dow === 0 || dow === 6) return true; // 주말
+  return calendar.some(c => {
+    if (c.date !== dateStr) return false;
+    if (c.type === "RAIN") return isYard; // 장마는 야드만
+    return true;
+  });
+}
+
+function addWorkingDays(start: Date, days: number, calendar: CalendarDay[], isYard: boolean): Date {
+  let d = new Date(start);
+  let rem = days;
+  while (rem > 0) {
+    d = addDays(d, 1);
+    if (!isNonWorkingDay(d.toISOString().slice(0, 10), calendar, isYard)) rem--;
+  }
+  return d;
+}
+
+function subWorkingDays(start: Date, days: number, calendar: CalendarDay[], isYard: boolean): Date {
+  let d = new Date(start);
+  let rem = days;
+  while (rem > 0) {
+    d = subDays(d, 1);
+    if (!isNonWorkingDay(d.toISOString().slice(0, 10), calendar, isYard)) rem--;
+  }
+  return d;
+}
+
+// 날짜 d가 비작업일이면 다음 작업일로 이동 (야드여부 구분)
+function nextWorkingDay(d: Date, calendar: CalendarDay[], isYard: boolean): Date {
+  let result = new Date(d);
+  while (isNonWorkingDay(result.toISOString().slice(0, 10), calendar, isYard)) {
+    result = addDays(result, 1);
+  }
+  return result;
+}
+
 // ─── 자동계산 ─────────────────────────────────────────────────────────────────
 
 // 절단~대조까지만 계산 (선각검사 이후는 vessel 전체 기반으로 별도 계산)
-function calcUpToLarge(row: LbRow, s: ProcessSetting): Partial<LbRow> {
+function calcUpToLarge(row: LbRow, s: ProcessSetting, calendar: CalendarDay[] = []): Partial<LbRow> {
   const erection = parseDate(row.erectionDate);
   const assembly = parseDate(row.assemblyStart);
   if (!erection || !assembly) return {};
 
-  const pnd    = subDays(erection, 1);
-  const cutS   = subDays(assembly, s.cutLeadDays);
-  const cutF   = addDays(cutS, s.cutDuration);
-  const smallS = subDays(cutS, s.assemblySmallDays);
+  const pnd    = subDays(erection, 1);                                    // PND: 캘린더 무관
+  const cutS   = subWorkingDays(assembly, s.cutLeadDays, calendar, false); // 절단: 실내
+  const cutF   = addWorkingDays(cutS, s.cutDuration, calendar, false);
+  const smallS = subWorkingDays(cutS, s.assemblySmallDays, calendar, true);// 소조: 야드
   const smallF = cutS;
-  const midS   = subDays(smallS, s.assemblyMidDays);
+  const midS   = subWorkingDays(smallS, s.assemblyMidDays, calendar, true);
   const midF   = smallS;
-  const largeS = subDays(midS, s.assemblyLargeDays);
-  const largeF = erection; // 대조F = 탑재일
+  const largeS = subWorkingDays(midS, s.assemblyLargeDays, calendar, true);
+  const largeF = erection; // 대조F = 탑재일 (고정)
 
   return {
     pnd: toISO(pnd),
@@ -108,7 +176,8 @@ function calcUpToLarge(row: LbRow, s: ProcessSetting): Partial<LbRow> {
 // 반환: row.id → { hullInspDate, paintStart, paintEnd, peStart, peEnd, delayDays }
 function calcHullAndDownstream(
   vesselRows: LbRow[],
-  s: ProcessSetting
+  s: ProcessSetting,
+  calendar: CalendarDay[] = []
 ): Map<string, Partial<LbRow>> {
   const result = new Map<string, Partial<LbRow>>();
 
@@ -136,10 +205,11 @@ function calcHullAndDownstream(
     if (currentInspDate === null || sessionCount >= perSession) {
       // 새 세션 시작
       if (currentInspDate === null) {
-        currentInspDate = earliest;
+        currentInspDate = nextWorkingDay(earliest, calendar, true);
       } else {
         const nextSlot = addDays(currentInspDate, interval);
-        currentInspDate = nextSlot >= earliest ? nextSlot : earliest;
+        const candidate = nextSlot >= earliest ? nextSlot : earliest;
+        currentInspDate = nextWorkingDay(candidate, calendar, true);
       }
       sessionCount = 1;
     } else {
@@ -148,10 +218,10 @@ function calcHullAndDownstream(
     }
 
     const hullInsp = currentInspDate;
-    const paintSt  = addDays(hullInsp, s.paintLeadDays);
-    const paintEnd = addDays(paintSt, s.paintDuration);
-    const peSt     = addDays(paintEnd, s.peLeadDays);
-    const peEnd    = addDays(peSt, s.peDuration);
+    const paintSt  = addWorkingDays(hullInsp, s.paintLeadDays, calendar, true);
+    const paintEnd = addWorkingDays(paintSt, s.paintDuration, calendar, true);
+    const peSt     = addWorkingDays(paintEnd, s.peLeadDays, calendar, true);
+    const peEnd    = addWorkingDays(peSt, s.peDuration, calendar, true);
     const delay    = Math.round((pnd.getTime() - peEnd.getTime()) / 86400000);
 
     result.set(row.id, {
@@ -198,27 +268,31 @@ const DEFAULT_SETTING: Omit<ProcessSetting, "id" | "vesselCode" | "isDefault"> =
 };
 
 function ProcessSettingModal({
-  onClose, onSaved, dataStartRow, onDataStartRowChange,
+  onClose, onSaved, dataStartRow, onDataStartRowChange, onCalendarChange,
 }: {
   onClose: () => void;
   onSaved: () => void;
   dataStartRow: number;
   onDataStartRowChange: (v: number) => void;
+  onCalendarChange: () => void;
 }) {
+  const [tab, setTab] = useState<"process" | "calendar" | "excel">("process");
+
+  // ── 공정설정 state ──────────────────────────────────────────────────────────
   const [settings, setSettings] = useState<ProcessSetting[]>([]);
-  const [editing, setEditing] = useState<string | null>(null); // vesselCode
+  const [editing, setEditing] = useState<string | null>(null);
   const [form, setForm] = useState<Omit<ProcessSetting, "id">>({
     vesselCode: "", isDefault: false, ...DEFAULT_SETTING,
   });
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
+  const loadSettings = useCallback(async () => {
     const res = await fetch("/api/lb-process-setting");
     setSettings(await res.json());
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadSettings(); }, [loadSettings]);
 
   const startEdit = (s: ProcessSetting) => {
     setEditing(s.vesselCode);
@@ -234,14 +308,14 @@ function ProcessSettingModal({
     setEditing(null);
     setAdding(false);
     setForm({ vesselCode: "", isDefault: false, ...DEFAULT_SETTING });
-    await load();
+    await loadSettings();
     onSaved();
   };
 
   const deleteSetting = async (vesselCode: string) => {
     if (!confirm(`${vesselCode} 설정을 삭제하시겠습니까?`)) return;
     await fetch(`/api/lb-process-setting/${vesselCode}`, { method: "DELETE" });
-    await load();
+    await loadSettings();
     onSaved();
   };
 
@@ -257,132 +331,312 @@ function ProcessSettingModal({
     </div>
   );
 
+  // ── 캘린더 state ────────────────────────────────────────────────────────────
+  const [calYear, setCalYear] = useState(new Date().getFullYear());
+  const [calDays, setCalDays] = useState<CalendarDay[]>([]);
+  const [generating, setGenerating] = useState(false);
+  const [calSaving, setCalSaving] = useState(false);
+  const [newEntry, setNewEntry] = useState<{
+    type: HolidayType; dateStart: string; dateEnd: string; label: string;
+  }>({ type: "COMPANY", dateStart: "", dateEnd: "", label: "" });
+
+  const loadCalDays = useCallback(async (y: number) => {
+    const res = await fetch(`/api/lb-calendar?year=${y}`);
+    if (res.ok) setCalDays(await res.json());
+  }, []);
+
+  useEffect(() => { loadCalDays(calYear); }, [calYear, loadCalDays]);
+
+  const generateHolidays = async () => {
+    setGenerating(true);
+    await fetch("/api/lb-calendar/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ year: calYear }),
+    });
+    setGenerating(false);
+    await loadCalDays(calYear);
+    onCalendarChange();
+  };
+
+  const deleteCalDay = async (id: string) => {
+    await fetch(`/api/lb-calendar/${id}`, { method: "DELETE" });
+    setCalDays(prev => prev.filter(d => d.id !== id));
+    onCalendarChange();
+  };
+
+  const addCalEntry = async () => {
+    if (!newEntry.dateStart || !newEntry.label) return;
+    setCalSaving(true);
+    const items: Array<{ date: string; type: string; label: string; year: number }> = [];
+
+    if (newEntry.type === "RAIN" && newEntry.dateEnd && newEntry.dateEnd >= newEntry.dateStart) {
+      // 범위 → 개별 일자 전개
+      let cur = new Date(newEntry.dateStart + "T00:00:00");
+      const end = new Date(newEntry.dateEnd + "T00:00:00");
+      while (cur <= end) {
+        items.push({ date: cur.toISOString().slice(0, 10), type: newEntry.type, label: newEntry.label, year: calYear });
+        cur.setDate(cur.getDate() + 1);
+      }
+    } else {
+      items.push({ date: newEntry.dateStart, type: newEntry.type, label: newEntry.label, year: calYear });
+    }
+
+    await fetch("/api/lb-calendar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(items),
+    });
+    setCalSaving(false);
+    setNewEntry({ type: "COMPANY", dateStart: "", dateEnd: "", label: "" });
+    await loadCalDays(calYear);
+    onCalendarChange();
+  };
+
+  const tabBtnCls = (t: typeof tab) =>
+    `px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === t ? "border-blue-500 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`;
+
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center overflow-y-auto py-10">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl mx-4">
         <div className="flex items-center justify-between px-6 py-4 border-b">
-          <h2 className="text-base font-bold text-gray-900">설정</h2>
+          <div className="flex gap-1">
+            <button className={tabBtnCls("process")} onClick={() => setTab("process")}>공정설정</button>
+            <button className={tabBtnCls("calendar")} onClick={() => setTab("calendar")}>캘린더</button>
+            <button className={tabBtnCls("excel")} onClick={() => setTab("excel")}>엑셀설정</button>
+          </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
 
         <div className="p-6">
-          {/* 목록 */}
-          <div className="overflow-x-auto mb-4">
-            <table className="w-full text-xs border-collapse">
-              <thead>
-                <tr className="bg-gray-50 text-gray-600">
-                  <th className="border px-2 py-1.5 text-left">호선</th>
-                  <th className="border px-2 py-1.5">기본값</th>
-                  <th className="border px-2 py-1.5">절단선행</th>
-                  <th className="border px-2 py-1.5">절단기간</th>
-                  <th className="border px-2 py-1.5">소조</th>
-                  <th className="border px-2 py-1.5">중조</th>
-                  <th className="border px-2 py-1.5">대조</th>
-                  <th className="border px-2 py-1.5">대조F여유</th>
-                  <th className="border px-2 py-1.5">검사주기</th>
-                  <th className="border px-2 py-1.5">회당블록</th>
-                  <th className="border px-2 py-1.5">도장선행</th>
-                  <th className="border px-2 py-1.5">도장기간</th>
-                  <th className="border px-2 py-1.5">PE선행</th>
-                  <th className="border px-2 py-1.5">PE기간</th>
-                  <th className="border px-2 py-1.5">작업</th>
-                </tr>
-              </thead>
-              <tbody>
-                {settings.map(s => (
-                  <tr key={s.vesselCode} className="hover:bg-gray-50">
-                    <td className="border px-2 py-1.5 font-semibold">{s.vesselCode}{s.isDefault && <span className="ml-1 text-blue-500">(기본)</span>}</td>
-                    <td className="border px-2 py-1.5 text-center">{s.isDefault ? "✓" : ""}</td>
-                    <td className="border px-2 py-1.5 text-center">{s.cutLeadDays}일</td>
-                    <td className="border px-2 py-1.5 text-center">{s.cutDuration}일</td>
-                    <td className="border px-2 py-1.5 text-center">{s.assemblySmallDays}일</td>
-                    <td className="border px-2 py-1.5 text-center">{s.assemblyMidDays}일</td>
-                    <td className="border px-2 py-1.5 text-center">{s.assemblyLargeDays}일</td>
-                    <td className="border px-2 py-1.5 text-center">{s.hullInspLeadDays}일</td>
-                    <td className="border px-2 py-1.5 text-center">{s.hullInspIntervalDays ?? 7}일</td>
-                    <td className="border px-2 py-1.5 text-center">{s.hullInspBlocksPerSession ?? 2}개</td>
-                    <td className="border px-2 py-1.5 text-center">{s.paintLeadDays}일</td>
-                    <td className="border px-2 py-1.5 text-center">{s.paintDuration}일</td>
-                    <td className="border px-2 py-1.5 text-center">{s.peLeadDays}일</td>
-                    <td className="border px-2 py-1.5 text-center">{s.peDuration}일</td>
-                    <td className="border px-2 py-1.5 text-center">
-                      <button onClick={() => startEdit(s)} className="text-blue-500 hover:underline mr-2 text-xs">수정</button>
-                      <button onClick={() => deleteSetting(s.vesselCode)} className="text-red-400 hover:underline text-xs">삭제</button>
-                    </td>
-                  </tr>
-                ))}
-                {settings.length === 0 && (
-                  <tr><td colSpan={15} className="border px-2 py-4 text-center text-gray-400">설정된 호선이 없습니다.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          {/* ── 공정설정 탭 ────────────────────────────────────────────────── */}
+          {tab === "process" && (
+            <>
+              <div className="overflow-x-auto mb-4">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 text-gray-600">
+                      <th className="border px-2 py-1.5 text-left">호선</th>
+                      <th className="border px-2 py-1.5">기본값</th>
+                      <th className="border px-2 py-1.5">절단선행</th>
+                      <th className="border px-2 py-1.5">절단기간</th>
+                      <th className="border px-2 py-1.5">소조</th>
+                      <th className="border px-2 py-1.5">중조</th>
+                      <th className="border px-2 py-1.5">대조</th>
+                      <th className="border px-2 py-1.5">대조F여유</th>
+                      <th className="border px-2 py-1.5">검사주기</th>
+                      <th className="border px-2 py-1.5">회당블록</th>
+                      <th className="border px-2 py-1.5">도장선행</th>
+                      <th className="border px-2 py-1.5">도장기간</th>
+                      <th className="border px-2 py-1.5">PE선행</th>
+                      <th className="border px-2 py-1.5">PE기간</th>
+                      <th className="border px-2 py-1.5">작업</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {settings.map(s => (
+                      <tr key={s.vesselCode} className="hover:bg-gray-50">
+                        <td className="border px-2 py-1.5 font-semibold">{s.vesselCode}{s.isDefault && <span className="ml-1 text-blue-500">(기본)</span>}</td>
+                        <td className="border px-2 py-1.5 text-center">{s.isDefault ? "✓" : ""}</td>
+                        <td className="border px-2 py-1.5 text-center">{s.cutLeadDays}일</td>
+                        <td className="border px-2 py-1.5 text-center">{s.cutDuration}일</td>
+                        <td className="border px-2 py-1.5 text-center">{s.assemblySmallDays}일</td>
+                        <td className="border px-2 py-1.5 text-center">{s.assemblyMidDays}일</td>
+                        <td className="border px-2 py-1.5 text-center">{s.assemblyLargeDays}일</td>
+                        <td className="border px-2 py-1.5 text-center">{s.hullInspLeadDays}일</td>
+                        <td className="border px-2 py-1.5 text-center">{s.hullInspIntervalDays ?? 7}일</td>
+                        <td className="border px-2 py-1.5 text-center">{s.hullInspBlocksPerSession ?? 2}개</td>
+                        <td className="border px-2 py-1.5 text-center">{s.paintLeadDays}일</td>
+                        <td className="border px-2 py-1.5 text-center">{s.paintDuration}일</td>
+                        <td className="border px-2 py-1.5 text-center">{s.peLeadDays}일</td>
+                        <td className="border px-2 py-1.5 text-center">{s.peDuration}일</td>
+                        <td className="border px-2 py-1.5 text-center">
+                          <button onClick={() => startEdit(s)} className="text-blue-500 hover:underline mr-2 text-xs">수정</button>
+                          <button onClick={() => deleteSetting(s.vesselCode)} className="text-red-400 hover:underline text-xs">삭제</button>
+                        </td>
+                      </tr>
+                    ))}
+                    {settings.length === 0 && (
+                      <tr><td colSpan={15} className="border px-2 py-4 text-center text-gray-400">설정된 호선이 없습니다.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
 
-          {/* 추가/수정 폼 */}
-          {(adding || editing) && (
-            <div className="border rounded-lg p-4 bg-gray-50">
-              <p className="text-sm font-semibold text-gray-700 mb-3">{editing ? `${editing} 수정` : "신규 호선 추가"}</p>
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs text-gray-500 font-medium">호선번호 *</label>
+              {(adding || editing) && (
+                <div className="border rounded-lg p-4 bg-gray-50">
+                  <p className="text-sm font-semibold text-gray-700 mb-3">{editing ? `${editing} 수정` : "신규 호선 추가"}</p>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-gray-500 font-medium">호선번호 *</label>
+                      <Input
+                        value={form.vesselCode}
+                        onChange={e => setForm(f => ({ ...f, vesselCode: e.target.value }))}
+                        disabled={!!editing}
+                        placeholder="예: 4506"
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer pb-1">
+                        <input type="checkbox" checked={form.isDefault} onChange={e => setForm(f => ({ ...f, isDefault: e.target.checked }))} />
+                        기본값으로 설정
+                      </label>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-5 gap-2 mb-4">
+                    {numField("cutLeadDays", "절단 선행일수")}
+                    {numField("cutDuration", "절단 기간")}
+                    {numField("assemblySmallDays", "소조 소요일수")}
+                    {numField("assemblyMidDays", "중조 소요일수")}
+                    {numField("assemblyLargeDays", "대조 소요일수")}
+                    {numField("hullInspLeadDays", "대조F 이후 여유")}
+                    {numField("hullInspIntervalDays", "검사 주기(일)")}
+                    {numField("hullInspBlocksPerSession", "회당 블록 수")}
+                    {numField("paintLeadDays", "도장 착수 선행")}
+                    {numField("paintDuration", "도장 기간")}
+                    {numField("peLeadDays", "P-E 착수 선행")}
+                    {numField("peDuration", "P-E 기간")}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={saveEdit} disabled={saving}><Check size={14} className="mr-1" />저장</Button>
+                    <Button size="sm" variant="outline" onClick={() => { setEditing(null); setAdding(false); }}><X size={14} className="mr-1" />취소</Button>
+                  </div>
+                </div>
+              )}
+
+              {!adding && !editing && (
+                <Button size="sm" onClick={() => { setAdding(true); setForm({ vesselCode: "", isDefault: false, ...DEFAULT_SETTING }); }}>
+                  <Plus size={14} className="mr-1" /> 호선 추가
+                </Button>
+              )}
+            </>
+          )}
+
+          {/* ── 캘린더 탭 ──────────────────────────────────────────────────── */}
+          {tab === "calendar" && (
+            <div className="flex flex-col gap-4">
+              {/* 헤더: 연도 선택 + 자동생성 */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-600">연도</label>
                   <Input
-                    value={form.vesselCode}
-                    onChange={e => setForm(f => ({ ...f, vesselCode: e.target.value }))}
-                    disabled={!!editing}
-                    placeholder="예: 4506"
-                    className="h-8 text-sm"
+                    type="number" className="h-8 w-24 text-sm"
+                    value={calYear}
+                    onChange={e => setCalYear(Number(e.target.value))}
                   />
                 </div>
-                <div className="flex items-end gap-2">
-                  <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer pb-1">
-                    <input type="checkbox" checked={form.isDefault} onChange={e => setForm(f => ({ ...f, isDefault: e.target.checked }))} />
-                    기본값으로 설정
-                  </label>
+                <Button size="sm" variant="outline" onClick={generateHolidays} disabled={generating}>
+                  {generating ? "생성 중..." : "법정공휴일 자동생성"}
+                </Button>
+                <span className="text-xs text-gray-400">신정·삼일절·어린이날·현충일·광복절·개천절·한글날·크리스마스 자동 등록</span>
+              </div>
+
+              {/* 등록 폼 */}
+              <div className="border rounded-lg p-4 bg-gray-50">
+                <p className="text-sm font-semibold text-gray-700 mb-3">비작업일 추가</p>
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs text-gray-500">구분</label>
+                    <select
+                      className="border rounded-md text-sm px-2 h-8"
+                      value={newEntry.type}
+                      onChange={e => setNewEntry(n => ({ ...n, type: e.target.value as HolidayType }))}
+                    >
+                      {(Object.keys(HOLIDAY_TYPE_LABEL) as HolidayType[]).map(t => (
+                        <option key={t} value={t}>{HOLIDAY_TYPE_LABEL[t]}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs text-gray-500">{newEntry.type === "RAIN" ? "시작일" : "날짜"}</label>
+                    <Input
+                      type="date" className="h-8 text-sm w-36"
+                      value={newEntry.dateStart}
+                      onChange={e => setNewEntry(n => ({ ...n, dateStart: e.target.value }))}
+                    />
+                  </div>
+                  {newEntry.type === "RAIN" && (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-gray-500">종료일</label>
+                      <Input
+                        type="date" className="h-8 text-sm w-36"
+                        value={newEntry.dateEnd}
+                        onChange={e => setNewEntry(n => ({ ...n, dateEnd: e.target.value }))}
+                      />
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs text-gray-500">메모</label>
+                    <Input
+                      className="h-8 text-sm w-36"
+                      placeholder="예: 회사 창립기념일"
+                      value={newEntry.label}
+                      onChange={e => setNewEntry(n => ({ ...n, label: e.target.value }))}
+                    />
+                  </div>
+                  <Button size="sm" onClick={addCalEntry} disabled={calSaving || !newEntry.dateStart || !newEntry.label}>
+                    <Plus size={14} className="mr-1" /> 등록
+                  </Button>
                 </div>
               </div>
-              <div className="grid grid-cols-5 gap-2 mb-4">
-                {numField("cutLeadDays", "절단 선행일수")}
-                {numField("cutDuration", "절단 기간")}
-                {numField("assemblySmallDays", "소조 소요일수")}
-                {numField("assemblyMidDays", "중조 소요일수")}
-                {numField("assemblyLargeDays", "대조 소요일수")}
-                {numField("hullInspLeadDays", "대조F 이후 여유")}
-                {numField("hullInspIntervalDays", "검사 주기(일)")}
-                {numField("hullInspBlocksPerSession", "회당 블록 수")}
-                {numField("paintLeadDays", "도장 착수 선행")}
-                {numField("paintDuration", "도장 기간")}
-                {numField("peLeadDays", "P-E 착수 선행")}
-                {numField("peDuration", "P-E 기간")}
+
+              {/* 등록된 비작업일 목록 */}
+              <div className="overflow-y-auto max-h-64 border rounded-lg">
+                <table className="w-full text-xs border-collapse">
+                  <thead className="sticky top-0 bg-gray-50">
+                    <tr>
+                      <th className="border px-2 py-1.5 text-left">날짜</th>
+                      <th className="border px-2 py-1.5 text-left">구분</th>
+                      <th className="border px-2 py-1.5 text-left">메모</th>
+                      <th className="border px-2 py-1.5">삭제</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {calDays.length === 0 && (
+                      <tr><td colSpan={4} className="text-center py-6 text-gray-400">{calYear}년 등록된 비작업일이 없습니다.</td></tr>
+                    )}
+                    {calDays.map(d => (
+                      <tr key={d.id} className="hover:bg-gray-50">
+                        <td className="border px-2 py-1.5">{d.date}</td>
+                        <td className="border px-2 py-1.5">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${HOLIDAY_TYPE_COLOR[d.type]}`}>
+                            {HOLIDAY_TYPE_LABEL[d.type]}
+                          </span>
+                        </td>
+                        <td className="border px-2 py-1.5">{d.label}</td>
+                        <td className="border px-2 py-1.5 text-center">
+                          <button onClick={() => deleteCalDay(d.id)} className="text-red-400 hover:text-red-600">
+                            <Trash2 size={12} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <div className="flex gap-2">
-                <Button size="sm" onClick={saveEdit} disabled={saving}><Check size={14} className="mr-1" />저장</Button>
-                <Button size="sm" variant="outline" onClick={() => { setEditing(null); setAdding(false); }}><X size={14} className="mr-1" />취소</Button>
-              </div>
+              <p className="text-xs text-gray-400">장마/우천은 야드 공정(소조~P-E)에만 적용됩니다. 절단(실내)은 장마 영향 없음.</p>
             </div>
           )}
 
-          {!adding && !editing && (
-            <Button size="sm" onClick={() => { setAdding(true); setForm({ vesselCode: "", isDefault: false, ...DEFAULT_SETTING }); }}>
-              <Plus size={14} className="mr-1" /> 호선 추가
-            </Button>
-          )}
-
-          {/* 엑셀 가져오기 설정 */}
-          <div className="mt-6 pt-5 border-t border-gray-100">
-            <p className="text-sm font-semibold text-gray-700 mb-3">엑셀 가져오기 설정</p>
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-gray-600 whitespace-nowrap">데이터 시작 행</label>
-              <Input
-                type="number"
-                min={1}
-                value={dataStartRow}
-                onChange={e => onDataStartRowChange(Math.max(1, Number(e.target.value)))}
-                className="h-8 text-sm w-24"
-              />
-              <span className="text-xs text-gray-400">행 (기본값: 6 — 1~5행을 헤더로 건너뜀)</span>
+          {/* ── 엑셀설정 탭 ────────────────────────────────────────────────── */}
+          {tab === "excel" && (
+            <div>
+              <p className="text-sm font-semibold text-gray-700 mb-3">엑셀 가져오기 설정</p>
+              <div className="flex items-center gap-3">
+                <label className="text-sm text-gray-600 whitespace-nowrap">데이터 시작 행</label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={dataStartRow}
+                  onChange={e => onDataStartRowChange(Math.max(1, Number(e.target.value)))}
+                  className="h-8 text-sm w-24"
+                />
+                <span className="text-xs text-gray-400">행 (기본값: 6 — 1~5행을 헤더로 건너뜀)</span>
+              </div>
+              <p className="text-xs text-gray-400 mt-1.5">A열 값이 숫자가 아닌 행은 자동으로 건너뜁니다.</p>
             </div>
-            <p className="text-xs text-gray-400 mt-1.5">A열 값이 숫자가 아닌 행은 자동으로 건너뜁니다.</p>
-          </div>
+          )}
         </div>
       </div>
     </div>
@@ -423,6 +677,7 @@ function EditCell({
 export default function LbPlanManager() {
   const [rows, setRows] = useState<LbRow[]>([]);
   const [settings, setSettings] = useState<ProcessSetting[]>([]);
+  const [calendarDays, setCalendarDays] = useState<CalendarDay[]>([]);
   const [vesselFilter, setVesselFilter] = useState("ALL");
   const [yearFilter, setYearFilter] = useState(String(new Date().getFullYear()));
   const [showSettings, setShowSettings] = useState(false);
@@ -434,6 +689,13 @@ export default function LbPlanManager() {
   const loadSettings = useCallback(async () => {
     const res = await fetch("/api/lb-process-setting");
     setSettings(await res.json());
+  }, []);
+
+  const loadCalendar = useCallback(async () => {
+    // 현재 연도 ±1 범위 로드 (넉넉하게)
+    const y = new Date().getFullYear();
+    const res = await fetch(`/api/lb-calendar?year=${y}`);
+    if (res.ok) setCalendarDays(await res.json());
   }, []);
 
   const loadPlans = useCallback(async () => {
@@ -448,6 +710,7 @@ export default function LbPlanManager() {
   }, [vesselFilter, yearFilter]);
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
+  useEffect(() => { loadCalendar(); }, [loadCalendar]);
   useEffect(() => { loadPlans(); }, [loadPlans]);
 
   // 해당 호선의 설정 찾기 (없으면 기본값, 그것도 없으면 undefined)
@@ -464,7 +727,7 @@ export default function LbPlanManager() {
         const updated = { ...r, ...patch, isDirty: true };
         if ("erectionDate" in patch || "assemblyStart" in patch) {
           const s = getSettingFor(updated.vesselCode);
-          if (s) return { ...updated, ...calcUpToLarge(updated, s) };
+          if (s) return { ...updated, ...calcUpToLarge(updated, s, calendarDays) };
         }
         return updated;
       });
@@ -477,7 +740,7 @@ export default function LbPlanManager() {
       if (!s) return next;
 
       const vesselRows = next.filter(r => r.vesselCode === vc);
-      const hullMap = calcHullAndDownstream(vesselRows, s);
+      const hullMap = calcHullAndDownstream(vesselRows, s, calendarDays);
 
       return next.map(r => {
         if (r.vesselCode !== vc) return r;
@@ -854,6 +1117,7 @@ export default function LbPlanManager() {
           onSaved={() => { loadSettings(); loadPlans(); }}
           dataStartRow={dataStartRow}
           onDataStartRowChange={setDataStartRow}
+          onCalendarChange={loadCalendar}
         />
       )}
     </div>
