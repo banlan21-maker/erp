@@ -266,10 +266,23 @@ export default function MealMain() {
 
   const copyLink = (token: string) => {
     const url = `${origin}/field/meal/${token}`;
-    navigator.clipboard.writeText(url).then(() => {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(url).then(() => {
+        setCopiedToken(token);
+        setTimeout(() => setCopiedToken(null), 2000);
+      });
+    } else {
+      // HTTP 환경 fallback
+      const el = document.createElement("textarea");
+      el.value = url;
+      el.style.cssText = "position:fixed;top:-999px;left:-999px;opacity:0";
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
       setCopiedToken(token);
       setTimeout(() => setCopiedToken(null), 2000);
-    });
+    }
   };
 
   // deadline check per factory
