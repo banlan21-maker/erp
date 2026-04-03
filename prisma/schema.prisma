@@ -271,6 +271,40 @@ model Worker {
   updatedAt     DateTime  @updatedAt
 }
 
+// 식수 관리
+model MealVendor {
+  id              String       @id @default(cuid())
+  name            String
+  factory         String                         // 진교 / 진동
+  phone           String?
+  pricePerMeal    Int?
+  token           String       @unique
+  deadlineHour    Int          @default(10)
+  deadlineMin     Int          @default(0)
+  defaultCount    Int          @default(0)
+  defaultMealType String       @default("점심")
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  records         MealRecord[]
+}
+
+model MealRecord {
+  id        String      @id @default(cuid())
+  date      String                              // YYYY-MM-DD
+  factory   String                              // 진교 / 진동
+  mealType  String      @default("점심")
+  count     Int
+  memo      String?
+  registrar String?
+  vendorId  String?
+  vendor    MealVendor? @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([date, factory, mealType])
+}
+
 // 장비 마스터
 model Equipment {
   id             String          @id @default(cuid())

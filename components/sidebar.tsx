@@ -5,10 +5,10 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, FolderOpen, FileSpreadsheet, ClipboardList,
   Users, BarChart2, ChevronLeft, ChevronRight, Smartphone,
-  ExternalLink, Package, Truck, History, CalendarDays, Eye, Wrench,
+  ExternalLink, Package, Truck, History, CalendarDays, Eye, Wrench, UtensilsCrossed,
 } from "lucide-react";
 
-export type ModuleType = "cnc" | "material" | "management";
+export type ModuleType = "cnc" | "material" | "management" | "meal";
 
 type SidebarMode = "full" | "mini" | "hidden";
 
@@ -40,7 +40,10 @@ const menuGroups = {
     { href: "/management/equipment",  label: "장비관리",      icon: Wrench },
     { href: "/management/transport",  label: "운송관리",      icon: Truck },
     { href: "/management/vendors",    label: "거래처 관리",   icon: Package },
-  ]
+  ],
+  meal: [
+    { href: "/meal", label: "식수 관리", icon: UtensilsCrossed },
+  ],
 };
 
 export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
@@ -60,10 +63,12 @@ export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
   let moduleLabel = "관리";
   if (module === "cnc") moduleLabel = "CNC 절단";
   else if (module === "material") moduleLabel = "구매/자재";
+  else if (module === "meal") moduleLabel = "식수";
 
   let moduleShort = "MNG";
   if (module === "cnc") moduleShort = "CNC";
   else if (module === "material") moduleShort = "MAT";
+  else if (module === "meal") moduleShort = "MEA";
 
   return (
     <aside
