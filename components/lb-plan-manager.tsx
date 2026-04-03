@@ -1189,7 +1189,7 @@ export default function LbPlanManager() {
           [arr[i], arr[i + 1]] = [arr[i + 1], arr[i]];
         }
       }
-      return arr.map((r, i) => ({ ...r, no: i + 1, isDirty: true }));
+      return arr.map(r => ({ ...r, isDirty: true }));
     });
   };
 
@@ -1243,8 +1243,7 @@ export default function LbPlanManager() {
         return r;
       });
 
-      // NO 재정렬
-      arr = arr.map((r, i) => ({ ...r, no: i + 1, isDirty: true }));
+      // NO는 블록 고유번호 — 순서 변경 시 재할당하지 않음
 
       // 영향받은 호선의 선각검사 전체 재배정
       const affectedVessels = new Set([movedRow.vesselCode, targetRow.vesselCode].filter(Boolean));
