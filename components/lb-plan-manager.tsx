@@ -1129,7 +1129,7 @@ export default function LbPlanManager() {
   };
 
   const addRow = () => {
-    const tempId = `new_${Date.now()}`;
+    const tempId = `new_${Math.random().toString(36).slice(2)}`;
     setRows(prev => [...prev, {
       id: tempId, vesselCode: "", blk: "", no: null, weeklyQty: null,
       erectionDate: null, assemblyStart: null,
@@ -1505,9 +1505,8 @@ export default function LbPlanManager() {
               skipped++;
             }
           } else {
-            const ts = Date.now();
             result.push({
-              id: `import_${ts}_${imp.blk}`,
+              id: `import_${Math.random().toString(36).slice(2)}_${imp.vesselCode}_${imp.blk}`,
               ...imp,
               erectionDate: imp.erectionDate ? new Date(imp.erectionDate).toISOString() : null,
               pnd:          imp.pnd          ? new Date(imp.pnd).toISOString()          : null,
