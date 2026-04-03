@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import LbPlanManager from "@/components/lb-plan-manager";
 
 // frappe-gantt: SSR 비활성화
 const FrappeGantt = dynamic(() => import("@/components/frappe-gantt-wrapper"), { ssr: false });
@@ -321,6 +322,8 @@ function LoadChart({ loadData }: { loadData: LoadItem[] }) {
 // ─── 메인 컴포넌트 ─────────────────────────────────────────────────────────
 
 export default function ScheduleManager({ projects }: { projects: Project[] }) {
+  const [mainTab, setMainTab] = useState<"cut" | "lb">("cut");
+
   const [ganttData,  setGanttData]  = useState<GanttItem[]>([]);
   const [loadData,   setLoadData]   = useState<LoadItem[]>([]);
   const [loading,    setLoading]    = useState(true);
@@ -362,6 +365,16 @@ export default function ScheduleManager({ projects }: { projects: Project[] }) {
   const unscheduled = ganttData.filter(d => !d.plannedStart);
   const scheduled   = ganttData.filter(d => !!d.plannedStart);
 
+  // 탭 전환 시 절단생성 탭만 데이터 로딩
+  useEffect(() => { if (mainTab === "cut") fetchAll(); }, [mainTab]);
+
+  const tabCls = (t: "cut" | "lb") =>
+    `px-4 py-2 text-sm font-semibold rounded-t-md border-b-2 transition-colors ${
+      mainTab === t
+        ? "border-blue-600 text-blue-600 bg-white"
+        : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+    }`;
+
   return (
     <div className="space-y-5">
       {/* 헤더 */}
@@ -370,28 +383,42 @@ export default function ScheduleManager({ projects }: { projects: Project[] }) {
           <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <CalendarDays size={24} className="text-blue-600" /> 스케줄 생성
           </h2>
-          <p className="text-sm text-gray-500 mt-1">전체 물량을 관리하고 절단 일정을 배치합니다.</p>
+          <p className="text-sm text-gray-500 mt-1">절단 일정 배치 및 L/B 생산계획을 관리합니다.</p>
         </div>
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
             <input type="checkbox" checked={showCompleted} onChange={e => setShowCompleted(e.target.checked)} className="rounded" />
             완료 포함
           </label>
-          <Button variant="outline" size="sm" onClick={fetchAll} className="text-xs">
-            <RefreshCw size={13} className="mr-1" /> 새로고침
-          </Button>
-          <Button size="sm" onClick={() => setScheduleModal({ open: true, mode: "add", item: null })}
-            className="bg-blue-600 hover:bg-blue-700 text-xs font-bold">
-            <Plus size={13} className="mr-1" /> 스케줄 등록
-          </Button>
+          {mainTab === "cut" && (
+            <>
+              <Button variant="outline" size="sm" onClick={fetchAll} className="text-xs">
+                <RefreshCw size={13} className="mr-1" /> 새로고침
+              </Button>
+              <Button size="sm" onClick={() => setScheduleModal({ open: true, mode: "add", item: null })}
+                className="bg-blue-600 hover:bg-blue-700 text-xs font-bold">
+                <Plus size={13} className="mr-1" /> 스케줄 등록
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
-      {loading ? (
+      {/* 탭 */}
+      <div className="flex gap-1 border-b border-gray-200">
+        <button className={tabCls("cut")} onClick={() => setMainTab("cut")}>절단생성</button>
+        <button className={tabCls("lb")} onClick={() => setMainTab("lb")}>L/B생성</button>
+      </div>
+
+      {/* L/B생성 탭 */}
+      {mainTab === "lb" && <LbPlanManager />}
+
+      {/* 절단생성 탭 */}
+      {mainTab === "cut" && loading ? (
         <div className="flex justify-center items-center py-20 text-gray-400 gap-3">
           <RefreshCw className="animate-spin text-blue-500" size={24} /> 데이터를 불러오는 중...
         </div>
-      ) : (
+      ) : mainTab === "cut" ? (
         <>
           {/* 부하 그래프 */}
           {loadData.length > 0 && <LoadChart loadData={loadData} />}
@@ -549,7 +576,7 @@ export default function ScheduleManager({ projects }: { projects: Project[] }) {
             </div>
           </div>
         </>
-      )}
+      ) : null}
 
       {/* 모달 */}
       {scheduleModal.open && (

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { Eye, RefreshCw, CalendarDays, BarChart2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import LbPlanViewer from "@/components/lb-plan-viewer";
 
 const FrappeGantt = dynamic(() => import("@/components/frappe-gantt-wrapper"), { ssr: false });
 
@@ -94,6 +95,7 @@ function SummaryBar({ data }: { data: GanttItem[] }) {
 // ─── 메인 ─────────────────────────────────────────────────────────────────
 
 export default function ScheduleViewer() {
+  const [mainTab, setMainTab] = useState<"cut" | "lb">("cut");
   const [ganttData, setGanttData] = useState<GanttItem[]>([]);
   const [loading,   setLoading]   = useState(true);
   const [tab,       setTab]       = useState<"gantt" | "list">("gantt");
@@ -121,6 +123,13 @@ export default function ScheduleViewer() {
       tab === t ? "bg-blue-600 text-white shadow-sm" : "text-gray-600 hover:bg-gray-100"
     }`;
 
+  const mainTabCls = (t: "cut" | "lb") =>
+    `px-4 py-2 text-sm font-semibold rounded-t-md border-b-2 transition-colors ${
+      mainTab === t
+        ? "border-blue-600 text-blue-600 bg-white"
+        : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+    }`;
+
   return (
     <div className="space-y-5">
       {/* 헤더 */}
@@ -129,18 +138,30 @@ export default function ScheduleViewer() {
           <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <Eye size={24} className="text-blue-600" /> 스케줄 확인
           </h2>
-          <p className="text-sm text-gray-500 mt-1">절단 진행 현황 및 일정 확인</p>
+          <p className="text-sm text-gray-500 mt-1">절단 진행 현황 및 L/B 생산계획 확인</p>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchAll} className="text-xs">
-          <RefreshCw size={13} className="mr-1" /> 새로고침
-        </Button>
+        {mainTab === "cut" && (
+          <Button variant="outline" size="sm" onClick={fetchAll} className="text-xs">
+            <RefreshCw size={13} className="mr-1" /> 새로고침
+          </Button>
+        )}
       </div>
 
-      {loading ? (
+      {/* 메인 탭 */}
+      <div className="flex gap-1 border-b border-gray-200">
+        <button className={mainTabCls("cut")} onClick={() => setMainTab("cut")}>절단확인</button>
+        <button className={mainTabCls("lb")} onClick={() => setMainTab("lb")}>L/B확인</button>
+      </div>
+
+      {/* L/B확인 탭 */}
+      {mainTab === "lb" && <LbPlanViewer />}
+
+      {/* 절단확인 탭 */}
+      {mainTab === "cut" && loading ? (
         <div className="flex justify-center items-center py-20 text-gray-400 gap-3">
           <RefreshCw className="animate-spin text-blue-500" size={24} /> 데이터를 불러오는 중...
         </div>
-      ) : (
+      ) : mainTab === "cut" ? (
         <>
           {/* 요약 통계 */}
           <SummaryBar data={ganttData} />
@@ -283,7 +304,7 @@ export default function ScheduleViewer() {
           )}
 
         </>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -737,6 +737,70 @@ model TransportRepairLog {
   createdAt   DateTime         @default(now())
 }
 
+// ==========================================
+// L/B 생산계획 모듈
+// ==========================================
+
+// 호선별 공정 소요일수 설정 (DB 관리, 하드코딩 금지)
+model LbProcessSetting {
+  id                    String   @id @default(cuid())
+  vesselCode            String   @unique  // 호선번호 (예: 4506)
+  isDefault             Boolean  @default(false) // 기본값 여부
+
+  cutLeadDays           Int      @default(7)   // 절단 선행일수 (조립착수일 기준)
+  cutDuration           Int      @default(5)   // 절단 기간 (일)
+
+  assemblySmallDays     Int      @default(10)  // 소조 소요일수
+  assemblyMidDays       Int      @default(10)  // 중조 소요일수
+  assemblyLargeDays     Int      @default(15)  // 대조 소요일수
+
+  hullInspLeadDays      Int      @default(3)   // 선각검사 선행일수 (대조F 기준)
+  paintLeadDays         Int      @default(2)   // 도장 착수 선행일수 (선각검사 기준)
+  paintDuration         Int      @default(7)   // 도장 기간
+  peLeadDays            Int      @default(1)   // P-E 착수 선행일수 (도장완료 기준)
+  peDuration            Int      @default(3)   // P-E 기간
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// LB 생산계획 (호선 + 블록 단위)
+model LbPlan {
+  id              String   @id @default(cuid())
+  vesselCode      String   // 호선번호 (예: 4506)
+  blk             String   // BLK 번호
+  no              Int?     // 순번
+  weeklyQty       Int?     // 주당생산량 (자유 입력)
+
+  // 직접 입력값
+  erectionDate    DateTime?   // 탑재일 (조선소 납기)
+  assemblyStart   DateTime?   // 조립착수일
+
+  // 자동계산값 (DB 저장)
+  pnd             DateTime?   // PND = 탑재일 - 1일
+  cutS            DateTime?   // 절단 S
+  cutF            DateTime?   // 절단 F
+  smallS          DateTime?   // 소조 S
+  smallF          DateTime?   // 소조 F
+  midS            DateTime?   // 중조 S
+  midF            DateTime?   // 중조 F
+  largeS          DateTime?   // 대조 S
+  largeF          DateTime?   // 대조 F (= 탑재일)
+  hullInspDate    DateTime?   // 선각검사
+  paintStart      DateTime?   // 도장 착수
+  paintEnd        DateTime?   // 도장 완료
+  peStart         DateTime?   // P-E 착수
+  peEnd           DateTime?   // P-E 완료
+  delayDays       Int?        // 지연일수 (PND - P-E완료)
+
+  // 메타
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([vesselCode, blk])
+}
+
 model Remnant {
   id           String        @id @default(cuid())
   remnantNo    String        @unique  // REM-2026-001 자동채번
