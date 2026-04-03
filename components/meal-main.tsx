@@ -75,17 +75,36 @@ export default function MealMain() {
   }, []);
 
   useEffect(() => { loadVendors(); }, [loadVendors]);
+  useEffect(() => { setOrigin(window.location.origin); }, []);
 
-  // --- registrar from localStorage ---
-  const [registrar, setRegistrar] = useState("");
+  // --- 공장별 등록자 (localStorage 기본값) ---
+  const [registrars, setRegistrars] = useState<Record<Factory, string>>({ 진교: "", 진동: "" });
+  const [isDefault, setIsDefault] = useState<Record<Factory, boolean>>({ 진교: false, 진동: false });
+
   useEffect(() => {
-    const saved = localStorage.getItem("mealRegistrar") || "";
-    setRegistrar(saved);
+    const next: Record<Factory, string> = { 진교: "", 진동: "" };
+    const def: Record<Factory, boolean> = { 진교: false, 진동: false };
+    for (const f of FACTORIES) {
+      const saved = localStorage.getItem(`mealRegistrar_${f}`);
+      if (saved) { next[f] = saved; def[f] = true; }
+    }
+    setRegistrars(next);
+    setIsDefault(def);
   }, []);
-  const saveRegistrar = (v: string) => {
-    setRegistrar(v);
-    localStorage.setItem("mealRegistrar", v);
+
+  const updateRegistrar = (f: Factory, val: string) => {
+    setRegistrars(prev => ({ ...prev, [f]: val }));
+    if (isDefault[f]) localStorage.setItem(`mealRegistrar_${f}`, val);
   };
+
+  const toggleDefault = (f: Factory, checked: boolean) => {
+    setIsDefault(prev => ({ ...prev, [f]: checked }));
+    if (checked) localStorage.setItem(`mealRegistrar_${f}`, registrars[f]);
+    else localStorage.removeItem(`mealRegistrar_${f}`);
+  };
+
+  // --- origin (클라이언트 전용) ---
+  const [origin, setOrigin] = useState("");
 
   // --- today records ---
   const today = getTodayKST();
@@ -140,7 +159,7 @@ export default function MealMain() {
           mealType: cards[f].mealType,
           count: parseInt(cards[f].count) || 0,
           memo: cards[f].memo,
-          registrar,
+          registrar: registrars[f],
           vendorId: v?.id || null,
         }),
       });
@@ -246,7 +265,7 @@ export default function MealMain() {
   };
 
   const copyLink = (token: string) => {
-    const url = `${window.location.origin}/field/meal/${token}`;
+    const url = `${origin}/field/meal/${token}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopiedToken(token);
       setTimeout(() => setCopiedToken(null), 2000);
@@ -291,20 +310,9 @@ export default function MealMain() {
       {/* ========== 오늘 식수 입력 ========== */}
       {activeTab === "today" && (
         <div className="space-y-4">
-          {/* 날짜 + 등록자 */}
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div className="text-lg font-bold text-gray-800">
-              {today} ({getDayStr(today)})
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-600 font-medium">등록자</label>
-              <Input
-                value={registrar}
-                onChange={e => saveRegistrar(e.target.value)}
-                placeholder="이름 입력 후 저장됨"
-                className="w-36 h-8 text-sm"
-              />
-            </div>
+          {/* 날짜 */}
+          <div className="text-lg font-bold text-gray-800">
+            {today} ({getDayStr(today)})
           </div>
 
           {/* 카드 2개 */}
@@ -376,6 +384,27 @@ export default function MealMain() {
                           <textarea value={card.memo} onChange={e => updateCard(f, "memo", e.target.value)}
                             placeholder="예: 오늘 김치찌개 빼주세요"
                             className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none h-16" />
+                        </div>
+                        {/* 등록자 */}
+                        <div>
+                          <label className="text-xs font-medium text-gray-600 mb-1.5 block">등록자</label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={registrars[f]}
+                              onChange={e => updateRegistrar(f, e.target.value)}
+                              placeholder="이름 입력"
+                              className="flex-1 h-8 text-sm"
+                            />
+                            <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer whitespace-nowrap select-none">
+                              <input
+                                type="checkbox"
+                                checked={isDefault[f]}
+                                onChange={e => toggleDefault(f, e.target.checked)}
+                                className="w-3.5 h-3.5 accent-blue-600"
+                              />
+                              기본값 설정
+                            </label>
+                          </div>
                         </div>
                         <Button onClick={() => submitFactory(f)} disabled={card.loading} className="w-full bg-blue-600 hover:bg-blue-700 font-bold">
                           {card.loading ? "저장 중..." : "요청하기"}
@@ -473,7 +502,7 @@ export default function MealMain() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {vendors.map(v => {
-                const link = `${typeof window !== "undefined" ? window.location.origin : ""}/field/meal/${v.token}`;
+                const link = `${origin}/field/meal/${v.token}`;
                 const isCopied = copiedToken === v.token;
                 return (
                   <div key={v.id} className={`bg-white rounded-xl border shadow-sm overflow-hidden ${v.isActive ? "border-gray-200" : "border-gray-100 opacity-60"}`}>
