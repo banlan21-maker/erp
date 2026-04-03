@@ -48,6 +48,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "파일이 없습니다." }, { status: 400 });
     }
 
+    const dataStartRowRaw = formData.get("dataStartRow");
+    const dataStartRow = dataStartRowRaw ? Math.max(1, Number(dataStartRowRaw)) : 6;
+
     const buffer = Buffer.from(await file.arrayBuffer());
 
     // 서버사이드 파싱: cellDates 로 날짜 객체 변환 시도
@@ -71,8 +74,8 @@ export async function POST(req: Request) {
       defval: null,
     });
 
-    // 1~5행 헤더 건너뜀 (0-indexed: 0~4 skip), 6행(index 5)부터 데이터
-    const dataRows = rawRows.slice(5);
+    // 헤더 건너뜀: dataStartRow 행부터 데이터 (1-indexed → 0-indexed: slice(dataStartRow - 1))
+    const dataRows = rawRows.slice(dataStartRow - 1);
 
     const rows = dataRows
       .filter(r => isVesselCode(r[0]))   // A열 숫자 행만

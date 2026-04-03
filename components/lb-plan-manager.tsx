@@ -131,7 +131,14 @@ const DEFAULT_SETTING: Omit<ProcessSetting, "id" | "vesselCode" | "isDefault"> =
   hullInspLeadDays: 3, paintLeadDays: 2, paintDuration: 7, peLeadDays: 1, peDuration: 3,
 };
 
-function ProcessSettingModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+function ProcessSettingModal({
+  onClose, onSaved, dataStartRow, onDataStartRowChange,
+}: {
+  onClose: () => void;
+  onSaved: () => void;
+  dataStartRow: number;
+  onDataStartRowChange: (v: number) => void;
+}) {
   const [settings, setSettings] = useState<ProcessSetting[]>([]);
   const [editing, setEditing] = useState<string | null>(null); // vesselCode
   const [form, setForm] = useState<Omit<ProcessSetting, "id">>({
@@ -188,7 +195,7 @@ function ProcessSettingModal({ onClose, onSaved }: { onClose: () => void; onSave
     <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center overflow-y-auto py-10">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-4">
         <div className="flex items-center justify-between px-6 py-4 border-b">
-          <h2 className="text-base font-bold text-gray-900">호선별 공정 소요일수 설정</h2>
+          <h2 className="text-base font-bold text-gray-900">설정</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
 
@@ -287,6 +294,23 @@ function ProcessSettingModal({ onClose, onSaved }: { onClose: () => void; onSave
               <Plus size={14} className="mr-1" /> 호선 추가
             </Button>
           )}
+
+          {/* 엑셀 가져오기 설정 */}
+          <div className="mt-6 pt-5 border-t border-gray-100">
+            <p className="text-sm font-semibold text-gray-700 mb-3">엑셀 가져오기 설정</p>
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-gray-600 whitespace-nowrap">데이터 시작 행</label>
+              <Input
+                type="number"
+                min={1}
+                value={dataStartRow}
+                onChange={e => onDataStartRowChange(Math.max(1, Number(e.target.value)))}
+                className="h-8 text-sm w-24"
+              />
+              <span className="text-xs text-gray-400">행 (기본값: 6 — 1~5행을 헤더로 건너뜀)</span>
+            </div>
+            <p className="text-xs text-gray-400 mt-1.5">A열 값이 숫자가 아닌 행은 자동으로 건너뜁니다.</p>
+          </div>
         </div>
       </div>
     </div>
@@ -330,6 +354,7 @@ export default function LbPlanManager() {
   const [vesselFilter, setVesselFilter] = useState("ALL");
   const [yearFilter, setYearFilter] = useState(String(new Date().getFullYear()));
   const [showSettings, setShowSettings] = useState(false);
+  const [dataStartRow, setDataStartRow] = useState(6);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -467,6 +492,7 @@ export default function LbPlanManager() {
       // 서버로 파일 업로드 → 서버에서 파싱 후 rows 반환
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("dataStartRow", String(dataStartRow));
       const res = await fetch("/api/lb-import", { method: "POST", body: formData });
       if (!res.ok) {
         const err = await res.json();
@@ -604,7 +630,7 @@ export default function LbPlanManager() {
         />
         <div className="flex-1" />
         <Button size="sm" variant="outline" onClick={() => setShowSettings(true)}>
-          <Settings2 size={14} className="mr-1" /> 공정 설정
+          <Settings2 size={14} className="mr-1" /> 설정
         </Button>
         <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={importing}>
           <Upload size={14} className="mr-1" /> {importing ? "가져오는 중..." : "엑셀 가져오기"}
@@ -739,6 +765,8 @@ export default function LbPlanManager() {
         <ProcessSettingModal
           onClose={() => setShowSettings(false)}
           onSaved={() => { loadSettings(); loadPlans(); }}
+          dataStartRow={dataStartRow}
+          onDataStartRowChange={setDataStartRow}
         />
       )}
     </div>
