@@ -251,6 +251,7 @@ model Worker {
   role          String?                       // 담당
   position      String?                       // 직책
   worksite      String?                       // 근무지
+  carNumber     String?                       // 차량번호
   joinDate      DateTime?                     // 입사일
   bloodType     String?                       // 혈액형
   shoeSize      String?                       // 신발사이즈

@@ -66,6 +66,7 @@ interface Worker {
   role: string | null;
   position: string | null;
   worksite: string | null;
+  carNumber: string | null;
   joinDate: string | null;
   bloodType: string | null;
   shoeSize: string | null;
@@ -85,7 +86,7 @@ interface Worker {
 
 interface FormState {
   name: string; nationality: string; birthDate: string; phone: string;
-  role: string; position: string; worksite: string; joinDate: string; bloodType: string;
+  role: string; position: string; worksite: string; carNumber: string; joinDate: string; bloodType: string;
   shoeSize: string; winterTop: string; winterBottom: string;
   summerTop: string; summerBottom: string;
   isCncOp: boolean;
@@ -95,7 +96,7 @@ interface FormState {
 
 const emptyForm: FormState = {
   name: "", nationality: "한국", birthDate: "", phone: "",
-  role: "", position: "", worksite: "", joinDate: "", bloodType: "",
+  role: "", position: "", worksite: "", carNumber: "", joinDate: "", bloodType: "",
   shoeSize: "", winterTop: "", winterBottom: "",
   summerTop: "", summerBottom: "",
   isCncOp: false,
@@ -221,7 +222,7 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
     setEditingId(w.id);
     setEditForm({
       name: w.name || "", nationality: w.nationality || "한국", birthDate: w.birthDate?.slice(0,10) || "",
-      phone: w.phone || "", role: w.role || "", position: w.position || "", worksite: w.worksite || "",
+      phone: w.phone || "", role: w.role || "", position: w.position || "", worksite: w.worksite || "", carNumber: w.carNumber || "",
       joinDate: w.joinDate?.slice(0,10) || "", bloodType: w.bloodType || "", shoeSize: w.shoeSize || "",
       winterTop: w.winterTop || "", winterBottom: w.winterBottom || "",
       summerTop: w.summerTop || "", summerBottom: w.summerBottom || "",
@@ -377,6 +378,7 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
                     <th className="px-4 py-3 font-semibold text-xs text-gray-500">담당</th>
                     <th className="px-4 py-3 font-semibold text-xs text-gray-500">직책</th>
                     <th className="px-4 py-3 font-semibold text-xs text-gray-500">근무지</th>
+                    <th className="px-4 py-3 font-semibold text-xs text-gray-500">차량번호</th>
                     <th className="px-4 py-3 font-semibold text-xs text-gray-500">연락처</th>
                     <th className="px-4 py-3 font-semibold text-xs text-gray-500">입사일</th>
                     <th className="px-4 py-3 font-semibold text-xs text-gray-500">생년월일</th>
@@ -394,7 +396,7 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
                 <tbody className="divide-y divide-gray-100">
                   {filteredWorkers.length === 0 ? (
                     <tr>
-                      <td colSpan={17} className="px-6 py-12 text-center text-gray-500">
+                      <td colSpan={18} className="px-6 py-12 text-center text-gray-500">
                         {workers.length === 0 ? "등록된 인원이 없습니다. '신규 인원 등록' 탭을 이용해 추가하세요." : "검색 조건에 맞는 인원이 없습니다."}
                       </td>
                     </tr>
@@ -430,6 +432,7 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
                             </span>
                           ) : <span className="text-gray-300">-</span>}
                         </td>
+                        <td className="px-4 py-3 text-gray-600 font-mono text-sm">{w.carNumber || "-"}</td>
                         <td className="px-4 py-3 text-gray-600 font-mono text-sm">{w.phone || "-"}</td>
                         <td className="px-4 py-3 text-gray-600 font-mono text-sm">{formatDate(w.joinDate)}</td>
                         <td className="px-4 py-3 text-gray-500 font-mono text-sm">{formatDate(w.birthDate)}</td>
@@ -515,6 +518,10 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
                   <div>
                     <label className={labelCls}>연락처</label>
                     <input name="phone" value={registerForm.phone} onChange={handleRegisterChange} placeholder="010-0000-0000" className={inputCls} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>차량번호</label>
+                    <input name="carNumber" value={registerForm.carNumber} onChange={handleRegisterChange} placeholder="12가 3456" className={inputCls} />
                   </div>
                   <div>
                     <label className={labelCls}>생년월일</label>
@@ -611,6 +618,7 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
                   </div>
                   <div className="space-y-1.5"><label className="text-xs font-semibold text-gray-700">입사일</label><Input type="date" value={editForm.joinDate} onChange={e => handleEditChange("joinDate", e.target.value)} className="h-9 w-full" /></div>
                   <div className="space-y-1.5"><label className="text-xs font-semibold text-gray-700">전화번호</label><Input value={editForm.phone} onChange={e => handleEditChange("phone", e.target.value)} className="h-9 w-full" /></div>
+                  <div className="space-y-1.5"><label className="text-xs font-semibold text-gray-700">차량번호</label><Input value={editForm.carNumber} onChange={e => handleEditChange("carNumber", e.target.value)} placeholder="12가 3456" className="h-9 w-full" /></div>
                   <div className="space-y-1.5"><label className="text-xs font-semibold text-gray-700">생년월일</label><Input type="date" value={editForm.birthDate} onChange={e => handleEditChange("birthDate", e.target.value)} className="h-9 w-full" /></div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-gray-700">혈액형</label>
