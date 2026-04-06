@@ -388,6 +388,7 @@ model Vendor {
   businessNumber String?     // 사업자번호
   category       String?     // 주요 취급 품목 카테고리
   memo           String?     // 비고
+  isFavorite     Boolean     @default(false)  // 즐겨찾기
 
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt

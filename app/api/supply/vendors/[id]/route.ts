@@ -45,6 +45,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const body = await request.json();
     const vendorId = Number(id);
 
+    // 즐겨찾기 토글만 요청하는 경우
+    if ("isFavorite" in body && Object.keys(body).length === 1) {
+      const updatedVendor = await prisma.vendor.update({
+        where: { id: vendorId },
+        data: { isFavorite: Boolean(body.isFavorite) },
+      });
+      return NextResponse.json({ success: true, data: updatedVendor });
+    }
+
     const { name, contact, phone, email, businessNumber, category, memo } = body;
 
     if (!name?.trim()) {

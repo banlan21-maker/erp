@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { PackageCheck, PackageMinus, Save, AlertCircle, RefreshCw, History, Search, ChevronDown, ArrowLeftRight } from "lucide-react";
+import { PackageCheck, PackageMinus, Save, AlertCircle, RefreshCw, History, Search, ChevronDown, ArrowLeftRight, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -14,6 +14,7 @@ function SearchableSelect({
   renderItem,
   renderSelected,
   disabled = false,
+  onToggleFavorite,
 }: {
   items: any[];
   value: string;
@@ -22,6 +23,7 @@ function SearchableSelect({
   renderItem: (item: any) => React.ReactNode;
   renderSelected: (item: any) => string;
   disabled?: boolean;
+  onToggleFavorite?: (item: any, e: React.MouseEvent) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -52,6 +54,7 @@ function SearchableSelect({
         className="w-full flex items-center justify-between px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <span className={selectedItem ? "text-gray-900" : "text-gray-400"}>
+          {selectedItem?.isFavorite && <Star size={11} className="inline text-yellow-400 fill-yellow-400 mr-1" />}
           {selectedItem ? renderSelected(selectedItem) : placeholder}
         </span>
         <ChevronDown size={14} className="text-gray-400 shrink-0" />
@@ -80,9 +83,19 @@ function SearchableSelect({
                 <li
                   key={item.id}
                   onMouseDown={() => { onChange(String(item.id)); setOpen(false); setSearch(""); }}
-                  className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-blue-50 transition-colors ${String(item.id) === value ? "bg-blue-50 font-semibold text-blue-700" : "text-gray-800"}`}
+                  className={`flex items-center gap-1 px-3 py-2.5 text-sm cursor-pointer hover:bg-blue-50 transition-colors ${String(item.id) === value ? "bg-blue-50 font-semibold text-blue-700" : "text-gray-800"}`}
                 >
-                  {renderItem(item)}
+                  {onToggleFavorite && (
+                    <button
+                      type="button"
+                      onMouseDown={(e) => { e.stopPropagation(); onToggleFavorite(item, e); }}
+                      className="shrink-0 p-0.5 rounded hover:bg-yellow-50"
+                      title={item.isFavorite ? "즐겨찾기 해제" : "즐겨찾기 등록"}
+                    >
+                      <Star size={13} className={item.isFavorite ? "text-yellow-400 fill-yellow-400" : "text-gray-300"} />
+                    </button>
+                  )}
+                  <span className="flex-1">{renderItem(item)}</span>
                 </li>
               ))
             )}
@@ -111,12 +124,15 @@ export default function InOutPage() {
   const [historyData, setHistoryData] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
+  const todayStr = () => new Date().toISOString().slice(0, 10);
+
   const [formData, setFormData] = useState({
     itemId: "",
     vendorId: "",
     qty: "",
     person: "",
-    memo: ""
+    memo: "",
+    date: todayStr(),
   });
 
   const [submitting, setSubmitting] = useState(false);
@@ -170,6 +186,24 @@ export default function InOutPage() {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
+  const handleToggleFavorite = async (vendor: any, e: React.MouseEvent) => {
+    e.preventDefault();
+    const newVal = !vendor.isFavorite;
+    // optimistic update
+    setVendors(prev => {
+      const updated = prev.map(v => v.id === vendor.id ? { ...v, isFavorite: newVal } : v);
+      return [...updated].sort((a, b) => {
+        if (a.isFavorite === b.isFavorite) return a.name.localeCompare(b.name);
+        return a.isFavorite ? -1 : 1;
+      });
+    });
+    await fetch(`/api/supply/vendors/${vendor.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isFavorite: newVal }),
+    });
+  };
+
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -187,8 +221,8 @@ export default function InOutPage() {
     try {
       const url = topMode === "in" ? "/api/supply/inbound" : "/api/supply/outbound";
       const payload = topMode === "in"
-        ? { itemId: formData.itemId, vendorId: formData.vendorId, qty: formData.qty, receivedBy: formData.person, memo: formData.memo }
-        : { itemId: formData.itemId, qty: formData.qty, usedBy: formData.person, memo: formData.memo };
+        ? { itemId: formData.itemId, vendorId: formData.vendorId, qty: formData.qty, receivedBy: formData.person, memo: formData.memo, receivedAt: formData.date }
+        : { itemId: formData.itemId, qty: formData.qty, usedBy: formData.person, memo: formData.memo, usedAt: formData.date };
 
       const res = await fetch(url, {
         method: "POST",
@@ -208,7 +242,7 @@ export default function InOutPage() {
         alert(`${topMode === "in" ? "입고" : "출고"} 처리가 완료되었습니다.`);
       }
 
-      setFormData({ itemId: "", vendorId: "", qty: "", person: "", memo: "" });
+      setFormData({ itemId: "", vendorId: "", qty: "", person: "", memo: "", date: todayStr() });
 
       const targetTab = topMode === "in" ? "inbound" : "outbound";
       setHistoryTab(targetTab);
@@ -367,8 +401,10 @@ export default function InOutPage() {
                   value={formData.vendorId}
                   onChange={(val) => setFormData(prev => ({ ...prev, vendorId: val }))}
                   placeholder="-- 거래처 검색/선택 --"
+                  onToggleFavorite={handleToggleFavorite}
                   renderItem={(v) => (
                     <span className="flex items-center gap-2">
+                      {v.isFavorite && <Star size={11} className="text-yellow-400 fill-yellow-400 shrink-0" />}
                       <span>{v.name}</span>
                       {v.contact && <span className="text-gray-400 text-xs">{v.contact}</span>}
                       {v.phone && <span className="text-gray-400 text-xs ml-auto">{v.phone}</span>}
@@ -378,6 +414,14 @@ export default function InOutPage() {
                 />
               </div>
             )}
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 mb-1.5">
+                {topMode === "in" ? "입고일" : "출고일"} <span className="text-red-500">*</span>
+                <span className="ml-1.5 text-xs text-gray-400 font-normal">(오늘 날짜가 기본값)</span>
+              </label>
+              <Input required type="date" name="date" value={formData.date} onChange={handleChange} className="w-full" />
+            </div>
 
             <div>
               <label className="block text-sm font-semibold text-gray-800 mb-1.5">{topMode === "in" ? "입고(매입) 수량" : "지급(출고) 수량"} <span className="text-red-500">*</span></label>

@@ -51,7 +51,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { itemId, vendorId, qty, receivedBy, memo } = body;
+    const { itemId, vendorId, qty, receivedBy, memo, receivedAt } = body;
 
     if (!itemId || !vendorId || !qty || !receivedBy) {
       return NextResponse.json({ success: false, error: "필수 값이 누락되었습니다." }, { status: 400 });
@@ -62,6 +62,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "수량은 1 이상이어야 합니다." }, { status: 400 });
     }
 
+    const receivedDate = receivedAt ? new Date(receivedAt) : new Date();
+
     // 트랜잭션 처리: 입고 이력 추가 + 재고 수량 증가
     const result = await prisma.$transaction(async (tx) => {
       const inbound = await tx.supplyInbound.create({
@@ -70,7 +72,8 @@ export async function POST(request: Request) {
           vendorId: Number(vendorId),
           qty: nQty,
           receivedBy,
-          memo
+          memo,
+          receivedAt: receivedDate,
         }
       });
 

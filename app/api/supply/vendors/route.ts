@@ -18,7 +18,7 @@ export async function GET(request: Request) {
 
     const vendors = await prisma.vendor.findMany({
       where: whereClause,
-      orderBy: { name: "asc" }
+      orderBy: [{ isFavorite: "desc" }, { name: "asc" }],
     });
 
     return NextResponse.json({ success: true, data: vendors });
