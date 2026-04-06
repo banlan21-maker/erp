@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CNC 절단 ERP",
-  description: "CNC 절단 파트 맞춤형 ERP 시스템",
+  title: "한국테크 ERP",
+  description: "한국테크 맞춤형 ERP 시스템",
 };
 
 export default function RootLayout({
