@@ -139,23 +139,48 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // SteelPlan 조회 (호선 = projectCode 기준)
+    const steelPlans = await prisma.steelPlan.findMany({
+      where: { vesselCode: project.projectCode },
+      select: { material: true, thickness: true, width: true, length: true, status: true },
+    });
+
+    // 매칭 헬퍼
+    const matchSteelPlan = (material: string, thickness: number, width: number, length: number) => {
+      return steelPlans.find(
+        (sp) =>
+          sp.material.trim().toLowerCase() === material.trim().toLowerCase() &&
+          sp.thickness === thickness &&
+          sp.width === width &&
+          sp.length === length
+      );
+    };
+
     // DB 저장 (배치 insert)
     // block 우선순위: 프리셋 colBlock에서 읽은 값(있을 때) > project.projectName(기본)
     const created = await prisma.drawingList.createMany({
-      data: result.rows.map((row) => ({
-        projectId,
-        block: row.block?.trim() || project.projectName,
-        drawingNo: row.drawingNo,
-        heatNo: row.heatNo,
-        material: row.material,
-        thickness: row.thickness,
-        width: row.width,
-        length: row.length,
-        qty: row.qty,
-        steelWeight: row.steelWeight,
-        useWeight: row.useWeight,
-        sourceFile: file.name,
-      })),
+      data: result.rows.map((row) => {
+        const matched = matchSteelPlan(row.material, row.thickness, row.width, row.length);
+        let status: "REGISTERED" | "WAITING" | "CAUTION" = "CAUTION";
+        if (matched) {
+          status = matched.status === "RECEIVED" ? "WAITING" : "REGISTERED";
+        }
+        return {
+          projectId,
+          block: row.block?.trim() || project.projectName,
+          drawingNo: row.drawingNo,
+          heatNo: row.heatNo,
+          material: row.material,
+          thickness: row.thickness,
+          width: row.width,
+          length: row.length,
+          qty: row.qty,
+          steelWeight: row.steelWeight,
+          useWeight: row.useWeight,
+          sourceFile: file.name,
+          status,
+        };
+      }),
     });
 
     return NextResponse.json(

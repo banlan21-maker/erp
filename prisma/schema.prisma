@@ -107,9 +107,15 @@ enum CuttingStatus {
 }
 
 enum DrawingStatus {
-  REGISTERED  // 등록 (Excel 업로드)
-  WAITING     // 대기 (입고 완료)
+  REGISTERED  // 대기 (SteelPlan 있으나 미입고)
+  WAITING     // 입고완료 (SteelPlan 매칭 + 입고)
+  CAUTION     // 주의 (SteelPlan에 없는 항목)
   CUT         // 절단 (작업일보 등록)
+}
+
+enum SteelPlanStatus {
+  REGISTERED  // 등록됨 (계획 등록)
+  RECEIVED    // 입고완료
 }
 
 // Excel 업로드 형식 프리셋
@@ -921,4 +927,25 @@ model Remnant {
   updatedAt    DateTime      @updatedAt
 
   urgentWorks  UrgentWork[]
+}
+
+// ==========================================
+// 원자재 공정 — 전체 자재 계획
+// ==========================================
+
+model SteelPlan {
+  id         String          @id @default(cuid())
+  vesselCode String          // 호선
+  material   String          // 재질 (예: AH36, SS400)
+  thickness  Float           // 두께 (mm)
+  width      Float           // 폭 (mm)
+  length     Float           // 길이 (mm)
+  qty        Int             // 수량
+  heatNo     String?         // 판번호/히트번호
+  status     SteelPlanStatus @default(REGISTERED)
+  memo       String?
+  sourceFile String?         // 업로드 파일명
+
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
 }
