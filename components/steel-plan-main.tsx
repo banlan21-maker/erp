@@ -289,7 +289,7 @@ export default function SteelPlanMain() {
   const inputCls = "border border-gray-300 rounded px-2 py-1 text-sm w-full focus:outline-none focus:ring-1 focus:ring-blue-400";
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="space-y-4">
       {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div>
