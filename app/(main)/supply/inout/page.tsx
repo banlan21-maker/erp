@@ -462,40 +462,44 @@ export default function InOutPage() {
           <table className="w-full text-sm text-left whitespace-nowrap">
             <thead className={`border-b text-gray-600 text-xs uppercase ${historyTab === 'inbound' ? 'bg-emerald-50/20' : 'bg-orange-50/20'}`}>
               <tr>
-                <th className="px-5 py-2.5">{historyTab === "inbound" ? "입고일시" : "출고일시"}</th>
-                <th className="px-5 py-2.5">관리주체</th>
-                <th className="px-5 py-2.5">품명</th>
-                <th className="px-5 py-2.5 text-right">수량</th>
-                <th className="px-5 py-2.5 font-normal text-center">단위</th>
-                <th className="px-5 py-2.5">{historyTab === "inbound" ? "담당자" : "사용자"}</th>
+                <th className="px-4 py-2.5">{historyTab === "inbound" ? "입고일시" : "출고일시"}</th>
+                <th className="px-4 py-2.5">관리주체</th>
+                <th className="px-4 py-2.5">품명</th>
+                <th className="px-4 py-2.5">세부분류</th>
+                <th className="px-4 py-2.5 text-right">수량</th>
+                <th className="px-4 py-2.5 font-normal text-center">단위</th>
+                <th className="px-4 py-2.5">보관위치</th>
+                <th className="px-4 py-2.5">{historyTab === "inbound" ? "담당자" : "사용자"}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loadingHistory ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-gray-400"><RefreshCw className="animate-spin inline-block mr-2" size={16} />갱신 중...</td>
+                  <td colSpan={8} className="py-12 text-center text-gray-400"><RefreshCw className="animate-spin inline-block mr-2" size={16} />갱신 중...</td>
                 </tr>
               ) : historyData.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-gray-400">이번 달 등록된 내역이 없습니다.</td>
+                  <td colSpan={8} className="py-12 text-center text-gray-400">이번 달 등록된 내역이 없습니다.</td>
                 </tr>
               ) : (
                 historyData.map((row) => (
                   <tr key={row.id} className="hover:bg-gray-50">
-                    <td className="px-5 py-3 text-xs text-gray-500 font-mono">{formatDate(historyTab === "inbound" ? row.receivedAt : row.usedAt)}</td>
-                    <td className="px-5 py-3">
+                    <td className="px-4 py-3 text-xs text-gray-500 font-mono">{formatDate(historyTab === "inbound" ? row.receivedAt : row.usedAt)}</td>
+                    <td className="px-4 py-3">
                       {row.item?.department && (
                         <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${DEPT_COLORS[row.item.department] || "bg-gray-100 text-gray-600"}`}>
                           {DEPT_LABELS[row.item.department] || row.item.department}
                         </span>
                       )}
                     </td>
-                    <td className="px-5 py-3 font-semibold text-gray-800">{row.item?.name}</td>
-                    <td className={`px-5 py-3 text-right font-bold ${historyTab === 'inbound' ? 'text-emerald-600' : 'text-orange-600'}`}>
+                    <td className="px-4 py-3 font-semibold text-gray-800">{row.item?.name}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{row.item?.subCategory || "-"}</td>
+                    <td className={`px-4 py-3 text-right font-bold ${historyTab === 'inbound' ? 'text-emerald-600' : 'text-orange-600'}`}>
                       {historyTab === 'inbound' ? '+' : '-'}{row.qty}
                     </td>
-                    <td className="px-5 py-3 text-center text-gray-500 text-xs">{row.item?.unit}</td>
-                    <td className="px-5 py-3 text-gray-600 text-xs">{historyTab === "inbound" ? row.receivedBy : row.usedBy}</td>
+                    <td className="px-4 py-3 text-center text-gray-500 text-xs">{row.item?.unit}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{row.item?.location || "-"}</td>
+                    <td className="px-4 py-3 text-gray-600 text-xs">{historyTab === "inbound" ? row.receivedBy : row.usedBy}</td>
                   </tr>
                 ))
               )}
