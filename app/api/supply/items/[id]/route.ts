@@ -18,7 +18,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, department, subCategory, unit, reorderPoint, location, memo } = body;
+    const { name, department, subCategory, unit, reorderPoint, location, memo, stockQty } = body;
+
+    // stockQty만 수정하는 경우 허용
+    if (stockQty !== undefined && name === undefined) {
+      const updatedItem = await prisma.supplyItem.update({
+        where: { id: Number(id) },
+        data: { stockQty: Number(stockQty) }
+      });
+      return NextResponse.json({ success: true, data: updatedItem });
+    }
 
     if (!name || !unit) {
       return NextResponse.json({ success: false, error: "품명, 단위는 필수입니다." }, { status: 400 });

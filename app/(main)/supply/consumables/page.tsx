@@ -23,6 +23,9 @@ export default function ConsumablesPage() {
   const [editingItem, setEditingItem] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  const [stockEditConfirm, setStockEditConfirm] = useState(false);
+  const [stockEditValue, setStockEditValue] = useState("");
+
   const fetchItems = async () => {
     setLoading(true);
     try {
@@ -51,7 +54,33 @@ export default function ConsumablesPage() {
 
   const openEditModal = (item: any) => {
     setEditingItem({ ...item });
+    setStockEditConfirm(false);
+    setStockEditValue(String(item.stockQty ?? 0));
     setIsEditModalOpen(true);
+  };
+
+  const handleStockSave = async () => {
+    if (!editingItem) return;
+    setIsSaving(true);
+    try {
+      const res = await fetch(`/api/supply/items/${editingItem.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stockQty: Number(stockEditValue) })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEditingItem((prev: any) => ({ ...prev, stockQty: Number(stockEditValue) }));
+        setStockEditConfirm(false);
+        fetchItems();
+      } else {
+        alert(data.error);
+      }
+    } catch {
+      alert("서버 연결 실패");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleEditChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -214,17 +243,72 @@ export default function ConsumablesPage() {
         </div>
       )}
 
+      {/* 재고 직접수정 경고 확인 모달 */}
+      {stockEditConfirm && editingItem && (
+        <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="px-6 py-4 border-b border-amber-100 bg-amber-50">
+              <h3 className="font-bold text-base text-amber-800 flex items-center gap-2">
+                <AlertCircle size={18} className="text-amber-600" /> 재고 직접 수정
+              </h3>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-700 leading-relaxed">
+                정상적인 재고 반영이 아닙니다.<br/>
+                직접 수정하시겠습니까?
+              </p>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">수정할 재고 수량</label>
+                <Input
+                  type="number"
+                  value={stockEditValue}
+                  onChange={(e) => setStockEditValue(e.target.value)}
+                  className="text-center font-bold text-lg"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+              <Button type="button" variant="outline" onClick={() => setStockEditConfirm(false)}>아니요</Button>
+              <Button
+                type="button"
+                disabled={isSaving}
+                onClick={handleStockSave}
+                className="bg-amber-500 hover:bg-amber-600 text-white font-bold"
+              >
+                {isSaving ? "저장 중..." : "예, 수정합니다"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 수정 모달창 */}
       {isEditModalOpen && editingItem && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
               <h3 className="font-bold text-lg text-gray-900 flex items-center gap-2"><Edit size={18} className="text-blue-600"/> 소모품 마스터 수정</h3>
-              <span className="text-xs bg-blue-100 text-blue-700 py-1 px-2 rounded-md font-semibold">재고 수정 불가</span>
+              <span className="text-xs bg-amber-100 text-amber-700 py-1 px-2 rounded-md font-semibold">재고 직접수정 주의</span>
             </div>
 
             <form onSubmit={handleSave}>
               <div className="p-6 space-y-4">
+                {/* 현재재고 표시 */}
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="text-sm text-gray-600">
+                    현재재고: <span className="font-bold text-gray-900 text-base">{editingItem.stockQty ?? 0}</span>
+                    <span className="text-gray-500 ml-1 text-xs">{editingItem.unit}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setStockEditConfirm(true); setStockEditValue(String(editingItem.stockQty ?? 0)); }}
+                    className="text-xs px-3 py-1.5 bg-amber-100 text-amber-700 hover:bg-amber-200 rounded-md font-semibold transition-colors border border-amber-200"
+                  >
+                    수정
+                  </button>
+                </div>
+
                 <div>
                   <label className="block text-sm font-semibold text-gray-800 mb-1.5">품명 <span className="text-red-500">*</span></label>
                   <Input required name="name" value={editingItem.name} onChange={handleEditChange} />
