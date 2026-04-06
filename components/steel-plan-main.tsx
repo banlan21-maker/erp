@@ -136,7 +136,7 @@ export default function SteelPlanMain() {
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf);
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { header: 1, defval: "" }) as unknown[][];
+    const raw = (XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as unknown) as unknown[][];
 
     // 헤더 행 자동 탐지: 재질/두께/폭/길이 키워드가 있는 행
     let headerRow = 0;
