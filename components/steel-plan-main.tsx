@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import * as XLSX from "xlsx";
 import {
   Upload, Plus, Trash2, RefreshCw, Download, Search, X, CheckSquare, Square,
+  PackageCheck, ClipboardList,
 } from "lucide-react";
 
 interface SteelPlanRow {
@@ -31,6 +32,8 @@ const EMPTY_ROW = {
 };
 
 export default function SteelPlanMain() {
+  const [tab, setTab] = useState<"plan" | "receive">("plan");
+
   const [rows, setRows] = useState<SteelPlanRow[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -55,6 +58,13 @@ export default function SteelPlanMain() {
   // 인라인 수정
   const [editId, setEditId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<SteelPlanRow>>({});
+
+  // 입고 처리 탭 상태
+  const [rcvForm, setRcvForm] = useState({
+    vesselCode: "", material: "", thickness: "", width: "", length: "", qty: "1",
+  });
+  const [rcvResult, setRcvResult] = useState<{ matched: number } | null>(null);
+  const [rcvLoading, setRcvLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -239,6 +249,32 @@ export default function SteelPlanMain() {
     load();
   };
 
+  // 입고 처리
+  const handleReceive = async () => {
+    if (!rcvForm.vesselCode || !rcvForm.material || !rcvForm.thickness || !rcvForm.width || !rcvForm.length) {
+      alert("호선, 재질, 두께, 폭, 길이는 필수입니다.");
+      return;
+    }
+    setRcvLoading(true);
+    setRcvResult(null);
+    const res = await fetch("/api/steel-plan/receive", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        vesselCode: rcvForm.vesselCode.trim(),
+        material:   rcvForm.material.trim(),
+        thickness:  Number(rcvForm.thickness),
+        width:      Number(rcvForm.width),
+        length:     Number(rcvForm.length),
+        qty:        Number(rcvForm.qty) || 1,
+      }),
+    });
+    const data = await res.json();
+    setRcvResult(data);
+    setRcvLoading(false);
+    if (data.matched > 0) load();
+  };
+
   // 양식 다운로드
   const downloadTemplate = () => {
     const ws = XLSX.utils.aoa_to_sheet([
@@ -257,8 +293,8 @@ export default function SteelPlanMain() {
       {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">자재계획 등록</h1>
-          <p className="text-sm text-gray-500 mt-0.5">철판 입고 전 전체 자재 계획을 호선 단위로 등록합니다</p>
+          <h1 className="text-xl font-bold text-gray-900">자재 계획 · 입고 관리</h1>
+          <p className="text-sm text-gray-500 mt-0.5">전체 자재 계획 등록 및 철판 입고 처리</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -284,8 +320,80 @@ export default function SteelPlanMain() {
         </div>
       </div>
 
-      {/* 직접 등록 폼 */}
-      {showForm && (
+      {/* 탭 */}
+      <div className="flex border-b border-gray-200">
+        <button
+          onClick={() => setTab("plan")}
+          className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            tab === "plan" ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          <ClipboardList size={14} /> 자재계획 등록
+        </button>
+        <button
+          onClick={() => setTab("receive")}
+          className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            tab === "receive" ? "border-green-600 text-green-600" : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          <PackageCheck size={14} /> 입고 처리
+        </button>
+      </div>
+
+      {/* 입고 처리 탭 */}
+      {tab === "receive" && (
+        <div className="bg-white border border-gray-200 rounded-lg p-6 max-w-xl space-y-4">
+          <div>
+            <h2 className="text-base font-semibold text-gray-800">철판 입고 처리</h2>
+            <p className="text-sm text-gray-500 mt-0.5">
+              입고된 철판 정보를 입력하면 자재계획에서 일치하는 항목을 <strong>입고완료</strong>로 자동 업데이트합니다.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-500 font-medium">호선 *</label>
+              <input className={inputCls} value={rcvForm.vesselCode} onChange={(e) => setRcvForm({ ...rcvForm, vesselCode: e.target.value })} placeholder="RS01" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 font-medium">재질 *</label>
+              <input className={inputCls} value={rcvForm.material} onChange={(e) => setRcvForm({ ...rcvForm, material: e.target.value })} placeholder="AH36" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 font-medium">두께(mm) *</label>
+              <input className={inputCls} type="number" value={rcvForm.thickness} onChange={(e) => setRcvForm({ ...rcvForm, thickness: e.target.value })} placeholder="8" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 font-medium">폭(mm) *</label>
+              <input className={inputCls} type="number" value={rcvForm.width} onChange={(e) => setRcvForm({ ...rcvForm, width: e.target.value })} placeholder="1829" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 font-medium">길이(mm) *</label>
+              <input className={inputCls} type="number" value={rcvForm.length} onChange={(e) => setRcvForm({ ...rcvForm, length: e.target.value })} placeholder="6096" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 font-medium">수량 (처리 매수)</label>
+              <input className={inputCls} type="number" min={1} value={rcvForm.qty} onChange={(e) => setRcvForm({ ...rcvForm, qty: e.target.value })} />
+            </div>
+          </div>
+          <button
+            onClick={handleReceive}
+            disabled={rcvLoading}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-medium"
+          >
+            <PackageCheck size={16} /> {rcvLoading ? "처리 중..." : "입고 처리"}
+          </button>
+          {rcvResult && (
+            <div className={`rounded-lg px-4 py-3 text-sm font-medium ${rcvResult.matched > 0 ? "bg-green-50 text-green-700 border border-green-200" : "bg-yellow-50 text-yellow-700 border border-yellow-200"}`}>
+              {rcvResult.matched > 0
+                ? `✓ ${rcvResult.matched}건 입고완료 처리되었습니다.`
+                : "일치하는 자재계획 항목을 찾지 못했습니다. 호선·재질·규격을 확인해주세요."}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 자재계획 등록 탭 */}
+      {tab === "plan" && showForm && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
           <p className="text-sm font-medium text-blue-700">새 항목 직접 등록</p>
           <div className="grid grid-cols-8 gap-2">
@@ -331,8 +439,8 @@ export default function SteelPlanMain() {
         </div>
       )}
 
-      {/* 필터 + 검색 */}
-      <div className="flex items-center gap-3 flex-wrap">
+      {/* 자재계획 탭: 필터 + 테이블 */}
+      {tab === "plan" && <div className="flex items-center gap-3 flex-wrap">
         <select
           value={filterVessel}
           onChange={(e) => setFilterVessel(e.target.value)}
@@ -368,10 +476,10 @@ export default function SteelPlanMain() {
           <RefreshCw size={14} />
         </button>
         <span className="text-sm text-gray-500 ml-auto">총 {filtered.length}건</span>
-      </div>
+      </div>}
 
       {/* 선택 액션 바 */}
-      {selectedIds.size > 0 && (
+      {tab === "plan" && selectedIds.size > 0 && (
         <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2">
           <span className="text-sm font-medium text-blue-700">{selectedIds.size}건 선택됨</span>
           <button
@@ -393,7 +501,7 @@ export default function SteelPlanMain() {
       )}
 
       {/* 테이블 */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      {tab === "plan" && <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -489,7 +597,7 @@ export default function SteelPlanMain() {
             </tbody>
           </table>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
