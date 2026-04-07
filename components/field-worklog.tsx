@@ -879,7 +879,7 @@ export default function FieldWorklog({
                     >
                       <p className="font-mono font-semibold text-sm">{d.drawingNo ?? "(번호없음)"}</p>
                       <p className="text-xs text-gray-400 mt-0.5">
-                        {d.material} {d.thickness}t × {d.width} × {d.length} · {d.qty}매
+                        {d.material} {d.thickness}t × {d.width} × {d.length}
                         {d.heatNo ? ` · ${d.heatNo}` : ""}
                       </p>
                     </button>
@@ -893,7 +893,6 @@ export default function FieldWorklog({
                   <div className="flex justify-between"><span>재질</span><span className="text-white font-medium">{selDrawing.material}</span></div>
                   <div className="flex justify-between"><span>두께</span><span className="text-white font-medium">{selDrawing.thickness}mm</span></div>
                   <div className="flex justify-between"><span>폭 × 길이</span><span className="text-white font-medium">{selDrawing.width} × {selDrawing.length}</span></div>
-                  <div className="flex justify-between"><span>수량</span><span className="text-white font-medium">{selDrawing.qty}매</span></div>
                 </div>
               )}
 
