@@ -41,7 +41,7 @@ export default async function ProjectsPage({
       projectCode: p.projectCode,
       projectName: p.projectName,
       type: p.type,
-      client: p.client,
+      client: p.client ?? "",
       status: p.status,
       drawingCount: p._count.drawingLists,
       createdAt: p.createdAt,
