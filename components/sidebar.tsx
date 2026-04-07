@@ -8,7 +8,7 @@ import {
   ExternalLink, Package, Truck, History, CalendarDays, Eye, Wrench, UtensilsCrossed, Archive,
 } from "lucide-react";
 
-export type ModuleType = "cnc" | "material" | "management";
+export type ModuleType = "cnc" | "material" | "management" | "schedule";
 
 type SidebarMode = "full" | "mini" | "hidden";
 
@@ -20,14 +20,16 @@ interface SidebarProps {
 
 const menuGroups = {
   cnc: [
-    { href: "/cutpart/dashboard",      label: "절단 대시보드",  icon: LayoutDashboard },
-    { href: "/cutpart/steel-plan",     label: "강재입고관리",   icon: ClipboardList },
-    { href: "/cutpart/projects",       label: "프로젝트",       icon: FolderOpen },
-    { href: "/cutpart/scrap",          label: "잔재관리",       icon: Archive },
-    { href: "/cutpart/worklog",        label: "작업일보",       icon: ClipboardList },
-    { href: "/cutpart/reports",        label: "보고서",         icon: BarChart2 },
-    { href: "/cutpart/schedule",       label: "스케줄 생성",    icon: CalendarDays },
-    { href: "/cutpart/schedule/view",  label: "스케줄 확인",    icon: Eye },
+    { href: "/cutpart/dashboard",  label: "절단 대시보드", icon: LayoutDashboard },
+    { href: "/cutpart/steel-plan", label: "강재입고관리",  icon: ClipboardList },
+    { href: "/cutpart/projects",   label: "프로젝트",      icon: FolderOpen },
+    { href: "/cutpart/scrap",      label: "잔재관리",      icon: Archive },
+    { href: "/cutpart/worklog",    label: "작업일보",      icon: ClipboardList },
+    { href: "/cutpart/reports",    label: "보고서",        icon: BarChart2 },
+  ],
+  schedule: [
+    { href: "/cutpart/schedule",      label: "스케줄 생성", icon: CalendarDays },
+    { href: "/cutpart/schedule/view", label: "스케줄 확인", icon: Eye },
   ],
   material: [
     { href: "/supply/dashboard",   label: "구매/자재 대시보드", icon: LayoutDashboard },
@@ -63,12 +65,14 @@ export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
   const isMini = mode === "mini";
   
   let moduleLabel = "관리";
-  if (module === "cnc") moduleLabel = "CNC 절단";
+  if (module === "cnc")      moduleLabel = "CNC 절단";
   else if (module === "material") moduleLabel = "구매/자재";
+  else if (module === "schedule") moduleLabel = "스케줄";
 
   let moduleShort = "MNG";
-  if (module === "cnc") moduleShort = "CNC";
+  if (module === "cnc")      moduleShort = "CNC";
   else if (module === "material") moduleShort = "MAT";
+  else if (module === "schedule") moduleShort = "SCH";
 
   return (
     <aside

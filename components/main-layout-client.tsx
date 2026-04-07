@@ -12,6 +12,7 @@ const moduleDashboardMap: Record<ModuleType, string> = {
   cnc: "/cutpart/dashboard",
   material: "/supply/dashboard",
   management: "/management/dashboard",
+  schedule: "/cutpart/schedule",
 };
 
 export default function MainLayoutClient({ children }: { children: React.ReactNode }) {
@@ -24,9 +25,11 @@ export default function MainLayoutClient({ children }: { children: React.ReactNo
     const savedMode = localStorage.getItem("sidebarMode") as SidebarMode | null;
     const savedModule = localStorage.getItem("activeModule") as ModuleType | null;
     if (savedMode) setMode(savedMode);
-    // /meal 경로는 관리 파트로 자동 인식
+    // 경로별 모듈 자동 인식
     if (window.location.pathname.startsWith("/meal")) {
       setActiveModule("management");
+    } else if (window.location.pathname.startsWith("/cutpart/schedule")) {
+      setActiveModule("schedule");
     } else if (savedModule) {
       setActiveModule(savedModule);
     }
@@ -91,6 +94,16 @@ export default function MainLayoutClient({ children }: { children: React.ReactNo
               }`}
             >
               관리 파트
+            </button>
+            <button
+              onClick={() => setModuleAndSave("schedule")}
+              className={`px-4 h-full text-sm font-semibold transition-all relative ${
+                activeModule === "schedule"
+                ? "text-blue-600 after:content-[''] after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-blue-600"
+                : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"
+              }`}
+            >
+              스케줄
             </button>
           </nav>
         </div>
