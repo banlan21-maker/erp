@@ -508,18 +508,14 @@ export default function DrawingTable({
           </Button>
 
           {/* 일괄 확정 / 일괄 확정 취소 */}
-          {drawings.some(d => d.status === "WAITING") && (
-            <>
-              <Button size="sm" onClick={bulkReserve} disabled={bulkReserving || bulkUnreserving}
-                className="text-xs flex items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white">
-                <CalendarCheck size={13} /> {bulkReserving ? "확정 중..." : "일괄 확정"}
-              </Button>
-              <Button size="sm" variant="outline" onClick={bulkUnreserve} disabled={bulkReserving || bulkUnreserving}
-                className="text-xs flex items-center gap-1 text-purple-600 border-purple-300 hover:bg-purple-50">
-                {bulkUnreserving ? "취소 중..." : "일괄 확정취소"}
-              </Button>
-            </>
-          )}
+          <Button size="sm" onClick={bulkReserve} disabled={bulkReserving || bulkUnreserving}
+            className="text-xs flex items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white">
+            <CalendarCheck size={13} /> {bulkReserving ? "확정 중..." : "일괄 확정"}
+          </Button>
+          <Button size="sm" variant="outline" onClick={bulkUnreserve} disabled={bulkReserving || bulkUnreserving}
+            className="text-xs flex items-center gap-1 text-purple-600 border-purple-300 hover:bg-purple-50">
+            {bulkUnreserving ? "취소 중..." : "일괄 확정취소"}
+          </Button>
 
           {/* 전체 삭제 */}
           {clearConfirm ? (
