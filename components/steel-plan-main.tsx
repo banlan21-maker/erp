@@ -75,8 +75,12 @@ export default function SteelPlanMain() {
   const [filterStatus, setFilterStatus] = useState("ALL");
   const [search, setSearch]     = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [editId, setEditId]     = useState<string | null>(null);
-  const [editMemo, setEditMemo] = useState("");
+
+  /* ── 메모 모달 ── */
+  type MemoModalMode = "input" | "view" | "edit";
+  const [memoModal, setMemoModal] = useState<{ id: string; memo: string; mode: MemoModalMode } | null>(null);
+  const [memoInput, setMemoInput] = useState("");
+  const [memoSaving, setMemoSaving] = useState(false);
 
   /* ── 판번호 리스트 상태 ── */
   const [heatRows, setHeatRows]         = useState<SteelPlanHeatRow[]>([]);
@@ -185,15 +189,30 @@ export default function SteelPlanMain() {
     loadHeat();
   };
 
-  /* ── 메모 수정 저장 ── */
+  /* ── 메모 저장/삭제 ── */
   const saveMemo = async () => {
-    if (!editId) return;
-    await fetch(`/api/steel-plan/${editId}`, {
+    if (!memoModal) return;
+    setMemoSaving(true);
+    await fetch(`/api/steel-plan/${memoModal.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ memo: editMemo }),
+      body: JSON.stringify({ memo: memoInput.trim() || null }),
     });
-    setEditId(null);
+    setMemoSaving(false);
+    setMemoModal(null);
+    loadPlan();
+  };
+
+  const deleteMemo = async () => {
+    if (!memoModal) return;
+    setMemoSaving(true);
+    await fetch(`/api/steel-plan/${memoModal.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memo: null }),
+    });
+    setMemoSaving(false);
+    setMemoModal(null);
     loadPlan();
   };
 
@@ -489,27 +508,22 @@ export default function SteelPlanMain() {
                           <td className="px-3 py-2 text-center text-xs font-mono text-blue-700">{row.actualHeatNo ?? "-"}</td>
                           <td className="px-3 py-2 text-center text-xs text-gray-600">{row.actualVesselCode ?? "-"}</td>
                           <td className="px-3 py-2 text-center text-xs text-gray-600">{row.actualDrawingNo ?? "-"}</td>
-                          {/* 메모 인라인 수정 */}
-                          <td className="px-3 py-2 text-center text-xs text-gray-500">
-                            {editId === row.id ? (
-                              <div className="flex gap-1">
-                                <input
-                                  className="border border-gray-300 rounded px-1 py-0.5 text-xs w-24 focus:outline-none"
-                                  value={editMemo}
-                                  onChange={(e) => setEditMemo(e.target.value)}
-                                  onKeyDown={(e) => { if (e.key === "Enter") saveMemo(); if (e.key === "Escape") setEditId(null); }}
-                                  autoFocus
-                                />
-                                <button onClick={saveMemo} className="text-xs text-blue-600 hover:underline">저장</button>
-                                <button onClick={() => setEditId(null)} className="text-xs text-gray-400 hover:underline">취소</button>
-                              </div>
-                            ) : (
-                              <span
-                                className="cursor-pointer hover:text-gray-800 hover:underline"
-                                onClick={() => { setEditId(row.id); setEditMemo(row.memo ?? ""); }}
+                          {/* 메모 버튼 */}
+                          <td className="px-3 py-2 text-center">
+                            {row.memo ? (
+                              <button
+                                onClick={() => { setMemoModal({ id: row.id, memo: row.memo!, mode: "view" }); setMemoInput(row.memo!); }}
+                                className="px-2.5 py-0.5 text-xs border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50"
                               >
-                                {row.memo ?? <span className="text-gray-300">-</span>}
-                              </span>
+                                확인
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => { setMemoModal({ id: row.id, memo: "", mode: "input" }); setMemoInput(""); }}
+                                className="px-2.5 py-0.5 text-xs border border-blue-300 rounded-lg text-blue-600 hover:bg-blue-50"
+                              >
+                                입력
+                              </button>
                             )}
                           </td>
                           {/* 입고 버튼 */}
@@ -609,6 +623,73 @@ export default function SteelPlanMain() {
             </div>
           </div>
         </>
+      )}
+
+      {/* ── 메모 모달 ── */}
+      {memoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-gray-900">
+                {memoModal.mode === "view" ? "메모 확인" : "메모 입력"}
+              </h3>
+              <button onClick={() => setMemoModal(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+
+            {/* 보기 모드 */}
+            {memoModal.mode === "view" && (
+              <>
+                <p className="text-sm text-gray-700 bg-gray-50 rounded-lg px-4 py-3 min-h-[60px] whitespace-pre-wrap">
+                  {memoModal.memo}
+                </p>
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={deleteMemo}
+                    disabled={memoSaving}
+                    className="px-4 py-2 text-sm border border-red-300 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-40"
+                  >
+                    삭제
+                  </button>
+                  <button
+                    onClick={() => setMemoModal({ ...memoModal, mode: "edit" })}
+                    className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    수정
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* 입력/수정 모드 */}
+            {(memoModal.mode === "input" || memoModal.mode === "edit") && (
+              <>
+                <textarea
+                  value={memoInput}
+                  onChange={(e) => setMemoInput(e.target.value)}
+                  placeholder="메모를 입력하세요"
+                  rows={4}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+                  autoFocus
+                />
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={() => setMemoModal(null)}
+                    className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={saveMemo}
+                    disabled={memoSaving || !memoInput.trim()}
+                    className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40"
+                  >
+                    {memoSaving ? "저장 중..." : "저장"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
 
       {/* ── 호선강재 삭제 모달 ── */}
