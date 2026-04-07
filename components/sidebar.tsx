@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, FolderOpen, FileSpreadsheet, ClipboardList,
   Users, BarChart2, ChevronLeft, ChevronRight, Smartphone,
-  ExternalLink, Package, Truck, History, CalendarDays, Eye, Wrench, UtensilsCrossed,
+  ExternalLink, Package, Truck, History, CalendarDays, Eye, Wrench, UtensilsCrossed, Archive,
 } from "lucide-react";
 
 export type ModuleType = "cnc" | "material" | "management";
@@ -24,6 +24,7 @@ const menuGroups = {
     { href: "/cutpart/projects",       label: "프로젝트",       icon: FolderOpen },
     { href: "/cutpart/steel-plan",     label: "자재계획등록",   icon: ClipboardList },
     { href: "/cutpart/drawings",       label: "강재관리",       icon: FileSpreadsheet },
+    { href: "/cutpart/scrap",          label: "잔재관리",       icon: Archive },
     { href: "/cutpart/worklog",        label: "작업일보",       icon: ClipboardList },
     { href: "/cutpart/reports",        label: "보고서",         icon: BarChart2 },
     { href: "/cutpart/schedule",       label: "스케줄 생성",    icon: CalendarDays },

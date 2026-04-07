@@ -13,10 +13,9 @@ import {
   SelectLabel,
   SelectTrigger,
 } from "@/components/ui/select";
-import { Upload, FileSpreadsheet, FolderOpen, CheckCircle2, AlertCircle, Settings2, List, ArrowLeft, PackagePlus, Package, Plus, Trash2, MapPin, Pencil, X, Check } from "lucide-react";
+import { Upload, FileSpreadsheet, FolderOpen, CheckCircle2, AlertCircle, Settings2, List, ArrowLeft, Plus, Trash2, MapPin, Pencil, X, Check } from "lucide-react";
 import PresetManager from "./preset-manager";
 import DrawingTable from "./drawing-table";
-import { RemnantRegisterTab, RemnantManageTab } from "./remnant-tabs";
 import type { DrawingList } from "@prisma/client";
 
 interface ProjectOption {
@@ -88,10 +87,8 @@ export default function DrawingsMain({
       {/* 탭 */}
       <div className="flex border-b border-gray-200 gap-0 overflow-x-auto">
         {[
-          { key: "upload",  icon: <Upload size={14} />,       label: "강재등록" },
-          { key: "list",    icon: <List size={14} />,          label: "강재리스트" },
-          { key: "remnant-add",    icon: <PackagePlus size={14} />, label: "잔재등록" },
-          { key: "remnant-manage", icon: <Package size={14} />,     label: "잔재관리" },
+          { key: "upload", icon: <Upload size={14} />, label: "강재등록" },
+          { key: "list",   icon: <List size={14} />,   label: "강재리스트" },
         ].map(({ key, icon, label }) => (
           <button
             key={key}
@@ -127,15 +124,6 @@ export default function DrawingsMain({
         />
       )}
 
-      {/* 잔재등록 탭 */}
-      {tab === "remnant-add" && (
-        <RemnantRegisterTab projects={projectOptions} />
-      )}
-
-      {/* 잔재관리 탭 */}
-      {tab === "remnant-manage" && (
-        <RemnantManageTab projects={projectOptions} />
-      )}
     </div>
   );
 }
