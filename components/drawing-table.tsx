@@ -283,17 +283,7 @@ export default function DrawingTable({
       });
       const data = await res.json();
       if (!data.success) { alert(data.error ?? "일괄 확정 실패"); return; }
-      const { confirmed, skipped, waitingCount, totalReceived, debugGroups } = data.data ?? {};
-      if (confirmed === 0) {
-        const detail = debugGroups?.length > 0
-          ? debugGroups.map((g: { key: string; needed: number; alreadyCount: number; available: number }) =>
-              `${g.key}: 필요 ${g.needed}, 이미확정 ${g.alreadyCount}, 가용 ${g.available}`
-            ).join("\n")
-          : `WAITING 행 ${waitingCount}건, 입고강재 ${totalReceived}건`;
-        alert(`확정된 항목이 없습니다.\n\n${detail}`);
-        return;
-      }
-      router.refresh();
+      window.location.reload();
     } catch { alert("서버 오류"); } finally { setBulkReserving(false); }
   };
 
@@ -307,7 +297,7 @@ export default function DrawingTable({
       });
       const data = await res.json();
       if (!data.success) { alert(data.error ?? "일괄 확정 취소 실패"); return; }
-      router.refresh();
+      window.location.reload();
     } catch { alert("서버 오류"); } finally { setBulkUnreserving(false); }
   };
 

@@ -41,13 +41,6 @@ export async function POST(request: NextRequest) {
     let confirmed = 0;
     let skipped = 0;
 
-    // 디버그: 전체 RECEIVED SteelPlan 수
-    const totalReceived = await prisma.steelPlan.count({
-      where: { vesselCode, status: "RECEIVED" },
-    });
-
-    const debugGroups: { key: string; needed: number; alreadyCount: number; available: number; toConfirm: number }[] = [];
-
     for (const spec of grouped.values()) {
       const { material, thickness, width, length, block: blockCode, needed } = spec;
 
@@ -56,14 +49,7 @@ export async function POST(request: NextRequest) {
         where: { vesselCode, material, thickness, width, length, status: "RECEIVED", reservedFor: blockCode },
       });
 
-      // 미확정 RECEIVED 수량
-      const available = await prisma.steelPlan.count({
-        where: { vesselCode, material, thickness, width, length, status: "RECEIVED", reservedFor: null },
-      });
-
       const toConfirm = needed - alreadyCount;
-      debugGroups.push({ key: `${material}|${thickness}×${width}×${length}|${blockCode}`, needed, alreadyCount, available, toConfirm });
-
       if (toConfirm <= 0) { skipped += needed; continue; }
 
       // 미확정 판 toConfirm개 한 번에 조회
@@ -83,8 +69,7 @@ export async function POST(request: NextRequest) {
       skipped += toConfirm - plans.length;
     }
 
-    console.log("[reserve-bulk POST]", { vesselCode, waitingCount: waitingRows.length, totalReceived, confirmed, skipped, debugGroups });
-    return NextResponse.json({ success: true, data: { confirmed, skipped, waitingCount: waitingRows.length, totalReceived, debugGroups } });
+    return NextResponse.json({ success: true, data: { confirmed, skipped } });
   } catch (error) {
     console.error("[POST /api/drawings/reserve-bulk]", error);
     return NextResponse.json({ success: false, error: "일괄 확정 중 오류가 발생했습니다." }, { status: 500 });
