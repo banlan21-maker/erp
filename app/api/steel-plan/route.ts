@@ -77,15 +77,18 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ count: created.count }, { status: 201 });
 }
 
-// DELETE /api/steel-plan — 배열 ids 일괄 삭제
+// DELETE /api/steel-plan
+// body: { vesselCode: string } → 해당 호선 SteelPlan + SteelPlanHeat 전체 삭제
 export async function DELETE(req: NextRequest) {
-  const { ids } = await req.json();
-  if (!Array.isArray(ids) || ids.length === 0)
-    return NextResponse.json({ error: "ids required" }, { status: 400 });
+  const body = await req.json();
 
-  const { count } = await prisma.steelPlan.deleteMany({
-    where: { id: { in: ids } },
-  });
+  if (body.vesselCode) {
+    const [plan, heat] = await Promise.all([
+      prisma.steelPlan.deleteMany({ where: { vesselCode: body.vesselCode } }),
+      prisma.steelPlanHeat.deleteMany({ where: { vesselCode: body.vesselCode } }),
+    ]);
+    return NextResponse.json({ planCount: plan.count, heatCount: heat.count });
+  }
 
-  return NextResponse.json({ count });
+  return NextResponse.json({ error: "vesselCode required" }, { status: 400 });
 }

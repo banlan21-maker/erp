@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import * as XLSX from "xlsx";
 import {
   Upload, Plus, Trash2, RefreshCw, Download, Search, X,
-  CheckSquare, Square, ClipboardList, PackageOpen, Hash,
+  CheckSquare, Square, ClipboardList, PackageOpen, Hash, PackageCheck,
 } from "lucide-react";
 
 /* ── 타입 ─────────────────────────────────────────────────────────────────── */
@@ -85,6 +85,11 @@ export default function SteelPlanMain() {
   const [heatFilterStatus, setHeatFilterStatus] = useState("ALL");
   const [heatSearch, setHeatSearch]     = useState("");
 
+  /* ── 호선강재 삭제 모달 ── */
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteVessel, setDeleteVessel]       = useState("");
+  const [deleting, setDeleting]               = useState(false);
+
   /* ── 엑셀 업로드 ── */
   const fileRef   = useRef<HTMLInputElement>(null);
   const [uploading, setUploading]   = useState(false);
@@ -143,17 +148,41 @@ export default function SteelPlanMain() {
     loadPlan();
   };
 
-  /* ── 선택 삭제 ── */
-  const deleteSelected = async () => {
-    if (selectedIds.size === 0) return;
-    if (!confirm(`${selectedIds.size}건을 삭제하시겠습니까?`)) return;
+  /* ── 다중 선택 입고 처리 ── */
+  const markSelectedReceived = async () => {
+    const targets = Array.from(selectedIds).filter(
+      (id) => rows.find((r) => r.id === id)?.status === "REGISTERED"
+    );
+    if (targets.length === 0) { alert("입고 처리할 수 있는 항목(등록 상태)이 없습니다."); return; }
+    if (!confirm(`${targets.length}건을 입고완료 처리하시겠습니까?`)) return;
+    await Promise.all(
+      targets.map((id) =>
+        fetch(`/api/steel-plan/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "RECEIVED" }),
+        })
+      )
+    );
+    setSelectedIds(new Set());
+    loadPlan();
+  };
+
+  /* ── 호선 단위 삭제 (SteelPlan + SteelPlanHeat 동시) ── */
+  const handleVesselDelete = async () => {
+    if (!deleteVessel) return;
+    if (!confirm(`[${deleteVessel}] 호선의 강재 전체목록 및 판번호 리스트를 모두 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
+    setDeleting(true);
     await fetch("/api/steel-plan", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: Array.from(selectedIds) }),
+      body: JSON.stringify({ vesselCode: deleteVessel }),
     });
-    setSelectedIds(new Set());
+    setDeleting(false);
+    setShowDeleteModal(false);
+    setDeleteVessel("");
     loadPlan();
+    loadHeat();
   };
 
   /* ── 메모 수정 저장 ── */
@@ -170,8 +199,8 @@ export default function SteelPlanMain() {
 
   /* ── 직접 등록 ── */
   const handleAddRow = async () => {
-    if (!form.vesselCode || !form.material || !form.thickness || !form.width || !form.length) {
-      alert("호선, 재질, 두께, 폭, 길이는 필수입니다.");
+    if (!form.vesselCode || !form.material || !form.thickness || !form.width || !form.length || !form.heatNo) {
+      alert("호선, 재질, 두께, 폭, 길이, 판번호는 필수입니다.");
       return;
     }
     setFormSaving(true);
@@ -284,6 +313,12 @@ export default function SteelPlanMain() {
         </div>
         <div className="flex gap-2">
           <button
+            onClick={() => { setDeleteVessel(""); setShowDeleteModal(true); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-red-300 text-red-600 rounded-lg hover:bg-red-50"
+          >
+            <Trash2 size={14} /> 호선강재 삭제
+          </button>
+          <button
             onClick={downloadTemplate}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600"
           >
@@ -338,7 +373,7 @@ export default function SteelPlanMain() {
                   { label: "두께(mm) *", key: "thickness",  placeholder: "8" },
                   { label: "폭(mm) *",  key: "width",      placeholder: "1829" },
                   { label: "길이(mm) *", key: "length",     placeholder: "6096" },
-                  { label: "판번호",    key: "heatNo",     placeholder: "HT240001" },
+                  { label: "판번호 *",  key: "heatNo",     placeholder: "HT240001" },
                   { label: "메모",      key: "memo",       placeholder: "" },
                 ].map(({ label, key, placeholder }) => (
                   <div key={key}>
@@ -391,12 +426,12 @@ export default function SteelPlanMain() {
 
           {/* 선택 액션 바 */}
           {selectedIds.size > 0 && (
-            <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2">
-              <span className="text-sm font-medium text-blue-700">{selectedIds.size}건 선택됨</span>
-              <button onClick={deleteSelected} className="flex items-center gap-1 px-3 py-1 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">
-                <Trash2 size={13} /> 선택 삭제
+            <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-2">
+              <span className="text-sm font-medium text-green-700">{selectedIds.size}건 선택됨</span>
+              <button onClick={markSelectedReceived} className="flex items-center gap-1.5 px-3 py-1 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700">
+                <PackageCheck size={13} /> 선택 입고
               </button>
-              <button onClick={() => setSelectedIds(new Set())} className="ml-auto text-sm text-blue-500 hover:underline">선택 해제</button>
+              <button onClick={() => setSelectedIds(new Set())} className="ml-auto text-sm text-green-600 hover:underline">선택 해제</button>
             </div>
           )}
 
@@ -574,6 +609,55 @@ export default function SteelPlanMain() {
             </div>
           </div>
         </>
+      )}
+
+      {/* ── 호선강재 삭제 모달 ── */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <Trash2 size={16} className="text-red-500" /> 호선강재 삭제
+              </h3>
+              <button onClick={() => setShowDeleteModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+
+            <p className="text-sm text-gray-500">
+              삭제할 호선을 선택하세요.<br />
+              <span className="text-red-600 font-medium">강재 전체목록 + 판번호 리스트가 모두 삭제됩니다.</span>
+            </p>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-gray-600">호선 선택</label>
+              <select
+                value={deleteVessel}
+                onChange={(e) => setDeleteVessel(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+              >
+                <option value="">-- 호선을 선택하세요 --</option>
+                {vesselList.map((v) => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleVesselDelete}
+                disabled={!deleteVessel || deleting}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40 font-medium"
+              >
+                {deleting ? "삭제 중..." : "삭제"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
