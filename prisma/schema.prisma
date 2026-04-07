@@ -955,6 +955,7 @@ model SteelPlan {
   actualVesselCode String?         // 실사용호선 (절단 시 자동기록)
   actualDrawingNo  String?         // 실사용도면번호 (절단 시 자동기록)
   memo             String?
+  storageLocation  String?         // 보관위치
   sourceFile       String?         // 업로드 파일명
 
   createdAt  DateTime        @default(now())

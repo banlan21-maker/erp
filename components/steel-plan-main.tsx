@@ -20,7 +20,8 @@ interface SteelPlanRow {
   actualHeatNo:     string | null;
   actualVesselCode: string | null;
   actualDrawingNo:  string | null;
-  memo:      string | null;
+  memo:             string | null;
+  storageLocation:  string | null;
   sourceFile: string | null;
   createdAt: string;
 }
@@ -82,6 +83,11 @@ export default function SteelPlanMain() {
   const [memoModal, setMemoModal] = useState<{ id: string; memo: string; mode: MemoModalMode } | null>(null);
   const [memoInput, setMemoInput] = useState("");
   const [memoSaving, setMemoSaving] = useState(false);
+
+  /* ── 위치 설정 모달 ── */
+  const [locationModal, setLocationModal] = useState<{ ids: string[]; initialValue: string } | null>(null);
+  const [locationInput, setLocationInput] = useState("");
+  const [locationSaving, setLocationSaving] = useState(false);
 
   /* ── 판번호 리스트 상태 ── */
   const [heatRows, setHeatRows]         = useState<SteelPlanHeatRow[]>([]);
@@ -215,6 +221,27 @@ export default function SteelPlanMain() {
     setDeleteVessel("");
     loadPlan();
     loadHeat();
+  };
+
+  /* ── 위치 저장 ── */
+  const saveLocation = async () => {
+    if (!locationModal) return;
+    setLocationSaving(true);
+    const value = locationInput.trim() || null;
+    // Optimistic
+    updateRowsLocally(locationModal.ids, { storageLocation: value });
+    setLocationModal(null);
+    await Promise.all(
+      locationModal.ids.map((id) =>
+        fetch(`/api/steel-plan/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ storageLocation: value }),
+        })
+      )
+    );
+    setLocationSaving(false);
+    setSelectedIds(new Set());
   };
 
   /* ── 메모 저장/삭제 ── */
@@ -478,6 +505,17 @@ export default function SteelPlanMain() {
               <button onClick={markSelectedReceived} className="flex items-center gap-1.5 px-3 py-1 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700">
                 <PackageCheck size={13} /> 선택 입고
               </button>
+              <button
+                onClick={() => {
+                  const ids = Array.from(selectedIds);
+                  const first = rows.find((r) => ids[0] === r.id);
+                  setLocationInput(ids.length === 1 && first?.storageLocation ? first.storageLocation : "");
+                  setLocationModal({ ids, initialValue: ids.length === 1 && first?.storageLocation ? first.storageLocation : "" });
+                }}
+                className="flex items-center gap-1.5 px-3 py-1 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+              >
+                위치 설정
+              </button>
               <button onClick={() => setSelectedIds(new Set())} className="ml-auto text-sm text-green-600 hover:underline">선택 해제</button>
             </div>
           )}
@@ -500,6 +538,7 @@ export default function SteelPlanMain() {
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">길이</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">중량(kg)</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">입고일</th>
+                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">보관위치</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">상태</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">실사용판번호</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">실사용호선</th>
@@ -510,9 +549,9 @@ export default function SteelPlanMain() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {loading ? (
-                    <tr><td colSpan={14} className="py-12 text-center text-gray-400">불러오는 중...</td></tr>
+                    <tr><td colSpan={15} className="py-12 text-center text-gray-400">불러오는 중...</td></tr>
                   ) : rows.length === 0 ? (
-                    <tr><td colSpan={14} className="py-12 text-center text-gray-400">등록된 강재 계획이 없습니다</td></tr>
+                    <tr><td colSpan={15} className="py-12 text-center text-gray-400">등록된 강재 계획이 없습니다</td></tr>
                   ) : (
                     rows.map((row) => {
                       const st = PLAN_STATUS[row.status];
@@ -533,6 +572,19 @@ export default function SteelPlanMain() {
                           </td>
                           <td className="px-3 py-2 text-center text-xs text-gray-500 font-mono">
                             {row.receivedAt ? new Date(row.receivedAt).toLocaleDateString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit" }) : <span className="text-gray-300">-</span>}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {row.storageLocation ? (
+                              <button
+                                onClick={() => { setLocationInput(row.storageLocation!); setLocationModal({ ids: [row.id], initialValue: row.storageLocation! }); }}
+                                className="px-2 py-0.5 text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 font-medium max-w-[100px] truncate"
+                                title={row.storageLocation}
+                              >
+                                {row.storageLocation}
+                              </button>
+                            ) : (
+                              <span className="text-gray-300 text-xs">-</span>
+                            )}
                           </td>
                           <td className="px-3 py-2 text-center">
                             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${st.cls}`}>{st.label}</span>
@@ -662,6 +714,44 @@ export default function SteelPlanMain() {
             </div>
           </div>
         </>
+      )}
+
+      {/* ── 위치 설정 모달 ── */}
+      {locationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-gray-900">보관위치 설정</h3>
+              <button onClick={() => setLocationModal(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            {locationModal.ids.length > 1 && (
+              <p className="text-xs text-indigo-600 bg-indigo-50 rounded-lg px-3 py-2">{locationModal.ids.length}건에 동일하게 적용됩니다.</p>
+            )}
+            <input
+              value={locationInput}
+              onChange={(e) => setLocationInput(e.target.value)}
+              placeholder="예: A-3 랙, 1창고 2번 구역"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              autoFocus
+              onKeyDown={(e) => { if (e.key === "Enter") saveLocation(); }}
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setLocationModal(null)}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                취소
+              </button>
+              <button
+                onClick={saveLocation}
+                disabled={locationSaving}
+                className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40"
+              >
+                {locationSaving ? "저장 중..." : "저장"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── 메모 모달 ── */}

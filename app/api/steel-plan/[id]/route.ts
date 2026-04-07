@@ -27,6 +27,7 @@ export async function PATCH(
       ...(body.actualHeatNo     !== undefined ? { actualHeatNo:     body.actualHeatNo }     : {}),
       ...(body.actualVesselCode !== undefined ? { actualVesselCode: body.actualVesselCode } : {}),
       ...(body.actualDrawingNo  !== undefined ? { actualDrawingNo:  body.actualDrawingNo }  : {}),
+      ...(body.storageLocation  !== undefined ? { storageLocation:  body.storageLocation }  : {}),
     },
   });
 
