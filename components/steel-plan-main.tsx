@@ -44,6 +44,10 @@ const PLAN_STATUS: Record<string, { label: string; cls: string }> = {
   COMPLETED:  { label: "절단완료", cls: "bg-blue-100  text-blue-700" },
 };
 
+// 강재 중량 계산 (단위: kg, 밀도 7.85 g/cm³)
+const calcWeight = (t: number, w: number, l: number) =>
+  Math.round(t * w * l * 7.85 / 1_000_000 * 100) / 100;
+
 const HEAT_STATUS: Record<string, { label: string; cls: string }> = {
   WAITING: { label: "대기", cls: "bg-yellow-100 text-yellow-700" },
   CUT:     { label: "절단", cls: "bg-blue-100  text-blue-700" },
@@ -412,6 +416,7 @@ export default function SteelPlanMain() {
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">두께</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">폭</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">길이</th>
+                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">중량(kg)</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">상태</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">실사용판번호</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">실사용호선</th>
@@ -422,9 +427,9 @@ export default function SteelPlanMain() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {loading ? (
-                    <tr><td colSpan={12} className="py-12 text-center text-gray-400">불러오는 중...</td></tr>
+                    <tr><td colSpan={13} className="py-12 text-center text-gray-400">불러오는 중...</td></tr>
                   ) : rows.length === 0 ? (
-                    <tr><td colSpan={12} className="py-12 text-center text-gray-400">등록된 강재 계획이 없습니다</td></tr>
+                    <tr><td colSpan={13} className="py-12 text-center text-gray-400">등록된 강재 계획이 없습니다</td></tr>
                   ) : (
                     rows.map((row) => {
                       const st = PLAN_STATUS[row.status];
@@ -440,6 +445,9 @@ export default function SteelPlanMain() {
                           <td className="px-3 py-2 text-center text-sm">{row.thickness}</td>
                           <td className="px-3 py-2 text-center text-sm">{row.width}</td>
                           <td className="px-3 py-2 text-center text-sm">{row.length}</td>
+                          <td className="px-3 py-2 text-center text-sm font-medium text-gray-700">
+                            {calcWeight(row.thickness, row.width, row.length).toLocaleString()}
+                          </td>
                           <td className="px-3 py-2 text-center">
                             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${st.cls}`}>{st.label}</span>
                           </td>
