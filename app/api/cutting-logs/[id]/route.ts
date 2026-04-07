@@ -1,6 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+// 절단 완료 후 DrawingList 상태 재계산
+async function syncDrawingListBySpec(
+  vesselCode: string, material: string,
+  thickness: number, width: number, length: number,
+) {
+  const projects = await prisma.project.findMany({
+    where: { projectCode: vesselCode },
+    select: { id: true },
+  });
+  if (projects.length === 0) return;
+  const receivedCount = await prisma.steelPlan.count({
+    where: { vesselCode, material, thickness, width, length, status: "RECEIVED" },
+  });
+  const rows = await prisma.drawingList.findMany({
+    where: {
+      projectId: { in: projects.map((p) => p.id) },
+      material, thickness, width, length,
+      NOT: { status: { in: ["CAUTION", "CUT"] } },
+    },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  const toWaiting    = rows.slice(0, receivedCount).map((r) => r.id);
+  const toRegistered = rows.slice(receivedCount).map((r) => r.id);
+  if (toWaiting.length > 0)
+    await prisma.drawingList.updateMany({ where: { id: { in: toWaiting } }, data: { status: "WAITING" } });
+  if (toRegistered.length > 0)
+    await prisma.drawingList.updateMany({ where: { id: { in: toRegistered } }, data: { status: "REGISTERED" } });
+}
+
 // PATCH /api/cutting-logs/[id] - 절단 종료 또는 수정
 export async function PATCH(
   request: NextRequest,
@@ -51,8 +81,13 @@ export async function PATCH(
         }
       }
 
-      // ── SteelPlan 실사용 기록 ──────────────────────────────────────────────
-      // 입고완료(RECEIVED)되고 아직 매칭 안 된 첫 행에 actualHeatNo/VesselCode/DrawingNo 기록
+      // ── SteelPlan 실사용 기록 + COMPLETED 처리 ────────────────────────────
+      let steelPlanVesselCode: string | null = null;
+      let steelPlanMaterial: string | null = null;
+      let steelPlanThickness: number | null = null;
+      let steelPlanWidth: number | null = null;
+      let steelPlanLength: number | null = null;
+
       if (log.projectId && log.heatNo?.trim() && log.material && log.thickness && log.width && log.length) {
         const project = await prisma.project.findUnique({
           where: { id: log.projectId },
@@ -78,8 +113,15 @@ export async function PATCH(
                 actualHeatNo:     log.heatNo.trim(),
                 actualVesselCode: project.projectCode,
                 actualDrawingNo:  log.drawingNo?.trim() || null,
+                status:           "COMPLETED",
               },
             });
+            // DrawingList 재계산을 위해 스펙 저장
+            steelPlanVesselCode = project.projectCode;
+            steelPlanMaterial   = log.material;
+            steelPlanThickness  = log.thickness;
+            steelPlanWidth      = log.width;
+            steelPlanLength     = log.length;
           }
         }
       }
@@ -90,6 +132,14 @@ export async function PATCH(
           where: { heatNo: log.heatNo.trim(), status: "WAITING" },
           data:  { status: "CUT" },
         });
+      }
+
+      // ── DrawingList 재계산 (COMPLETED 증가 → WAITING 감소 반영) ───────────
+      if (steelPlanVesselCode && steelPlanMaterial && steelPlanThickness && steelPlanWidth && steelPlanLength) {
+        await syncDrawingListBySpec(
+          steelPlanVesselCode, steelPlanMaterial,
+          steelPlanThickness, steelPlanWidth, steelPlanLength,
+        );
       }
 
       return NextResponse.json({ success: true, data: log });

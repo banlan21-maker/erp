@@ -275,8 +275,8 @@ export default function FieldWorklog({
     if (!pid) return;
     setDwLoading(true);
     try {
-      // 입고(WAITING) 항목만 표시
-      const res = await fetch(`/api/drawings?projectId=${pid}&status=WAITING`);
+      // 확정된 항목만 표시 (SteelPlan.reservedFor = 해당 블록인 WAITING 행)
+      const res = await fetch(`/api/drawings?projectId=${pid}&confirmed=true`);
       const d = await res.json();
       if (d.success) setDrawings(d.data);
     } finally { setDwLoading(false); }

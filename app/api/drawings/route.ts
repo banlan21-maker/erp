@@ -60,7 +60,8 @@ async function syncSpecsAfterUpload(
   }
 }
 
-// GET /api/drawings?projectId=xxx - 강재리스트 조회
+// GET /api/drawings?projectId=xxx&status=WAITING — 강재리스트 조회
+// GET /api/drawings?projectId=xxx&confirmed=true  — 확정된 항목만 조회 (현장 작업일보용)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -73,7 +74,43 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const status = searchParams.get("status");
+    const status    = searchParams.get("status");
+    const confirmed = searchParams.get("confirmed");
+
+    // confirmed=true: SteelPlan.reservedFor = block 인 WAITING 행만 반환
+    if (confirmed === "true") {
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { projectCode: true },
+      });
+      if (!project) {
+        return NextResponse.json({ success: true, data: [] });
+      }
+
+      const waitingRows = await prisma.drawingList.findMany({
+        where: { projectId, status: "WAITING" },
+        orderBy: { createdAt: "asc" },
+      });
+
+      const result = [];
+      for (const row of waitingRows) {
+        const reserved = await prisma.steelPlan.findFirst({
+          where: {
+            vesselCode: project.projectCode,
+            material:   row.material,
+            thickness:  row.thickness,
+            width:      row.width,
+            length:     row.length,
+            status:     "RECEIVED",
+            reservedFor: row.block ?? "UNKNOWN",
+          },
+          select: { id: true },
+        });
+        if (reserved) result.push(row);
+      }
+
+      return NextResponse.json({ success: true, data: result });
+    }
 
     const drawings = await prisma.drawingList.findMany({
       where: {
