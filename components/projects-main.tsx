@@ -64,9 +64,9 @@ export default function ProjectsMain({
   const goTab = (t: string) => router.push(`/cutpart/projects?tab=${t}`);
 
   const tabs = [
-    { key: "vessels", icon: <List size={14} />,          label: "호선·돌발리스트" },
-    { key: "upload",  icon: <Upload size={14} />,         label: "호선강재등록" },
-    { key: "list",    icon: <FileSpreadsheet size={14} />, label: "호선강재리스트" },
+    { key: "vessels", icon: <List size={14} />,          label: "호선/블록·돌발리스트" },
+    { key: "upload",  icon: <Upload size={14} />,         label: "블록별강재등록" },
+    { key: "list",    icon: <FileSpreadsheet size={14} />, label: "블록별강재리스트" },
   ];
 
   return (
@@ -76,10 +76,10 @@ export default function ProjectsMain({
         <div>
           <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <Anchor size={24} className="text-blue-600" />
-            호선 · 프로젝트
+            호선/블록 프로젝트
           </h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            호선 {vessels.length}개 · 블록 {projectOptions.length}건
+            호선/블록별 강재리스트 등록 및 관리
           </p>
         </div>
         {tab === "vessels" && (
