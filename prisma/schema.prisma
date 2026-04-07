@@ -957,6 +957,7 @@ model SteelPlan {
   memo             String?
   storageLocation  String?         // 보관위치
   sourceFile       String?         // 업로드 파일명
+  reservedFor      String?         // 스케줄 확정 블록 (예: "B80C")
 
   createdAt  DateTime        @default(now())
   updatedAt  DateTime        @updatedAt

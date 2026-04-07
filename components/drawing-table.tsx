@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { DrawingList } from "@prisma/client";
-import { Pencil, Trash2, Check, X, ListFilter, XCircle, Plus } from "lucide-react";
+import { Pencil, Trash2, Check, X, ListFilter, XCircle, Plus, CalendarCheck, CalendarX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -245,9 +245,11 @@ function FilterHeader({
 export default function DrawingTable({
   drawings,
   projectId,
+  confirmedDrawingIds = [],
 }: {
   drawings: DrawingList[];
   projectId: string;
+  confirmedDrawingIds?: string[];
 }) {
   const router = useRouter();
 
@@ -260,6 +262,46 @@ export default function DrawingTable({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [clearConfirm, setClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
+
+  // 스케줄 확정
+  const [confirmedSet, setConfirmedSet] = useState<Set<string>>(() => new Set(confirmedDrawingIds));
+  const [reservingId, setReservingId] = useState<string | null>(null);
+  const [bulkReserving, setBulkReserving] = useState(false);
+
+  const reserve = async (id: string) => {
+    setReservingId(id);
+    try {
+      const res = await fetch(`/api/drawings/${id}/reserve`, { method: "POST" });
+      const data = await res.json();
+      if (!data.success) { alert(data.error ?? "확정 실패"); return; }
+      setConfirmedSet(prev => new Set([...prev, id]));
+    } catch { alert("서버 오류"); } finally { setReservingId(null); }
+  };
+
+  const unreserve = async (id: string) => {
+    setReservingId(id);
+    try {
+      const res = await fetch(`/api/drawings/${id}/reserve`, { method: "DELETE" });
+      const data = await res.json();
+      if (!data.success) { alert(data.error ?? "확정 취소 실패"); return; }
+      setConfirmedSet(prev => { const s = new Set(prev); s.delete(id); return s; });
+    } catch { alert("서버 오류"); } finally { setReservingId(null); }
+  };
+
+  const bulkReserve = async () => {
+    setBulkReserving(true);
+    try {
+      const res = await fetch("/api/drawings/reserve-bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId }),
+      });
+      const data = await res.json();
+      if (!data.success) { alert(data.error ?? "일괄 확정 실패"); return; }
+      // 페이지 새로고침으로 최신 상태 반영
+      router.refresh();
+    } catch { alert("서버 오류"); } finally { setBulkReserving(false); }
+  };
 
   // 단건 추가 모달
   const [showAddModal, setShowAddModal] = useState(false);
@@ -467,6 +509,14 @@ export default function DrawingTable({
             <Plus size={13} /> 강재 추가
           </Button>
 
+          {/* 일괄 확정 */}
+          {drawings.some(d => d.status === "WAITING") && (
+            <Button size="sm" onClick={bulkReserve} disabled={bulkReserving}
+              className="text-xs flex items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white">
+              <CalendarCheck size={13} /> {bulkReserving ? "확정 중..." : "일괄 확정"}
+            </Button>
+          )}
+
           {/* 전체 삭제 */}
           {clearConfirm ? (
             <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-1.5">
@@ -487,7 +537,7 @@ export default function DrawingTable({
 
       {/* 테이블 */}
       <div className="bg-white rounded-xl border overflow-x-auto">
-        <table className="w-full text-sm min-w-[1364px] table-fixed">
+        <table className="w-full text-sm min-w-[1494px] table-fixed">
           <colgroup>
             <col style={{ width: "130px" }} />  {/* 상태 */}
             <col style={{ width: "130px" }} />  {/* 블록 */}
@@ -499,6 +549,7 @@ export default function DrawingTable({
             <col style={{ width: "130px" }} />  {/* 강재중량 */}
             <col style={{ width: "130px" }} />  {/* 사용중량 */}
             <col style={{ width: "130px" }} />  {/* 실사용판번호 */}
+            <col style={{ width: "90px" }} />   {/* 확정 */}
             <col style={{ width: "64px" }} />   {/* 액션 */}
           </colgroup>
           <thead className="bg-gray-50 border-b">
@@ -513,13 +564,14 @@ export default function DrawingTable({
               <FilterHeader col="steelWeight" label="강재중량(kg)" align="right"  {...filterHeaderProps} />
               <FilterHeader col="useWeight"   label="사용중량(kg)" align="right"  {...filterHeaderProps} />
               <FilterHeader col="heatNo"      label="실사용판번호" align="center" {...filterHeaderProps} />
+              <th className="px-2 py-2.5 text-xs font-semibold text-gray-500 text-center whitespace-nowrap">확정</th>
               <th className="px-2 py-2.5 w-16"></th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {filteredDrawings.length === 0 ? (
               <tr>
-                <td colSpan={10} className="text-center py-8 text-gray-400 text-xs">
+                <td colSpan={12} className="text-center py-8 text-gray-400 text-xs">
                   필터 조건에 맞는 데이터가 없습니다.
                   <button onClick={() => setFilters({})} className="ml-2 text-blue-500 hover:underline">
                     필터 초기화
@@ -531,6 +583,9 @@ export default function DrawingTable({
                 const isEditing = editingId === d.id;
                 const isDeleting = deletingId === d.id;
                 const status = (d.status ?? "REGISTERED") as DrawingStatusType;
+
+                const isConfirmed = confirmedSet.has(d.id);
+                const isReserving = reservingId === d.id;
 
                 if (isEditing && editForm) {
                   return (
@@ -545,6 +600,7 @@ export default function DrawingTable({
                       <td className="px-2 py-1.5 text-right text-xs text-gray-500">{calcSteelWeight(editForm.thickness, editForm.width, editForm.length).toLocaleString()}</td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-full text-right" value={editForm.useWeight}  onChange={e => f("useWeight",  e.target.value)} /></td>
                       <td className="px-2 py-1.5 text-center text-xs text-blue-600 font-mono">{d.heatNo ?? <span className="text-gray-300">-</span>}</td>
+                      <td className="px-2 py-1.5"></td>
                       <td className="px-2 py-1.5">
                         <div className="flex gap-1">
                           <button onClick={() => saveEdit(d.id)} disabled={saving} className="p-1 text-green-600 hover:bg-green-100 rounded" title="저장"><Check size={14} /></button>
@@ -556,7 +612,7 @@ export default function DrawingTable({
                 }
 
                 return (
-                  <tr key={d.id} className={`hover:bg-gray-50 transition-colors ${isDeleting ? "opacity-40" : ""} ${status === "CUT" ? "bg-green-50/30" : ""}`}>
+                  <tr key={d.id} className={`hover:bg-gray-50 transition-colors ${isDeleting ? "opacity-40" : ""} ${status === "CUT" ? "bg-green-50/30" : ""} ${isConfirmed ? "bg-purple-50/40" : ""}`}>
                     <td className="px-2 py-2 text-center"><StatusBadge status={status} /></td>
                     <td className="px-2 py-2 text-gray-700 font-medium text-xs truncate">{d.block ?? "-"}</td>
                     <td className="px-2 py-2 text-gray-700 font-mono text-xs truncate">{d.drawingNo ?? "-"}</td>
@@ -569,6 +625,29 @@ export default function DrawingTable({
                     <td className="px-2 py-2 text-right text-xs text-gray-700">{calcSteelWeight(d.thickness, d.width, d.length).toLocaleString()}</td>
                     <td className="px-2 py-2 text-right text-xs text-gray-500">{d.useWeight != null ? d.useWeight.toLocaleString() : "-"}</td>
                     <td className="px-2 py-2 text-center text-xs font-mono text-blue-600 truncate">{d.heatNo ?? <span className="text-gray-300">-</span>}</td>
+                    <td className="px-2 py-2 text-center">
+                      {status === "WAITING" && (
+                        isConfirmed ? (
+                          <button
+                            onClick={() => unreserve(d.id)}
+                            disabled={isReserving}
+                            className="flex items-center gap-0.5 text-xs px-2 py-0.5 rounded bg-purple-100 text-purple-700 hover:bg-purple-200 disabled:opacity-50 font-medium whitespace-nowrap"
+                            title="확정 취소"
+                          >
+                            <CalendarX size={11} /> 확정취소
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => reserve(d.id)}
+                            disabled={isReserving}
+                            className="flex items-center gap-0.5 text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-purple-100 hover:text-purple-700 disabled:opacity-50 font-medium whitespace-nowrap"
+                            title="확정"
+                          >
+                            <CalendarCheck size={11} /> 확정
+                          </button>
+                        )
+                      )}
+                    </td>
                     <td className="px-2 py-2">
                       <div className="flex gap-1 justify-end items-center">
                         <button
@@ -605,6 +684,7 @@ export default function DrawingTable({
               <td className="px-2 py-2 text-right text-xs font-bold text-gray-700">
                 {filteredDrawings.reduce((s, d) => s + (d.useWeight ?? 0), 0).toLocaleString()}kg
               </td>
+              <td></td>
               <td></td>
               <td></td>
             </tr>

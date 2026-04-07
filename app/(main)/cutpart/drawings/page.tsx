@@ -27,6 +27,7 @@ export default async function DrawingsPage({
   // 강재리스트 탭에서 특정 프로젝트 선택 시 해당 도면 목록 로드
   let drawings: Awaited<ReturnType<typeof prisma.drawingList.findMany>> = [];
   let activeProject: { id: string; projectCode: string; projectName: string; storageLocation: string | null } | null = null;
+  let confirmedDrawingIds: string[] = [];
 
   if (tab === "list" && projectId) {
     const proj = await prisma.project.findUnique({
@@ -36,6 +37,27 @@ export default async function DrawingsPage({
     if (proj) {
       drawings = proj.drawingLists;
       activeProject = { id: proj.id, projectCode: proj.projectCode, projectName: proj.projectName, storageLocation: proj.storageLocation ?? null };
+
+      // WAITING 행 중 확정된 것 계산
+      const waitingRows = drawings.filter(d => d.status === "WAITING");
+      // 규격+블록별 그룹화
+      const groups = new Map<string, string[]>();
+      for (const row of waitingRows) {
+        const key = `${row.material}|${row.thickness}|${row.width}|${row.length}|${row.block ?? "UNKNOWN"}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(row.id);
+      }
+      for (const [key, ids] of groups) {
+        const parts = key.split("|");
+        const [material, , , , block] = parts;
+        const thickness = Number(parts[1]);
+        const width = Number(parts[2]);
+        const length = Number(parts[3]);
+        const reservedCount = await prisma.steelPlan.count({
+          where: { vesselCode: proj.projectCode, material, thickness, width, length, status: "RECEIVED", reservedFor: block },
+        });
+        confirmedDrawingIds.push(...ids.slice(0, reservedCount));
+      }
     }
   }
 
@@ -60,6 +82,7 @@ export default async function DrawingsPage({
       recentUploads={recentUploads}
       drawings={drawings}
       activeProject={activeProject}
+      confirmedDrawingIds={confirmedDrawingIds}
     />
   );
 }

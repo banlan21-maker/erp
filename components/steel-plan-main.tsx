@@ -23,6 +23,7 @@ interface SteelPlanRow {
   memo:             string | null;
   storageLocation:  string | null;
   sourceFile: string | null;
+  reservedFor:      string | null;
   createdAt: string;
 }
 
@@ -540,6 +541,7 @@ export default function SteelPlanMain() {
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">입고일</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">보관위치</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">상태</th>
+                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">확정블록</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">실사용판번호</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">실사용호선</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">실사용도면번호</th>
@@ -549,9 +551,9 @@ export default function SteelPlanMain() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {loading ? (
-                    <tr><td colSpan={15} className="py-12 text-center text-gray-400">불러오는 중...</td></tr>
+                    <tr><td colSpan={16} className="py-12 text-center text-gray-400">불러오는 중...</td></tr>
                   ) : rows.length === 0 ? (
-                    <tr><td colSpan={15} className="py-12 text-center text-gray-400">등록된 강재 계획이 없습니다</td></tr>
+                    <tr><td colSpan={16} className="py-12 text-center text-gray-400">등록된 강재 계획이 없습니다</td></tr>
                   ) : (
                     rows.map((row) => {
                       const st = PLAN_STATUS[row.status];
@@ -588,6 +590,15 @@ export default function SteelPlanMain() {
                           </td>
                           <td className="px-3 py-2 text-center">
                             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${st.cls}`}>{st.label}</span>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {row.reservedFor ? (
+                              <span className="px-2 py-0.5 rounded text-xs font-semibold bg-purple-100 text-purple-700">
+                                {row.reservedFor} 확정
+                              </span>
+                            ) : (
+                              <span className="text-gray-300 text-xs">-</span>
+                            )}
                           </td>
                           <td className="px-3 py-2 text-center text-xs font-mono text-blue-700">{row.actualHeatNo ?? "-"}</td>
                           <td className="px-3 py-2 text-center text-xs text-gray-600">{row.actualVesselCode ?? "-"}</td>
