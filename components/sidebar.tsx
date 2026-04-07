@@ -21,8 +21,8 @@ interface SidebarProps {
 const menuGroups = {
   cnc: [
     { href: "/cutpart/dashboard",      label: "절단 대시보드",  icon: LayoutDashboard },
+    { href: "/cutpart/steel-plan",     label: "강재입고관리",   icon: ClipboardList },
     { href: "/cutpart/projects",       label: "프로젝트",       icon: FolderOpen },
-    { href: "/cutpart/steel-plan",     label: "자재계획등록",   icon: ClipboardList },
     { href: "/cutpart/scrap",          label: "잔재관리",       icon: Archive },
     { href: "/cutpart/worklog",        label: "작업일보",       icon: ClipboardList },
     { href: "/cutpart/reports",        label: "보고서",         icon: BarChart2 },
