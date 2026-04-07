@@ -263,15 +263,22 @@ export default function DrawingTable({
   const [clearConfirm, setClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
 
-  // 스케줄 확정
-  const [confirmedSet, setConfirmedSet] = useState<Set<string>>(() => new Set(confirmedDrawingIds));
+  // 스케줄 확정 — 클라이언트에서 직접 API로 확정 상태 조회
+  const [confirmedSet, setConfirmedSet] = useState<Set<string>>(new Set());
   const [bulkReserving, setBulkReserving] = useState(false);
   const [bulkUnreserving, setBulkUnreserving] = useState(false);
 
-  // 서버에서 confirmedDrawingIds가 갱신되면 로컬 state 동기화
-  useEffect(() => {
-    setConfirmedSet(new Set(confirmedDrawingIds));
-  }, [confirmedDrawingIds.join(",")]);
+  const loadConfirmed = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/drawings?projectId=${encodeURIComponent(projectId)}&confirmed=true`);
+      const data = await res.json();
+      if (data.success) {
+        setConfirmedSet(new Set((data.data as DrawingList[]).map((d) => d.id)));
+      }
+    } catch { /* silent */ }
+  }, [projectId]);
+
+  useEffect(() => { loadConfirmed(); }, [loadConfirmed]);
 
   const bulkReserve = async () => {
     setBulkReserving(true);
@@ -283,7 +290,7 @@ export default function DrawingTable({
       });
       const data = await res.json();
       if (!data.success) { alert(data.error ?? "일괄 확정 실패"); return; }
-      window.location.reload();
+      await loadConfirmed();
     } catch { alert("서버 오류"); } finally { setBulkReserving(false); }
   };
 
@@ -297,7 +304,7 @@ export default function DrawingTable({
       });
       const data = await res.json();
       if (!data.success) { alert(data.error ?? "일괄 확정 취소 실패"); return; }
-      window.location.reload();
+      await loadConfirmed();
     } catch { alert("서버 오류"); } finally { setBulkUnreserving(false); }
   };
 

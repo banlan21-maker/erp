@@ -92,21 +92,23 @@ export async function DELETE(request: NextRequest) {
     }
     const vesselCode = project.projectCode;
 
-    const waitingRows = await prisma.drawingList.findMany({
-      where: { projectId, status: "WAITING" },
+    // 이 프로젝트에 존재하는 고유 블록코드 목록 (상태 무관)
+    const blockRows = await prisma.drawingList.findMany({
+      where: { projectId },
+      select: { block: true },
+      distinct: ["block"],
     });
+    const blockCodes = blockRows.map((r) => r.block ?? "UNKNOWN");
 
-    let cancelled = 0;
-    for (const drawing of waitingRows) {
-      const { material, thickness, width, length, block } = drawing;
-      const blockCode = block ?? "UNKNOWN";
-
-      const { count } = await prisma.steelPlan.updateMany({
-        where: { vesselCode, material, thickness, width, length, status: "RECEIVED", reservedFor: blockCode },
-        data: { reservedFor: null },
-      });
-      cancelled += count;
-    }
+    // 해당 블록코드로 확정된 SteelPlan 전체 해제
+    const { count: cancelled } = await prisma.steelPlan.updateMany({
+      where: {
+        vesselCode,
+        status: "RECEIVED",
+        reservedFor: { in: blockCodes },
+      },
+      data: { reservedFor: null },
+    });
 
     return NextResponse.json({ success: true, data: { cancelled } });
   } catch (error) {
