@@ -4,15 +4,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 // DrawingList 상태 동기화 헬퍼
-// SteelPlan 입고완료 → DrawingList WAITING(입고)
-// SteelPlan 입고되돌리기 → DrawingList REGISTERED(미입고)
+// 해당 스펙의 RECEIVED SteelPlan 수만큼만 DrawingList를 입고(WAITING)로,
+// 나머지는 미입고(REGISTERED)로 유지
 async function syncDrawingListBySpec(
   vesselCode: string,
   material: string,
   thickness: number,
   width: number,
   length: number,
-  targetStatus: "REGISTERED" | "WAITING"
 ) {
   const projects = await prisma.project.findMany({
     where: { projectCode: vesselCode },
@@ -20,17 +19,38 @@ async function syncDrawingListBySpec(
   });
   if (projects.length === 0) return;
 
-  await prisma.drawingList.updateMany({
+  // 현재 해당 스펙의 입고완료 수량
+  const receivedCount = await prisma.steelPlan.count({
+    where: { vesselCode, material, thickness, width, length, status: "RECEIVED" },
+  });
+
+  // 경고·절단 제외한 DrawingList 행을 등록순으로 조회
+  const rows = await prisma.drawingList.findMany({
     where: {
       projectId: { in: projects.map((p) => p.id) },
-      material,
-      thickness,
-      width,
-      length,
+      material, thickness, width, length,
       NOT: { status: { in: ["CAUTION", "CUT"] } },
     },
-    data: { status: targetStatus },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
   });
+
+  // 앞에서 receivedCount 개 → 입고, 나머지 → 미입고
+  const toWaiting    = rows.slice(0, receivedCount).map((r) => r.id);
+  const toRegistered = rows.slice(receivedCount).map((r) => r.id);
+
+  if (toWaiting.length > 0) {
+    await prisma.drawingList.updateMany({
+      where: { id: { in: toWaiting } },
+      data: { status: "WAITING" },
+    });
+  }
+  if (toRegistered.length > 0) {
+    await prisma.drawingList.updateMany({
+      where: { id: { in: toRegistered } },
+      data: { status: "REGISTERED" },
+    });
+  }
 }
 
 // PATCH /api/steel-plan/[id]
@@ -62,17 +82,10 @@ export async function PATCH(
   });
 
   // 입고 상태 변경 시 DrawingList 자동 동기화
-  if (body.status === "RECEIVED") {
+  if (body.status === "RECEIVED" || body.status === "REGISTERED") {
     await syncDrawingListBySpec(
       updated.vesselCode, updated.material,
       updated.thickness, updated.width, updated.length,
-      "WAITING"
-    );
-  } else if (body.status === "REGISTERED") {
-    await syncDrawingListBySpec(
-      updated.vesselCode, updated.material,
-      updated.thickness, updated.width, updated.length,
-      "REGISTERED"
     );
   }
 
