@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { DrawingList } from "@prisma/client";
-import { Pencil, Trash2, Check, X, ListFilter, XCircle, Plus, CalendarCheck, CalendarX } from "lucide-react";
+import { Pencil, Trash2, Check, X, ListFilter, XCircle, Plus, CalendarCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -265,35 +265,13 @@ export default function DrawingTable({
 
   // 스케줄 확정
   const [confirmedSet, setConfirmedSet] = useState<Set<string>>(() => new Set(confirmedDrawingIds));
-  const [reservingId, setReservingId] = useState<string | null>(null);
   const [bulkReserving, setBulkReserving] = useState(false);
+  const [bulkUnreserving, setBulkUnreserving] = useState(false);
 
   // 서버에서 confirmedDrawingIds가 갱신되면 로컬 state 동기화
   useEffect(() => {
     setConfirmedSet(new Set(confirmedDrawingIds));
   }, [confirmedDrawingIds.join(",")]);
-
-  const reserve = async (id: string) => {
-    setReservingId(id);
-    try {
-      const res = await fetch(`/api/drawings/${id}/reserve`, { method: "POST" });
-      const data = await res.json();
-      if (!data.success) { alert(data.error ?? "확정 실패"); return; }
-      setConfirmedSet(prev => new Set([...prev, id]));
-      router.refresh();
-    } catch { alert("서버 오류"); } finally { setReservingId(null); }
-  };
-
-  const unreserve = async (id: string) => {
-    setReservingId(id);
-    try {
-      const res = await fetch(`/api/drawings/${id}/reserve`, { method: "DELETE" });
-      const data = await res.json();
-      if (!data.success) { alert(data.error ?? "확정 취소 실패"); return; }
-      setConfirmedSet(prev => { const s = new Set(prev); s.delete(id); return s; });
-      router.refresh();
-    } catch { alert("서버 오류"); } finally { setReservingId(null); }
-  };
 
   const bulkReserve = async () => {
     setBulkReserving(true);
@@ -307,6 +285,20 @@ export default function DrawingTable({
       if (!data.success) { alert(data.error ?? "일괄 확정 실패"); return; }
       router.refresh();
     } catch { alert("서버 오류"); } finally { setBulkReserving(false); }
+  };
+
+  const bulkUnreserve = async () => {
+    setBulkUnreserving(true);
+    try {
+      const res = await fetch("/api/drawings/reserve-bulk", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId }),
+      });
+      const data = await res.json();
+      if (!data.success) { alert(data.error ?? "일괄 확정 취소 실패"); return; }
+      router.refresh();
+    } catch { alert("서버 오류"); } finally { setBulkUnreserving(false); }
   };
 
   // 단건 추가 모달
@@ -515,12 +507,18 @@ export default function DrawingTable({
             <Plus size={13} /> 강재 추가
           </Button>
 
-          {/* 일괄 확정 */}
+          {/* 일괄 확정 / 일괄 확정 취소 */}
           {drawings.some(d => d.status === "WAITING") && (
-            <Button size="sm" onClick={bulkReserve} disabled={bulkReserving}
-              className="text-xs flex items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white">
-              <CalendarCheck size={13} /> {bulkReserving ? "확정 중..." : "일괄 확정"}
-            </Button>
+            <>
+              <Button size="sm" onClick={bulkReserve} disabled={bulkReserving || bulkUnreserving}
+                className="text-xs flex items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white">
+                <CalendarCheck size={13} /> {bulkReserving ? "확정 중..." : "일괄 확정"}
+              </Button>
+              <Button size="sm" variant="outline" onClick={bulkUnreserve} disabled={bulkReserving || bulkUnreserving}
+                className="text-xs flex items-center gap-1 text-purple-600 border-purple-300 hover:bg-purple-50">
+                {bulkUnreserving ? "취소 중..." : "일괄 확정취소"}
+              </Button>
+            </>
           )}
 
           {/* 전체 삭제 */}
@@ -591,7 +589,6 @@ export default function DrawingTable({
                 const status = (d.status ?? "REGISTERED") as DrawingStatusType;
 
                 const isConfirmed = confirmedSet.has(d.id);
-                const isReserving = reservingId === d.id;
 
                 if (isEditing && editForm) {
                   return (
@@ -618,7 +615,7 @@ export default function DrawingTable({
                 }
 
                 return (
-                  <tr key={d.id} className={`hover:bg-gray-50 transition-colors ${isDeleting ? "opacity-40" : ""} ${status === "CUT" ? "bg-green-50/30" : ""} ${isConfirmed ? "bg-purple-50/40" : ""}`}>
+                  <tr key={d.id} className={`hover:bg-gray-50 transition-colors ${isDeleting ? "opacity-40" : ""} ${status === "CUT" ? "bg-green-50/30" : ""}`}>
                     <td className="px-2 py-2 text-center"><StatusBadge status={status} /></td>
                     <td className="px-2 py-2 text-gray-700 font-medium text-xs truncate">{d.block ?? "-"}</td>
                     <td className="px-2 py-2 text-gray-700 font-mono text-xs truncate">{d.drawingNo ?? "-"}</td>
@@ -632,26 +629,10 @@ export default function DrawingTable({
                     <td className="px-2 py-2 text-right text-xs text-gray-500">{d.useWeight != null ? d.useWeight.toLocaleString() : "-"}</td>
                     <td className="px-2 py-2 text-center text-xs font-mono text-blue-600 truncate">{d.heatNo ?? <span className="text-gray-300">-</span>}</td>
                     <td className="px-2 py-2 text-center">
-                      {status === "WAITING" && (
-                        isConfirmed ? (
-                          <button
-                            onClick={() => unreserve(d.id)}
-                            disabled={isReserving}
-                            className="flex items-center gap-0.5 text-xs px-2 py-0.5 rounded bg-purple-100 text-purple-700 hover:bg-purple-200 disabled:opacity-50 font-medium whitespace-nowrap"
-                            title="확정 취소"
-                          >
-                            <CalendarX size={11} /> 확정취소
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => reserve(d.id)}
-                            disabled={isReserving}
-                            className="flex items-center gap-0.5 text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-purple-100 hover:text-purple-700 disabled:opacity-50 font-medium whitespace-nowrap"
-                            title="확정"
-                          >
-                            <CalendarCheck size={11} /> 확정
-                          </button>
-                        )
+                      {status === "WAITING" && isConfirmed && (
+                        <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-purple-100 text-purple-700">
+                          확정
+                        </span>
                       )}
                     </td>
                     <td className="px-2 py-2">
