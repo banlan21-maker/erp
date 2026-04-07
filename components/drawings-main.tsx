@@ -61,6 +61,8 @@ export default function DrawingsMain({
   recentUploads,
   drawings,
   activeProject,
+  baseUrl = "/cutpart/drawings",
+  hideHeader = false,
 }: {
   tab: string;
   projectId: string | null;
@@ -68,21 +70,25 @@ export default function DrawingsMain({
   recentUploads: RecentUpload[];
   drawings: DrawingList[];
   activeProject: { id: string; projectCode: string; projectName: string; storageLocation?: string | null } | null;
+  baseUrl?: string;
+  hideHeader?: boolean;
 }) {
   const router = useRouter();
 
-  const goTab = (t: string) => router.push(`/cutpart/drawings?tab=${t}`);
+  const goTab = (t: string) => router.push(`${baseUrl}?tab=${t}`);
 
   return (
     <div className="space-y-4">
       {/* 헤더 */}
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <FileSpreadsheet size={24} className="text-blue-600" />
-          강재관리
-        </h2>
-        <p className="text-sm text-gray-500 mt-0.5">강재 등록 및 현황을 관리합니다.</p>
-      </div>
+      {!hideHeader && (
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <FileSpreadsheet size={24} className="text-blue-600" />
+            강재관리
+          </h2>
+          <p className="text-sm text-gray-500 mt-0.5">강재 등록 및 현황을 관리합니다.</p>
+        </div>
+      )}
 
       {/* 탭 */}
       <div className="flex border-b border-gray-200 gap-0 overflow-x-auto">
@@ -110,6 +116,7 @@ export default function DrawingsMain({
           projectOptions={projectOptions}
           recentUploads={recentUploads}
           router={router}
+          baseUrl={baseUrl}
         />
       )}
 
@@ -121,6 +128,7 @@ export default function DrawingsMain({
           activeProject={activeProject}
           projectId={projectId}
           router={router}
+          baseUrl={baseUrl}
         />
       )}
 
@@ -145,10 +153,12 @@ function UploadTab({
   projectOptions,
   recentUploads,
   router,
+  baseUrl = "/cutpart/drawings",
 }: {
   projectOptions: ProjectOption[];
   recentUploads: RecentUpload[];
   router: ReturnType<typeof useRouter>;
+  baseUrl?: string;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<"excel" | "manual">("excel");
@@ -536,7 +546,7 @@ function UploadTab({
             {recentUploads.map((u) => (
               <Link
                 key={u.projectId}
-                href={`/cutpart/drawings?tab=list&projectId=${u.projectId}`}
+                href={`${baseUrl}?tab=list&projectId=${u.projectId}`}
                 className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 <FileSpreadsheet size={14} className="text-green-500 flex-shrink-0" />
@@ -567,12 +577,14 @@ function ListTab({
   activeProject,
   projectId,
   router,
+  baseUrl = "/cutpart/drawings",
 }: {
   projectOptions: ProjectOption[];
   drawings: DrawingList[];
   activeProject: { id: string; projectCode: string; projectName: string; storageLocation?: string | null } | null;
   projectId: string | null;
   router: ReturnType<typeof useRouter>;
+  baseUrl?: string;
 }) {
   const [editingLocation, setEditingLocation] = useState(false);
   const [locationInput, setLocationInput] = useState(activeProject?.storageLocation ?? "");
@@ -609,7 +621,7 @@ function ListTab({
       <div className="space-y-4">
         <div className="flex items-center gap-3 flex-wrap">
           <button
-            onClick={() => router.push("/cutpart/drawings?tab=list")}
+            onClick={() => router.push(`${baseUrl}?tab=list`)}
             className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft size={15} /> 목록으로
@@ -688,7 +700,7 @@ function ListTab({
             {blocks.map((p) => (
               <Link
                 key={p.id}
-                href={`/cutpart/drawings?tab=list&projectId=${p.id}`}
+                href={`${baseUrl}?tab=list&projectId=${p.id}`}
                 className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition-colors group"
               >
                 <FileSpreadsheet size={15} className="text-gray-400 group-hover:text-blue-500 flex-shrink-0" />
