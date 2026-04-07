@@ -2,13 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseExcelBuffer, parseExcelBufferWithPreset } from "@/lib/excel-parser";
 
-// ── 업로드 후 스펙별 입고 수량만큼 정확히 상태 동기화 ─────────────────────
-// 강재입고관리에서 해당 규격이 2장 입고완료면 블록별강재리스트도 정확히 2행만 입고로 설정
+// ── 업로드/입고 후 스펙·블록별 확정(reservedFor) 수량 기준으로 상태 동기화 ──
+// 확정된 블록만 WAITING, 미확정 블록은 REGISTERED
 async function syncSpecsAfterUpload(
   vesselCode: string,
   specs: { material: string; thickness: number; width: number; length: number }[]
 ) {
-  // 이 호선의 모든 프로젝트(블록) ID 조회
   const projects = await prisma.project.findMany({
     where: { projectCode: vesselCode },
     select: { id: true },
@@ -16,7 +15,6 @@ async function syncSpecsAfterUpload(
   if (projects.length === 0) return;
   const projectIds = projects.map((p) => p.id);
 
-  // 스펙 중복 제거
   const uniqueSpecs = [
     ...new Map(
       specs.map((s) => [`${s.material}|${s.thickness}|${s.width}|${s.length}`, s])
@@ -26,12 +24,6 @@ async function syncSpecsAfterUpload(
   for (const spec of uniqueSpecs) {
     const { material, thickness, width, length } = spec;
 
-    // 강재입고관리에서 해당 규격 입고완료(RECEIVED) 수량
-    const receivedCount = await prisma.steelPlan.count({
-      where: { vesselCode, material, thickness, width, length, status: "RECEIVED" },
-    });
-
-    // 해당 규격의 블록별강재리스트 전체 (경고·절단 제외, 등록순)
     const rows = await prisma.drawingList.findMany({
       where: {
         projectId: { in: projectIds },
@@ -39,23 +31,33 @@ async function syncSpecsAfterUpload(
         NOT: { status: { in: ["CAUTION", "CUT"] } },
       },
       orderBy: { createdAt: "asc" },
-      select: { id: true },
+      select: { id: true, block: true },
     });
 
-    const toWaiting    = rows.slice(0, receivedCount).map((r) => r.id);
-    const toRegistered = rows.slice(receivedCount).map((r) => r.id);
+    // 블록별 그룹화 → 각 블록의 확정 수량만큼 WAITING
+    const byBlock = new Map<string, string[]>();
+    for (const row of rows) {
+      const blockCode = row.block ?? "UNKNOWN";
+      if (!byBlock.has(blockCode)) byBlock.set(blockCode, []);
+      byBlock.get(blockCode)!.push(row.id);
+    }
+
+    const toWaiting: string[] = [];
+    const toRegistered: string[] = [];
+
+    for (const [blockCode, ids] of byBlock) {
+      const confirmedCount = await prisma.steelPlan.count({
+        where: { vesselCode, material, thickness, width, length, status: "RECEIVED", reservedFor: blockCode },
+      });
+      toWaiting.push(...ids.slice(0, confirmedCount));
+      toRegistered.push(...ids.slice(confirmedCount));
+    }
 
     if (toWaiting.length > 0) {
-      await prisma.drawingList.updateMany({
-        where: { id: { in: toWaiting } },
-        data: { status: "WAITING" },
-      });
+      await prisma.drawingList.updateMany({ where: { id: { in: toWaiting } }, data: { status: "WAITING" } });
     }
     if (toRegistered.length > 0) {
-      await prisma.drawingList.updateMany({
-        where: { id: { in: toRegistered } },
-        data: { status: "REGISTERED" },
-      });
+      await prisma.drawingList.updateMany({ where: { id: { in: toRegistered } }, data: { status: "REGISTERED" } });
     }
   }
 }

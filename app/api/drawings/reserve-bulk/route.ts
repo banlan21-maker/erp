@@ -3,10 +3,52 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-// POST /api/drawings/reserve-bulk
-// body: { projectId: string }
-// WAITING 상태 전체 행에 대해 확정 처리
+// 확정 기준으로 DrawingList 상태 동기화 (확정 블록 → WAITING, 미확정 → REGISTERED)
+async function syncDrawingListBySpec(
+  vesselCode: string, material: string,
+  thickness: number, width: number, length: number,
+) {
+  const projects = await prisma.project.findMany({
+    where: { projectCode: vesselCode },
+    select: { id: true },
+  });
+  if (projects.length === 0) return;
 
+  const rows = await prisma.drawingList.findMany({
+    where: {
+      projectId: { in: projects.map((p) => p.id) },
+      material, thickness, width, length,
+      NOT: { status: { in: ["CAUTION", "CUT"] } },
+    },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, block: true },
+  });
+
+  const byBlock = new Map<string, string[]>();
+  for (const row of rows) {
+    const blockCode = row.block ?? "UNKNOWN";
+    if (!byBlock.has(blockCode)) byBlock.set(blockCode, []);
+    byBlock.get(blockCode)!.push(row.id);
+  }
+
+  const toWaiting: string[] = [];
+  const toRegistered: string[] = [];
+  for (const [blockCode, ids] of byBlock) {
+    const confirmedCount = await prisma.steelPlan.count({
+      where: { vesselCode, material, thickness, width, length, status: "RECEIVED", reservedFor: blockCode },
+    });
+    toWaiting.push(...ids.slice(0, confirmedCount));
+    toRegistered.push(...ids.slice(confirmedCount));
+  }
+
+  if (toWaiting.length > 0)
+    await prisma.drawingList.updateMany({ where: { id: { in: toWaiting } }, data: { status: "WAITING" } });
+  if (toRegistered.length > 0)
+    await prisma.drawingList.updateMany({ where: { id: { in: toRegistered } }, data: { status: "REGISTERED" } });
+}
+
+// POST /api/drawings/reserve-bulk
+// REGISTERED 상태 행에 대해 SteelPlan 확정 처리 후 DrawingList 상태 동기화
 export async function POST(request: NextRequest) {
   try {
     const { projectId } = await request.json();
@@ -20,16 +62,16 @@ export async function POST(request: NextRequest) {
     }
     const vesselCode = project.projectCode;
 
-    // WAITING 행을 규격+블록 조합으로 그룹화
-    const waitingRows = await prisma.drawingList.findMany({
-      where: { projectId, status: "WAITING" },
+    // 확정 대상: REGISTERED 행 (아직 확정 안 된 것들)
+    const pendingRows = await prisma.drawingList.findMany({
+      where: { projectId, status: "REGISTERED" },
     });
 
-    // 규격+블록별 필요 확정 수 집계
+    // 규격+블록별 그룹화
     const grouped = new Map<string, {
       material: string; thickness: number; width: number; length: number; block: string; needed: number;
     }>();
-    for (const row of waitingRows) {
+    for (const row of pendingRows) {
       const blockCode = row.block ?? "UNKNOWN";
       const key = `${row.material}|${row.thickness}|${row.width}|${row.length}|${blockCode}`;
       if (!grouped.has(key)) {
@@ -40,6 +82,7 @@ export async function POST(request: NextRequest) {
 
     let confirmed = 0;
     let skipped = 0;
+    const syncedSpecs = new Set<string>();
 
     for (const spec of grouped.values()) {
       const { material, thickness, width, length, block: blockCode, needed } = spec;
@@ -52,7 +95,6 @@ export async function POST(request: NextRequest) {
       const toConfirm = needed - alreadyCount;
       if (toConfirm <= 0) { skipped += needed; continue; }
 
-      // 미확정 판 toConfirm개 한 번에 조회
       const plans = await prisma.steelPlan.findMany({
         where: { vesselCode, material, thickness, width, length, status: "RECEIVED", reservedFor: null },
         take: toConfirm,
@@ -67,6 +109,13 @@ export async function POST(request: NextRequest) {
         confirmed++;
       }
       skipped += toConfirm - plans.length;
+
+      // 이 스펙에 대해 한 번만 sync
+      const specKey = `${material}|${thickness}|${width}|${length}`;
+      if (!syncedSpecs.has(specKey)) {
+        syncedSpecs.add(specKey);
+        await syncDrawingListBySpec(vesselCode, material, thickness, width, length);
+      }
     }
 
     return NextResponse.json({ success: true, data: { confirmed, skipped } });
@@ -77,8 +126,7 @@ export async function POST(request: NextRequest) {
 }
 
 // DELETE /api/drawings/reserve-bulk
-// body: { projectId: string }
-// 해당 프로젝트의 WAITING 행 전체 확정 취소
+// 해당 프로젝트의 확정 전체 취소 후 DrawingList 상태 동기화
 export async function DELETE(request: NextRequest) {
   try {
     const { projectId } = await request.json();
@@ -92,23 +140,29 @@ export async function DELETE(request: NextRequest) {
     }
     const vesselCode = project.projectCode;
 
-    // 이 프로젝트에 존재하는 고유 블록코드 목록 (상태 무관)
-    const blockRows = await prisma.drawingList.findMany({
+    // 이 프로젝트의 고유 블록코드 + 스펙 목록
+    const allRows = await prisma.drawingList.findMany({
       where: { projectId },
-      select: { block: true },
-      distinct: ["block"],
+      select: { material: true, thickness: true, width: true, length: true, block: true },
     });
-    const blockCodes = blockRows.map((r) => r.block ?? "UNKNOWN");
+
+    const blockCodes = [...new Set(allRows.map((r) => r.block ?? "UNKNOWN"))];
 
     // 해당 블록코드로 확정된 SteelPlan 전체 해제
     const { count: cancelled } = await prisma.steelPlan.updateMany({
-      where: {
-        vesselCode,
-        status: "RECEIVED",
-        reservedFor: { in: blockCodes },
-      },
+      where: { vesselCode, status: "RECEIVED", reservedFor: { in: blockCodes } },
       data: { reservedFor: null },
     });
+
+    // 고유 스펙별 DrawingList 상태 동기화
+    const uniqueSpecs = new Map<string, { material: string; thickness: number; width: number; length: number }>();
+    for (const row of allRows) {
+      const key = `${row.material}|${row.thickness}|${row.width}|${row.length}`;
+      if (!uniqueSpecs.has(key)) uniqueSpecs.set(key, { material: row.material, thickness: row.thickness, width: row.width, length: row.length });
+    }
+    for (const spec of uniqueSpecs.values()) {
+      await syncDrawingListBySpec(vesselCode, spec.material, spec.thickness, spec.width, spec.length);
+    }
 
     return NextResponse.json({ success: true, data: { cancelled } });
   } catch (error) {

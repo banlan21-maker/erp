@@ -4,8 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 // DrawingList 상태 동기화 헬퍼
-// 해당 스펙의 RECEIVED SteelPlan 수만큼만 DrawingList를 입고(WAITING)로,
-// 나머지는 미입고(REGISTERED)로 유지
+// 확정(reservedFor)된 블록만 WAITING, 미확정 블록은 REGISTERED
 async function syncDrawingListBySpec(
   vesselCode: string,
   material: string,
@@ -19,12 +18,6 @@ async function syncDrawingListBySpec(
   });
   if (projects.length === 0) return;
 
-  // 현재 해당 스펙의 입고완료 수량
-  const receivedCount = await prisma.steelPlan.count({
-    where: { vesselCode, material, thickness, width, length, status: "RECEIVED" },
-  });
-
-  // 경고·절단 제외한 DrawingList 행을 등록순으로 조회
   const rows = await prisma.drawingList.findMany({
     where: {
       projectId: { in: projects.map((p) => p.id) },
@@ -32,25 +25,31 @@ async function syncDrawingListBySpec(
       NOT: { status: { in: ["CAUTION", "CUT"] } },
     },
     orderBy: { createdAt: "asc" },
-    select: { id: true },
+    select: { id: true, block: true },
   });
 
-  // 앞에서 receivedCount 개 → 입고, 나머지 → 미입고
-  const toWaiting    = rows.slice(0, receivedCount).map((r) => r.id);
-  const toRegistered = rows.slice(receivedCount).map((r) => r.id);
+  const byBlock = new Map<string, string[]>();
+  for (const row of rows) {
+    const blockCode = row.block ?? "UNKNOWN";
+    if (!byBlock.has(blockCode)) byBlock.set(blockCode, []);
+    byBlock.get(blockCode)!.push(row.id);
+  }
 
-  if (toWaiting.length > 0) {
-    await prisma.drawingList.updateMany({
-      where: { id: { in: toWaiting } },
-      data: { status: "WAITING" },
+  const toWaiting: string[] = [];
+  const toRegistered: string[] = [];
+
+  for (const [blockCode, ids] of byBlock) {
+    const confirmedCount = await prisma.steelPlan.count({
+      where: { vesselCode, material, thickness, width, length, status: "RECEIVED", reservedFor: blockCode },
     });
+    toWaiting.push(...ids.slice(0, confirmedCount));
+    toRegistered.push(...ids.slice(confirmedCount));
   }
-  if (toRegistered.length > 0) {
-    await prisma.drawingList.updateMany({
-      where: { id: { in: toRegistered } },
-      data: { status: "REGISTERED" },
-    });
-  }
+
+  if (toWaiting.length > 0)
+    await prisma.drawingList.updateMany({ where: { id: { in: toWaiting } }, data: { status: "WAITING" } });
+  if (toRegistered.length > 0)
+    await prisma.drawingList.updateMany({ where: { id: { in: toRegistered } }, data: { status: "REGISTERED" } });
 }
 
 // PATCH /api/steel-plan/[id]

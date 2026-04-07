@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// 절단 완료 후 DrawingList 상태 재계산
+// 절단 완료 후 DrawingList 상태 재계산 (확정 블록만 WAITING)
 async function syncDrawingListBySpec(
   vesselCode: string, material: string,
   thickness: number, width: number, length: number,
@@ -11,9 +11,7 @@ async function syncDrawingListBySpec(
     select: { id: true },
   });
   if (projects.length === 0) return;
-  const receivedCount = await prisma.steelPlan.count({
-    where: { vesselCode, material, thickness, width, length, status: "RECEIVED" },
-  });
+
   const rows = await prisma.drawingList.findMany({
     where: {
       projectId: { in: projects.map((p) => p.id) },
@@ -21,10 +19,26 @@ async function syncDrawingListBySpec(
       NOT: { status: { in: ["CAUTION", "CUT"] } },
     },
     orderBy: { createdAt: "asc" },
-    select: { id: true },
+    select: { id: true, block: true },
   });
-  const toWaiting    = rows.slice(0, receivedCount).map((r) => r.id);
-  const toRegistered = rows.slice(receivedCount).map((r) => r.id);
+
+  const byBlock = new Map<string, string[]>();
+  for (const row of rows) {
+    const blockCode = row.block ?? "UNKNOWN";
+    if (!byBlock.has(blockCode)) byBlock.set(blockCode, []);
+    byBlock.get(blockCode)!.push(row.id);
+  }
+
+  const toWaiting: string[] = [];
+  const toRegistered: string[] = [];
+  for (const [blockCode, ids] of byBlock) {
+    const confirmedCount = await prisma.steelPlan.count({
+      where: { vesselCode, material, thickness, width, length, status: "RECEIVED", reservedFor: blockCode },
+    });
+    toWaiting.push(...ids.slice(0, confirmedCount));
+    toRegistered.push(...ids.slice(confirmedCount));
+  }
+
   if (toWaiting.length > 0)
     await prisma.drawingList.updateMany({ where: { id: { in: toWaiting } }, data: { status: "WAITING" } });
   if (toRegistered.length > 0)
