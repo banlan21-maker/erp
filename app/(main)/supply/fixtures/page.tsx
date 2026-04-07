@@ -163,8 +163,8 @@ export default function FixturesPage() {
               <table className="w-full text-sm text-left whitespace-nowrap">
                 <thead className="bg-gray-50 border-b border-gray-200 text-gray-600">
                   <tr>
-                    <th className="px-5 py-3 font-semibold">품명</th>
                     <th className="px-5 py-3 font-semibold">관리주체</th>
+                    <th className="px-5 py-3 font-semibold">품명</th>
                     <th className="px-5 py-3 font-semibold">분류</th>
                     <th className="px-5 py-3 font-semibold text-right">보유수량</th>
                     <th className="px-5 py-3 font-semibold text-center">단위</th>
@@ -183,12 +183,12 @@ export default function FixturesPage() {
                         onClick={() => openEditModal(item)}
                         className="cursor-pointer transition-colors hover:bg-blue-50/50 group"
                       >
-                        <td className="px-5 py-4 font-bold text-gray-900 group-hover:text-blue-700 transition-colors">{item.name}</td>
                         <td className="px-5 py-4">
                           <span className={`px-2 py-0.5 text-xs rounded-full font-semibold ${DEPT_COLORS[item.department] || "bg-gray-100 text-gray-600"}`}>
                             {DEPT_LABELS[item.department] || item.department}
                           </span>
                         </td>
+                        <td className="px-5 py-4 font-bold text-gray-900 group-hover:text-blue-700 transition-colors">{item.name}</td>
                         <td className="px-5 py-4 text-gray-600">{item.subCategory || "-"}</td>
                         <td className="px-5 py-4 text-right font-bold text-gray-900">{item.stockQty}</td>
                         <td className="px-5 py-4 text-center text-gray-500 text-xs">{item.unit}</td>

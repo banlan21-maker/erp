@@ -193,8 +193,8 @@ export default function ConsumablesPage() {
               <table className="w-full text-sm text-left whitespace-nowrap">
                 <thead className="bg-gray-50 border-b border-gray-200 text-gray-600">
                   <tr>
-                    <th className="px-5 py-3 font-semibold">품명</th>
                     <th className="px-5 py-3 font-semibold">관리주체</th>
+                    <th className="px-5 py-3 font-semibold">품명</th>
                     <th className="px-5 py-3 font-semibold">분류</th>
                     <th className="px-5 py-3 font-semibold text-right">현재재고</th>
                     <th className="px-5 py-3 font-semibold text-right">발주기준점</th>
@@ -216,15 +216,15 @@ export default function ConsumablesPage() {
                           onClick={() => openEditModal(item)}
                           className={`cursor-pointer transition-colors group ${isDanger ? "bg-red-50/40 hover:bg-red-50" : "hover:bg-blue-50/50"}`}
                         >
+                          <td className="px-5 py-4">
+                            <span className={`px-2 py-0.5 text-xs rounded-full font-semibold ${DEPT_COLORS[item.department] || "bg-gray-100 text-gray-600"}`}>
+                              {DEPT_LABELS[item.department] || item.department}
+                            </span>
+                          </td>
                           <td className="px-5 py-4 font-bold text-gray-900 group-hover:text-blue-700 transition-colors">
                             <span className="flex items-center gap-2">
                               {item.name}
                               {isDanger && <span className="px-1.5 py-0.5 text-[10px] bg-red-100 text-red-700 rounded font-semibold whitespace-nowrap">발주필요</span>}
-                            </span>
-                          </td>
-                          <td className="px-5 py-4">
-                            <span className={`px-2 py-0.5 text-xs rounded-full font-semibold ${DEPT_COLORS[item.department] || "bg-gray-100 text-gray-600"}`}>
-                              {DEPT_LABELS[item.department] || item.department}
                             </span>
                           </td>
                           <td className="px-5 py-4 text-gray-600">{item.subCategory || "-"}</td>
