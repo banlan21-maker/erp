@@ -49,7 +49,14 @@ export default async function ReportsPage({
     qty:           l.qty           ?? null,
     drawingNo:     l.drawingNo     ?? null,
     drawingListId: l.drawingListId ?? null,
-    steelWeight:   l.drawingList?.steelWeight ?? null,
+    steelWeight: (() => {
+      const sw = l.drawingList?.steelWeight;
+      if (sw != null) return sw;
+      if (l.thickness && l.width && l.length) {
+        return Math.round(l.thickness * l.width * l.length * 7.85 / 1_000_000 * 100) / 100;
+      }
+      return null;
+    })(),
     useWeight:     l.drawingList?.useWeight   ?? null,
   }));
 
