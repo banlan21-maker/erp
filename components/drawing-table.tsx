@@ -268,6 +268,11 @@ export default function DrawingTable({
   const [reservingId, setReservingId] = useState<string | null>(null);
   const [bulkReserving, setBulkReserving] = useState(false);
 
+  // 서버에서 confirmedDrawingIds가 갱신되면 로컬 state 동기화
+  useEffect(() => {
+    setConfirmedSet(new Set(confirmedDrawingIds));
+  }, [confirmedDrawingIds.join(",")]);
+
   const reserve = async (id: string) => {
     setReservingId(id);
     try {
@@ -275,6 +280,7 @@ export default function DrawingTable({
       const data = await res.json();
       if (!data.success) { alert(data.error ?? "확정 실패"); return; }
       setConfirmedSet(prev => new Set([...prev, id]));
+      router.refresh();
     } catch { alert("서버 오류"); } finally { setReservingId(null); }
   };
 
@@ -285,6 +291,7 @@ export default function DrawingTable({
       const data = await res.json();
       if (!data.success) { alert(data.error ?? "확정 취소 실패"); return; }
       setConfirmedSet(prev => { const s = new Set(prev); s.delete(id); return s; });
+      router.refresh();
     } catch { alert("서버 오류"); } finally { setReservingId(null); }
   };
 
@@ -298,7 +305,6 @@ export default function DrawingTable({
       });
       const data = await res.json();
       if (!data.success) { alert(data.error ?? "일괄 확정 실패"); return; }
-      // 페이지 새로고침으로 최신 상태 반영
       router.refresh();
     } catch { alert("서버 오류"); } finally { setBulkReserving(false); }
   };
