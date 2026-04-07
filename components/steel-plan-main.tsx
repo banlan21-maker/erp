@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import * as XLSX from "xlsx";
 import {
   Upload, Plus, Trash2, RefreshCw, Download, Search, X, CheckSquare, Square,
-  PackageCheck, ClipboardList,
+  PackageCheck, ClipboardList, PackageOpen,
 } from "lucide-react";
 
 interface SteelPlanRow {
@@ -293,8 +293,11 @@ export default function SteelPlanMain() {
       {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">자재 계획 · 입고 관리</h1>
-          <p className="text-sm text-gray-500 mt-0.5">전체 자재 계획 등록 및 철판 입고 처리</p>
+          <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <PackageOpen size={24} className="text-blue-600" />
+            강재 계획 · 입고관리
+          </h2>
+          <p className="text-sm text-gray-500 mt-0.5">전체 강재 계획 등록 및 강재 입고처리</p>
         </div>
         <div className="flex gap-2">
           <button
