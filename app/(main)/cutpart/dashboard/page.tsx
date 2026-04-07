@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FolderOpen, FileSpreadsheet, Layers, CheckCircle2, LayoutDashboard } from "lucide-react";
+import { FolderOpen, FileSpreadsheet, CheckCircle2, LayoutDashboard } from "lucide-react";
 import Link from "next/link";
 import { DashboardEquipmentProgress } from "@/components/dashboard-equipment-progress";
 
@@ -12,23 +12,17 @@ const STATUS_COLOR: Record<string, string> = {
   ON_HOLD: "bg-yellow-100 text-yellow-700",
 };
 const STATUS_LABEL: Record<string, string> = { ACTIVE: "진행중", COMPLETED: "완료", ON_HOLD: "보류" };
-const TYPE_COLOR: Record<string, string> = {
-  A: "bg-blue-100 text-blue-700",
-  B: "bg-green-100 text-green-700",
-};
 
 export default async function DashboardPage() {
   const [
     totalProjects,
     activeProjects,
-    projectsByType,
     totalDrawings,
     recentProjects,
     recentDrawings,
   ] = await Promise.all([
     prisma.project.count(),
     prisma.project.count({ where: { status: "ACTIVE" } }),
-    prisma.project.groupBy({ by: ["type"], _count: { type: true } }),
     prisma.drawingList.count(),
     prisma.project.findMany({
       take: 6,
@@ -54,9 +48,6 @@ export default async function DashboardPage() {
   const allCodes = await prisma.project.findMany({ select: { projectCode: true }, distinct: ["projectCode"] });
   const totalVessels = allCodes.length;
 
-  const typeMap: Record<string, number> = {};
-  for (const g of projectsByType) typeMap[g.type] = g._count.type;
-
   return (
     <div className="space-y-6">
       <div>
@@ -71,7 +62,7 @@ export default async function DashboardPage() {
       <DashboardEquipmentProgress />
 
       {/* 요약 카드 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <SummaryCard
           title="호선 수"
           value={totalVessels}
@@ -93,10 +84,6 @@ export default async function DashboardPage() {
           icon={<FileSpreadsheet size={20} className="text-purple-500" />}
           bg="bg-purple-50"
         />
-        <TypeCard
-          countA={typeMap["A"] ?? 0}
-          countB={typeMap["B"] ?? 0}
-        />
       </div>
 
       {/* 최근 블록 + 최근 강재리스트 */}
@@ -117,9 +104,6 @@ export default async function DashboardPage() {
                     href={`/cutpart/projects/${p.id}`}
                     className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 transition-colors"
                   >
-                    <span className={`text-xs px-1.5 py-0.5 rounded font-bold ${TYPE_COLOR[p.type]}`}>
-                      {p.type}
-                    </span>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold text-gray-800 truncate">
                         [{p.projectCode}] {p.projectName}
@@ -174,34 +158,6 @@ export default async function DashboardPage() {
   );
 }
 
-function TypeCard({ countA, countB }: { countA: number; countB: number }) {
-  return (
-    <Card className="bg-orange-50">
-      <CardContent className="pt-5">
-        <div className="flex items-start justify-between mb-3">
-          <p className="text-xs text-gray-500 font-medium">유형 A / B</p>
-          <div className="p-2 bg-white rounded-lg shadow-sm">
-            <Layers size={20} className="text-orange-500" />
-          </div>
-        </div>
-        <div className="space-y-2">
-          <div>
-            <p className="text-sm font-semibold text-gray-800">
-              유형A <span className="text-xl font-bold text-gray-900">{countA.toLocaleString()}</span>건
-            </p>
-            <p className="text-xs text-gray-400">일반 절단 블록</p>
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-gray-800">
-              유형B <span className="text-xl font-bold text-gray-900">{countB.toLocaleString()}</span>건
-            </p>
-            <p className="text-xs text-gray-400">특수 절단 블록</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 function SummaryCard({
   title, value, sub, icon, bg,
