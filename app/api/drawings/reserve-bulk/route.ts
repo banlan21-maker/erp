@@ -20,35 +20,53 @@ export async function POST(request: NextRequest) {
     }
     const vesselCode = project.projectCode;
 
-    // WAITING 행 전체 조회
+    // WAITING 행을 규격+블록 조합으로 그룹화
     const waitingRows = await prisma.drawingList.findMany({
       where: { projectId, status: "WAITING" },
     });
 
+    // 규격+블록별 필요 확정 수 집계
+    const grouped = new Map<string, {
+      material: string; thickness: number; width: number; length: number; block: string; needed: number;
+    }>();
+    for (const row of waitingRows) {
+      const blockCode = row.block ?? "UNKNOWN";
+      const key = `${row.material}|${row.thickness}|${row.width}|${row.length}|${blockCode}`;
+      if (!grouped.has(key)) {
+        grouped.set(key, { material: row.material, thickness: row.thickness, width: row.width, length: row.length, block: blockCode, needed: 0 });
+      }
+      grouped.get(key)!.needed++;
+    }
+
     let confirmed = 0;
     let skipped = 0;
 
-    for (const drawing of waitingRows) {
-      const { material, thickness, width, length, block } = drawing;
-      const blockCode = block ?? "UNKNOWN";
+    for (const spec of grouped.values()) {
+      const { material, thickness, width, length, block: blockCode, needed } = spec;
 
-      // 이미 이 블록으로 확정된 판이 있는지 확인 (중복 방지)
-      const alreadyReserved = await prisma.steelPlan.findFirst({
+      // 이미 이 블록으로 확정된 수량
+      const alreadyCount = await prisma.steelPlan.count({
         where: { vesselCode, material, thickness, width, length, status: "RECEIVED", reservedFor: blockCode },
       });
-      if (alreadyReserved) { skipped++; continue; }
 
-      // 미확정 판 찾기
-      const steelPlan = await prisma.steelPlan.findFirst({
+      const toConfirm = needed - alreadyCount;
+      if (toConfirm <= 0) { skipped += needed; continue; }
+
+      // 미확정 판 toConfirm개 한 번에 조회
+      const plans = await prisma.steelPlan.findMany({
         where: { vesselCode, material, thickness, width, length, status: "RECEIVED", reservedFor: null },
+        take: toConfirm,
+        orderBy: { createdAt: "asc" },
       });
-      if (!steelPlan) { skipped++; continue; }
 
-      await prisma.steelPlan.update({
-        where: { id: steelPlan.id },
-        data: { reservedFor: blockCode },
-      });
-      confirmed++;
+      for (const plan of plans) {
+        await prisma.steelPlan.update({
+          where: { id: plan.id },
+          data: { reservedFor: blockCode },
+        });
+        confirmed++;
+      }
+      skipped += toConfirm - plans.length;
     }
 
     return NextResponse.json({ success: true, data: { confirmed, skipped } });
