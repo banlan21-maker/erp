@@ -108,7 +108,6 @@ export default function FieldWorklog({
   // 2단계 (매 절단마다 초기화)
   const [drawingId,    setDrawingId]    = useState("");
   const [heatNo,       setHeatNo]       = useState("");
-  const [heatNoQuery,  setHeatNoQuery]  = useState("");
   const [heatOptions,  setHeatOptions]  = useState<{ id: string; heatNo: string; status: string }[]>([]);
   const [heatLoading,  setHeatLoading]  = useState(false);
   const [memo,         setMemo]         = useState("");
@@ -132,7 +131,7 @@ export default function FieldWorklog({
     if (d.success) setLogs(d.data);
   }, []);
 
-  const resetStep2 = () => { setDrawingId(""); setHeatNo(""); setHeatNoQuery(""); setHeatOptions([]); setMemo(""); setSearch(""); };
+  const resetStep2 = () => { setDrawingId(""); setHeatNo(""); setHeatOptions([]); setMemo(""); setSearch(""); };
   const resetAll   = () => { setS1({ vesselCode: "", projectId: "", operatorId: "" }); resetStep2(); setDrawings([]); setStep1Open(true); };
 
   const loadUrgentWorks = useCallback(async () => {
@@ -276,17 +275,16 @@ export default function FieldWorklog({
     if (!pid) return;
     setDwLoading(true);
     try {
-      // WAITING(입고완료) 우선, 없으면 REGISTERED(대기)도 포함
-      const res = await fetch(`/api/drawings?projectId=${pid}`);
+      // 입고(WAITING) 항목만 표시
+      const res = await fetch(`/api/drawings?projectId=${pid}&status=WAITING`);
       const d = await res.json();
-      if (d.success) setDrawings(d.data.filter((r: DrawingRow & { status?: string }) => r.status !== "CUT"));
+      if (d.success) setDrawings(d.data);
     } finally { setDwLoading(false); }
   };
 
   const handleDrawingSelect = async (did: string) => {
     setDrawingId(did);
     setHeatNo("");
-    setHeatNoQuery("");
     setHeatOptions([]);
     if (!did) return;
     const row = drawings.find(d => d.id === did);
@@ -899,64 +897,43 @@ export default function FieldWorklog({
                 </div>
               )}
 
-              {/* Heat NO — 항상 검색+선택 UI */}
+              {/* Heat NO — 판번호 리스트에서 선택 */}
               <div>
                 <label className="text-xs text-gray-400 font-medium mb-1.5 block">
                   판번호(Heat NO) <span className="text-gray-600">(선택)</span>
                 </label>
                 <div className="space-y-1.5">
-                  {/* 검색 입력 — 타이핑하면 SteelPlan 필터 + 직접 입력값으로도 사용 */}
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder={heatLoading ? "목록 불러오는 중..." : "판번호 검색 또는 직접 입력..."}
-                      value={heatNoQuery}
-                      onChange={e => {
-                        setHeatNoQuery(e.target.value);
-                        setHeatNo(e.target.value); // 직접 입력도 heatNo에 반영
-                      }}
-                      className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white placeholder-gray-500 font-mono"
-                    />
-                    {heatLoading && (
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">로딩...</span>
-                    )}
-                  </div>
+                  {heatLoading && (
+                    <p className="text-xs text-gray-500 px-1">판번호 목록 불러오는 중...</p>
+                  )}
 
-                  {/* SteelPlan 목록 */}
+                  {/* 판번호 선택 목록 */}
                   {!heatLoading && drawingId && (
                     heatOptions.length > 0 ? (
                       <div className="max-h-40 overflow-y-auto space-y-1 rounded-xl border border-gray-700 bg-gray-900 p-1.5">
-                        {heatOptions
-                          .filter(h => !heatNoQuery || h.heatNo!.toLowerCase().includes(heatNoQuery.toLowerCase()))
-                          .map(h => (
-                            <button
-                              key={h.id}
-                              onClick={() => { setHeatNo(h.heatNo!); setHeatNoQuery(h.heatNo!); }}
-                              className={`w-full text-left px-3 py-2 rounded-lg text-sm font-mono transition-colors ${
-                                heatNo === h.heatNo
-                                  ? "bg-blue-700 text-white"
-                                  : "bg-gray-800 text-gray-300 active:bg-gray-700"
-                              }`}
-                            >
-                              {h.heatNo}
-                              <span className={`ml-2 text-xs ${h.status === "RECEIVED" ? "text-green-400" : "text-yellow-400"}`}>
-                                {h.status === "RECEIVED" ? "입고완료" : "미입고"}
-                              </span>
-                            </button>
-                          ))}
-                        {heatOptions.filter(h => !heatNoQuery || h.heatNo!.toLowerCase().includes(heatNoQuery.toLowerCase())).length === 0 && (
-                          <p className="text-xs text-gray-600 px-3 py-2">검색 결과 없음 — 입력값을 판번호로 사용합니다</p>
-                        )}
+                        {heatOptions.map(h => (
+                          <button
+                            key={h.id}
+                            onClick={() => setHeatNo(heatNo === h.heatNo ? "" : h.heatNo!)}
+                            className={`w-full text-left px-3 py-2 rounded-lg text-sm font-mono transition-colors ${
+                              heatNo === h.heatNo
+                                ? "bg-blue-700 text-white"
+                                : "bg-gray-800 text-gray-300 active:bg-gray-700"
+                            }`}
+                          >
+                            {h.heatNo}
+                          </button>
+                        ))}
                       </div>
                     ) : (
-                      <p className="text-xs text-gray-600 px-1">자재계획에 등록된 판번호 없음 — 직접 입력 사용</p>
+                      <p className="text-xs text-gray-600 px-1">판번호리스트에 해당 규격의 대기 판번호가 없습니다</p>
                     )
                   )}
 
                   {heatNo && (
                     <p className="text-xs text-blue-400 px-1">
-                      입력됨: <span className="font-mono font-bold">{heatNo}</span>
-                      <button onClick={() => { setHeatNo(""); setHeatNoQuery(""); }} className="ml-2 text-gray-500 hover:text-gray-300">✕</button>
+                      선택됨: <span className="font-mono font-bold">{heatNo}</span>
+                      <button onClick={() => setHeatNo("")} className="ml-2 text-gray-500 hover:text-gray-300">✕</button>
                     </p>
                   )}
                 </div>
