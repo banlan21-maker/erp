@@ -394,11 +394,13 @@ const STATUS_LABEL: Record<string, string> = {
   REGISTERED: "등록",
   WAITING: "대기",
   CUT: "절단완료",
+  CAUTION: "경고",
 };
 const STATUS_COLOR: Record<string, string> = {
   REGISTERED: "bg-gray-100 text-gray-600",
   WAITING: "bg-yellow-100 text-yellow-700",
   CUT: "bg-green-100 text-green-700",
+  CAUTION: "bg-red-100 text-red-700",
 };
 
 function fmtDt(iso: string) {
