@@ -13,13 +13,12 @@ export async function GET(req: NextRequest) {
   const rows = await prisma.steelPlan.findMany({
     where: {
       ...(vesselCode ? { vesselCode } : {}),
-      ...(status ? { status: status as "REGISTERED" | "RECEIVED" } : {}),
+      ...(status ? { status: status as "REGISTERED" | "RECEIVED" | "COMPLETED" } : {}),
       ...(search
         ? {
             OR: [
               { vesselCode: { contains: search, mode: "insensitive" } },
               { material: { contains: search, mode: "insensitive" } },
-              { heatNo: { contains: search, mode: "insensitive" } },
             ],
           }
         : {}),
@@ -30,7 +29,8 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(rows);
 }
 
-// POST /api/steel-plan  — 단건 또는 배열 등록
+// POST /api/steel-plan — 단건 또는 배열 등록
+// 엑셀 1행 = SteelPlan 1행 + SteelPlanHeat 1행 동시 생성
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const items: {
@@ -39,18 +39,45 @@ export async function POST(req: NextRequest) {
     thickness: number;
     width: number;
     length: number;
-    qty: number;
-    heatNo?: string;
-    memo?: string;
-    sourceFile?: string;
+    heatNo?: string | null;
+    memo?: string | null;
+    sourceFile?: string | null;
   }[] = Array.isArray(body) ? body : [body];
 
-  const created = await prisma.steelPlan.createMany({ data: items });
+  // SteelPlan 생성 (판번호 제외한 규격만)
+  const planData = items.map((item) => ({
+    vesselCode: item.vesselCode,
+    material:   item.material,
+    thickness:  item.thickness,
+    width:      item.width,
+    length:     item.length,
+    memo:       item.memo ?? null,
+    sourceFile: item.sourceFile ?? null,
+  }));
+
+  const created = await prisma.steelPlan.createMany({ data: planData });
+
+  // SteelPlanHeat 생성 (판번호 있는 항목만)
+  const heatData = items
+    .filter((item) => item.heatNo && item.heatNo.trim() !== "")
+    .map((item) => ({
+      vesselCode: item.vesselCode,
+      material:   item.material,
+      thickness:  item.thickness,
+      width:      item.width,
+      length:     item.length,
+      heatNo:     item.heatNo!.trim(),
+      sourceFile: item.sourceFile ?? null,
+    }));
+
+  if (heatData.length > 0) {
+    await prisma.steelPlanHeat.createMany({ data: heatData });
+  }
 
   return NextResponse.json({ count: created.count }, { status: 201 });
 }
 
-// DELETE /api/steel-plan  — 배열 ids 일괄 삭제
+// DELETE /api/steel-plan — 배열 ids 일괄 삭제
 export async function DELETE(req: NextRequest) {
   const { ids } = await req.json();
   if (!Array.isArray(ids) || ids.length === 0)
