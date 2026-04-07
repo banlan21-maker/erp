@@ -72,6 +72,8 @@ export async function PATCH(
       ...(body.width       !== undefined ? { width:       Number(body.width) }           : {}),
       ...(body.length      !== undefined ? { length:      Number(body.length) }          : {}),
       ...(body.status      !== undefined ? { status:      body.status }                  : {}),
+      // 입고 취소(REGISTERED로 되돌리기) 시 확정 블록 초기화
+      ...(body.status === "REGISTERED"  ? { reservedFor: null }                         : {}),
       ...(body.receivedAt  !== undefined ? { receivedAt:  body.receivedAt ? new Date(body.receivedAt) : null } : {}),
       ...(body.memo        !== undefined ? { memo:        body.memo }                    : {}),
       ...(body.actualHeatNo     !== undefined ? { actualHeatNo:     body.actualHeatNo }     : {}),
