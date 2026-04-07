@@ -63,6 +63,7 @@ export default function DrawingsMain({
   activeProject,
   baseUrl = "/cutpart/drawings",
   hideHeader = false,
+  hideTabs = false,
 }: {
   tab: string;
   projectId: string | null;
@@ -72,6 +73,7 @@ export default function DrawingsMain({
   activeProject: { id: string; projectCode: string; projectName: string; storageLocation?: string | null } | null;
   baseUrl?: string;
   hideHeader?: boolean;
+  hideTabs?: boolean;
 }) {
   const router = useRouter();
 
@@ -91,24 +93,26 @@ export default function DrawingsMain({
       )}
 
       {/* 탭 */}
-      <div className="flex border-b border-gray-200 gap-0 overflow-x-auto">
-        {[
-          { key: "upload", icon: <Upload size={14} />, label: "강재등록" },
-          { key: "list",   icon: <List size={14} />,   label: "강재리스트" },
-        ].map(({ key, icon, label }) => (
-          <button
-            key={key}
-            onClick={() => goTab(key)}
-            className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-              tab === key
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {icon} {label}
-          </button>
-        ))}
-      </div>
+      {!hideTabs && (
+        <div className="flex border-b border-gray-200 gap-0 overflow-x-auto">
+          {[
+            { key: "upload", icon: <Upload size={14} />, label: "강재등록" },
+            { key: "list",   icon: <List size={14} />,   label: "강재리스트" },
+          ].map(({ key, icon, label }) => (
+            <button
+              key={key}
+              onClick={() => goTab(key)}
+              className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                tab === key
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {icon} {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* 강재등록 탭 */}
       {tab === "upload" && (

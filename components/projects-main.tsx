@@ -64,7 +64,7 @@ export default function ProjectsMain({
   const goTab = (t: string) => router.push(`/cutpart/projects?tab=${t}`);
 
   const tabs = [
-    { key: "vessels", icon: <List size={14} />,          label: "호선리스트" },
+    { key: "vessels", icon: <List size={14} />,          label: "호선·돌발리스트" },
     { key: "upload",  icon: <Upload size={14} />,         label: "호선강재등록" },
     { key: "list",    icon: <FileSpreadsheet size={14} />, label: "호선강재리스트" },
   ];
@@ -125,6 +125,7 @@ export default function ProjectsMain({
           activeProject={activeProject}
           baseUrl="/cutpart/projects"
           hideHeader={true}
+          hideTabs={true}
         />
       )}
     </div>
