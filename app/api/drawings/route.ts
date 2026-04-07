@@ -2,6 +2,64 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseExcelBuffer, parseExcelBufferWithPreset } from "@/lib/excel-parser";
 
+// ── 업로드 후 스펙별 입고 수량만큼 정확히 상태 동기화 ─────────────────────
+// 강재입고관리에서 해당 규격이 2장 입고완료면 블록별강재리스트도 정확히 2행만 입고로 설정
+async function syncSpecsAfterUpload(
+  vesselCode: string,
+  specs: { material: string; thickness: number; width: number; length: number }[]
+) {
+  // 이 호선의 모든 프로젝트(블록) ID 조회
+  const projects = await prisma.project.findMany({
+    where: { projectCode: vesselCode },
+    select: { id: true },
+  });
+  if (projects.length === 0) return;
+  const projectIds = projects.map((p) => p.id);
+
+  // 스펙 중복 제거
+  const uniqueSpecs = [
+    ...new Map(
+      specs.map((s) => [`${s.material}|${s.thickness}|${s.width}|${s.length}`, s])
+    ).values(),
+  ];
+
+  for (const spec of uniqueSpecs) {
+    const { material, thickness, width, length } = spec;
+
+    // 강재입고관리에서 해당 규격 입고완료(RECEIVED) 수량
+    const receivedCount = await prisma.steelPlan.count({
+      where: { vesselCode, material, thickness, width, length, status: "RECEIVED" },
+    });
+
+    // 해당 규격의 블록별강재리스트 전체 (경고·절단 제외, 등록순)
+    const rows = await prisma.drawingList.findMany({
+      where: {
+        projectId: { in: projectIds },
+        material, thickness, width, length,
+        NOT: { status: { in: ["CAUTION", "CUT"] } },
+      },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    });
+
+    const toWaiting    = rows.slice(0, receivedCount).map((r) => r.id);
+    const toRegistered = rows.slice(receivedCount).map((r) => r.id);
+
+    if (toWaiting.length > 0) {
+      await prisma.drawingList.updateMany({
+        where: { id: { in: toWaiting } },
+        data: { status: "WAITING" },
+      });
+    }
+    if (toRegistered.length > 0) {
+      await prisma.drawingList.updateMany({
+        where: { id: { in: toRegistered } },
+        data: { status: "REGISTERED" },
+      });
+    }
+  }
+}
+
 // GET /api/drawings?projectId=xxx - 강재리스트 조회
 export async function GET(request: NextRequest) {
   try {
@@ -15,7 +73,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const status = searchParams.get("status"); // 예: "WAITING"
+    const status = searchParams.get("status");
 
     const drawings = await prisma.drawingList.findMany({
       where: {
@@ -56,43 +114,52 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, error: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
       }
 
-      // SteelPlan 조회 (호선 매칭)
+      // 강재입고관리 스펙 조회 (매칭 여부 확인용 — 수량은 syncSpecsAfterUpload에서 처리)
       const steelPlans = await prisma.steelPlan.findMany({
         where: { vesselCode: project.projectCode },
-        select: { material: true, thickness: true, width: true, length: true, status: true },
+        select: { material: true, thickness: true, width: true, length: true },
       });
-      const matchSteelPlan = (material: string, thickness: number, width: number, length: number) =>
-        steelPlans.find(
+      const hasMatch = (material: string, thickness: number, width: number, length: number) =>
+        steelPlans.some(
           (sp) =>
             sp.material.trim().toLowerCase() === material.trim().toLowerCase() &&
             sp.thickness === thickness && sp.width === width && sp.length === length
         );
 
-      const created = await prisma.drawingList.createMany({
-        data: rows.map((r: {
-          block?: string; drawingNo?: string; heatNo?: string;
-          material: string; thickness: number; width: number; length: number;
-          qty: number; steelWeight?: number | null; useWeight?: number | null;
-        }) => {
-          const t = Number(r.thickness), w = Number(r.width), l = Number(r.length);
-          const matched = matchSteelPlan(r.material.trim(), t, w, l);
-          let status: "REGISTERED" | "WAITING" | "CAUTION" = "CAUTION";
-          if (matched) status = matched.status === "RECEIVED" ? "WAITING" : "REGISTERED";
-          return {
-            projectId,
-            block: r.block?.trim() || null,
-            drawingNo: r.drawingNo?.trim() || null,
-            heatNo: r.heatNo?.trim() || null,
-            material: r.material.trim(),
-            thickness: t, width: w, length: l,
-            qty: Math.round(Number(r.qty)),
-            steelWeight: r.steelWeight != null && r.steelWeight !== 0 ? Number(r.steelWeight) : null,
-            useWeight: r.useWeight != null && r.useWeight !== 0 ? Number(r.useWeight) : null,
-            sourceFile: null,
-            status,
-          };
-        }),
+      const rowsToInsert = rows.map((r: {
+        block?: string; drawingNo?: string; heatNo?: string;
+        material: string; thickness: number; width: number; length: number;
+        qty: number; steelWeight?: number | null; useWeight?: number | null;
+      }) => {
+        const t = Number(r.thickness), w = Number(r.width), l = Number(r.length);
+        const mat = r.material.trim();
+        // 초기 상태: 강재입고관리에 규격 존재 → 미입고(REGISTERED), 없음 → 경고(CAUTION)
+        // 정확한 입고/미입고 구분은 아래 syncSpecsAfterUpload에서 재조정
+        const status: "REGISTERED" | "CAUTION" = hasMatch(mat, t, w, l) ? "REGISTERED" : "CAUTION";
+        return {
+          projectId,
+          block: r.block?.trim() || null,
+          drawingNo: r.drawingNo?.trim() || null,
+          heatNo: r.heatNo?.trim() || null,
+          material: mat,
+          thickness: t, width: w, length: l,
+          qty: Math.round(Number(r.qty)),
+          steelWeight: r.steelWeight != null && r.steelWeight !== 0 ? Number(r.steelWeight) : null,
+          useWeight: r.useWeight != null && r.useWeight !== 0 ? Number(r.useWeight) : null,
+          sourceFile: null,
+          status,
+        };
       });
+
+      const created = await prisma.drawingList.createMany({ data: rowsToInsert });
+
+      // 입고 수량 기준으로 정확히 재조정
+      const matchedSpecs = rowsToInsert
+        .filter((r) => r.status === "REGISTERED")
+        .map((r) => ({ material: r.material, thickness: r.thickness, width: r.width, length: r.length }));
+      if (matchedSpecs.length > 0) {
+        await syncSpecsAfterUpload(project.projectCode, matchedSpecs);
+      }
 
       return NextResponse.json({ success: true, data: { count: created.count } }, { status: 201 });
     }
@@ -111,7 +178,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 프로젝트 존재 확인
     const project = await prisma.project.findUnique({ where: { id: projectId } });
     if (!project) {
       return NextResponse.json(
@@ -120,35 +186,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Buffer 변환
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Excel 파싱 (프리셋 또는 자동감지)
     let result;
     if (presetId) {
       const presetRow = await prisma.excelPreset.findUnique({ where: { id: presetId } });
-      if (presetRow) {
-        result = parseExcelBufferWithPreset(buffer, file.name, presetRow);
-      } else {
-        result = parseExcelBuffer(buffer, file.name);
-      }
+      result = presetRow ? parseExcelBufferWithPreset(buffer, file.name, presetRow) : parseExcelBuffer(buffer, file.name);
     } else {
       result = parseExcelBuffer(buffer, file.name);
     }
 
     if (!result.success || result.rows.length === 0) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "Excel 파싱에 실패했습니다.",
-          details: result.errors,
-        },
+        { success: false, error: "Excel 파싱에 실패했습니다.", details: result.errors },
         { status: 422 }
       );
     }
 
-    // 보관위치 업데이트 (입력된 경우)
     if (storageLocation?.trim()) {
       await prisma.project.update({
         where: { id: projectId },
@@ -156,55 +211,53 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // SteelPlan 조회 (호선 = projectCode 기준)
+    // 강재입고관리 스펙 조회 (매칭 여부 확인용)
     const steelPlans = await prisma.steelPlan.findMany({
       where: { vesselCode: project.projectCode },
-      select: { material: true, thickness: true, width: true, length: true, status: true },
+      select: { material: true, thickness: true, width: true, length: true },
     });
-
-    // 매칭 헬퍼
-    const matchSteelPlan = (material: string, thickness: number, width: number, length: number) => {
-      return steelPlans.find(
+    const hasMatch = (material: string, thickness: number, width: number, length: number) =>
+      steelPlans.some(
         (sp) =>
           sp.material.trim().toLowerCase() === material.trim().toLowerCase() &&
-          sp.thickness === thickness &&
-          sp.width === width &&
-          sp.length === length
+          sp.thickness === thickness && sp.width === width && sp.length === length
       );
-    };
 
-    // DB 저장 (배치 insert)
-    // block 우선순위: 프리셋 colBlock에서 읽은 값(있을 때) > project.projectName(기본)
-    const created = await prisma.drawingList.createMany({
-      data: result.rows.map((row) => {
-        const matched = matchSteelPlan(row.material, row.thickness, row.width, row.length);
-        let status: "REGISTERED" | "WAITING" | "CAUTION" = "CAUTION";
-        if (matched) {
-          status = matched.status === "RECEIVED" ? "WAITING" : "REGISTERED";
-        }
-        return {
-          projectId,
-          block: row.block?.trim() || project.projectName,
-          drawingNo: row.drawingNo,
-          heatNo: row.heatNo,
-          material: row.material,
-          thickness: row.thickness,
-          width: row.width,
-          length: row.length,
-          qty: row.qty,
-          steelWeight: row.steelWeight,
-          useWeight: row.useWeight,
-          sourceFile: file.name,
-          status,
-        };
-      }),
+    const rowsToInsert = result.rows.map((row) => {
+      // 초기 상태: 규격 존재 → 미입고(REGISTERED), 없음 → 경고(CAUTION)
+      // 정확한 입고/미입고 구분은 아래 syncSpecsAfterUpload에서 재조정
+      const status: "REGISTERED" | "CAUTION" = hasMatch(row.material, row.thickness, row.width, row.length)
+        ? "REGISTERED"
+        : "CAUTION";
+      return {
+        projectId,
+        block: row.block?.trim() || project.projectName,
+        drawingNo: row.drawingNo,
+        heatNo: row.heatNo,
+        material: row.material,
+        thickness: row.thickness,
+        width: row.width,
+        length: row.length,
+        qty: row.qty,
+        steelWeight: row.steelWeight,
+        useWeight: row.useWeight,
+        sourceFile: file.name,
+        status,
+      };
     });
 
+    const created = await prisma.drawingList.createMany({ data: rowsToInsert });
+
+    // 입고 수량 기준으로 정확히 재조정
+    const matchedSpecs = rowsToInsert
+      .filter((r) => r.status === "REGISTERED")
+      .map((r) => ({ material: r.material, thickness: r.thickness, width: r.width, length: r.length }));
+    if (matchedSpecs.length > 0) {
+      await syncSpecsAfterUpload(project.projectCode, matchedSpecs);
+    }
+
     return NextResponse.json(
-      {
-        success: true,
-        data: { count: created.count, warnings: result.errors },
-      },
+      { success: true, data: { count: created.count, warnings: result.errors } },
       { status: 201 }
     );
   } catch (error) {
