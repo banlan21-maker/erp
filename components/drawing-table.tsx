@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { DrawingList } from "@prisma/client";
-import { Pencil, Trash2, Check, X, PackageCheck, RotateCcw, ListFilter, XCircle, Plus } from "lucide-react";
+import { Pencil, Trash2, Check, X, ListFilter, XCircle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -11,25 +11,24 @@ import { Input } from "@/components/ui/input";
 
 interface EditForm {
   block: string; drawingNo: string; heatNo: string; material: string;
-  thickness: string; width: string; length: string; qty: string;
-  steelWeight: string; useWeight: string;
+  thickness: string; width: string; length: string; useWeight: string;
 }
 
 const emptyAddForm: EditForm = {
   block: "", drawingNo: "", heatNo: "", material: "",
-  thickness: "", width: "", length: "", qty: "1",
-  steelWeight: "", useWeight: "",
+  thickness: "", width: "", length: "", useWeight: "",
 };
 
-type DrawingStatusType = "REGISTERED" | "WAITING" | "CUT";
+type DrawingStatusType = "REGISTERED" | "WAITING" | "CUT" | "CAUTION";
 
 const STATUS_LABEL: Record<DrawingStatusType, string> = {
-  REGISTERED: "등록", WAITING: "대기", CUT: "절단",
+  REGISTERED: "등록", WAITING: "대기", CUT: "절단", CAUTION: "경고",
 };
 const STATUS_STYLE: Record<DrawingStatusType, string> = {
   REGISTERED: "bg-gray-100 text-gray-600",
   WAITING:    "bg-blue-100 text-blue-700",
   CUT:        "bg-green-100 text-green-700",
+  CAUTION:    "bg-red-100 text-red-700",
 };
 
 // ─── 헬퍼 ────────────────────────────────────────────────────────────────────
@@ -38,10 +37,13 @@ function toEditForm(d: DrawingList): EditForm {
   return {
     block: d.block ?? "", drawingNo: d.drawingNo ?? "", heatNo: d.heatNo ?? "",
     material: d.material, thickness: String(d.thickness), width: String(d.width),
-    length: String(d.length), qty: String(d.qty),
-    steelWeight: d.steelWeight != null ? String(d.steelWeight) : "",
-    useWeight:   d.useWeight  != null ? String(d.useWeight)  : "",
+    length: String(d.length),
+    useWeight: d.useWeight != null ? String(d.useWeight) : "",
   };
+}
+
+function calcSteelWeight(t: number | string, w: number | string, l: number | string): number {
+  return Math.round(Number(t) * Number(w) * Number(l) * 7.85 / 1_000_000 * 100) / 100;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -61,7 +63,7 @@ function formatDate(val: Date | string | null | undefined): string {
 // 각 컬럼의 셀 값을 문자열로 반환 (필터 비교용)
 function colValue(d: DrawingList, col: string): string {
   switch (col) {
-    case "status":      return STATUS_LABEL[(d.status ?? "REGISTERED") as DrawingStatusType];
+    case "status":      return STATUS_LABEL[(d.status ?? "REGISTERED") as DrawingStatusType] ?? d.status ?? "";
     case "block":       return d.block ?? "(없음)";
     case "drawingNo":   return d.drawingNo ?? "(없음)";
     case "heatNo":      return d.heatNo ?? "(없음)";
@@ -69,10 +71,8 @@ function colValue(d: DrawingList, col: string): string {
     case "thickness":   return String(d.thickness);
     case "width":       return String(d.width);
     case "length":      return String(d.length);
-    case "qty":         return String(d.qty);
-    case "steelWeight": return d.steelWeight != null ? String(d.steelWeight) : "(없음)";
-    case "useWeight":   return d.useWeight  != null ? String(d.useWeight)  : "(없음)";
-    case "receivedAt":  return formatDate(d.receivedAt) === "-" ? "(없음)" : formatDate(d.receivedAt);
+    case "steelWeight": return String(calcSteelWeight(d.thickness, d.width, d.length));
+    case "useWeight":   return d.useWeight != null ? String(d.useWeight) : "(없음)";
     default:            return "";
   }
 }
@@ -261,9 +261,6 @@ export default function DrawingTable({
   const [clearConfirm, setClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
 
-  // 상태 변경
-  const [statusUpdating, setStatusUpdating] = useState<string | null>(null);
-
   // 단건 추가 모달
   const [showAddModal, setShowAddModal] = useState(false);
   const [addForm, setAddForm] = useState<EditForm>(emptyAddForm);
@@ -273,8 +270,8 @@ export default function DrawingTable({
     setAddForm(prev => ({ ...prev, [field]: value }));
 
   const submitAdd = async () => {
-    if (!addForm.material.trim() || !addForm.thickness || !addForm.width || !addForm.length || !addForm.qty) {
-      alert("재질, 두께, 폭, 길이, 수량은 필수입니다."); return;
+    if (!addForm.material.trim() || !addForm.thickness || !addForm.width || !addForm.length) {
+      alert("재질, 두께, 폭, 길이는 필수입니다."); return;
     }
     setAdding(true);
     try {
@@ -291,8 +288,8 @@ export default function DrawingTable({
             thickness: Number(addForm.thickness),
             width: Number(addForm.width),
             length: Number(addForm.length),
-            qty: Number(addForm.qty),
-            steelWeight: addForm.steelWeight ? Number(addForm.steelWeight) : null,
+            qty: 1,
+            steelWeight: calcSteelWeight(addForm.thickness, addForm.width, addForm.length),
             useWeight: addForm.useWeight ? Number(addForm.useWeight) : null,
           }],
         }),
@@ -348,7 +345,11 @@ export default function DrawingTable({
     try {
       const res = await fetch(`/api/drawings/${id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editForm),
+        body: JSON.stringify({
+          ...editForm,
+          qty: 1,
+          steelWeight: calcSteelWeight(editForm.thickness, editForm.width, editForm.length),
+        }),
       });
       const data = await res.json();
       if (!data.success) { alert(data.error ?? "수정 실패"); return; }
@@ -374,19 +375,6 @@ export default function DrawingTable({
       if (!data.success) { alert(data.error ?? "삭제 실패"); return; }
       setClearConfirm(false); router.refresh();
     } catch { alert("서버 오류"); } finally { setClearing(false); }
-  };
-
-  const updateStatus = async (id: string, status: DrawingStatusType) => {
-    setStatusUpdating(id);
-    try {
-      const res = await fetch(`/api/drawings/${id}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "status", status }),
-      });
-      const data = await res.json();
-      if (!data.success) { alert(data.error ?? "상태 변경 실패"); return; }
-      router.refresh();
-    } catch { alert("서버 오류"); } finally { setStatusUpdating(null); }
   };
 
   // 상태별 카운트 (전체 기준)
@@ -432,8 +420,6 @@ export default function DrawingTable({
                 <div><label className="text-xs font-semibold text-gray-600 mb-1 block">두께(mm) <span className="text-red-500">*</span></label><Input type="number" className="h-8 text-xs text-right" value={addForm.thickness} onChange={e => af("thickness", e.target.value)} /></div>
                 <div><label className="text-xs font-semibold text-gray-600 mb-1 block">폭(mm) <span className="text-red-500">*</span></label><Input type="number" className="h-8 text-xs text-right" value={addForm.width} onChange={e => af("width", e.target.value)} /></div>
                 <div><label className="text-xs font-semibold text-gray-600 mb-1 block">길이(mm) <span className="text-red-500">*</span></label><Input type="number" className="h-8 text-xs text-right" value={addForm.length} onChange={e => af("length", e.target.value)} /></div>
-                <div><label className="text-xs font-semibold text-gray-600 mb-1 block">수량(매) <span className="text-red-500">*</span></label><Input type="number" className="h-8 text-xs text-right" value={addForm.qty} onChange={e => af("qty", e.target.value)} /></div>
-                <div><label className="text-xs font-semibold text-gray-600 mb-1 block">강재중량(kg)</label><Input type="number" className="h-8 text-xs text-right" placeholder="선택" value={addForm.steelWeight} onChange={e => af("steelWeight", e.target.value)} /></div>
                 <div><label className="text-xs font-semibold text-gray-600 mb-1 block">사용중량(kg)</label><Input type="number" className="h-8 text-xs text-right" placeholder="선택" value={addForm.useWeight} onChange={e => af("useWeight", e.target.value)} /></div>
               </div>
               <div className="px-5 py-4 border-t flex justify-end gap-2">
@@ -510,17 +496,15 @@ export default function DrawingTable({
               <FilterHeader col="thickness"   label="두께(mm) *"    align="right"  {...filterHeaderProps} />
               <FilterHeader col="width"       label="폭(mm) *"      align="right"  {...filterHeaderProps} />
               <FilterHeader col="length"      label="길이(mm) *"    align="right"  {...filterHeaderProps} />
-              <FilterHeader col="qty"         label="수량(매) *"    align="right"  {...filterHeaderProps} />
               <FilterHeader col="steelWeight" label="강재중량(kg)"  align="right"  {...filterHeaderProps} />
               <FilterHeader col="useWeight"   label="사용중량(kg)"  align="right"  {...filterHeaderProps} />
-              <FilterHeader col="receivedAt"  label="입고일"        align="center" {...filterHeaderProps} />
               <th className="px-3 py-2.5 w-24"></th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {filteredDrawings.length === 0 ? (
               <tr>
-                <td colSpan={12} className="text-center py-8 text-gray-400 text-xs">
+                <td colSpan={10} className="text-center py-8 text-gray-400 text-xs">
                   필터 조건에 맞는 데이터가 없습니다.
                   <button onClick={() => setFilters({})} className="ml-2 text-blue-500 hover:underline">
                     필터 초기화
@@ -531,7 +515,6 @@ export default function DrawingTable({
               filteredDrawings.map((d) => {
                 const isEditing = editingId === d.id;
                 const isDeleting = deletingId === d.id;
-                const isStatusUpdating = statusUpdating === d.id;
                 const status = (d.status ?? "REGISTERED") as DrawingStatusType;
 
                 if (isEditing && editForm) {
@@ -545,10 +528,8 @@ export default function DrawingTable({
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-16 text-right" value={editForm.thickness}  onChange={e => f("thickness",  e.target.value)} /></td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-20 text-right" value={editForm.width}      onChange={e => f("width",      e.target.value)} /></td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-20 text-right" value={editForm.length}     onChange={e => f("length",     e.target.value)} /></td>
-                      <td className="px-2 py-1.5"><Input className="h-7 text-xs w-14 text-right" value={editForm.qty}        onChange={e => f("qty",        e.target.value)} /></td>
-                      <td className="px-2 py-1.5"><Input className="h-7 text-xs w-20 text-right" value={editForm.steelWeight} onChange={e => f("steelWeight", e.target.value)} /></td>
+                      <td className="px-2 py-1.5 text-right text-xs text-gray-500">{calcSteelWeight(editForm.thickness, editForm.width, editForm.length).toLocaleString()}</td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-20 text-right" value={editForm.useWeight}  onChange={e => f("useWeight",  e.target.value)} /></td>
-                      <td className="px-2 py-1.5 text-center text-xs text-gray-400">{formatDate(d.receivedAt)}</td>
                       <td className="px-2 py-1.5">
                         <div className="flex gap-1">
                           <button onClick={() => saveEdit(d.id)} disabled={saving} className="p-1 text-green-600 hover:bg-green-100 rounded" title="저장"><Check size={14} /></button>
@@ -560,7 +541,7 @@ export default function DrawingTable({
                 }
 
                 return (
-                  <tr key={d.id} className={`hover:bg-gray-50 transition-colors ${isDeleting || isStatusUpdating ? "opacity-40" : ""} ${status === "CUT" ? "bg-green-50/30" : ""}`}>
+                  <tr key={d.id} className={`hover:bg-gray-50 transition-colors ${isDeleting ? "opacity-40" : ""} ${status === "CUT" ? "bg-green-50/30" : ""}`}>
                     <td className="px-3 py-2 text-center"><StatusBadge status={status} /></td>
                     <td className="px-3 py-2 text-gray-700 font-medium">{d.block ?? "-"}</td>
                     <td className="px-3 py-2 text-gray-700 font-mono text-xs">{d.drawingNo ?? "-"}</td>
@@ -571,32 +552,10 @@ export default function DrawingTable({
                     <td className="px-3 py-2 text-right text-gray-700">{d.thickness}</td>
                     <td className="px-3 py-2 text-right text-gray-700">{d.width.toLocaleString()}</td>
                     <td className="px-3 py-2 text-right text-gray-700">{d.length.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-right font-semibold text-gray-800">{d.qty}</td>
-                    <td className="px-3 py-2 text-right text-gray-500">{d.steelWeight != null ? d.steelWeight.toLocaleString() : "-"}</td>
-                    <td className="px-3 py-2 text-right text-gray-500">{d.useWeight  != null ? d.useWeight.toLocaleString()  : "-"}</td>
-                    <td className="px-3 py-2 text-center text-xs text-gray-500 font-mono">{formatDate(d.receivedAt)}</td>
+                    <td className="px-3 py-2 text-right text-gray-700">{calcSteelWeight(d.thickness, d.width, d.length).toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right text-gray-500">{d.useWeight != null ? d.useWeight.toLocaleString() : "-"}</td>
                     <td className="px-3 py-2">
                       <div className="flex gap-1 justify-end items-center">
-                        {status === "REGISTERED" && (
-                          <button
-                            onClick={() => updateStatus(d.id, "WAITING")}
-                            disabled={isStatusUpdating}
-                            className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded"
-                            title="입고 확인 (대기 상태로 변경)"
-                          >
-                            <PackageCheck size={13} />
-                          </button>
-                        )}
-                        {status === "WAITING" && (
-                          <button
-                            onClick={() => updateStatus(d.id, "REGISTERED")}
-                            disabled={isStatusUpdating}
-                            className="p-1 text-orange-400 hover:text-orange-600 hover:bg-orange-50 rounded"
-                            title="입고 취소 (등록 상태로 되돌리기)"
-                          >
-                            <RotateCcw size={13} />
-                          </button>
-                        )}
                         <button
                           onClick={() => startEdit(d)}
                           disabled={status === "CUT"}
@@ -622,14 +581,11 @@ export default function DrawingTable({
           </tbody>
           <tfoot className="bg-gray-50 border-t">
             <tr>
-              <td colSpan={9} className="px-3 py-2 text-xs text-gray-500 font-medium">
+              <td colSpan={8} className="px-3 py-2 text-xs text-gray-500 font-medium">
                 합계 ({filteredDrawings.length}행{activeFilterCount > 0 ? ` / 전체 ${drawings.length}행` : ""})
               </td>
-              <td className="px-3 py-2 text-right text-xs font-bold text-gray-800">
-                {filteredDrawings.reduce((s, d) => s + d.qty, 0)}매
-              </td>
               <td className="px-3 py-2 text-right text-xs font-bold text-gray-700">
-                {filteredDrawings.reduce((s, d) => s + (d.steelWeight ?? 0), 0).toLocaleString()}kg
+                {filteredDrawings.reduce((s, d) => s + calcSteelWeight(d.thickness, d.width, d.length), 0).toLocaleString()}kg
               </td>
               <td className="px-3 py-2 text-right text-xs font-bold text-gray-700">
                 {filteredDrawings.reduce((s, d) => s + (d.useWeight ?? 0), 0).toLocaleString()}kg
@@ -678,14 +634,6 @@ export default function DrawingTable({
               <div>
                 <label className="text-xs font-semibold text-gray-600 mb-1 block">길이(mm) <span className="text-red-500">*</span></label>
                 <Input type="number" className="h-8 text-xs text-right" placeholder="0" value={addForm.length} onChange={e => af("length", e.target.value)} />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-600 mb-1 block">수량(매) <span className="text-red-500">*</span></label>
-                <Input type="number" className="h-8 text-xs text-right" placeholder="1" value={addForm.qty} onChange={e => af("qty", e.target.value)} />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-600 mb-1 block">강재중량(kg)</label>
-                <Input type="number" className="h-8 text-xs text-right" placeholder="선택" value={addForm.steelWeight} onChange={e => af("steelWeight", e.target.value)} />
               </div>
               <div>
                 <label className="text-xs font-semibold text-gray-600 mb-1 block">사용중량(kg)</label>

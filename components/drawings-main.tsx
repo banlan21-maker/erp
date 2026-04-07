@@ -13,7 +13,7 @@ import {
   SelectLabel,
   SelectTrigger,
 } from "@/components/ui/select";
-import { Upload, FileSpreadsheet, FolderOpen, CheckCircle2, AlertCircle, Settings2, List, ArrowLeft, Plus, Trash2, MapPin, Pencil, X, Check } from "lucide-react";
+import { Upload, FileSpreadsheet, FolderOpen, CheckCircle2, AlertCircle, Settings2, List, ArrowLeft, Plus, Trash2, MapPin, X } from "lucide-react";
 import PresetManager from "./preset-manager";
 import DrawingTable from "./drawing-table";
 import type { DrawingList } from "@prisma/client";
@@ -166,7 +166,6 @@ function UploadTab({
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [selectedProjectId, setSelectedProjectId] = useState("");
-  const [storageLocation, setStorageLocation] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -209,7 +208,6 @@ function UploadTab({
       formData.append("file", selectedFile);
       formData.append("projectId", selectedProjectId);
       if (selectedPresetId !== "__default__") formData.append("presetId", selectedPresetId);
-      if (storageLocation.trim()) formData.append("storageLocation", storageLocation.trim());
       const res = await fetch("/api/drawings", { method: "POST", body: formData });
       const data = await res.json();
       if (data.success) {
@@ -283,29 +281,10 @@ function UploadTab({
               )}
             </div>
 
-            {/* Step 2: 보관위치 */}
+            {/* Step 2: Excel 파일 선택 */}
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1.5">
                 <span className="bg-blue-600 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">2</span>
-                보관위치 지정 <span className="text-gray-400 font-normal text-xs ml-1">(선택)</span>
-              </Label>
-              <div className="relative max-w-sm">
-                <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  value={storageLocation}
-                  onChange={(e) => setStorageLocation(e.target.value)}
-                  placeholder="예: A구역 3번 열"
-                  className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                />
-              </div>
-              <p className="text-xs text-gray-400">야드 내 강재를 보관할 위치를 입력합니다. 이후 강재리스트에 표시됩니다.</p>
-            </div>
-
-            {/* Step 3: Excel 파일 선택 */}
-            <div className="space-y-1.5">
-              <Label className="flex items-center gap-1.5">
-                <span className="bg-blue-600 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">3</span>
                 Excel 파일 선택
               </Label>
               <div
@@ -331,10 +310,10 @@ function UploadTab({
               <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={handleFileSelect} className="hidden" />
             </div>
 
-            {/* Step 2.5 */}
+            {/* Step 3 */}
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1.5">
-                <span className="bg-gray-400 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">✦</span>
+                <span className="bg-blue-600 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">3</span>
                 업로드 형식
               </Label>
               <Select value={selectedPresetId} onValueChange={(v) => setSelectedPresetId(v ?? "__default__")}>
@@ -433,34 +412,17 @@ function ListTab({
   router: ReturnType<typeof useRouter>;
   baseUrl?: string;
 }) {
-  const [editingLocation, setEditingLocation] = useState(false);
-  const [locationInput, setLocationInput] = useState(activeProject?.storageLocation ?? "");
-  const [savingLocation, setSavingLocation] = useState(false);
-  const [currentLocation, setCurrentLocation] = useState(activeProject?.storageLocation ?? null);
+  const [steelStorageLocation, setSteelStorageLocation] = useState<string | null>(null);
 
-  const hasReceived = drawings.some(d => d.status === "WAITING" || d.status === "CUT");
-  const locationLabel = currentLocation
-    ? `${currentLocation} 구역에 ${hasReceived ? "보관중" : "보관 예정"}`
-    : null;
-
-  const saveLocation = async () => {
-    if (!activeProject) return;
-    setSavingLocation(true);
-    try {
-      const res = await fetch(`/api/projects/${activeProject.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storageLocation: locationInput }),
+  useEffect(() => {
+    if (!activeProject) { setSteelStorageLocation(null); return; }
+    fetch(`/api/steel-plan?vesselCode=${encodeURIComponent(activeProject.projectCode)}`)
+      .then(r => r.json())
+      .then((rows: Array<{ storageLocation?: string | null }>) => {
+        const loc = rows.find(r => r.storageLocation)?.storageLocation ?? null;
+        setSteelStorageLocation(loc);
       });
-      const data = await res.json();
-      if (data.success) {
-        setCurrentLocation(locationInput.trim() || null);
-        setEditingLocation(false);
-      }
-    } finally {
-      setSavingLocation(false);
-    }
-  };
+  }, [activeProject?.projectCode]);
 
   // 프로젝트가 선택된 경우 → 강재리스트 테이블 표시
   if (projectId && activeProject) {
@@ -481,37 +443,9 @@ function ListTab({
         {/* 보관위치 배너 */}
         <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
           <MapPin size={15} className="text-amber-600 flex-shrink-0" />
-          {editingLocation ? (
-            <>
-              <input
-                autoFocus
-                type="text"
-                value={locationInput}
-                onChange={(e) => setLocationInput(e.target.value)}
-                placeholder="예: A구역 3번 열"
-                className="flex-1 text-sm px-2 py-1 border border-amber-300 rounded focus:outline-none focus:ring-2 focus:ring-amber-400"
-                onKeyDown={(e) => { if (e.key === "Enter") saveLocation(); if (e.key === "Escape") setEditingLocation(false); }}
-              />
-              <button onClick={saveLocation} disabled={savingLocation} className="p-1 text-green-600 hover:text-green-800">
-                <Check size={15} />
-              </button>
-              <button onClick={() => setEditingLocation(false)} className="p-1 text-gray-400 hover:text-gray-600">
-                <X size={15} />
-              </button>
-            </>
-          ) : (
-            <>
-              <span className="text-sm font-medium text-amber-800 flex-1">
-                {locationLabel ?? <span className="text-amber-500 font-normal">보관위치 미지정</span>}
-              </span>
-              <button
-                onClick={() => { setLocationInput(currentLocation ?? ""); setEditingLocation(true); }}
-                className="flex items-center gap-1.5 text-xs font-medium text-amber-700 hover:text-amber-900 border border-amber-300 hover:border-amber-500 px-2.5 py-1 rounded-lg transition-colors"
-              >
-                <Pencil size={11} /> 보관장소 변경
-              </button>
-            </>
-          )}
+          <span className="text-sm font-medium text-amber-800 flex-1">
+            보관위치 : {steelStorageLocation ?? <span className="text-amber-500 font-normal">미확정</span>}
+          </span>
         </div>
 
         <DrawingTable drawings={drawings} projectId={activeProject.id} />
