@@ -899,7 +899,6 @@ export default function WorklogAdmin({
                               <td className="px-4 py-3 text-gray-600 text-xs">{d.block || "-"}</td>
                               <td className="px-4 py-3 text-xs text-gray-600">
                                 {d.material} {d.thickness}t × {d.width} × {d.length}
-                                <span className="text-gray-400 ml-1">({d.qty}매)</span>
                               </td>
                               <td className="px-4 py-3">
                                 <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${STATUS_COLOR[d.status] ?? "bg-gray-100 text-gray-600"}`}>
@@ -975,7 +974,6 @@ export default function WorklogAdmin({
                               <td className="px-4 py-3 text-gray-600 text-xs">{d.block || "-"}</td>
                               <td className="px-4 py-3 text-xs text-gray-600">
                                 {d.material} {d.thickness}t × {d.width} × {d.length}
-                                <span className="text-gray-400 ml-1">({d.qty}매)</span>
                               </td>
                               <td className="px-4 py-3">
                                 <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${STATUS_COLOR[d.status] ?? "bg-gray-100 text-gray-600"}`}>
