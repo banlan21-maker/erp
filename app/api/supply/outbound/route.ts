@@ -66,21 +66,22 @@ export async function POST(request: Request) {
         throw new Error(`재고가 부족합니다. (현재 재고: ${currentItem.stockQty})`);
       }
 
-      // 2. 이력 생성
+      // 2. 재고 차감
+      const updatedItem = await tx.supplyItem.update({
+        where: { id: Number(itemId) },
+        data: { stockQty: { decrement: nQty } }
+      });
+
+      // 3. 이력 생성 (총재고 스냅샷 포함)
       const outbound = await tx.supplyOutbound.create({
         data: {
           itemId: Number(itemId),
           qty: nQty,
+          stockQtyAfter: updatedItem.stockQty,
           usedBy,
           memo,
           usedAt: usedDate,
         }
-      });
-
-      // 3. 재고 차감 (안전하게 기존 수량 검증 끝난 후)
-      const updatedItem = await tx.supplyItem.update({
-        where: { id: Number(itemId) },
-        data: { stockQty: { decrement: nQty } }
       });
 
       // 4. 발주 기준점 경고 계산 

@@ -467,6 +467,7 @@ export default function InOutPage() {
                 <th className="px-4 py-2.5">품명</th>
                 <th className="px-4 py-2.5">세부분류</th>
                 <th className="px-4 py-2.5 text-right">수량</th>
+                <th className="px-4 py-2.5 text-right">총수량</th>
                 <th className="px-4 py-2.5 font-normal text-center">단위</th>
                 <th className="px-4 py-2.5">보관위치</th>
                 <th className="px-4 py-2.5">{historyTab === "inbound" ? "담당자" : "사용자"}</th>
@@ -475,11 +476,11 @@ export default function InOutPage() {
             <tbody className="divide-y divide-gray-100">
               {loadingHistory ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-gray-400"><RefreshCw className="animate-spin inline-block mr-2" size={16} />갱신 중...</td>
+                  <td colSpan={9} className="py-12 text-center text-gray-400"><RefreshCw className="animate-spin inline-block mr-2" size={16} />갱신 중...</td>
                 </tr>
               ) : historyData.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-gray-400">이번 달 등록된 내역이 없습니다.</td>
+                  <td colSpan={9} className="py-12 text-center text-gray-400">이번 달 등록된 내역이 없습니다.</td>
                 </tr>
               ) : (
                 historyData.map((row) => (
@@ -496,6 +497,9 @@ export default function InOutPage() {
                     <td className="px-4 py-3 text-gray-500 text-xs">{row.item?.subCategory || "-"}</td>
                     <td className={`px-4 py-3 text-right font-bold ${historyTab === 'inbound' ? 'text-emerald-600' : 'text-orange-600'}`}>
                       {historyTab === 'inbound' ? '+' : '-'}{row.qty}
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold text-gray-800">
+                      {row.stockQtyAfter != null ? row.stockQtyAfter : <span className="text-gray-300 font-normal">-</span>}
                     </td>
                     <td className="px-4 py-3 text-center text-gray-500 text-xs">{row.item?.unit}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs">{row.item?.location || "-"}</td>

@@ -358,28 +358,30 @@ model SupplyItem {
 }
 
 model SupplyInbound {
-  id           Int         @id @default(autoincrement())
-  itemId       Int
-  item         SupplyItem  @relation(fields: [itemId], references: [id])
-  vendorId     Int?
-  vendor       Vendor?     @relation(fields: [vendorId], references: [id])
-  qty          Int         // 입고 수량
-  receivedBy   String      // 입고 담당자
-  receivedAt   DateTime    @default(now()) // 입고 일시
-  memo         String?     // 비고
+  id              Int         @id @default(autoincrement())
+  itemId          Int
+  item            SupplyItem  @relation(fields: [itemId], references: [id])
+  vendorId        Int?
+  vendor          Vendor?     @relation(fields: [vendorId], references: [id])
+  qty             Int         // 입고 수량
+  stockQtyAfter   Int?        // 입고 후 총재고 스냅샷
+  receivedBy      String      // 입고 담당자
+  receivedAt      DateTime    @default(now()) // 입고 일시
+  memo            String?     // 비고
 
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 }
 
 model SupplyOutbound {
-  id           Int         @id @default(autoincrement())
-  itemId       Int
-  item         SupplyItem  @relation(fields: [itemId], references: [id])
-  qty          Int         // 출고 수량
-  usedBy       String      // 사용자
-  usedAt       DateTime    @default(now()) // 출고 일시
-  memo         String?     // 비고
+  id              Int         @id @default(autoincrement())
+  itemId          Int
+  item            SupplyItem  @relation(fields: [itemId], references: [id])
+  qty             Int         // 출고 수량
+  stockQtyAfter   Int?        // 출고 후 총재고 스냅샷
+  usedBy          String      // 사용자
+  usedAt          DateTime    @default(now()) // 출고 일시
+  memo            String?     // 비고
 
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt

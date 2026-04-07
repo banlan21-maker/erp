@@ -66,20 +66,22 @@ export async function POST(request: Request) {
 
     // 트랜잭션 처리: 입고 이력 추가 + 재고 수량 증가
     const result = await prisma.$transaction(async (tx) => {
+      // 재고 증가 후 총수량 스냅샷
+      const updatedItem = await tx.supplyItem.update({
+        where: { id: Number(itemId) },
+        data: { stockQty: { increment: nQty } }
+      });
+
       const inbound = await tx.supplyInbound.create({
         data: {
           itemId: Number(itemId),
           vendorId: Number(vendorId),
           qty: nQty,
+          stockQtyAfter: updatedItem.stockQty,
           receivedBy,
           memo,
           receivedAt: receivedDate,
         }
-      });
-
-      await tx.supplyItem.update({
-        where: { id: Number(itemId) },
-        data: { stockQty: { increment: nQty } }
       });
 
       return inbound;
