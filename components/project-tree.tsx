@@ -108,9 +108,9 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
                         <div className="flex items-center gap-2 flex-1 min-w-0">
                           <Folder size={13} className="text-yellow-500 flex-shrink-0" />
 
-                          {/* 블록명 클릭 → 상세 */}
+                          {/* 블록명 클릭 → 블록별강재리스트 */}
                           <Link
-                            href={`/cutpart/projects/${block.id}`}
+                            href={`/cutpart/projects?tab=list&projectId=${block.id}`}
                             className="text-sm font-semibold text-gray-800 hover:text-blue-600 hover:underline"
                           >
                             {block.projectName}
@@ -134,7 +134,7 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
                         {/* 강재리스트 수 + 등록일 + 삭제 */}
                         <div className="flex items-center gap-3 ml-auto flex-shrink-0">
                           <Link
-                            href={`/cutpart/projects/${block.id}`}
+                            href={`/cutpart/projects?tab=list&projectId=${block.id}`}
                             className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600"
                           >
                             <FileSpreadsheet size={12} />
