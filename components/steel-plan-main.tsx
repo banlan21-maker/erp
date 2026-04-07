@@ -414,6 +414,7 @@ export default function SteelPlanMain() {
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">길이</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">상태</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">실사용판번호</th>
+                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">실사용호선</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">실사용도면번호</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">메모</th>
                     <th className="w-24 px-3 py-2.5 text-center font-medium text-gray-600 text-xs">입고</th>
@@ -421,9 +422,9 @@ export default function SteelPlanMain() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {loading ? (
-                    <tr><td colSpan={11} className="py-12 text-center text-gray-400">불러오는 중...</td></tr>
+                    <tr><td colSpan={12} className="py-12 text-center text-gray-400">불러오는 중...</td></tr>
                   ) : rows.length === 0 ? (
-                    <tr><td colSpan={11} className="py-12 text-center text-gray-400">등록된 강재 계획이 없습니다</td></tr>
+                    <tr><td colSpan={12} className="py-12 text-center text-gray-400">등록된 강재 계획이 없습니다</td></tr>
                   ) : (
                     rows.map((row) => {
                       const st = PLAN_STATUS[row.status];
@@ -443,6 +444,7 @@ export default function SteelPlanMain() {
                             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${st.cls}`}>{st.label}</span>
                           </td>
                           <td className="px-3 py-2 text-center text-xs font-mono text-blue-700">{row.actualHeatNo ?? "-"}</td>
+                          <td className="px-3 py-2 text-center text-xs text-gray-600">{row.actualVesselCode ?? "-"}</td>
                           <td className="px-3 py-2 text-center text-xs text-gray-600">{row.actualDrawingNo ?? "-"}</td>
                           {/* 메모 인라인 수정 */}
                           <td className="px-3 py-2 text-center text-xs text-gray-500">
