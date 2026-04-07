@@ -16,6 +16,7 @@ interface SteelPlanRow {
   width: number;
   length: number;
   status: "REGISTERED" | "RECEIVED" | "COMPLETED";
+  receivedAt:       string | null;
   actualHeatNo:     string | null;
   actualVesselCode: string | null;
   actualDrawingNo:  string | null;
@@ -147,7 +148,18 @@ export default function SteelPlanMain() {
     await fetch(`/api/steel-plan/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "RECEIVED" }),
+      body: JSON.stringify({ status: "RECEIVED", receivedAt: new Date().toISOString() }),
+    });
+    loadPlan();
+  };
+
+  /* ── 입고 되돌리기 ── */
+  const revertReceived = async (id: string) => {
+    if (!confirm("입고 처리를 되돌리시겠습니까? 입고일이 초기화됩니다.")) return;
+    await fetch(`/api/steel-plan/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "REGISTERED", receivedAt: null }),
     });
     loadPlan();
   };
@@ -164,7 +176,7 @@ export default function SteelPlanMain() {
         fetch(`/api/steel-plan/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "RECEIVED" }),
+          body: JSON.stringify({ status: "RECEIVED", receivedAt: new Date().toISOString() }),
         })
       )
     );
@@ -471,6 +483,7 @@ export default function SteelPlanMain() {
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">폭</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">길이</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">중량(kg)</th>
+                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">입고일</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">상태</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">실사용판번호</th>
                     <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">실사용호선</th>
@@ -481,9 +494,9 @@ export default function SteelPlanMain() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {loading ? (
-                    <tr><td colSpan={13} className="py-12 text-center text-gray-400">불러오는 중...</td></tr>
+                    <tr><td colSpan={14} className="py-12 text-center text-gray-400">불러오는 중...</td></tr>
                   ) : rows.length === 0 ? (
-                    <tr><td colSpan={13} className="py-12 text-center text-gray-400">등록된 강재 계획이 없습니다</td></tr>
+                    <tr><td colSpan={14} className="py-12 text-center text-gray-400">등록된 강재 계획이 없습니다</td></tr>
                   ) : (
                     rows.map((row) => {
                       const st = PLAN_STATUS[row.status];
@@ -501,6 +514,9 @@ export default function SteelPlanMain() {
                           <td className="px-3 py-2 text-center text-sm">{row.length}</td>
                           <td className="px-3 py-2 text-center text-sm font-medium text-gray-700">
                             {calcWeight(row.thickness, row.width, row.length).toLocaleString()}
+                          </td>
+                          <td className="px-3 py-2 text-center text-xs text-gray-500 font-mono">
+                            {row.receivedAt ? new Date(row.receivedAt).toLocaleDateString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit" }) : <span className="text-gray-300">-</span>}
                           </td>
                           <td className="px-3 py-2 text-center">
                             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${st.cls}`}>{st.label}</span>
@@ -526,7 +542,7 @@ export default function SteelPlanMain() {
                               </button>
                             )}
                           </td>
-                          {/* 입고 버튼 */}
+                          {/* 입고/되돌리기 버튼 */}
                           <td className="px-3 py-2 text-center">
                             {row.status === "REGISTERED" ? (
                               <button
@@ -534,6 +550,13 @@ export default function SteelPlanMain() {
                                 className="px-2.5 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
                               >
                                 입고
+                              </button>
+                            ) : row.status === "RECEIVED" ? (
+                              <button
+                                onClick={() => revertReceived(row.id)}
+                                className="px-2.5 py-1 text-xs border border-orange-300 text-orange-600 rounded-lg hover:bg-orange-50 font-medium"
+                              >
+                                되돌리기
                               </button>
                             ) : (
                               <span className="text-xs text-gray-300">-</span>

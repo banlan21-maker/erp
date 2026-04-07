@@ -950,6 +950,7 @@ model SteelPlan {
   width            Float           // 폭 (mm)
   length           Float           // 길이 (mm)
   status           SteelPlanStatus @default(REGISTERED)
+  receivedAt       DateTime?       // 입고 처리일 (입고 시 자동기록, 되돌리기 시 null)
   actualHeatNo     String?         // 실사용판번호 (절단 시 자동기록)
   actualVesselCode String?         // 실사용호선 (절단 시 자동기록)
   actualDrawingNo  String?         // 실사용도면번호 (절단 시 자동기록)

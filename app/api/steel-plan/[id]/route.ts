@@ -22,6 +22,7 @@ export async function PATCH(
       ...(body.width       !== undefined ? { width:       Number(body.width) }           : {}),
       ...(body.length      !== undefined ? { length:      Number(body.length) }          : {}),
       ...(body.status      !== undefined ? { status:      body.status }                  : {}),
+      ...(body.receivedAt  !== undefined ? { receivedAt:  body.receivedAt ? new Date(body.receivedAt) : null } : {}),
       ...(body.memo        !== undefined ? { memo:        body.memo }                    : {}),
       ...(body.actualHeatNo     !== undefined ? { actualHeatNo:     body.actualHeatNo }     : {}),
       ...(body.actualVesselCode !== undefined ? { actualVesselCode: body.actualVesselCode } : {}),
