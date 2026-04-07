@@ -10,12 +10,12 @@ import { Input } from "@/components/ui/input";
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
 interface EditForm {
-  block: string; drawingNo: string; heatNo: string; material: string;
+  block: string; drawingNo: string; material: string;
   thickness: string; width: string; length: string; useWeight: string;
 }
 
 const emptyAddForm: EditForm = {
-  block: "", drawingNo: "", heatNo: "", material: "",
+  block: "", drawingNo: "", material: "",
   thickness: "", width: "", length: "", useWeight: "",
 };
 
@@ -35,7 +35,7 @@ const STATUS_STYLE: Record<DrawingStatusType, string> = {
 
 function toEditForm(d: DrawingList): EditForm {
   return {
-    block: d.block ?? "", drawingNo: d.drawingNo ?? "", heatNo: d.heatNo ?? "",
+    block: d.block ?? "", drawingNo: d.drawingNo ?? "",
     material: d.material, thickness: String(d.thickness), width: String(d.width),
     length: String(d.length),
     useWeight: d.useWeight != null ? String(d.useWeight) : "",
@@ -283,7 +283,7 @@ export default function DrawingTable({
           rows: [{
             block: addForm.block || null,
             drawingNo: addForm.drawingNo || null,
-            heatNo: addForm.heatNo || null,
+            heatNo: null,
             material: addForm.material,
             thickness: Number(addForm.thickness),
             width: Number(addForm.width),
@@ -411,10 +411,9 @@ export default function DrawingTable({
                 <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
               </div>
               <div className="p-5 grid grid-cols-2 gap-3">
-                <div className="col-span-2 grid grid-cols-3 gap-3">
+                <div className="col-span-2 grid grid-cols-2 gap-3">
                   <div><label className="text-xs font-semibold text-gray-600 mb-1 block">블록</label><Input className="h-8 text-xs" placeholder="예: FR20" value={addForm.block} onChange={e => af("block", e.target.value)} /></div>
                   <div><label className="text-xs font-semibold text-gray-600 mb-1 block">도면번호/NEST</label><Input className="h-8 text-xs" placeholder="도면번호" value={addForm.drawingNo} onChange={e => af("drawingNo", e.target.value)} /></div>
-                  <div><label className="text-xs font-semibold text-gray-600 mb-1 block">Heat NO</label><Input className="h-8 text-xs" placeholder="Heat NO" value={addForm.heatNo} onChange={e => af("heatNo", e.target.value)} /></div>
                 </div>
                 <div><label className="text-xs font-semibold text-gray-600 mb-1 block">재질 <span className="text-red-500">*</span></label><Input className="h-8 text-xs" placeholder="예: SS400" value={addForm.material} onChange={e => af("material", e.target.value)} /></div>
                 <div><label className="text-xs font-semibold text-gray-600 mb-1 block">두께(mm) <span className="text-red-500">*</span></label><Input type="number" className="h-8 text-xs text-right" value={addForm.thickness} onChange={e => af("thickness", e.target.value)} /></div>
@@ -492,13 +491,13 @@ export default function DrawingTable({
               <FilterHeader col="status"      label="상태"          align="center" {...filterHeaderProps} />
               <FilterHeader col="block"       label="블록"                         {...filterHeaderProps} />
               <FilterHeader col="drawingNo"   label="도면번호/NEST"                {...filterHeaderProps} />
-              <FilterHeader col="heatNo"      label="Heat NO"                      {...filterHeaderProps} />
               <FilterHeader col="material"    label="재질 *"                       {...filterHeaderProps} />
               <FilterHeader col="thickness"   label="두께(mm) *"    align="right"  {...filterHeaderProps} />
               <FilterHeader col="width"       label="폭(mm) *"      align="right"  {...filterHeaderProps} />
               <FilterHeader col="length"      label="길이(mm) *"    align="right"  {...filterHeaderProps} />
               <FilterHeader col="steelWeight" label="강재중량(kg)"  align="right"  {...filterHeaderProps} />
               <FilterHeader col="useWeight"   label="사용중량(kg)"  align="right"  {...filterHeaderProps} />
+              <FilterHeader col="heatNo"      label="실사용판번호"  align="center" {...filterHeaderProps} />
               <th className="px-3 py-2.5 w-24"></th>
             </tr>
           </thead>
@@ -524,13 +523,13 @@ export default function DrawingTable({
                       <td className="px-2 py-1.5 text-center"><StatusBadge status={status} /></td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-20"    value={editForm.block}       onChange={e => f("block",       e.target.value)} /></td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-28"    value={editForm.drawingNo}   onChange={e => f("drawingNo",   e.target.value)} /></td>
-                      <td className="px-2 py-1.5"><Input className="h-7 text-xs w-24"    value={editForm.heatNo}      onChange={e => f("heatNo",      e.target.value)} /></td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-20"    value={editForm.material}    onChange={e => f("material",    e.target.value)} /></td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-16 text-right" value={editForm.thickness}  onChange={e => f("thickness",  e.target.value)} /></td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-20 text-right" value={editForm.width}      onChange={e => f("width",      e.target.value)} /></td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-20 text-right" value={editForm.length}     onChange={e => f("length",     e.target.value)} /></td>
                       <td className="px-2 py-1.5 text-right text-xs text-gray-500">{calcSteelWeight(editForm.thickness, editForm.width, editForm.length).toLocaleString()}</td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-20 text-right" value={editForm.useWeight}  onChange={e => f("useWeight",  e.target.value)} /></td>
+                      <td className="px-2 py-1.5 text-center text-xs text-blue-600 font-mono">{d.heatNo ?? <span className="text-gray-300">-</span>}</td>
                       <td className="px-2 py-1.5">
                         <div className="flex gap-1">
                           <button onClick={() => saveEdit(d.id)} disabled={saving} className="p-1 text-green-600 hover:bg-green-100 rounded" title="저장"><Check size={14} /></button>
@@ -546,7 +545,6 @@ export default function DrawingTable({
                     <td className="px-3 py-2 text-center"><StatusBadge status={status} /></td>
                     <td className="px-3 py-2 text-gray-700 font-medium">{d.block ?? "-"}</td>
                     <td className="px-3 py-2 text-gray-700 font-mono text-xs">{d.drawingNo ?? "-"}</td>
-                    <td className="px-3 py-2 text-gray-500 text-xs">{d.heatNo ?? "-"}</td>
                     <td className="px-3 py-2">
                       <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 text-xs rounded font-medium">{d.material}</span>
                     </td>
@@ -555,6 +553,7 @@ export default function DrawingTable({
                     <td className="px-3 py-2 text-right text-gray-700">{d.length.toLocaleString()}</td>
                     <td className="px-3 py-2 text-right text-gray-700">{calcSteelWeight(d.thickness, d.width, d.length).toLocaleString()}</td>
                     <td className="px-3 py-2 text-right text-gray-500">{d.useWeight != null ? d.useWeight.toLocaleString() : "-"}</td>
+                    <td className="px-3 py-2 text-center text-xs font-mono text-blue-600">{d.heatNo ?? <span className="text-gray-300">-</span>}</td>
                     <td className="px-3 py-2">
                       <div className="flex gap-1 justify-end items-center">
                         <button
@@ -582,7 +581,7 @@ export default function DrawingTable({
           </tbody>
           <tfoot className="bg-gray-50 border-t">
             <tr>
-              <td colSpan={8} className="px-3 py-2 text-xs text-gray-500 font-medium">
+              <td colSpan={7} className="px-3 py-2 text-xs text-gray-500 font-medium">
                 합계 ({filteredDrawings.length}행{activeFilterCount > 0 ? ` / 전체 ${drawings.length}행` : ""})
               </td>
               <td className="px-3 py-2 text-right text-xs font-bold text-gray-700">
@@ -591,6 +590,7 @@ export default function DrawingTable({
               <td className="px-3 py-2 text-right text-xs font-bold text-gray-700">
                 {filteredDrawings.reduce((s, d) => s + (d.useWeight ?? 0), 0).toLocaleString()}kg
               </td>
+              <td></td>
               <td></td>
             </tr>
           </tfoot>
@@ -606,7 +606,7 @@ export default function DrawingTable({
               <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
             <div className="p-5 grid grid-cols-2 gap-3">
-              <div className="col-span-2 grid grid-cols-3 gap-3">
+              <div className="col-span-2 grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-gray-600 mb-1 block">블록</label>
                   <Input className="h-8 text-xs" placeholder="예: FR20" value={addForm.block} onChange={e => af("block", e.target.value)} />
@@ -614,10 +614,6 @@ export default function DrawingTable({
                 <div>
                   <label className="text-xs font-semibold text-gray-600 mb-1 block">도면번호/NEST</label>
                   <Input className="h-8 text-xs" placeholder="도면번호" value={addForm.drawingNo} onChange={e => af("drawingNo", e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-600 mb-1 block">Heat NO</label>
-                  <Input className="h-8 text-xs" placeholder="Heat NO" value={addForm.heatNo} onChange={e => af("heatNo", e.target.value)} />
                 </div>
               </div>
               <div>

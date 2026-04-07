@@ -23,7 +23,9 @@ export async function PATCH(
         include: { equipment: { select: { name: true } } },
       });
 
-      // 같은 도면번호의 DrawingList 중 WAITING 상태인 첫 번째 항목을 CUT으로 변경
+      // ── DrawingList 상태 CUT으로 변경 ─────────────────────────────────────
+      // 같은 프로젝트+도면번호의 WAITING 상태 첫 항목을 CUT으로
+      let drawingListId: string | null = null;
       if (log.drawingNo && log.projectId) {
         const target = await prisma.drawingList.findFirst({
           where: {
@@ -41,12 +43,53 @@ export async function PATCH(
               ...(log.heatNo?.trim() ? { heatNo: log.heatNo.trim() } : {}),
             },
           });
-          // 절단 로그에 drawingListId 기록 (삭제 시 복원 용도)
+          drawingListId = target.id;
           await prisma.cuttingLog.update({
             where: { id },
             data: { drawingListId: target.id },
           });
         }
+      }
+
+      // ── SteelPlan 실사용 기록 ──────────────────────────────────────────────
+      // 입고완료(RECEIVED)되고 아직 매칭 안 된 첫 행에 actualHeatNo/VesselCode/DrawingNo 기록
+      if (log.projectId && log.heatNo?.trim() && log.material && log.thickness && log.width && log.length) {
+        const project = await prisma.project.findUnique({
+          where: { id: log.projectId },
+          select: { projectCode: true },
+        });
+        if (project) {
+          const steelPlan = await prisma.steelPlan.findFirst({
+            where: {
+              vesselCode: project.projectCode,
+              material:   log.material,
+              thickness:  log.thickness,
+              width:      log.width,
+              length:     log.length,
+              status:     "RECEIVED",
+              actualHeatNo: null,
+            },
+            orderBy: { createdAt: "asc" },
+          });
+          if (steelPlan) {
+            await prisma.steelPlan.update({
+              where: { id: steelPlan.id },
+              data: {
+                actualHeatNo:     log.heatNo.trim(),
+                actualVesselCode: project.projectCode,
+                actualDrawingNo:  log.drawingNo?.trim() || null,
+              },
+            });
+          }
+        }
+      }
+
+      // ── SteelPlanHeat 상태 → CUT ──────────────────────────────────────────
+      if (log.heatNo?.trim()) {
+        await prisma.steelPlanHeat.updateMany({
+          where: { heatNo: log.heatNo.trim(), status: "WAITING" },
+          data:  { status: "CUT" },
+        });
       }
 
       return NextResponse.json({ success: true, data: log });
@@ -101,15 +144,28 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: "기록을 찾을 수 없습니다." }, { status: 404 });
     }
 
-    // drawingListId가 있으면 해당 강재를 CUT → WAITING으로 복원
+    // drawingListId가 있으면 해당 강재를 CUT → WAITING으로 복원 (heatNo도 초기화)
     if (log.drawingListId) {
       const drawing = await prisma.drawingList.findUnique({ where: { id: log.drawingListId } });
       if (drawing && drawing.status === "CUT") {
         await prisma.drawingList.update({
           where: { id: log.drawingListId },
-          data: { status: "WAITING" },
+          data: { status: "WAITING", heatNo: null },
         });
       }
+    }
+
+    // SteelPlan 실사용 기록 초기화
+    if (log.heatNo?.trim()) {
+      await prisma.steelPlan.updateMany({
+        where: { actualHeatNo: log.heatNo.trim() },
+        data:  { actualHeatNo: null, actualVesselCode: null, actualDrawingNo: null },
+      });
+      // SteelPlanHeat 상태 복원 CUT → WAITING
+      await prisma.steelPlanHeat.updateMany({
+        where: { heatNo: log.heatNo.trim(), status: "CUT" },
+        data:  { status: "WAITING" },
+      });
     }
 
     await prisma.cuttingLog.delete({ where: { id } });
