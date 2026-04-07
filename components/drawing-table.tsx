@@ -22,13 +22,13 @@ const emptyAddForm: EditForm = {
 type DrawingStatusType = "REGISTERED" | "WAITING" | "CUT" | "CAUTION";
 
 const STATUS_LABEL: Record<DrawingStatusType, string> = {
-  REGISTERED: "등록", WAITING: "대기", CUT: "절단", CAUTION: "경고",
+  REGISTERED: "미입고", WAITING: "입고", CUT: "절단", CAUTION: "경고",
 };
 const STATUS_STYLE: Record<DrawingStatusType, string> = {
-  REGISTERED: "bg-gray-100 text-gray-600",
-  WAITING:    "bg-blue-100 text-blue-700",
-  CUT:        "bg-green-100 text-green-700",
-  CAUTION:    "bg-red-100 text-red-700",
+  REGISTERED: "bg-orange-100 text-orange-700",
+  WAITING:    "bg-green-100 text-green-700",
+  CUT:        "bg-blue-100  text-blue-700",
+  CAUTION:    "bg-red-100   text-red-700",
 };
 
 // ─── 헬퍼 ────────────────────────────────────────────────────────────────────
@@ -440,9 +440,10 @@ export default function DrawingTable({
         <div className="flex items-center gap-2">
           {/* 상태 카운트 */}
           <div className="flex gap-1.5 text-xs">
-            <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded-md font-medium">등록 {counts.REGISTERED ?? 0}</span>
-            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-md font-medium">대기 {counts.WAITING ?? 0}</span>
-            <span className="px-2 py-1 bg-green-100 text-green-700 rounded-md font-medium">절단 {counts.CUT ?? 0}</span>
+            {(counts.CAUTION ?? 0) > 0 && <span className="px-2 py-1 bg-red-100 text-red-700 rounded-md font-medium">경고 {counts.CAUTION}</span>}
+            <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-md font-medium">미입고 {counts.REGISTERED ?? 0}</span>
+            <span className="px-2 py-1 bg-green-100 text-green-700 rounded-md font-medium">입고 {counts.WAITING ?? 0}</span>
+            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-md font-medium">절단 {counts.CUT ?? 0}</span>
           </div>
           {/* 필터 적용 중 표시 */}
           {activeFilterCount > 0 && (

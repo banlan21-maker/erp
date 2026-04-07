@@ -56,25 +56,42 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, error: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
       }
 
+      // SteelPlan 조회 (호선 매칭)
+      const steelPlans = await prisma.steelPlan.findMany({
+        where: { vesselCode: project.projectCode },
+        select: { material: true, thickness: true, width: true, length: true, status: true },
+      });
+      const matchSteelPlan = (material: string, thickness: number, width: number, length: number) =>
+        steelPlans.find(
+          (sp) =>
+            sp.material.trim().toLowerCase() === material.trim().toLowerCase() &&
+            sp.thickness === thickness && sp.width === width && sp.length === length
+        );
+
       const created = await prisma.drawingList.createMany({
         data: rows.map((r: {
           block?: string; drawingNo?: string; heatNo?: string;
           material: string; thickness: number; width: number; length: number;
           qty: number; steelWeight?: number | null; useWeight?: number | null;
-        }) => ({
-          projectId,
-          block: r.block?.trim() || null,
-          drawingNo: r.drawingNo?.trim() || null,
-          heatNo: r.heatNo?.trim() || null,
-          material: r.material.trim(),
-          thickness: Number(r.thickness),
-          width: Number(r.width),
-          length: Number(r.length),
-          qty: Math.round(Number(r.qty)),
-          steelWeight: r.steelWeight != null && r.steelWeight !== 0 ? Number(r.steelWeight) : null,
-          useWeight: r.useWeight != null && r.useWeight !== 0 ? Number(r.useWeight) : null,
-          sourceFile: null,
-        })),
+        }) => {
+          const t = Number(r.thickness), w = Number(r.width), l = Number(r.length);
+          const matched = matchSteelPlan(r.material.trim(), t, w, l);
+          let status: "REGISTERED" | "WAITING" | "CAUTION" = "CAUTION";
+          if (matched) status = matched.status === "RECEIVED" ? "WAITING" : "REGISTERED";
+          return {
+            projectId,
+            block: r.block?.trim() || null,
+            drawingNo: r.drawingNo?.trim() || null,
+            heatNo: r.heatNo?.trim() || null,
+            material: r.material.trim(),
+            thickness: t, width: w, length: l,
+            qty: Math.round(Number(r.qty)),
+            steelWeight: r.steelWeight != null && r.steelWeight !== 0 ? Number(r.steelWeight) : null,
+            useWeight: r.useWeight != null && r.useWeight !== 0 ? Number(r.useWeight) : null,
+            sourceFile: null,
+            status,
+          };
+        }),
       });
 
       return NextResponse.json({ success: true, data: { count: created.count } }, { status: 201 });
