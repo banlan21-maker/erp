@@ -487,18 +487,18 @@ export default function DrawingTable({
 
       {/* 테이블 */}
       <div className="bg-white rounded-xl border overflow-x-auto">
-        <table className="w-full text-sm min-w-[900px] table-fixed">
+        <table className="w-full text-sm min-w-[1364px] table-fixed">
           <colgroup>
-            <col style={{ width: "62px" }} />   {/* 상태 */}
-            <col style={{ width: "80px" }} />   {/* 블록 */}
+            <col style={{ width: "130px" }} />  {/* 상태 */}
+            <col style={{ width: "130px" }} />  {/* 블록 */}
             <col style={{ width: "130px" }} />  {/* 도면번호 */}
-            <col style={{ width: "70px" }} />   {/* 재질 */}
-            <col style={{ width: "72px" }} />   {/* 두께 */}
-            <col style={{ width: "76px" }} />   {/* 폭 */}
-            <col style={{ width: "80px" }} />   {/* 길이 */}
-            <col style={{ width: "88px" }} />   {/* 강재중량 */}
-            <col style={{ width: "88px" }} />   {/* 사용중량 */}
-            <col />                              {/* 실사용판번호 (나머지 공간) */}
+            <col style={{ width: "130px" }} />  {/* 재질 */}
+            <col style={{ width: "130px" }} />  {/* 두께 */}
+            <col style={{ width: "130px" }} />  {/* 폭 */}
+            <col style={{ width: "130px" }} />  {/* 길이 */}
+            <col style={{ width: "130px" }} />  {/* 강재중량 */}
+            <col style={{ width: "130px" }} />  {/* 사용중량 */}
+            <col style={{ width: "130px" }} />  {/* 실사용판번호 */}
             <col style={{ width: "64px" }} />   {/* 액션 */}
           </colgroup>
           <thead className="bg-gray-50 border-b">
