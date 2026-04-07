@@ -33,7 +33,7 @@ const menuGroups = {
     { href: "/supply/dashboard",   label: "구매/자재 대시보드", icon: LayoutDashboard },
     { href: "/supply/inventory",   label: "재고관리",           icon: Package },
     { href: "/supply/inout",       label: "입출고관리",         icon: History },
-    { href: "/supply/stats",       label: "월별 사용량",        icon: BarChart2 },
+    { href: "/supply/stats",       label: "월별 통계",          icon: BarChart2 },
   ],
   management: [
     { href: "/management/dashboard",  label: "관리 대시보드", icon: LayoutDashboard },

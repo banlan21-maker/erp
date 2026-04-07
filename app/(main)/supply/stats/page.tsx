@@ -1,20 +1,25 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BarChart3, Calendar, RefreshCw, Package } from "lucide-react";
+import { BarChart3, Calendar, RefreshCw, PackageMinus, PackageCheck } from "lucide-react";
+
+const DEPT_LABELS: Record<string, string> = { CUTTING: "절단", FACILITY: "공무" };
+const DEPT_COLORS: Record<string, string> = {
+  CUTTING: "bg-blue-100 text-blue-700",
+  FACILITY: "bg-purple-100 text-purple-700",
+};
 
 export default function SupplyStatsPage() {
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // 현재 날짜 기준
   const today = new Date();
   const [month, setMonth] = useState(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`);
+  const [tab, setTab] = useState<"outbound" | "inbound">("outbound");
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const fetchStats = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/supply/stats?month=${month}`);
+      const res = await fetch(`/api/supply/stats?month=${month}&type=${tab}`);
       const json = await res.json();
       if (json.success) setData(json.data);
     } catch (error) {
@@ -24,31 +29,49 @@ export default function SupplyStatsPage() {
     }
   };
 
-  useEffect(() => {
-    fetchStats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month]);
+  useEffect(() => { fetchStats(); }, [month, tab]);
+
+  const isOut = tab === "outbound";
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
           <BarChart3 size={24} className="text-blue-600" />
-          월별 소모품 사용량 집계
+          월별 통계
         </h2>
-        <p className="text-sm text-gray-500 mt-1">소모품 전용 통계 리포트로, 품목별 상세 소비량과 전월 대비 추이를 추적합니다.</p>
+        <p className="text-sm text-gray-500 mt-1">소모품 전용 통계 리포트, 품목별 상세 입고·출고량과 전월 대비 추이를 추적합니다.</p>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="p-5 border-b border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4 bg-gray-50/50">
-          <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2 tracking-tight">
-             <Package size={18} className="text-gray-500"/> 출고(소비)량 세부 집계
-          </h3>
+        <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4 bg-gray-50/50">
+
+          {/* 탭 */}
+          <div className="flex bg-white rounded-lg border border-gray-200 shadow-sm p-1 gap-1">
+            <button
+              onClick={() => setTab("outbound")}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-bold transition-all ${
+                isOut ? "bg-orange-100 text-orange-800" : "text-gray-500 hover:bg-gray-50"
+              }`}
+            >
+              <PackageMinus size={15} /> 출고(소비)량 세부집계
+            </button>
+            <button
+              onClick={() => setTab("inbound")}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-bold transition-all ${
+                !isOut ? "bg-emerald-100 text-emerald-800" : "text-gray-500 hover:bg-gray-50"
+              }`}
+            >
+              <PackageCheck size={15} /> 입고(매입)량 세부집계
+            </button>
+          </div>
+
+          {/* 월 선택 */}
           <div className="flex items-center gap-2 relative bg-white shadow-sm rounded-lg border border-gray-200">
             <Calendar size={14} className="absolute left-3 text-gray-400" />
-            <input 
-              type="month" 
-              value={month} 
+            <input
+              type="month"
+              value={month}
               onChange={(e) => setMonth(e.target.value)}
               className="pl-9 pr-3 py-1.5 h-9 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-transparent"
             />
@@ -59,9 +82,12 @@ export default function SupplyStatsPage() {
           <table className="w-full text-sm text-left">
             <thead className="bg-[#f8fafc] border-b border-gray-200 text-gray-600">
               <tr>
+                <th className="px-5 py-3.5 font-semibold text-xs uppercase tracking-wider">관리주체</th>
                 <th className="px-5 py-3.5 font-semibold text-xs uppercase tracking-wider">품명</th>
                 <th className="px-5 py-3.5 font-semibold text-xs uppercase tracking-wider">분류</th>
-                <th className="px-5 py-3.5 font-semibold text-xs uppercase tracking-wider text-right">선택월 출고량</th>
+                <th className="px-5 py-3.5 font-semibold text-xs uppercase tracking-wider text-right">
+                  {isOut ? "선택월 출고" : "선택월 입고"}
+                </th>
                 <th className="px-5 py-3.5 font-semibold text-xs uppercase tracking-wider text-center">단위</th>
                 <th className="px-5 py-3.5 font-semibold text-xs uppercase tracking-wider text-right">전월 대비 증감</th>
               </tr>
@@ -69,23 +95,32 @@ export default function SupplyStatsPage() {
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-32 text-center text-gray-400">
+                  <td colSpan={6} className="px-5 py-32 text-center text-gray-400">
                     <RefreshCw className="animate-spin text-blue-500 mx-auto mb-3" size={28} />
                     데이터 갱신 중...
                   </td>
                 </tr>
               ) : data.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-32 text-center text-gray-400 bg-gray-50/20">
-                    <p className="font-medium text-gray-500">선택하신 기준 월({month})에 해당하는 데이터가 존재하지 않습니다.</p>
+                  <td colSpan={6} className="px-5 py-32 text-center text-gray-400 bg-gray-50/20">
+                    <p className="font-medium text-gray-500">선택하신 기준 월({month})에 해당하는 데이터가 없습니다.</p>
                   </td>
                 </tr>
               ) : (
                 data.map((stat, i) => (
                   <tr key={i} className="hover:bg-blue-50/20 transition-colors">
-                    <td className="px-5 py-4 font-bold text-gray-900 border-l-[3px] border-transparent hover:border-blue-500 pl-4">{stat.item?.name}</td>
+                    <td className="px-5 py-4">
+                      {stat.item?.department && (
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${DEPT_COLORS[stat.item.department] || "bg-gray-100 text-gray-600"}`}>
+                          {DEPT_LABELS[stat.item.department] || stat.item.department}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-5 py-4 font-bold text-gray-900">{stat.item?.name}</td>
                     <td className="px-5 py-4 text-gray-500">{stat.item?.subCategory || "-"}</td>
-                    <td className="px-5 py-4 text-right font-black text-[15px] text-gray-800">{stat.currentQty}</td>
+                    <td className={`px-5 py-4 text-right font-black text-[15px] ${isOut ? "text-orange-700" : "text-emerald-700"}`}>
+                      {stat.currentQty}
+                    </td>
                     <td className="px-5 py-4 text-center text-gray-400 text-xs font-medium">{stat.item?.unit}</td>
                     <td className="px-5 py-4 text-right font-medium text-[13px]">
                       {stat.diff === 0 ? (
