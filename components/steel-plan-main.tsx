@@ -143,45 +143,61 @@ export default function SteelPlanMain() {
     setSelectedIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   };
 
-  /* ── 입고 처리 (행별 버튼) ── */
-  const markReceived = async (id: string) => {
-    await fetch(`/api/steel-plan/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "RECEIVED", receivedAt: new Date().toISOString() }),
-    });
-    loadPlan();
+  /* ── rows 로컬 업데이트 헬퍼 ── */
+  const updateRowsLocally = (ids: string[], patch: Partial<SteelPlanRow>) => {
+    setRows((prev) => prev.map((r) => ids.includes(r.id) ? { ...r, ...patch } : r));
   };
 
-  /* ── 입고 되돌리기 ── */
+  /* ── 입고 처리 (행별 버튼) — Optimistic Update ── */
+  const markReceived = async (id: string) => {
+    const now = new Date().toISOString();
+    // 즉시 로컬 반영 (깜빡임 없음)
+    updateRowsLocally([id], { status: "RECEIVED", receivedAt: now });
+    // 백그라운드 API
+    const res = await fetch(`/api/steel-plan/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "RECEIVED", receivedAt: now }),
+    });
+    // 실패 시에만 서버 데이터로 복구
+    if (!res.ok) loadPlan();
+  };
+
+  /* ── 입고 되돌리기 — Optimistic Update ── */
   const revertReceived = async (id: string) => {
     if (!confirm("입고 처리를 되돌리시겠습니까? 입고일이 초기화됩니다.")) return;
-    await fetch(`/api/steel-plan/${id}`, {
+    // 즉시 로컬 반영
+    updateRowsLocally([id], { status: "REGISTERED", receivedAt: null });
+    const res = await fetch(`/api/steel-plan/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "REGISTERED", receivedAt: null }),
     });
-    loadPlan();
+    if (!res.ok) loadPlan();
   };
 
-  /* ── 다중 선택 입고 처리 ── */
+  /* ── 다중 선택 입고 처리 — Optimistic Update ── */
   const markSelectedReceived = async () => {
     const targets = Array.from(selectedIds).filter(
       (id) => rows.find((r) => r.id === id)?.status === "REGISTERED"
     );
     if (targets.length === 0) { alert("입고 처리할 수 있는 항목(등록 상태)이 없습니다."); return; }
     if (!confirm(`${targets.length}건을 입고완료 처리하시겠습니까?`)) return;
-    await Promise.all(
+    const now = new Date().toISOString();
+    // 즉시 로컬 반영
+    updateRowsLocally(targets, { status: "RECEIVED", receivedAt: now });
+    setSelectedIds(new Set());
+    // 백그라운드 API
+    const results = await Promise.all(
       targets.map((id) =>
         fetch(`/api/steel-plan/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "RECEIVED", receivedAt: new Date().toISOString() }),
+          body: JSON.stringify({ status: "RECEIVED", receivedAt: now }),
         })
       )
     );
-    setSelectedIds(new Set());
-    loadPlan();
+    if (results.some((r) => !r.ok)) loadPlan();
   };
 
   /* ── 호선 단위 삭제 (SteelPlan + SteelPlanHeat 동시) ── */
