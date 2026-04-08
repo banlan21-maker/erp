@@ -101,7 +101,7 @@ export default async function DashboardPage() {
                 {recentProjects.map((p) => (
                   <Link
                     key={p.id}
-                    href={`/cutpart/projects/${p.id}`}
+                    href={`/cutpart/projects?tab=list&projectId=${p.id}`}
                     className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 transition-colors"
                   >
                     <div className="min-w-0 flex-1">
@@ -133,7 +133,7 @@ export default async function DashboardPage() {
                 {recentDrawings.map((d) => (
                   <Link
                     key={d.id}
-                    href={`/cutpart/projects/${d.project.id}`}
+                    href={`/cutpart/projects?tab=list&projectId=${d.project.id}`}
                     className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 transition-colors"
                   >
                     <span className="text-xs px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded font-mono">
