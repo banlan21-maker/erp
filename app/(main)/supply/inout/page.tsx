@@ -550,6 +550,7 @@ export default function InOutPage() {
             <thead className={`border-b text-gray-600 text-xs uppercase ${historyTab === "inbound" ? "bg-emerald-50/20" : "bg-orange-50/20"}`}>
               <tr>
                 <th className="px-4 py-2.5">{historyTab === "inbound" ? "입고일시" : "출고일시"}</th>
+                {historyTab === "inbound" && <th className="px-4 py-2.5">거래처</th>}
                 <th className="px-4 py-2.5">관리주체</th>
                 <th className="px-4 py-2.5">품명</th>
                 <th className="px-4 py-2.5">세부분류</th>
@@ -562,13 +563,16 @@ export default function InOutPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loadingHistory ? (
-                <tr><td colSpan={9} className="py-12 text-center text-gray-400"><RefreshCw className="animate-spin inline-block mr-2" size={16} />갱신 중...</td></tr>
+                <tr><td colSpan={historyTab === "inbound" ? 10 : 9} className="py-12 text-center text-gray-400"><RefreshCw className="animate-spin inline-block mr-2" size={16} />갱신 중...</td></tr>
               ) : historyData.length === 0 ? (
-                <tr><td colSpan={9} className="py-12 text-center text-gray-400">이번 달 등록된 내역이 없습니다.</td></tr>
+                <tr><td colSpan={historyTab === "inbound" ? 10 : 9} className="py-12 text-center text-gray-400">이번 달 등록된 내역이 없습니다.</td></tr>
               ) : (
                 historyData.map((row) => (
                   <tr key={row.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-xs text-gray-500 font-mono">{formatDate(historyTab === "inbound" ? row.receivedAt : row.usedAt)}</td>
+                    {historyTab === "inbound" && (
+                      <td className="px-4 py-3 text-xs text-gray-600">{row.vendor?.name || <span className="text-gray-300">-</span>}</td>
+                    )}
                     <td className="px-4 py-3">
                       {row.item?.department && (
                         <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${DEPT_COLORS[row.item.department] || "bg-gray-100 text-gray-600"}`}>
