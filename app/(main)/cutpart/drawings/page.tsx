@@ -38,26 +38,23 @@ export default async function DrawingsPage({
       drawings = proj.drawingLists;
       activeProject = { id: proj.id, projectCode: proj.projectCode, projectName: proj.projectName, storageLocation: proj.storageLocation ?? null };
 
-      // REGISTERED 행의 스펙+블록별 "남은 입고 가능 수량" 계산
-      // = 이 호선의 해당 사양 중 (미확정 + 이 블록이 확정한 것) 합계
-      const uniqueSpecBlocks = [...new Map(
-        drawings
-          .filter(d => d.status === "REGISTERED")
-          .map(d => {
-            const block = d.block ?? "UNKNOWN";
-            return [`${d.material}|${d.thickness}|${d.width}|${d.length}|${block}`,
-              { material: d.material, thickness: d.thickness, width: d.width, length: d.length, block }];
-          })
+      // 스펙별 미확정(reservedFor=null) 입고 수량 계산
+      // = 아직 어느 블록도 선점하지 않은 RECEIVED 강재 수
+      const uniqueSpecs = [...new Map(
+        drawings.map(d => [
+          `${d.material}|${d.thickness}|${d.width}|${d.length}`,
+          { material: d.material, thickness: d.thickness, width: d.width, length: d.length },
+        ])
       ).values()];
 
-      for (const sb of uniqueSpecBlocks) {
-        const key = `${sb.material}|${sb.thickness}|${sb.width}|${sb.length}|${sb.block}`;
+      for (const s of uniqueSpecs) {
+        const key = `${s.material}|${s.thickness}|${s.width}|${s.length}`;
         specAvailability[key] = await prisma.steelPlan.count({
           where: {
             vesselCode: proj.projectCode,
-            material: sb.material, thickness: sb.thickness, width: sb.width, length: sb.length,
+            material: s.material, thickness: s.thickness, width: s.width, length: s.length,
             status: "RECEIVED",
-            OR: [{ reservedFor: null }, { reservedFor: sb.block }],
+            reservedFor: null,
           },
         });
       }

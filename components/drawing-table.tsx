@@ -575,7 +575,7 @@ export default function DrawingTable({
                 const isEditing = editingId === d.id;
                 const isDeleting = deletingId === d.id;
                 const status = (d.status ?? "REGISTERED") as DrawingStatusType;
-                const specKey = `${d.material}|${d.thickness}|${d.width}|${d.length}|${d.block ?? "UNKNOWN"}`;
+                const specKey = `${d.material}|${d.thickness}|${d.width}|${d.length}`;
                 const available = specAvailability[specKey] ?? 0;
 
                 // 상태 셀: REGISTERED는 남은 입고 수량 표시, WAITING은 확정
