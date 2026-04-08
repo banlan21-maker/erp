@@ -245,11 +245,9 @@ function FilterHeader({
 export default function DrawingTable({
   drawings,
   projectId,
-  specAvailability = {},
 }: {
   drawings: DrawingList[];
   projectId: string;
-  specAvailability?: Record<string, number>;
 }) {
   const router = useRouter();
 
@@ -262,6 +260,19 @@ export default function DrawingTable({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [clearConfirm, setClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
+
+  // 스펙별 미선점 입고 수량 (클라이언트 직접 fetch)
+  const [specAvailability, setSpecAvailability] = useState<Record<string, number>>({});
+
+  const loadAvailability = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/drawings/availability?projectId=${encodeURIComponent(projectId)}`);
+      const data = await res.json();
+      if (data.success) setSpecAvailability(data.data);
+    } catch { /* silent */ }
+  }, [projectId]);
+
+  useEffect(() => { loadAvailability(); }, [loadAvailability]);
 
   // 스케줄 확정 — status === "WAITING" 인 행이 곧 확정된 행
   const [bulkReserving, setBulkReserving] = useState(false);
@@ -277,6 +288,7 @@ export default function DrawingTable({
       });
       const data = await res.json();
       if (!data.success) { alert(data.error ?? "일괄 확정 실패"); return; }
+      await loadAvailability();
       window.location.reload();
     } catch { alert("서버 오류"); } finally { setBulkReserving(false); }
   };
@@ -291,6 +303,7 @@ export default function DrawingTable({
       });
       const data = await res.json();
       if (!data.success) { alert(data.error ?? "일괄 확정 취소 실패"); return; }
+      await loadAvailability();
       window.location.reload();
     } catch { alert("서버 오류"); } finally { setBulkUnreserving(false); }
   };
@@ -581,9 +594,11 @@ export default function DrawingTable({
                 // 상태 셀: REGISTERED는 남은 입고 수량 표시, WAITING은 확정
                 const statusCell = (() => {
                   if (status === "REGISTERED") {
-                    return available > 0
-                      ? <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-700">{available}장 입고</span>
-                      : <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-orange-100 text-orange-700">미입고</span>;
+                    return (
+                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${available > 0 ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>
+                        {available}장 입고
+                      </span>
+                    );
                   }
                   return <StatusBadge status={status} />;
                 })();

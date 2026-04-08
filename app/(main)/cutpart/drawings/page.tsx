@@ -27,7 +27,6 @@ export default async function DrawingsPage({
   // 강재리스트 탭에서 특정 프로젝트 선택 시 해당 도면 목록 로드
   let drawings: Awaited<ReturnType<typeof prisma.drawingList.findMany>> = [];
   let activeProject: { id: string; projectCode: string; projectName: string; storageLocation: string | null } | null = null;
-  let specAvailability: Record<string, number> = {};
 
   if (tab === "list" && projectId) {
     const proj = await prisma.project.findUnique({
@@ -37,27 +36,6 @@ export default async function DrawingsPage({
     if (proj) {
       drawings = proj.drawingLists;
       activeProject = { id: proj.id, projectCode: proj.projectCode, projectName: proj.projectName, storageLocation: proj.storageLocation ?? null };
-
-      // 스펙별 미확정(reservedFor=null) 입고 수량 계산
-      // = 아직 어느 블록도 선점하지 않은 RECEIVED 강재 수
-      const uniqueSpecs = [...new Map(
-        drawings.map(d => [
-          `${d.material}|${d.thickness}|${d.width}|${d.length}`,
-          { material: d.material, thickness: d.thickness, width: d.width, length: d.length },
-        ])
-      ).values()];
-
-      for (const s of uniqueSpecs) {
-        const key = `${s.material}|${s.thickness}|${s.width}|${s.length}`;
-        specAvailability[key] = await prisma.steelPlan.count({
-          where: {
-            vesselCode: proj.projectCode,
-            material: s.material, thickness: s.thickness, width: s.width, length: s.length,
-            status: "RECEIVED",
-            reservedFor: null,
-          },
-        });
-      }
     }
   }
 
@@ -82,7 +60,6 @@ export default async function DrawingsPage({
       recentUploads={recentUploads}
       drawings={drawings}
       activeProject={activeProject}
-      specAvailability={specAvailability}
     />
   );
 }
