@@ -39,6 +39,7 @@ export default function SupplyDashboardPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  const [fixtureOpen, toggleFixture] = useCollapse("fixture", true);
   const [reorderOpen, toggleReorder] = useCollapse("reorder", true);
   const [inboundOpen, toggleInbound] = useCollapse("inbound", true);
   const [outboundOpen, toggleOutbound] = useCollapse("outbound", true);
@@ -75,7 +76,13 @@ export default function SupplyDashboardPage() {
     );
   }
 
-  const { needReorderCount, consumableCount, fixtureCount, monthlyOutboundCount, reorderItems, recentInbounds, recentOutbounds } = data;
+  const { needReorderCount, consumableCount, fixtureCount, monthlyOutboundCount, reorderItems, fixtureList, recentInbounds, recentOutbounds } = data;
+
+  const DEPT_LABELS: Record<string, string> = { CUTTING: "절단", FACILITY: "공무" };
+  const DEPT_COLORS: Record<string, string> = {
+    CUTTING: "bg-blue-100 text-blue-700",
+    FACILITY: "bg-purple-100 text-purple-700",
+  };
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -124,6 +131,65 @@ export default function SupplyDashboardPage() {
           </div>
           <p className="text-3xl font-bold text-gray-900">{monthlyOutboundCount}건</p>
         </div>
+      </div>
+
+      {/* 비품 전체 목록 */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <button
+          type="button"
+          onClick={toggleFixture}
+          className="w-full p-4 border-b border-gray-100 bg-blue-50/20 flex items-center justify-between gap-3 hover:bg-blue-50/40 transition-colors"
+        >
+          <h3 className="font-bold text-gray-900 flex items-center gap-2">
+            <ClipboardList size={18} className="text-blue-500" />
+            비품 전체 목록
+            <span className="text-xs bg-blue-100 text-blue-700 py-0.5 px-2.5 rounded-md font-semibold border border-blue-200">
+              {fixtureCount}품목
+            </span>
+          </h3>
+          {fixtureOpen ? <ChevronUp size={16} className="text-gray-400 shrink-0" /> : <ChevronDown size={16} className="text-gray-400 shrink-0" />}
+        </button>
+
+        {fixtureOpen && (
+          <div className="overflow-x-auto min-h-[80px]">
+            <table className="w-full text-sm text-left whitespace-nowrap">
+              <thead className="bg-gray-50 border-b border-gray-200 text-gray-600">
+                <tr>
+                  <th className="px-5 py-3 font-semibold text-xs text-gray-500">관리주체</th>
+                  <th className="px-5 py-3 font-semibold text-xs text-gray-500">품명</th>
+                  <th className="px-5 py-3 font-semibold text-xs text-gray-500">분류</th>
+                  <th className="px-5 py-3 font-semibold text-xs text-gray-500 text-right">보유수량</th>
+                  <th className="px-5 py-3 font-semibold text-xs text-gray-500 text-center">단위</th>
+                  <th className="px-5 py-3 font-semibold text-xs text-gray-500">보관위치</th>
+                  <th className="px-5 py-3 font-semibold text-xs text-gray-500">비고</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {fixtureList.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-5 py-10 text-center text-gray-400">등록된 비품이 없습니다.</td>
+                  </tr>
+                ) : (
+                  fixtureList.map((item: any) => (
+                    <tr key={item.id} className="hover:bg-blue-50/20 transition-colors">
+                      <td className="px-5 py-3.5">
+                        {item.department
+                          ? <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${DEPT_COLORS[item.department] || "bg-gray-100 text-gray-600"}`}>{DEPT_LABELS[item.department] || item.department}</span>
+                          : <span className="text-gray-300 text-xs">-</span>}
+                      </td>
+                      <td className="px-5 py-3.5 font-bold text-gray-900">{item.name}</td>
+                      <td className="px-5 py-3.5 text-gray-500 text-xs">{item.subCategory || "-"}</td>
+                      <td className="px-5 py-3.5 text-right font-bold text-gray-800">{item.stockQty}</td>
+                      <td className="px-5 py-3.5 text-center text-gray-500 font-medium">{item.unit}</td>
+                      <td className="px-5 py-3.5 text-gray-500 text-xs">{item.location || "-"}</td>
+                      <td className="px-5 py-3.5 text-gray-400 text-xs">{item.memo || "-"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* 발주 필요 소모품 목록 */}

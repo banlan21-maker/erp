@@ -13,6 +13,7 @@ export async function GET() {
       fixtureCount,
       monthlyOutboundCount,
       reorderItemsQuery,
+      fixtureList,
       recentInbounds,
       recentOutbounds
     ] = await Promise.all([
@@ -24,6 +25,11 @@ export async function GET() {
       // 발주점(reorderPoint)이 존재하는 소모품만 1차로 로드
       prisma.supplyItem.findMany({
         where: { category: "CONSUMABLE", reorderPoint: { not: null } }
+      }),
+      // 비품 전체 목록 (세부분류→품명 순)
+      prisma.supplyItem.findMany({
+        where: { category: "FIXTURE" },
+        orderBy: [{ subCategory: "asc" }, { name: "asc" }],
       }),
       prisma.supplyInbound.findMany({
         take: 5,
@@ -50,6 +56,7 @@ export async function GET() {
         fixtureCount,
         monthlyOutboundCount,
         reorderItems: filteredReorderItems,
+        fixtureList,
         recentInbounds,
         recentOutbounds
       }
