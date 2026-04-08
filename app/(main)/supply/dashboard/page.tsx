@@ -79,7 +79,7 @@ export default function SupplyDashboardPage() {
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   };
 
   return (
@@ -206,7 +206,8 @@ export default function SupplyDashboardPage() {
               <table className="w-full text-sm text-left whitespace-nowrap">
                 <thead className="bg-gray-50 text-gray-500 border-b border-gray-100 text-xs font-semibold">
                   <tr>
-                    <th className="px-4 py-3">입고일시</th>
+                    <th className="px-4 py-3">입고일</th>
+                    <th className="px-4 py-3">세부분류</th>
                     <th className="px-4 py-3">품명</th>
                     <th className="px-4 py-3 text-right">수량</th>
                     <th className="px-4 py-3">거래처</th>
@@ -214,11 +215,17 @@ export default function SupplyDashboardPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {recentInbounds.length === 0 ? (
-                    <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400">최근 입고 내역이 없습니다.</td></tr>
+                    <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">최근 입고 내역이 없습니다.</td></tr>
                   ) : (
-                    recentInbounds.map((inbound: any) => (
+                    [...recentInbounds].sort((a: any, b: any) => {
+                      const sa = a.item?.subCategory || "";
+                      const sb = b.item?.subCategory || "";
+                      if (sa !== sb) return sa.localeCompare(sb);
+                      return (a.item?.name || "").localeCompare(b.item?.name || "");
+                    }).map((inbound: any) => (
                       <tr key={inbound.id} className="hover:bg-blue-50/30 transition-colors">
                         <td className="px-4 py-3 text-gray-500 font-mono text-xs">{formatDate(inbound.receivedAt)}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500">{inbound.item?.subCategory || "-"}</td>
                         <td className="px-4 py-3 font-semibold text-gray-800">{inbound.item?.name || "-"}</td>
                         <td className="px-4 py-3 text-right font-bold text-blue-600">+{inbound.qty} <span className="text-xs font-normal text-gray-400">{inbound.item?.unit}</span></td>
                         <td className="px-4 py-3 text-gray-500 text-xs">{inbound.vendor?.name || "-"}</td>
@@ -250,7 +257,8 @@ export default function SupplyDashboardPage() {
               <table className="w-full text-sm text-left whitespace-nowrap">
                 <thead className="bg-gray-50 text-gray-500 border-b border-gray-100 text-xs font-semibold">
                   <tr>
-                    <th className="px-4 py-3">출고일시</th>
+                    <th className="px-4 py-3">출고일</th>
+                    <th className="px-4 py-3">세부분류</th>
                     <th className="px-4 py-3">품명</th>
                     <th className="px-4 py-3 text-right">수량</th>
                     <th className="px-4 py-3">사용자</th>
@@ -258,11 +266,17 @@ export default function SupplyDashboardPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {recentOutbounds.length === 0 ? (
-                    <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400">최근 출고 내역이 없습니다.</td></tr>
+                    <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">최근 출고 내역이 없습니다.</td></tr>
                   ) : (
-                    recentOutbounds.map((outbound: any) => (
+                    [...recentOutbounds].sort((a: any, b: any) => {
+                      const sa = a.item?.subCategory || "";
+                      const sb = b.item?.subCategory || "";
+                      if (sa !== sb) return sa.localeCompare(sb);
+                      return (a.item?.name || "").localeCompare(b.item?.name || "");
+                    }).map((outbound: any) => (
                       <tr key={outbound.id} className="hover:bg-orange-50/30 transition-colors">
                         <td className="px-4 py-3 text-gray-500 font-mono text-xs">{formatDate(outbound.usedAt)}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500">{outbound.item?.subCategory || "-"}</td>
                         <td className="px-4 py-3 font-semibold text-gray-800">{outbound.item?.name || "-"}</td>
                         <td className="px-4 py-3 text-right font-bold text-orange-600">-{outbound.qty} <span className="text-xs font-normal text-gray-400">{outbound.item?.unit}</span></td>
                         <td className="px-4 py-3 text-gray-500 text-xs">{outbound.usedBy}</td>
