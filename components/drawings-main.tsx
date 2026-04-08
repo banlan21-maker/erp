@@ -61,7 +61,7 @@ export default function DrawingsMain({
   recentUploads,
   drawings,
   activeProject,
-  confirmedDrawingIds = [],
+  specAvailability = {},
   baseUrl = "/cutpart/drawings",
   hideHeader = false,
   hideTabs = false,
@@ -72,7 +72,7 @@ export default function DrawingsMain({
   recentUploads: RecentUpload[];
   drawings: DrawingList[];
   activeProject: { id: string; projectCode: string; projectName: string; storageLocation?: string | null } | null;
-  confirmedDrawingIds?: string[];
+  specAvailability?: Record<string, number>;
   baseUrl?: string;
   hideHeader?: boolean;
   hideTabs?: boolean;
@@ -133,7 +133,7 @@ export default function DrawingsMain({
           drawings={drawings}
           activeProject={activeProject}
           projectId={projectId}
-          confirmedDrawingIds={confirmedDrawingIds}
+          specAvailability={specAvailability}
           router={router}
           baseUrl={baseUrl}
         />
@@ -405,7 +405,7 @@ function ListTab({
   drawings,
   activeProject,
   projectId,
-  confirmedDrawingIds = [],
+  specAvailability = {},
   router,
   baseUrl = "/cutpart/drawings",
 }: {
@@ -413,7 +413,7 @@ function ListTab({
   drawings: DrawingList[];
   activeProject: { id: string; projectCode: string; projectName: string; storageLocation?: string | null } | null;
   projectId: string | null;
-  confirmedDrawingIds?: string[];
+  specAvailability?: Record<string, number>;
   router: ReturnType<typeof useRouter>;
   baseUrl?: string;
 }) {
@@ -453,7 +453,7 @@ function ListTab({
           </span>
         </div>
 
-        <DrawingTable drawings={drawings} projectId={activeProject.id} confirmedDrawingIds={confirmedDrawingIds} />
+        <DrawingTable drawings={drawings} projectId={activeProject.id} specAvailability={specAvailability} />
       </div>
     );
   }

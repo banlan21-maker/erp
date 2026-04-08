@@ -22,11 +22,11 @@ const emptyAddForm: EditForm = {
 type DrawingStatusType = "REGISTERED" | "WAITING" | "CUT" | "CAUTION";
 
 const STATUS_LABEL: Record<DrawingStatusType, string> = {
-  REGISTERED: "미입고", WAITING: "입고", CUT: "절단", CAUTION: "경고",
+  REGISTERED: "미입고", WAITING: "확정", CUT: "절단", CAUTION: "경고",
 };
 const STATUS_STYLE: Record<DrawingStatusType, string> = {
   REGISTERED: "bg-orange-100 text-orange-700",
-  WAITING:    "bg-green-100 text-green-700",
+  WAITING:    "bg-purple-100 text-purple-700",
   CUT:        "bg-blue-100  text-blue-700",
   CAUTION:    "bg-red-100   text-red-700",
 };
@@ -245,11 +245,11 @@ function FilterHeader({
 export default function DrawingTable({
   drawings,
   projectId,
-  confirmedDrawingIds = [],
+  specAvailability = {},
 }: {
   drawings: DrawingList[];
   projectId: string;
-  confirmedDrawingIds?: string[];
+  specAvailability?: Record<string, number>;
 }) {
   const router = useRouter();
 
@@ -475,7 +475,7 @@ export default function DrawingTable({
           <div className="flex gap-1.5 text-xs">
             {(counts.CAUTION ?? 0) > 0 && <span className="px-2 py-1 bg-red-100 text-red-700 rounded-md font-medium">경고 {counts.CAUTION}</span>}
             <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-md font-medium">미입고 {counts.REGISTERED ?? 0}</span>
-            <span className="px-2 py-1 bg-green-100 text-green-700 rounded-md font-medium">입고 {counts.WAITING ?? 0}</span>
+            <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-md font-medium">확정 {counts.WAITING ?? 0}</span>
             <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-md font-medium">절단 {counts.CUT ?? 0}</span>
           </div>
           {/* 필터 적용 중 표시 */}
@@ -543,7 +543,6 @@ export default function DrawingTable({
             <col style={{ width: "130px" }} />  {/* 강재중량 */}
             <col style={{ width: "130px" }} />  {/* 사용중량 */}
             <col style={{ width: "130px" }} />  {/* 실사용판번호 */}
-            <col style={{ width: "90px" }} />   {/* 확정 */}
             <col style={{ width: "64px" }} />   {/* 액션 */}
           </colgroup>
           <thead className="bg-gray-50 border-b">
@@ -558,14 +557,13 @@ export default function DrawingTable({
               <FilterHeader col="steelWeight" label="강재중량(kg)" align="right"  {...filterHeaderProps} />
               <FilterHeader col="useWeight"   label="사용중량(kg)" align="right"  {...filterHeaderProps} />
               <FilterHeader col="heatNo"      label="실사용판번호" align="center" {...filterHeaderProps} />
-              <th className="px-2 py-2.5 text-xs font-semibold text-gray-500 text-center whitespace-nowrap">확정</th>
               <th className="px-2 py-2.5 w-16"></th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {filteredDrawings.length === 0 ? (
               <tr>
-                <td colSpan={12} className="text-center py-8 text-gray-400 text-xs">
+                <td colSpan={11} className="text-center py-8 text-gray-400 text-xs">
                   필터 조건에 맞는 데이터가 없습니다.
                   <button onClick={() => setFilters({})} className="ml-2 text-blue-500 hover:underline">
                     필터 초기화
@@ -577,13 +575,23 @@ export default function DrawingTable({
                 const isEditing = editingId === d.id;
                 const isDeleting = deletingId === d.id;
                 const status = (d.status ?? "REGISTERED") as DrawingStatusType;
+                const specKey = `${d.material}|${d.thickness}|${d.width}|${d.length}|${d.block ?? "UNKNOWN"}`;
+                const available = specAvailability[specKey] ?? 0;
 
-                const isConfirmed = status === "WAITING";
+                // 상태 셀: REGISTERED는 남은 입고 수량 표시, WAITING은 확정
+                const statusCell = (() => {
+                  if (status === "REGISTERED") {
+                    return available > 0
+                      ? <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-700">{available}장 입고</span>
+                      : <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-orange-100 text-orange-700">미입고</span>;
+                  }
+                  return <StatusBadge status={status} />;
+                })();
 
                 if (isEditing && editForm) {
                   return (
                     <tr key={d.id} className="bg-blue-50">
-                      <td className="px-2 py-1.5 text-center"><StatusBadge status={status} /></td>
+                      <td className="px-2 py-1.5 text-center">{statusCell}</td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-full"   value={editForm.block}       onChange={e => f("block",       e.target.value)} /></td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-full"   value={editForm.drawingNo}   onChange={e => f("drawingNo",   e.target.value)} /></td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-full"   value={editForm.material}    onChange={e => f("material",    e.target.value)} /></td>
@@ -593,7 +601,6 @@ export default function DrawingTable({
                       <td className="px-2 py-1.5 text-right text-xs text-gray-500">{calcSteelWeight(editForm.thickness, editForm.width, editForm.length).toLocaleString()}</td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-full text-right" value={editForm.useWeight}  onChange={e => f("useWeight",  e.target.value)} /></td>
                       <td className="px-2 py-1.5 text-center text-xs text-blue-600 font-mono">{d.heatNo ?? <span className="text-gray-300">-</span>}</td>
-                      <td className="px-2 py-1.5"></td>
                       <td className="px-2 py-1.5">
                         <div className="flex gap-1">
                           <button onClick={() => saveEdit(d.id)} disabled={saving} className="p-1 text-green-600 hover:bg-green-100 rounded" title="저장"><Check size={14} /></button>
@@ -606,7 +613,7 @@ export default function DrawingTable({
 
                 return (
                   <tr key={d.id} className={`hover:bg-gray-50 transition-colors ${isDeleting ? "opacity-40" : ""} ${status === "CUT" ? "bg-green-50/30" : ""}`}>
-                    <td className="px-2 py-2 text-center"><StatusBadge status={status} /></td>
+                    <td className="px-2 py-2 text-center">{statusCell}</td>
                     <td className="px-2 py-2 text-gray-700 font-medium text-xs truncate">{d.block ?? "-"}</td>
                     <td className="px-2 py-2 text-gray-700 font-mono text-xs truncate">{d.drawingNo ?? "-"}</td>
                     <td className="px-2 py-2">
@@ -618,13 +625,6 @@ export default function DrawingTable({
                     <td className="px-2 py-2 text-right text-xs text-gray-700">{calcSteelWeight(d.thickness, d.width, d.length).toLocaleString()}</td>
                     <td className="px-2 py-2 text-right text-xs text-gray-500">{d.useWeight != null ? d.useWeight.toLocaleString() : "-"}</td>
                     <td className="px-2 py-2 text-center text-xs font-mono text-blue-600 truncate">{d.heatNo ?? <span className="text-gray-300">-</span>}</td>
-                    <td className="px-2 py-2 text-center">
-                      {status === "WAITING" && isConfirmed && (
-                        <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-purple-100 text-purple-700">
-                          확정
-                        </span>
-                      )}
-                    </td>
                     <td className="px-2 py-2">
                       <div className="flex gap-1 justify-end items-center">
                         <button

@@ -27,7 +27,7 @@ export default async function DrawingsPage({
   // 강재리스트 탭에서 특정 프로젝트 선택 시 해당 도면 목록 로드
   let drawings: Awaited<ReturnType<typeof prisma.drawingList.findMany>> = [];
   let activeProject: { id: string; projectCode: string; projectName: string; storageLocation: string | null } | null = null;
-  let confirmedDrawingIds: string[] = [];
+  let specAvailability: Record<string, number> = {};
 
   if (tab === "list" && projectId) {
     const proj = await prisma.project.findUnique({
@@ -38,25 +38,28 @@ export default async function DrawingsPage({
       drawings = proj.drawingLists;
       activeProject = { id: proj.id, projectCode: proj.projectCode, projectName: proj.projectName, storageLocation: proj.storageLocation ?? null };
 
-      // WAITING 행 중 확정된 것 계산
-      const waitingRows = drawings.filter(d => d.status === "WAITING");
-      // 규격+블록별 그룹화
-      const groups = new Map<string, string[]>();
-      for (const row of waitingRows) {
-        const key = `${row.material}|${row.thickness}|${row.width}|${row.length}|${row.block ?? "UNKNOWN"}`;
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key)!.push(row.id);
-      }
-      for (const [key, ids] of groups) {
-        const parts = key.split("|");
-        const [material, , , , block] = parts;
-        const thickness = Number(parts[1]);
-        const width = Number(parts[2]);
-        const length = Number(parts[3]);
-        const reservedCount = await prisma.steelPlan.count({
-          where: { vesselCode: proj.projectCode, material, thickness, width, length, status: "RECEIVED", reservedFor: block },
+      // REGISTERED 행의 스펙+블록별 "남은 입고 가능 수량" 계산
+      // = 이 호선의 해당 사양 중 (미확정 + 이 블록이 확정한 것) 합계
+      const uniqueSpecBlocks = [...new Map(
+        drawings
+          .filter(d => d.status === "REGISTERED")
+          .map(d => {
+            const block = d.block ?? "UNKNOWN";
+            return [`${d.material}|${d.thickness}|${d.width}|${d.length}|${block}`,
+              { material: d.material, thickness: d.thickness, width: d.width, length: d.length, block }];
+          })
+      ).values()];
+
+      for (const sb of uniqueSpecBlocks) {
+        const key = `${sb.material}|${sb.thickness}|${sb.width}|${sb.length}|${sb.block}`;
+        specAvailability[key] = await prisma.steelPlan.count({
+          where: {
+            vesselCode: proj.projectCode,
+            material: sb.material, thickness: sb.thickness, width: sb.width, length: sb.length,
+            status: "RECEIVED",
+            OR: [{ reservedFor: null }, { reservedFor: sb.block }],
+          },
         });
-        confirmedDrawingIds.push(...ids.slice(0, reservedCount));
       }
     }
   }
@@ -82,7 +85,7 @@ export default async function DrawingsPage({
       recentUploads={recentUploads}
       drawings={drawings}
       activeProject={activeProject}
-      confirmedDrawingIds={confirmedDrawingIds}
+      specAvailability={specAvailability}
     />
   );
 }
