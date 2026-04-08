@@ -173,8 +173,8 @@ export default function SteelPlanMain() {
   /* ── 입고 되돌리기 — Optimistic Update ── */
   const revertReceived = async (id: string) => {
     if (!confirm("입고 처리를 되돌리시겠습니까? 입고일이 초기화됩니다.")) return;
-    // 즉시 로컬 반영
-    updateRowsLocally([id], { status: "REGISTERED", receivedAt: null });
+    // 즉시 로컬 반영 (reservedFor도 초기화)
+    updateRowsLocally([id], { status: "REGISTERED", receivedAt: null, reservedFor: null });
     const res = await fetch(`/api/steel-plan/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -592,7 +592,7 @@ export default function SteelPlanMain() {
                             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${st.cls}`}>{st.label}</span>
                           </td>
                           <td className="px-3 py-2 text-center">
-                            {row.reservedFor ? (
+                            {row.status === "RECEIVED" && row.reservedFor ? (
                               <span className="px-2 py-0.5 rounded text-xs font-semibold bg-purple-100 text-purple-700">
                                 {row.reservedFor} 확정
                               </span>
