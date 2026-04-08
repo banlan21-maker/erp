@@ -283,12 +283,7 @@ export default function SupplyDashboardPage() {
                   {recentInbounds.length === 0 ? (
                     <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">최근 입고 내역이 없습니다.</td></tr>
                   ) : (
-                    [...recentInbounds].sort((a: any, b: any) => {
-                      const sa = a.item?.subCategory || "";
-                      const sb = b.item?.subCategory || "";
-                      if (sa !== sb) return sa.localeCompare(sb);
-                      return (a.item?.name || "").localeCompare(b.item?.name || "");
-                    }).map((inbound: any) => (
+                    recentInbounds.map((inbound: any) => (
                       <tr key={inbound.id} className="hover:bg-blue-50/30 transition-colors">
                         <td className="px-4 py-3 text-gray-500 font-mono text-xs">{formatDate(inbound.receivedAt)}</td>
                         <td className="px-4 py-3 text-xs text-gray-500">{inbound.item?.subCategory || "-"}</td>
@@ -334,12 +329,7 @@ export default function SupplyDashboardPage() {
                   {recentOutbounds.length === 0 ? (
                     <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">최근 출고 내역이 없습니다.</td></tr>
                   ) : (
-                    [...recentOutbounds].sort((a: any, b: any) => {
-                      const sa = a.item?.subCategory || "";
-                      const sb = b.item?.subCategory || "";
-                      if (sa !== sb) return sa.localeCompare(sb);
-                      return (a.item?.name || "").localeCompare(b.item?.name || "");
-                    }).map((outbound: any) => (
+                    recentOutbounds.map((outbound: any) => (
                       <tr key={outbound.id} className="hover:bg-orange-50/30 transition-colors">
                         <td className="px-4 py-3 text-gray-500 font-mono text-xs">{formatDate(outbound.usedAt)}</td>
                         <td className="px-4 py-3 text-xs text-gray-500">{outbound.item?.subCategory || "-"}</td>
