@@ -210,7 +210,6 @@ export default function SteelPlanMain() {
     const wt  = (t: number, w: number, l: number) =>
       Math.round(t * w * l * 7.85 / 1_000_000 * 100) / 100;
 
-    const cf = colFilters;
     const filterDesc = [
       cf.vesselCode?.length       ? `호선: ${cf.vesselCode.join(", ")}`       : "",
       cf.material?.length         ? `재질: ${cf.material.join(", ")}`         : "",
