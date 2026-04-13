@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import * as XLSX from "xlsx";
 import {
   Upload, Plus, Trash2, RefreshCw, Download, Search, X,
-  CheckSquare, Square, ClipboardList, PackageOpen, Hash, PackageCheck,
+  CheckSquare, Square, ClipboardList, PackageOpen, Hash, PackageCheck, Printer,
 } from "lucide-react";
 
 /* ── 타입 ─────────────────────────────────────────────────────────────────── */
@@ -168,6 +168,102 @@ export default function SteelPlanMain() {
 
   useEffect(() => { loadPlan(); }, [loadPlan]);
   useEffect(() => { if (tab === "heatno") loadHeat(); }, [tab, loadHeat]);
+
+  /* ── 선별지시서 출력 ── */
+  const [printing, setPrinting] = useState(false);
+  const handlePrint = async () => {
+    setPrinting(true);
+    const p = new URLSearchParams();
+    if (filterVessel !== "ALL")      p.set("vesselCode",      filterVessel);
+    if (filterStatus !== "ALL")      p.set("status",          filterStatus);
+    if (search)                      p.set("search",          search);
+    if (filterReceivedFrom)          p.set("receivedFrom",    filterReceivedFrom);
+    if (filterReceivedTo)            p.set("receivedTo",      filterReceivedTo);
+    if (filterLocation)              p.set("storageLocation", filterLocation);
+    if (filterReservedFor !== "ALL") p.set("reservedFor",     filterReservedFor);
+    p.set("all", "true");
+
+    const res  = await fetch(`/api/steel-plan?${p}`);
+    const json = await res.json();
+    const data: SteelPlanRow[] = json.data;
+    setPrinting(false);
+
+    const PLAN_LABEL: Record<string, string> = {
+      REGISTERED: "등록", RECEIVED: "입고완료", COMPLETED: "절단완료",
+    };
+    const fmt = (iso: string | null) =>
+      iso ? new Date(iso).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" }) : "-";
+    const wt  = (t: number, w: number, l: number) =>
+      Math.round(t * w * l * 7.85 / 1_000_000 * 100) / 100;
+
+    const filterDesc = [
+      filterVessel      !== "ALL" ? `호선: ${filterVessel}`      : "",
+      filterStatus      !== "ALL" ? `상태: ${PLAN_LABEL[filterStatus] ?? filterStatus}` : "",
+      filterReservedFor !== "ALL" ? `확정블록: ${filterReservedFor === "CONFIRMED" ? "확정됨" : "미확정"}` : "",
+      filterReceivedFrom          ? `입고일 from: ${filterReceivedFrom}` : "",
+      filterReceivedTo            ? `입고일 to: ${filterReceivedTo}`     : "",
+      filterLocation              ? `보관위치: ${filterLocation}`         : "",
+      search                      ? `검색: ${search}`                    : "",
+    ].filter(Boolean).join(" / ");
+
+    const rows_html = data.map((r, i) => `
+      <tr class="${i % 2 === 0 ? "even" : ""}">
+        <td>${r.vesselCode}</td>
+        <td>${r.material}</td>
+        <td class="num">${r.thickness}</td>
+        <td class="num">${r.width}</td>
+        <td class="num">${r.length}</td>
+        <td class="num">${wt(r.thickness, r.width, r.length).toLocaleString()}</td>
+        <td>${fmt(r.receivedAt)}</td>
+        <td>${r.storageLocation ?? "-"}</td>
+        <td>${PLAN_LABEL[r.status] ?? r.status}</td>
+        <td>${r.status === "RECEIVED" && r.reservedFor ? r.reservedFor : "-"}</td>
+        <td class="memo">${r.memo ?? ""}</td>
+      </tr>`).join("");
+
+    const html = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<title>선별지시서</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Malgun Gothic", sans-serif; font-size: 11px; color: #111; padding: 16px; }
+  h1 { font-size: 16px; font-weight: bold; text-align: center; margin-bottom: 4px; }
+  .meta { text-align: center; font-size: 10px; color: #555; margin-bottom: 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #1e3a5f; color: #fff; padding: 5px 4px; font-size: 10px; text-align: center; border: 1px solid #ccc; }
+  td { padding: 4px; border: 1px solid #ddd; text-align: center; vertical-align: middle; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.memo { text-align: left; font-size: 10px; color: #444; }
+  tr.even { background: #f5f8fc; }
+  .summary { margin-top: 8px; font-size: 10px; color: #555; text-align: right; }
+  @media print {
+    body { padding: 8px; }
+    @page { margin: 10mm; size: A4 landscape; }
+  }
+</style>
+</head>
+<body>
+<h1>선별지시서</h1>
+<p class="meta">출력일시: ${new Date().toLocaleString("ko-KR")}${filterDesc ? " | 필터: " + filterDesc : ""}</p>
+<table>
+  <thead>
+    <tr>
+      <th>호선</th><th>재질</th><th>두께</th><th>폭</th><th>길이</th>
+      <th>중량(kg)</th><th>입고일</th><th>보관위치</th><th>상태</th><th>확정블록</th><th>메모</th>
+    </tr>
+  </thead>
+  <tbody>${rows_html}</tbody>
+</table>
+<p class="summary">총 ${data.length}건</p>
+<script>window.onload = () => { window.print(); }<\/script>
+</body>
+</html>`;
+
+    const win = window.open("", "_blank", "width=1100,height=750");
+    if (win) { win.document.write(html); win.document.close(); }
+  };
 
   /* ── 체크박스 전체 선택 (현재 페이지 기준) ── */
 
@@ -565,6 +661,13 @@ export default function SteelPlanMain() {
             </div>
             <button onClick={loadPlan} className="p-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-500"><RefreshCw size={14} /></button>
             <span className="text-sm text-gray-500 ml-auto">총 {total}건</span>
+            <button
+              onClick={handlePrint}
+              disabled={printing || total === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-800 text-white rounded-lg hover:bg-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Printer size={14} /> {printing ? "준비 중..." : "선별지시서 출력"}
+            </button>
           </div>
 
           {/* 선택 액션 바 */}

@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
   const receivedTo      = searchParams.get("receivedTo")      || undefined;
   const storageLocation = searchParams.get("storageLocation") || undefined;
   const reservedFor     = searchParams.get("reservedFor")     || undefined; // "ALL" | "CONFIRMED" | "NONE"
+  const all             = searchParams.get("all") === "true";
   const page            = Math.max(1, parseInt(searchParams.get("page") || "1"));
 
   const where = {
@@ -51,8 +52,7 @@ export async function GET(req: NextRequest) {
     prisma.steelPlan.findMany({
       where,
       orderBy: [{ vesselCode: "asc" }, { createdAt: "asc" }],
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
+      ...(all ? {} : { skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE }),
     }),
     prisma.steelPlan.findMany({
       select:   { vesselCode: true },
