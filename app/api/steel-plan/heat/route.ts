@@ -19,9 +19,9 @@ export async function GET(req: NextRequest) {
     ...(search
       ? {
           OR: [
-            { vesselCode: { contains: search, mode: "insensitive" } },
-            { material:   { contains: search, mode: "insensitive" } },
-            { heatNo:     { contains: search, mode: "insensitive" } },
+            { vesselCode: { contains: search, mode: "insensitive" as const } },
+            { material:   { contains: search, mode: "insensitive" as const } },
+            { heatNo:     { contains: search, mode: "insensitive" as const } },
           ],
         }
       : {}),

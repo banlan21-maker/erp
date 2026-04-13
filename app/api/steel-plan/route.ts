@@ -23,8 +23,8 @@ export async function GET(req: NextRequest) {
     ...(search
       ? {
           OR: [
-            { vesselCode: { contains: search, mode: "insensitive" } },
-            { material:   { contains: search, mode: "insensitive" } },
+            { vesselCode: { contains: search, mode: "insensitive" as const } },
+            { material:   { contains: search, mode: "insensitive" as const } },
           ],
         }
       : {}),
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
         }
       : {}),
     ...(storageLocation
-      ? { storageLocation: { contains: storageLocation, mode: "insensitive" } }
+      ? { storageLocation: { contains: storageLocation, mode: "insensitive" as const } }
       : {}),
     ...(reservedFor === "CONFIRMED"
       ? { reservedFor: { not: null } }
