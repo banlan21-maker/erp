@@ -87,6 +87,10 @@ export default function SteelPlanMain() {
   const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
   const [distinctValues, setDistinctValues] = useState<Record<string, FilterValue[]>>({});
 
+  /* ── 선택입고 날짜 모달 ── */
+  const [receivedDateModal, setReceivedDateModal] = useState<{ targetIds: string[] } | null>(null);
+  const [receivedDateInput, setReceivedDateInput] = useState("");
+
   /* ── 메모 모달 ── */
   type MemoModalMode = "input" | "view" | "edit";
   const [memoModal, setMemoModal] = useState<{ id: string; memo: string; mode: MemoModalMode } | null>(null);
@@ -334,24 +338,33 @@ export default function SteelPlanMain() {
     if (!res.ok) loadPlan();
   };
 
-  /* ── 다중 선택 입고 처리 — Optimistic Update ── */
-  const markSelectedReceived = async () => {
+  /* ── 다중 선택 입고 — 날짜 모달 오픈 ── */
+  const markSelectedReceived = () => {
     const targets = Array.from(selectedIds).filter(
       (id) => rows.find((r) => r.id === id)?.status === "REGISTERED"
     );
     if (targets.length === 0) { alert("입고 처리할 수 있는 항목(등록 상태)이 없습니다."); return; }
-    if (!confirm(`${targets.length}건을 입고완료 처리하시겠습니까?`)) return;
-    const now = new Date().toISOString();
+    // 오늘 날짜를 기본값으로 설정
+    setReceivedDateInput(new Date().toISOString().split("T")[0]);
+    setReceivedDateModal({ targetIds: targets });
+  };
+
+  /* ── 선택입고 확정 (날짜 모달에서 확인 클릭) ── */
+  const confirmSelectedReceived = async () => {
+    if (!receivedDateModal) return;
+    const { targetIds } = receivedDateModal;
+    const iso = new Date(receivedDateInput + "T00:00:00").toISOString();
+    setReceivedDateModal(null);
     // 즉시 로컬 반영
-    updateRowsLocally(targets, { status: "RECEIVED", receivedAt: now });
+    updateRowsLocally(targetIds, { status: "RECEIVED", receivedAt: iso });
     setSelectedIds(new Set());
     // 백그라운드 API
     const results = await Promise.all(
-      targets.map((id) =>
+      targetIds.map((id) =>
         fetch(`/api/steel-plan/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "RECEIVED", receivedAt: now }),
+          body: JSON.stringify({ status: "RECEIVED", receivedAt: iso }),
         })
       )
     );
@@ -1123,6 +1136,43 @@ export default function SteelPlanMain() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── 선택입고 날짜 모달 ── */}
+      {receivedDateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-xs p-6 space-y-4">
+            <h3 className="text-base font-bold text-gray-900">입고일 선택</h3>
+            <p className="text-sm text-gray-500">
+              {receivedDateModal.targetIds.length}건을 입고 처리합니다.<br />
+              입고일을 선택하세요.
+            </p>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">입고일</label>
+              <input
+                type="date"
+                value={receivedDateInput}
+                onChange={(e) => setReceivedDateInput(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setReceivedDateModal(null)}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                취소
+              </button>
+              <button
+                onClick={confirmSelectedReceived}
+                disabled={!receivedDateInput}
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 font-medium"
+              >
+                확인
+              </button>
+            </div>
           </div>
         </div>
       )}
