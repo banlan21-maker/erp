@@ -695,29 +695,29 @@ export default function SteelPlanMain() {
           {/* 강재 전체목록 테이블 */}
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm" style={{ tableLayout: "auto" }}>
+              <table className="w-full" style={{ tableLayout: "auto", fontSize: "11px" }}>
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="w-10 px-3 py-2.5 text-center">
+                    <th className="w-7 px-1 py-1 text-center">
                       <button onClick={toggleAll}>
-                        {allChecked ? <CheckSquare size={15} className="text-blue-600" /> : <Square size={15} className="text-gray-400" />}
+                        {allChecked ? <CheckSquare size={12} className="text-blue-600" /> : <Square size={12} className="text-gray-400" />}
                       </button>
                     </th>
-                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">호선</th>
-                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">재질</th>
-                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">두께</th>
-                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">폭</th>
-                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">길이</th>
-                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">중량(kg)</th>
-                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">입고일</th>
-                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">보관위치</th>
-                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">상태</th>
-                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">확정블록</th>
-                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">실사용판번호</th>
-                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">실사용호선</th>
-                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">실사용도면번호</th>
-                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">메모</th>
-                    <th className="w-24 px-3 py-2.5 text-center font-medium text-gray-600 text-xs">입고</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[10px]">호선</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[10px]">재질</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[10px]">두께</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[10px]">폭</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[10px]">길이</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[10px]">중량(kg)</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[10px]">입고일</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[10px]">보관위치</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[10px]">상태</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[10px]">확정블록</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[10px]">실사용판번호</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[10px]">실사용호선</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[10px]">실사용도면번호</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[10px]">메모</th>
+                    <th className="w-16 px-2 py-1 text-center font-medium text-gray-600 text-[10px]">입고</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -730,86 +730,86 @@ export default function SteelPlanMain() {
                       const st = PLAN_STATUS[row.status];
                       return (
                         <tr key={row.id} className={`hover:bg-gray-50 ${selectedIds.has(row.id) ? "bg-blue-50" : ""}`}>
-                          <td className="px-3 py-2 text-center">
+                          <td className="px-1 py-0.5 text-center">
                             <button onClick={() => toggleOne(row.id)}>
-                              {selectedIds.has(row.id) ? <CheckSquare size={15} className="text-blue-600" /> : <Square size={15} className="text-gray-400" />}
+                              {selectedIds.has(row.id) ? <CheckSquare size={12} className="text-blue-600" /> : <Square size={12} className="text-gray-400" />}
                             </button>
                           </td>
-                          <td className="px-3 py-2 text-center font-medium text-sm">{row.vesselCode}</td>
-                          <td className="px-3 py-2 text-center text-sm">{row.material}</td>
-                          <td className="px-3 py-2 text-center text-sm">{row.thickness}</td>
-                          <td className="px-3 py-2 text-center text-sm">{row.width}</td>
-                          <td className="px-3 py-2 text-center text-sm">{row.length}</td>
-                          <td className="px-3 py-2 text-center text-sm font-medium text-gray-700">
+                          <td className="px-2 py-0.5 text-center font-medium">{row.vesselCode}</td>
+                          <td className="px-2 py-0.5 text-center">{row.material}</td>
+                          <td className="px-2 py-0.5 text-center">{row.thickness}</td>
+                          <td className="px-2 py-0.5 text-center">{row.width}</td>
+                          <td className="px-2 py-0.5 text-center">{row.length}</td>
+                          <td className="px-2 py-0.5 text-center font-medium text-gray-700">
                             {calcWeight(row.thickness, row.width, row.length).toLocaleString()}
                           </td>
-                          <td className="px-3 py-2 text-center text-xs text-gray-500 font-mono">
+                          <td className="px-2 py-0.5 text-center text-gray-500 font-mono">
                             {row.receivedAt ? new Date(row.receivedAt).toLocaleDateString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit" }) : <span className="text-gray-300">-</span>}
                           </td>
-                          <td className="px-3 py-2 text-center">
+                          <td className="px-2 py-0.5 text-center">
                             {row.storageLocation ? (
                               <button
                                 onClick={() => { setLocationInput(row.storageLocation!); setLocationModal({ ids: [row.id], initialValue: row.storageLocation! }); }}
-                                className="px-2 py-0.5 text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 font-medium max-w-[100px] truncate"
+                                className="px-1.5 py-0 text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 font-medium max-w-[90px] truncate"
                                 title={row.storageLocation}
                               >
                                 {row.storageLocation}
                               </button>
                             ) : (
-                              <span className="text-gray-300 text-xs">-</span>
+                              <span className="text-gray-300">-</span>
                             )}
                           </td>
-                          <td className="px-3 py-2 text-center">
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${st.cls}`}>{st.label}</span>
+                          <td className="px-2 py-0.5 text-center">
+                            <span className={`px-1.5 py-0 rounded-full text-[10px] font-medium ${st.cls}`}>{st.label}</span>
                           </td>
-                          <td className="px-3 py-2 text-center">
+                          <td className="px-2 py-0.5 text-center">
                             {row.status === "RECEIVED" && row.reservedFor ? (
-                              <span className="px-2 py-0.5 rounded text-xs font-semibold bg-purple-100 text-purple-700">
+                              <span className="px-1.5 py-0 rounded text-[10px] font-semibold bg-purple-100 text-purple-700">
                                 {row.reservedFor} 확정
                               </span>
                             ) : (
-                              <span className="text-gray-300 text-xs">-</span>
+                              <span className="text-gray-300">-</span>
                             )}
                           </td>
-                          <td className="px-3 py-2 text-center text-xs font-mono text-blue-700">{row.actualHeatNo ?? "-"}</td>
-                          <td className="px-3 py-2 text-center text-xs text-gray-600">{row.actualVesselCode ?? "-"}</td>
-                          <td className="px-3 py-2 text-center text-xs text-gray-600">{row.actualDrawingNo ?? "-"}</td>
+                          <td className="px-2 py-0.5 text-center font-mono text-blue-700">{row.actualHeatNo ?? "-"}</td>
+                          <td className="px-2 py-0.5 text-center text-gray-600">{row.actualVesselCode ?? "-"}</td>
+                          <td className="px-2 py-0.5 text-center text-gray-600">{row.actualDrawingNo ?? "-"}</td>
                           {/* 메모 버튼 */}
-                          <td className="px-3 py-2 text-center">
+                          <td className="px-2 py-0.5 text-center">
                             {row.memo ? (
                               <button
                                 onClick={() => { setMemoModal({ id: row.id, memo: row.memo!, mode: "view" }); setMemoInput(row.memo!); }}
-                                className="px-2.5 py-0.5 text-xs border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50"
+                                className="px-1.5 py-0 text-[10px] border border-gray-300 rounded text-gray-600 hover:bg-gray-50"
                               >
                                 확인
                               </button>
                             ) : (
                               <button
                                 onClick={() => { setMemoModal({ id: row.id, memo: "", mode: "input" }); setMemoInput(""); }}
-                                className="px-2.5 py-0.5 text-xs border border-blue-300 rounded-lg text-blue-600 hover:bg-blue-50"
+                                className="px-1.5 py-0 text-[10px] border border-blue-300 rounded text-blue-600 hover:bg-blue-50"
                               >
                                 입력
                               </button>
                             )}
                           </td>
                           {/* 입고/되돌리기 버튼 */}
-                          <td className="px-3 py-2 text-center">
+                          <td className="px-2 py-0.5 text-center">
                             {row.status === "REGISTERED" ? (
                               <button
                                 onClick={() => markReceived(row.id)}
-                                className="px-2.5 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+                                className="px-2 py-0.5 text-[10px] bg-green-600 text-white rounded hover:bg-green-700 font-medium"
                               >
                                 입고
                               </button>
                             ) : row.status === "RECEIVED" ? (
                               <button
                                 onClick={() => revertReceived(row.id)}
-                                className="px-2.5 py-1 text-xs border border-orange-300 text-orange-600 rounded-lg hover:bg-orange-50 font-medium"
+                                className="px-2 py-0.5 text-[10px] border border-orange-300 text-orange-600 rounded hover:bg-orange-50 font-medium"
                               >
                                 되돌리기
                               </button>
                             ) : (
-                              <span className="text-xs text-gray-300">-</span>
+                              <span className="text-gray-300">-</span>
                             )}
                           </td>
                         </tr>
@@ -897,36 +897,36 @@ export default function SteelPlanMain() {
           {/* 판번호 리스트 테이블 */}
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full" style={{ fontSize: "11px" }}>
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">호선</th>
-                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">재질</th>
-                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">두께</th>
-                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">폭</th>
-                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">길이</th>
-                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">판번호</th>
-                    <th className="px-3 py-2.5 text-center font-medium text-gray-600 text-xs">상태</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[10px]">호선</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[10px]">재질</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[10px]">두께</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[10px]">폭</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[10px]">길이</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[10px]">판번호</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[10px]">상태</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {heatLoading ? (
-                    <tr><td colSpan={7} className="py-12 text-center text-gray-400">불러오는 중...</td></tr>
+                    <tr><td colSpan={7} className="py-8 text-center text-gray-400">불러오는 중...</td></tr>
                   ) : heatRows.length === 0 ? (
-                    <tr><td colSpan={7} className="py-12 text-center text-gray-400">등록된 판번호가 없습니다</td></tr>
+                    <tr><td colSpan={7} className="py-8 text-center text-gray-400">등록된 판번호가 없습니다</td></tr>
                   ) : (
                     heatRows.map((row) => {
                       const st = HEAT_STATUS[row.status];
                       return (
                         <tr key={row.id} className="hover:bg-gray-50">
-                          <td className="px-3 py-2 text-center font-medium text-sm">{row.vesselCode}</td>
-                          <td className="px-3 py-2 text-center text-sm">{row.material}</td>
-                          <td className="px-3 py-2 text-center text-sm">{row.thickness}</td>
-                          <td className="px-3 py-2 text-center text-sm">{row.width}</td>
-                          <td className="px-3 py-2 text-center text-sm">{row.length}</td>
-                          <td className="px-3 py-2 text-center font-mono text-blue-700 font-medium">{row.heatNo}</td>
-                          <td className="px-3 py-2 text-center">
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${st.cls}`}>{st.label}</span>
+                          <td className="px-2 py-0.5 text-center font-medium">{row.vesselCode}</td>
+                          <td className="px-2 py-0.5 text-center">{row.material}</td>
+                          <td className="px-2 py-0.5 text-center">{row.thickness}</td>
+                          <td className="px-2 py-0.5 text-center">{row.width}</td>
+                          <td className="px-2 py-0.5 text-center">{row.length}</td>
+                          <td className="px-2 py-0.5 text-center font-mono text-blue-700 font-medium">{row.heatNo}</td>
+                          <td className="px-2 py-0.5 text-center">
+                            <span className={`px-1.5 py-0 rounded-full text-[10px] font-medium ${st.cls}`}>{st.label}</span>
                           </td>
                         </tr>
                       );
