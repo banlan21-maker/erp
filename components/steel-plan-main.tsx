@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import * as XLSX from "xlsx";
 import {
   Upload, Plus, Trash2, RefreshCw, Download, Search, X,
-  CheckSquare, Square, ClipboardList, PackageOpen, Hash, PackageCheck, Printer,
+  CheckSquare, Square, ClipboardList, PackageOpen, Hash, PackageCheck, Printer, Filter,
 } from "lucide-react";
+import ColumnFilterDropdown, { type FilterValue } from "./column-filter-dropdown";
 
 /* ── 타입 ─────────────────────────────────────────────────────────────────── */
 interface SteelPlanRow {
@@ -74,18 +75,17 @@ export default function SteelPlanMain() {
   /* ── 강재 전체목록 상태 ── */
   const [rows, setRows]         = useState<SteelPlanRow[]>([]);
   const [loading, setLoading]   = useState(false);
-  const [filterVessel, setFilterVessel] = useState("ALL");
-  const [filterStatus, setFilterStatus] = useState("ALL");
-  const [filterReceivedFrom, setFilterReceivedFrom] = useState("");
-  const [filterReceivedTo,   setFilterReceivedTo]   = useState("");
-  const [filterLocation,     setFilterLocation]     = useState("");
-  const [filterReservedFor,  setFilterReservedFor]  = useState("ALL");
   const [search, setSearch]     = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [page,       setPage]       = useState(1);
   const [total,      setTotal]      = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [vesselList, setVesselList] = useState<string[]>([]);
+
+  /* ── 컬럼 필터 (Excel 스타일) ── */
+  const [colFilters,     setColFilters]     = useState<Record<string, string[]>>({});
+  const [openFilter,     setOpenFilter]     = useState<string | null>(null);
+  const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
+  const [distinctValues, setDistinctValues] = useState<Record<string, FilterValue[]>>({});
 
   /* ── 메모 모달 ── */
   type MemoModalMode = "input" | "view" | "edit";
@@ -126,27 +126,36 @@ export default function SteelPlanMain() {
   const [formSaving, setFormSaving] = useState(false);
 
   /* ── 데이터 로드 ─────────────────────────────────────────────────────── */
+  /* ── 고유값 로드 (컬럼 필터 목록) ── */
+  const loadDistinct = useCallback(async () => {
+    const res = await fetch("/api/steel-plan/distinct");
+    if (res.ok) setDistinctValues(await res.json());
+  }, []);
+
   const loadPlan = useCallback(async () => {
     setLoading(true);
     const p = new URLSearchParams();
-    if (filterVessel !== "ALL")    p.set("vesselCode",      filterVessel);
-    if (filterStatus !== "ALL")    p.set("status",          filterStatus);
-    if (search)                    p.set("search",          search);
-    if (filterReceivedFrom)        p.set("receivedFrom",    filterReceivedFrom);
-    if (filterReceivedTo)          p.set("receivedTo",      filterReceivedTo);
-    if (filterLocation)            p.set("storageLocation", filterLocation);
-    if (filterReservedFor !== "ALL") p.set("reservedFor",   filterReservedFor);
+    if (search) p.set("search", search);
     p.set("page", String(page));
+    const cf = colFilters;
+    if (cf.vesselCode?.length)       p.set("vesselCodes",      cf.vesselCode.join(","));
+    if (cf.material?.length)         p.set("materials",         cf.material.join(","));
+    if (cf.thickness?.length)        p.set("thicknesses",       cf.thickness.join(","));
+    if (cf.width?.length)            p.set("widths",            cf.width.join(","));
+    if (cf.length?.length)           p.set("lengths",           cf.length.join(","));
+    if (cf.status?.length)           p.set("statuses",          cf.status.join(","));
+    if (cf.receivedAt?.length)       p.set("receivedDates",     cf.receivedAt.join(","));
+    if (cf.storageLocation?.length)  p.set("storageLocations",  cf.storageLocation.join(","));
+    if (cf.reservedFor?.length)      p.set("reservedFors",      cf.reservedFor.join(","));
     const res = await fetch(`/api/steel-plan?${p}`);
     if (res.ok) {
       const json = await res.json();
       setRows(json.data);
       setTotal(json.total);
       setTotalPages(json.totalPages);
-      setVesselList(json.vesselCodes);
     }
     setLoading(false);
-  }, [filterVessel, filterStatus, search, filterReceivedFrom, filterReceivedTo, filterLocation, filterReservedFor, page]);
+  }, [search, page, colFilters]);
 
   const loadHeat = useCallback(async () => {
     setHeatLoading(true);
@@ -166,6 +175,7 @@ export default function SteelPlanMain() {
     setHeatLoading(false);
   }, [heatFilterVessel, heatFilterStatus, heatSearch, heatPage]);
 
+  useEffect(() => { loadDistinct(); }, [loadDistinct]);
   useEffect(() => { loadPlan(); }, [loadPlan]);
   useEffect(() => { if (tab === "heatno") loadHeat(); }, [tab, loadHeat]);
 
@@ -174,13 +184,17 @@ export default function SteelPlanMain() {
   const handlePrint = async () => {
     setPrinting(true);
     const p = new URLSearchParams();
-    if (filterVessel !== "ALL")      p.set("vesselCode",      filterVessel);
-    if (filterStatus !== "ALL")      p.set("status",          filterStatus);
-    if (search)                      p.set("search",          search);
-    if (filterReceivedFrom)          p.set("receivedFrom",    filterReceivedFrom);
-    if (filterReceivedTo)            p.set("receivedTo",      filterReceivedTo);
-    if (filterLocation)              p.set("storageLocation", filterLocation);
-    if (filterReservedFor !== "ALL") p.set("reservedFor",     filterReservedFor);
+    if (search) p.set("search", search);
+    const cf = colFilters;
+    if (cf.vesselCode?.length)       p.set("vesselCodes",      cf.vesselCode.join(","));
+    if (cf.material?.length)         p.set("materials",         cf.material.join(","));
+    if (cf.thickness?.length)        p.set("thicknesses",       cf.thickness.join(","));
+    if (cf.width?.length)            p.set("widths",            cf.width.join(","));
+    if (cf.length?.length)           p.set("lengths",           cf.length.join(","));
+    if (cf.status?.length)           p.set("statuses",          cf.status.join(","));
+    if (cf.receivedAt?.length)       p.set("receivedDates",     cf.receivedAt.join(","));
+    if (cf.storageLocation?.length)  p.set("storageLocations",  cf.storageLocation.join(","));
+    if (cf.reservedFor?.length)      p.set("reservedFors",      cf.reservedFor.join(","));
     p.set("all", "true");
 
     const res  = await fetch(`/api/steel-plan?${p}`);
@@ -594,72 +608,29 @@ export default function SteelPlanMain() {
             </div>
           )}
 
-          {/* 필터 */}
+          {/* 상단 바: 텍스트 검색 + 액션 */}
           <div className="flex items-center gap-2 flex-wrap">
-            {/* 호선 */}
-            <select value={filterVessel} onChange={(e) => { setFilterVessel(e.target.value); setPage(1); }} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
-              <option value="ALL">전체 호선</option>
-              {vesselList.map((v) => <option key={v} value={v}>{v}</option>)}
-            </select>
-            {/* 상태 */}
-            <select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
-              <option value="ALL">전체 상태</option>
-              <option value="REGISTERED">등록</option>
-              <option value="RECEIVED">입고완료</option>
-              <option value="COMPLETED">절단완료</option>
-            </select>
-            {/* 확정블록 */}
-            <select value={filterReservedFor} onChange={(e) => { setFilterReservedFor(e.target.value); setPage(1); }} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
-              <option value="ALL">전체 확정블록</option>
-              <option value="CONFIRMED">확정됨</option>
-              <option value="NONE">미확정</option>
-            </select>
-            {/* 입고일 from */}
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-400 whitespace-nowrap">입고일</span>
-              <input
-                type="date"
-                value={filterReceivedFrom}
-                onChange={(e) => { setFilterReceivedFrom(e.target.value); setPage(1); }}
-                className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
-              />
-              <span className="text-xs text-gray-400">~</span>
-              <input
-                type="date"
-                value={filterReceivedTo}
-                onChange={(e) => { setFilterReceivedTo(e.target.value); setPage(1); }}
-                className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
-              />
-              {(filterReceivedFrom || filterReceivedTo) && (
-                <button onClick={() => { setFilterReceivedFrom(""); setFilterReceivedTo(""); setPage(1); }} className="text-gray-400 hover:text-gray-600"><X size={13} /></button>
-              )}
-            </div>
-            {/* 보관위치 */}
             <div className="relative">
-              <input
-                value={filterLocation}
-                onChange={(e) => { setFilterLocation(e.target.value); setPage(1); }}
-                placeholder="보관위치 검색"
-                className="pl-3 pr-7 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 w-32"
-              />
-              {filterLocation && (
-                <button onClick={() => { setFilterLocation(""); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={13} /></button>
-              )}
-            </div>
-            {/* 텍스트 검색 */}
-            <div className="relative">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                 placeholder="호선·재질 검색"
-                className="pl-8 pr-7 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 w-36"
+                className="pl-8 pr-7 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 w-40"
               />
               {search && (
                 <button onClick={() => { setSearch(""); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={13} /></button>
               )}
             </div>
-            <button onClick={loadPlan} className="p-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-500"><RefreshCw size={14} /></button>
+            {Object.values(colFilters).some((v) => v.length > 0) && (
+              <button
+                onClick={() => { setColFilters({}); setPage(1); }}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50"
+              >
+                <X size={12} /> 필터 전체 초기화
+              </button>
+            )}
+            <button onClick={() => { loadDistinct(); loadPlan(); }} className="p-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-500"><RefreshCw size={14} /></button>
             <span className="text-sm text-gray-500 ml-auto">총 {total}건</span>
             <button
               onClick={handlePrint}
@@ -703,16 +674,35 @@ export default function SteelPlanMain() {
                         {allChecked ? <CheckSquare size={13} className="text-blue-600" /> : <Square size={13} className="text-gray-400" />}
                       </button>
                     </th>
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">호선</th>
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">재질</th>
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">두께</th>
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">폭</th>
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">길이</th>
+                    {(["vesselCode","material","thickness","width","length"] as const).map((col, i) => {
+                      const labels = ["호선","재질","두께","폭","길이"];
+                      const active = (colFilters[col]?.length ?? 0) > 0;
+                      return (
+                        <th key={col} className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <span>{labels[i]}</span>
+                            <button onClick={(e) => { setOpenFilter(col); setFilterAnchorEl(e.currentTarget); }} className={`rounded hover:bg-gray-200 p-0.5 ${active ? "text-blue-500" : "text-gray-400"}`}>
+                              <Filter size={10} fill={active ? "currentColor" : "none"} />
+                            </button>
+                          </div>
+                        </th>
+                      );
+                    })}
                     <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">중량(kg)</th>
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">입고일</th>
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">보관위치</th>
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">상태</th>
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">확정블록</th>
+                    {(["receivedAt","storageLocation","status","reservedFor"] as const).map((col, i) => {
+                      const labels = ["입고일","보관위치","상태","확정블록"];
+                      const active = (colFilters[col]?.length ?? 0) > 0;
+                      return (
+                        <th key={col} className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <span>{labels[i]}</span>
+                            <button onClick={(e) => { setOpenFilter(col); setFilterAnchorEl(e.currentTarget); }} className={`rounded hover:bg-gray-200 p-0.5 ${active ? "text-blue-500" : "text-gray-400"}`}>
+                              <Filter size={10} fill={active ? "currentColor" : "none"} />
+                            </button>
+                          </div>
+                        </th>
+                      );
+                    })}
                     <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">실사용판번호</th>
                     <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">실사용호선</th>
                     <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">실사용도면번호</th>
@@ -820,6 +810,22 @@ export default function SteelPlanMain() {
               </table>
             </div>
           </div>
+
+          {/* 컬럼 필터 드롭다운 */}
+          {openFilter && filterAnchorEl && (
+            <ColumnFilterDropdown
+              anchorEl={filterAnchorEl}
+              values={distinctValues[openFilter] ?? []}
+              selected={colFilters[openFilter] ?? []}
+              onApply={(vals) => {
+                setColFilters((prev) => ({ ...prev, [openFilter]: vals }));
+                setPage(1);
+                setOpenFilter(null);
+                setFilterAnchorEl(null);
+              }}
+              onClose={() => { setOpenFilter(null); setFilterAnchorEl(null); }}
+            />
+          )}
 
           {/* 페이지네이션 */}
           {totalPages > 1 && (
