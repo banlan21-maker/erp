@@ -210,14 +210,18 @@ export default function SteelPlanMain() {
     const wt  = (t: number, w: number, l: number) =>
       Math.round(t * w * l * 7.85 / 1_000_000 * 100) / 100;
 
+    const cf = colFilters;
     const filterDesc = [
-      filterVessel      !== "ALL" ? `호선: ${filterVessel}`      : "",
-      filterStatus      !== "ALL" ? `상태: ${PLAN_LABEL[filterStatus] ?? filterStatus}` : "",
-      filterReservedFor !== "ALL" ? `확정블록: ${filterReservedFor === "CONFIRMED" ? "확정됨" : "미확정"}` : "",
-      filterReceivedFrom          ? `입고일 from: ${filterReceivedFrom}` : "",
-      filterReceivedTo            ? `입고일 to: ${filterReceivedTo}`     : "",
-      filterLocation              ? `보관위치: ${filterLocation}`         : "",
-      search                      ? `검색: ${search}`                    : "",
+      cf.vesselCode?.length       ? `호선: ${cf.vesselCode.join(", ")}`       : "",
+      cf.material?.length         ? `재질: ${cf.material.join(", ")}`         : "",
+      cf.thickness?.length        ? `두께: ${cf.thickness.join(", ")}`        : "",
+      cf.width?.length            ? `폭: ${cf.width.join(", ")}`              : "",
+      cf.length?.length           ? `길이: ${cf.length.join(", ")}`           : "",
+      cf.status?.length           ? `상태: ${cf.status.map((s) => PLAN_LABEL[s] ?? s).join(", ")}` : "",
+      cf.receivedAt?.length       ? `입고일: ${cf.receivedAt.join(", ")}`     : "",
+      cf.storageLocation?.length  ? `보관위치: ${cf.storageLocation.join(", ")}` : "",
+      cf.reservedFor?.length      ? `확정블록: ${cf.reservedFor.join(", ")}`  : "",
+      search                      ? `검색: ${search}`                         : "",
     ].filter(Boolean).join(" / ");
 
     const rows_html = data.map((r, i) => `
