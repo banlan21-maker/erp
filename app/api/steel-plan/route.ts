@@ -3,34 +3,74 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// GET /api/steel-plan?vesselCode=&status=&search=
+const PAGE_SIZE = 50;
+
+// GET /api/steel-plan?vesselCode=&status=&search=&receivedFrom=&receivedTo=&storageLocation=&reservedFor=&page=
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const vesselCode = searchParams.get("vesselCode") || undefined;
-  const status = searchParams.get("status") || undefined;
-  const search = searchParams.get("search") || undefined;
+  const vesselCode      = searchParams.get("vesselCode")      || undefined;
+  const status          = searchParams.get("status")          || undefined;
+  const search          = searchParams.get("search")          || undefined;
+  const receivedFrom    = searchParams.get("receivedFrom")    || undefined;
+  const receivedTo      = searchParams.get("receivedTo")      || undefined;
+  const storageLocation = searchParams.get("storageLocation") || undefined;
+  const reservedFor     = searchParams.get("reservedFor")     || undefined; // "ALL" | "CONFIRMED" | "NONE"
+  const page            = Math.max(1, parseInt(searchParams.get("page") || "1"));
 
-  const rows = await prisma.steelPlan.findMany({
-    where: {
-      ...(vesselCode ? { vesselCode } : {}),
-      ...(status ? { status: status as "REGISTERED" | "RECEIVED" | "COMPLETED" } : {}),
-      ...(search
-        ? {
-            OR: [
-              { vesselCode: { contains: search, mode: "insensitive" } },
-              { material: { contains: search, mode: "insensitive" } },
-            ],
-          }
-        : {}),
-    },
-    orderBy: [{ vesselCode: "asc" }, { createdAt: "asc" }],
+  const where: Parameters<typeof prisma.steelPlan.findMany>[0]["where"] = {
+    ...(vesselCode ? { vesselCode } : {}),
+    ...(status ? { status: status as "REGISTERED" | "RECEIVED" | "COMPLETED" } : {}),
+    ...(search
+      ? {
+          OR: [
+            { vesselCode: { contains: search, mode: "insensitive" } },
+            { material:   { contains: search, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+    ...((receivedFrom || receivedTo)
+      ? {
+          receivedAt: {
+            ...(receivedFrom ? { gte: new Date(receivedFrom) } : {}),
+            ...(receivedTo   ? { lte: new Date(`${receivedTo}T23:59:59`) } : {}),
+          },
+        }
+      : {}),
+    ...(storageLocation
+      ? { storageLocation: { contains: storageLocation, mode: "insensitive" } }
+      : {}),
+    ...(reservedFor === "CONFIRMED"
+      ? { reservedFor: { not: null } }
+      : reservedFor === "NONE"
+      ? { reservedFor: null }
+      : {}),
+  };
+
+  const [total, rows, allVessels] = await Promise.all([
+    prisma.steelPlan.count({ where }),
+    prisma.steelPlan.findMany({
+      where,
+      orderBy: [{ vesselCode: "asc" }, { createdAt: "asc" }],
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+    }),
+    prisma.steelPlan.findMany({
+      select:   { vesselCode: true },
+      distinct: ["vesselCode"],
+      orderBy:  { vesselCode: "asc" },
+    }),
+  ]);
+
+  return NextResponse.json({
+    data:        rows,
+    total,
+    page,
+    totalPages:  Math.ceil(total / PAGE_SIZE),
+    vesselCodes: allVessels.map((v) => v.vesselCode),
   });
-
-  return NextResponse.json(rows);
 }
 
 // POST /api/steel-plan — 단건 또는 배열 등록
-// 엑셀 1행 = SteelPlan 1행 + SteelPlanHeat 1행 동시 생성
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const items: {
@@ -44,7 +84,6 @@ export async function POST(req: NextRequest) {
     sourceFile?: string | null;
   }[] = Array.isArray(body) ? body : [body];
 
-  // SteelPlan 생성 (판번호 제외한 규격만)
   const planData = items.map((item) => ({
     vesselCode: item.vesselCode,
     material:   item.material,
@@ -57,7 +96,6 @@ export async function POST(req: NextRequest) {
 
   const created = await prisma.steelPlan.createMany({ data: planData });
 
-  // SteelPlanHeat 생성 (판번호 있는 항목만)
   const heatData = items
     .filter((item) => item.heatNo && item.heatNo.trim() !== "")
     .map((item) => ({
@@ -77,8 +115,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ count: created.count }, { status: 201 });
 }
 
-// DELETE /api/steel-plan
-// body: { vesselCode: string } → 해당 호선 SteelPlan + SteelPlanHeat 전체 삭제
+// DELETE /api/steel-plan — 호선 단위 삭제
 export async function DELETE(req: NextRequest) {
   const body = await req.json();
 

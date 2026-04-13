@@ -76,8 +76,16 @@ export default function SteelPlanMain() {
   const [loading, setLoading]   = useState(false);
   const [filterVessel, setFilterVessel] = useState("ALL");
   const [filterStatus, setFilterStatus] = useState("ALL");
+  const [filterReceivedFrom, setFilterReceivedFrom] = useState("");
+  const [filterReceivedTo,   setFilterReceivedTo]   = useState("");
+  const [filterLocation,     setFilterLocation]     = useState("");
+  const [filterReservedFor,  setFilterReservedFor]  = useState("ALL");
   const [search, setSearch]     = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [page,       setPage]       = useState(1);
+  const [total,      setTotal]      = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [vesselList, setVesselList] = useState<string[]>([]);
 
   /* ── 메모 모달 ── */
   type MemoModalMode = "input" | "view" | "edit";
@@ -96,6 +104,10 @@ export default function SteelPlanMain() {
   const [heatFilterVessel, setHeatFilterVessel] = useState("ALL");
   const [heatFilterStatus, setHeatFilterStatus] = useState("ALL");
   const [heatSearch, setHeatSearch]     = useState("");
+  const [heatPage,       setHeatPage]       = useState(1);
+  const [heatTotal,      setHeatTotal]      = useState(0);
+  const [heatTotalPages, setHeatTotalPages] = useState(1);
+  const [heatVesselList, setHeatVesselList] = useState<string[]>([]);
 
   /* ── 호선강재 삭제 모달 ── */
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -117,33 +129,48 @@ export default function SteelPlanMain() {
   const loadPlan = useCallback(async () => {
     setLoading(true);
     const p = new URLSearchParams();
-    if (filterVessel !== "ALL") p.set("vesselCode", filterVessel);
-    if (filterStatus !== "ALL") p.set("status", filterStatus);
-    if (search) p.set("search", search);
+    if (filterVessel !== "ALL")    p.set("vesselCode",      filterVessel);
+    if (filterStatus !== "ALL")    p.set("status",          filterStatus);
+    if (search)                    p.set("search",          search);
+    if (filterReceivedFrom)        p.set("receivedFrom",    filterReceivedFrom);
+    if (filterReceivedTo)          p.set("receivedTo",      filterReceivedTo);
+    if (filterLocation)            p.set("storageLocation", filterLocation);
+    if (filterReservedFor !== "ALL") p.set("reservedFor",   filterReservedFor);
+    p.set("page", String(page));
     const res = await fetch(`/api/steel-plan?${p}`);
-    if (res.ok) setRows(await res.json());
+    if (res.ok) {
+      const json = await res.json();
+      setRows(json.data);
+      setTotal(json.total);
+      setTotalPages(json.totalPages);
+      setVesselList(json.vesselCodes);
+    }
     setLoading(false);
-  }, [filterVessel, filterStatus, search]);
+  }, [filterVessel, filterStatus, search, filterReceivedFrom, filterReceivedTo, filterLocation, filterReservedFor, page]);
 
   const loadHeat = useCallback(async () => {
     setHeatLoading(true);
     const p = new URLSearchParams();
     if (heatFilterVessel !== "ALL") p.set("vesselCode", heatFilterVessel);
-    if (heatFilterStatus !== "ALL") p.set("status", heatFilterStatus);
-    if (heatSearch) p.set("search", heatSearch);
+    if (heatFilterStatus !== "ALL") p.set("status",     heatFilterStatus);
+    if (heatSearch)                 p.set("search",     heatSearch);
+    p.set("page", String(heatPage));
     const res = await fetch(`/api/steel-plan/heat?${p}`);
-    if (res.ok) setHeatRows(await res.json());
+    if (res.ok) {
+      const json = await res.json();
+      setHeatRows(json.data);
+      setHeatTotal(json.total);
+      setHeatTotalPages(json.totalPages);
+      setHeatVesselList(json.vesselCodes);
+    }
     setHeatLoading(false);
-  }, [heatFilterVessel, heatFilterStatus, heatSearch]);
+  }, [heatFilterVessel, heatFilterStatus, heatSearch, heatPage]);
 
   useEffect(() => { loadPlan(); }, [loadPlan]);
   useEffect(() => { if (tab === "heatno") loadHeat(); }, [tab, loadHeat]);
 
-  /* ── 호선 목록 ── */
-  const vesselList     = Array.from(new Set(rows.map((r) => r.vesselCode))).sort();
-  const heatVesselList = Array.from(new Set(heatRows.map((r) => r.vesselCode))).sort();
+  /* ── 체크박스 전체 선택 (현재 페이지 기준) ── */
 
-  /* ── 체크박스 ── */
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id));
   const toggleAll  = () => setSelectedIds(allChecked ? new Set() : new Set(rows.map((r) => r.id)));
   const toggleOne  = (id: string) => {
@@ -472,31 +499,72 @@ export default function SteelPlanMain() {
           )}
 
           {/* 필터 */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <select value={filterVessel} onChange={(e) => setFilterVessel(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* 호선 */}
+            <select value={filterVessel} onChange={(e) => { setFilterVessel(e.target.value); setPage(1); }} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
               <option value="ALL">전체 호선</option>
               {vesselList.map((v) => <option key={v} value={v}>{v}</option>)}
             </select>
-            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+            {/* 상태 */}
+            <select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
               <option value="ALL">전체 상태</option>
               <option value="REGISTERED">등록</option>
               <option value="RECEIVED">입고완료</option>
               <option value="COMPLETED">절단완료</option>
             </select>
-            <div className="relative flex-1 max-w-xs">
+            {/* 확정블록 */}
+            <select value={filterReservedFor} onChange={(e) => { setFilterReservedFor(e.target.value); setPage(1); }} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+              <option value="ALL">전체 확정블록</option>
+              <option value="CONFIRMED">확정됨</option>
+              <option value="NONE">미확정</option>
+            </select>
+            {/* 입고일 from */}
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-gray-400 whitespace-nowrap">입고일</span>
+              <input
+                type="date"
+                value={filterReceivedFrom}
+                onChange={(e) => { setFilterReceivedFrom(e.target.value); setPage(1); }}
+                className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+              />
+              <span className="text-xs text-gray-400">~</span>
+              <input
+                type="date"
+                value={filterReceivedTo}
+                onChange={(e) => { setFilterReceivedTo(e.target.value); setPage(1); }}
+                className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+              />
+              {(filterReceivedFrom || filterReceivedTo) && (
+                <button onClick={() => { setFilterReceivedFrom(""); setFilterReceivedTo(""); setPage(1); }} className="text-gray-400 hover:text-gray-600"><X size={13} /></button>
+              )}
+            </div>
+            {/* 보관위치 */}
+            <div className="relative">
+              <input
+                value={filterLocation}
+                onChange={(e) => { setFilterLocation(e.target.value); setPage(1); }}
+                placeholder="보관위치 검색"
+                className="pl-3 pr-7 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 w-32"
+              />
+              {filterLocation && (
+                <button onClick={() => { setFilterLocation(""); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={13} /></button>
+              )}
+            </div>
+            {/* 텍스트 검색 */}
+            <div className="relative">
               <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                 placeholder="호선·재질 검색"
-                className="w-full pl-8 pr-8 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400"
+                className="pl-8 pr-7 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 w-36"
               />
               {search && (
-                <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14} /></button>
+                <button onClick={() => { setSearch(""); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={13} /></button>
               )}
             </div>
             <button onClick={loadPlan} className="p-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-500"><RefreshCw size={14} /></button>
-            <span className="text-sm text-gray-500 ml-auto">총 {rows.length}건</span>
+            <span className="text-sm text-gray-500 ml-auto">총 {total}건</span>
           </div>
 
           {/* 선택 액션 바 */}
@@ -524,7 +592,7 @@ export default function SteelPlanMain() {
           {/* 강재 전체목록 테이블 */}
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" style={{ tableLayout: "auto" }}>
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
                     <th className="w-10 px-3 py-2.5 text-center">
@@ -649,6 +717,47 @@ export default function SteelPlanMain() {
               </table>
             </div>
           </div>
+
+          {/* 페이지네이션 */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 py-3">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                이전
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+                .reduce<(number | "...")[]>((acc, p, i, arr) => {
+                  if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push("...");
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((p, i) =>
+                  p === "..." ? (
+                    <span key={`ellipsis-${i}`} className="px-1 text-gray-400">…</span>
+                  ) : (
+                    <button
+                      key={p}
+                      onClick={() => setPage(p as number)}
+                      className={`px-3 py-1.5 text-sm border rounded-lg ${page === p ? "bg-blue-600 text-white border-blue-600" : "border-gray-300 hover:bg-gray-50"}`}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                다음
+              </button>
+              <span className="text-xs text-gray-400 ml-2">{page} / {totalPages} 페이지</span>
+            </div>
+          )}
         </>
       )}
 
@@ -656,30 +765,30 @@ export default function SteelPlanMain() {
       {tab === "heatno" && (
         <>
           {/* 필터 */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <select value={heatFilterVessel} onChange={(e) => setHeatFilterVessel(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+          <div className="flex items-center gap-2 flex-wrap">
+            <select value={heatFilterVessel} onChange={(e) => { setHeatFilterVessel(e.target.value); setHeatPage(1); }} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
               <option value="ALL">전체 호선</option>
               {heatVesselList.map((v) => <option key={v} value={v}>{v}</option>)}
             </select>
-            <select value={heatFilterStatus} onChange={(e) => setHeatFilterStatus(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+            <select value={heatFilterStatus} onChange={(e) => { setHeatFilterStatus(e.target.value); setHeatPage(1); }} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
               <option value="ALL">전체 상태</option>
               <option value="WAITING">대기</option>
               <option value="CUT">절단</option>
             </select>
-            <div className="relative flex-1 max-w-xs">
+            <div className="relative">
               <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 value={heatSearch}
-                onChange={(e) => setHeatSearch(e.target.value)}
+                onChange={(e) => { setHeatSearch(e.target.value); setHeatPage(1); }}
                 placeholder="호선·재질·판번호 검색"
-                className="w-full pl-8 pr-8 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400"
+                className="pl-8 pr-7 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 w-44"
               />
               {heatSearch && (
-                <button onClick={() => setHeatSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14} /></button>
+                <button onClick={() => { setHeatSearch(""); setHeatPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={13} /></button>
               )}
             </div>
             <button onClick={loadHeat} className="p-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-500"><RefreshCw size={14} /></button>
-            <span className="text-sm text-gray-500 ml-auto">총 {heatRows.length}건</span>
+            <span className="text-sm text-gray-500 ml-auto">총 {heatTotal}건</span>
           </div>
 
           {/* 판번호 리스트 테이블 */}
@@ -724,6 +833,47 @@ export default function SteelPlanMain() {
               </table>
             </div>
           </div>
+
+          {/* 판번호 페이지네이션 */}
+          {heatTotalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 py-3">
+              <button
+                onClick={() => setHeatPage((p) => Math.max(1, p - 1))}
+                disabled={heatPage === 1}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                이전
+              </button>
+              {Array.from({ length: heatTotalPages }, (_, i) => i + 1)
+                .filter((p) => p === 1 || p === heatTotalPages || Math.abs(p - heatPage) <= 2)
+                .reduce<(number | "...")[]>((acc, p, i, arr) => {
+                  if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push("...");
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((p, i) =>
+                  p === "..." ? (
+                    <span key={`ellipsis-${i}`} className="px-1 text-gray-400">…</span>
+                  ) : (
+                    <button
+                      key={p}
+                      onClick={() => setHeatPage(p as number)}
+                      className={`px-3 py-1.5 text-sm border rounded-lg ${heatPage === p ? "bg-blue-600 text-white border-blue-600" : "border-gray-300 hover:bg-gray-50"}`}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+              <button
+                onClick={() => setHeatPage((p) => Math.min(heatTotalPages, p + 1))}
+                disabled={heatPage === heatTotalPages}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                다음
+              </button>
+              <span className="text-xs text-gray-400 ml-2">{heatPage} / {heatTotalPages} 페이지</span>
+            </div>
+          )}
         </>
       )}
 
