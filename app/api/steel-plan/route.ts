@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   const reservedFor     = searchParams.get("reservedFor")     || undefined; // "ALL" | "CONFIRMED" | "NONE"
   const page            = Math.max(1, parseInt(searchParams.get("page") || "1"));
 
-  const where: Parameters<typeof prisma.steelPlan.findMany>[0]["where"] = {
+  const where = {
     ...(vesselCode ? { vesselCode } : {}),
     ...(status ? { status: status as "REGISTERED" | "RECEIVED" | "COMPLETED" } : {}),
     ...(search

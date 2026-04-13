@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const search     = searchParams.get("search")     || undefined;
   const page       = Math.max(1, parseInt(searchParams.get("page") || "1"));
 
-  const where: Parameters<typeof prisma.steelPlanHeat.findMany>[0]["where"] = {
+  const where = {
     ...(vesselCode ? { vesselCode } : {}),
     ...(status ? { status: status as "WAITING" | "CUT" } : {}),
     ...(search
