@@ -101,13 +101,14 @@ export default function SteelPlanMain() {
   /* ── 판번호 리스트 상태 ── */
   const [heatRows, setHeatRows]         = useState<SteelPlanHeatRow[]>([]);
   const [heatLoading, setHeatLoading]   = useState(false);
-  const [heatFilterVessel, setHeatFilterVessel] = useState("ALL");
-  const [heatFilterStatus, setHeatFilterStatus] = useState("ALL");
   const [heatSearch, setHeatSearch]     = useState("");
   const [heatPage,       setHeatPage]       = useState(1);
   const [heatTotal,      setHeatTotal]      = useState(0);
   const [heatTotalPages, setHeatTotalPages] = useState(1);
-  const [heatVesselList, setHeatVesselList] = useState<string[]>([]);
+  const [heatColFilters,     setHeatColFilters]     = useState<Record<string, string[]>>({});
+  const [heatOpenFilter,     setHeatOpenFilter]     = useState<string | null>(null);
+  const [heatFilterAnchorEl, setHeatFilterAnchorEl] = useState<HTMLElement | null>(null);
+  const [heatDistinctValues, setHeatDistinctValues] = useState<Record<string, FilterValue[]>>({});
 
   /* ── 호선강재 삭제 모달 ── */
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -157,27 +158,37 @@ export default function SteelPlanMain() {
     setLoading(false);
   }, [search, page, colFilters]);
 
+  const loadHeatDistinct = useCallback(async () => {
+    const res = await fetch("/api/steel-plan/heat/distinct");
+    if (res.ok) setHeatDistinctValues(await res.json());
+  }, []);
+
   const loadHeat = useCallback(async () => {
     setHeatLoading(true);
     const p = new URLSearchParams();
-    if (heatFilterVessel !== "ALL") p.set("vesselCode", heatFilterVessel);
-    if (heatFilterStatus !== "ALL") p.set("status",     heatFilterStatus);
-    if (heatSearch)                 p.set("search",     heatSearch);
+    if (heatSearch) p.set("search", heatSearch);
     p.set("page", String(heatPage));
+    const cf = heatColFilters;
+    if (cf.vesselCode?.length) p.set("vesselCodes", cf.vesselCode.join(","));
+    if (cf.material?.length)   p.set("materials",   cf.material.join(","));
+    if (cf.thickness?.length)  p.set("thicknesses", cf.thickness.join(","));
+    if (cf.width?.length)      p.set("widths",      cf.width.join(","));
+    if (cf.length?.length)     p.set("lengths",     cf.length.join(","));
+    if (cf.heatNo?.length)     p.set("heatNos",     cf.heatNo.join(","));
+    if (cf.status?.length)     p.set("statuses",    cf.status.join(","));
     const res = await fetch(`/api/steel-plan/heat?${p}`);
     if (res.ok) {
       const json = await res.json();
       setHeatRows(json.data);
       setHeatTotal(json.total);
       setHeatTotalPages(json.totalPages);
-      setHeatVesselList(json.vesselCodes);
     }
     setHeatLoading(false);
-  }, [heatFilterVessel, heatFilterStatus, heatSearch, heatPage]);
+  }, [heatSearch, heatPage, heatColFilters]);
 
   useEffect(() => { loadDistinct(); }, [loadDistinct]);
   useEffect(() => { loadPlan(); }, [loadPlan]);
-  useEffect(() => { if (tab === "heatno") loadHeat(); }, [tab, loadHeat]);
+  useEffect(() => { if (tab === "heatno") { loadHeatDistinct(); loadHeat(); } }, [tab, loadHeatDistinct, loadHeat]);
 
   /* ── 선별지시서 출력 ── */
   const [printing, setPrinting] = useState(false);
@@ -876,19 +887,10 @@ export default function SteelPlanMain() {
       {/* ── 판번호 리스트 탭 ── */}
       {tab === "heatno" && (
         <>
-          {/* 필터 */}
+          {/* 상단 바 */}
           <div className="flex items-center gap-2 flex-wrap">
-            <select value={heatFilterVessel} onChange={(e) => { setHeatFilterVessel(e.target.value); setHeatPage(1); }} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
-              <option value="ALL">전체 호선</option>
-              {heatVesselList.map((v) => <option key={v} value={v}>{v}</option>)}
-            </select>
-            <select value={heatFilterStatus} onChange={(e) => { setHeatFilterStatus(e.target.value); setHeatPage(1); }} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
-              <option value="ALL">전체 상태</option>
-              <option value="WAITING">대기</option>
-              <option value="CUT">절단</option>
-            </select>
             <div className="relative">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 value={heatSearch}
                 onChange={(e) => { setHeatSearch(e.target.value); setHeatPage(1); }}
@@ -899,7 +901,15 @@ export default function SteelPlanMain() {
                 <button onClick={() => { setHeatSearch(""); setHeatPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={13} /></button>
               )}
             </div>
-            <button onClick={loadHeat} className="p-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-500"><RefreshCw size={14} /></button>
+            {Object.values(heatColFilters).some((v) => v.length > 0) && (
+              <button
+                onClick={() => { setHeatColFilters({}); setHeatPage(1); }}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50"
+              >
+                <X size={12} /> 필터 전체 초기화
+              </button>
+            )}
+            <button onClick={() => { loadHeatDistinct(); loadHeat(); }} className="p-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-500"><RefreshCw size={14} /></button>
             <span className="text-sm text-gray-500 ml-auto">총 {heatTotal}건</span>
           </div>
 
@@ -909,13 +919,20 @@ export default function SteelPlanMain() {
               <table className="w-full" style={{ fontSize: "12px" }}>
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">호선</th>
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">재질</th>
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">두께</th>
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">폭</th>
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">길이</th>
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">판번호</th>
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">상태</th>
+                    {(["vesselCode","material","thickness","width","length","heatNo","status"] as const).map((col, i) => {
+                      const labels = ["호선","재질","두께","폭","길이","판번호","상태"];
+                      const active = (heatColFilters[col]?.length ?? 0) > 0;
+                      return (
+                        <th key={col} className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <span>{labels[i]}</span>
+                            <button onClick={(e) => { setHeatOpenFilter(col); setHeatFilterAnchorEl(e.currentTarget); }} className={`rounded hover:bg-gray-200 p-0.5 ${active ? "text-blue-500" : "text-gray-400"}`}>
+                              <Filter size={10} fill={active ? "currentColor" : "none"} />
+                            </button>
+                          </div>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -945,6 +962,22 @@ export default function SteelPlanMain() {
               </table>
             </div>
           </div>
+
+          {/* 판번호 컬럼 필터 드롭다운 */}
+          {heatOpenFilter && heatFilterAnchorEl && (
+            <ColumnFilterDropdown
+              anchorEl={heatFilterAnchorEl}
+              values={heatDistinctValues[heatOpenFilter] ?? []}
+              selected={heatColFilters[heatOpenFilter] ?? []}
+              onApply={(vals) => {
+                setHeatColFilters((prev) => ({ ...prev, [heatOpenFilter]: vals }));
+                setHeatPage(1);
+                setHeatOpenFilter(null);
+                setHeatFilterAnchorEl(null);
+              }}
+              onClose={() => { setHeatOpenFilter(null); setHeatFilterAnchorEl(null); }}
+            />
+          )}
 
           {/* 판번호 페이지네이션 */}
           {heatTotalPages > 1 && (

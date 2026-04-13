@@ -5,26 +5,37 @@ import { prisma } from "@/lib/prisma";
 
 const PAGE_SIZE = 50;
 
-// GET /api/steel-plan/heat?vesselCode=&status=&search=&page=
+const parseList = (v: string | null) => v?.split(",").filter(Boolean) ?? [];
+
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const vesselCode = searchParams.get("vesselCode") || undefined;
-  const status     = searchParams.get("status")     || undefined;
-  const search     = searchParams.get("search")     || undefined;
-  const page       = Math.max(1, parseInt(searchParams.get("page") || "1"));
+  const sp = new URL(req.url).searchParams;
+
+  const search    = sp.get("search") || undefined;
+  const page      = Math.max(1, parseInt(sp.get("page") || "1"));
+
+  const vesselCodes  = parseList(sp.get("vesselCodes"));
+  const materials    = parseList(sp.get("materials"));
+  const thicknesses  = parseList(sp.get("thicknesses")).map(Number).filter((n) => !isNaN(n));
+  const widths       = parseList(sp.get("widths")).map(Number).filter((n) => !isNaN(n));
+  const lengths      = parseList(sp.get("lengths")).map(Number).filter((n) => !isNaN(n));
+  const heatNos      = parseList(sp.get("heatNos"));
+  const statuses     = parseList(sp.get("statuses")) as ("WAITING" | "CUT")[];
 
   const where = {
-    ...(vesselCode ? { vesselCode } : {}),
-    ...(status ? { status: status as "WAITING" | "CUT" } : {}),
     ...(search
-      ? {
-          OR: [
-            { vesselCode: { contains: search, mode: "insensitive" as const } },
-            { material:   { contains: search, mode: "insensitive" as const } },
-            { heatNo:     { contains: search, mode: "insensitive" as const } },
-          ],
-        }
+      ? { OR: [
+          { vesselCode: { contains: search, mode: "insensitive" as const } },
+          { material:   { contains: search, mode: "insensitive" as const } },
+          { heatNo:     { contains: search, mode: "insensitive" as const } },
+        ]}
       : {}),
+    ...(vesselCodes.length ? { vesselCode: { in: vesselCodes } } : {}),
+    ...(materials.length   ? { material:   { in: materials } }   : {}),
+    ...(thicknesses.length ? { thickness:  { in: thicknesses } } : {}),
+    ...(widths.length      ? { width:      { in: widths } }      : {}),
+    ...(lengths.length     ? { length:     { in: lengths } }     : {}),
+    ...(heatNos.length     ? { heatNo:     { in: heatNos } }     : {}),
+    ...(statuses.length    ? { status:     { in: statuses } }    : {}),
   };
 
   const [total, rows, allVessels] = await Promise.all([
