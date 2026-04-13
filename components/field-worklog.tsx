@@ -896,10 +896,10 @@ export default function FieldWorklog({
                 </div>
               )}
 
-              {/* Heat NO — 판번호 리스트에서 선택 */}
+              {/* Heat NO — 판번호 리스트 선택 + 직접 입력 */}
               <div>
                 <label className="text-xs text-gray-400 font-medium mb-1.5 block">
-                  판번호(Heat NO) <span className="text-gray-600">(선택)</span>
+                  판번호(Heat NO) <span className="text-gray-600">(필수)</span>
                 </label>
                 <div className="space-y-1.5">
                   {heatLoading && (
@@ -907,33 +907,33 @@ export default function FieldWorklog({
                   )}
 
                   {/* 판번호 선택 목록 */}
-                  {!heatLoading && drawingId && (
-                    heatOptions.length > 0 ? (
-                      <div className="max-h-40 overflow-y-auto space-y-1 rounded-xl border border-gray-700 bg-gray-900 p-1.5">
-                        {heatOptions.map(h => (
-                          <button
-                            key={h.id}
-                            onClick={() => setHeatNo(heatNo === h.heatNo ? "" : h.heatNo!)}
-                            className={`w-full text-left px-3 py-2 rounded-lg text-sm font-mono transition-colors ${
-                              heatNo === h.heatNo
-                                ? "bg-blue-700 text-white"
-                                : "bg-gray-800 text-gray-300 active:bg-gray-700"
-                            }`}
-                          >
-                            {h.heatNo}
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-gray-600 px-1">판번호리스트에 해당 규격의 대기 판번호가 없습니다</p>
-                    )
+                  {!heatLoading && drawingId && heatOptions.length > 0 && (
+                    <div className="max-h-40 overflow-y-auto space-y-1 rounded-xl border border-gray-700 bg-gray-900 p-1.5">
+                      {heatOptions.map(h => (
+                        <button
+                          key={h.id}
+                          onClick={() => setHeatNo(heatNo === h.heatNo ? "" : h.heatNo!)}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-sm font-mono transition-colors ${
+                            heatNo === h.heatNo
+                              ? "bg-blue-700 text-white"
+                              : "bg-gray-800 text-gray-300 active:bg-gray-700"
+                          }`}
+                        >
+                          {h.heatNo}
+                        </button>
+                      ))}
+                    </div>
                   )}
 
-                  {heatNo && (
-                    <p className="text-xs text-blue-400 px-1">
-                      선택됨: <span className="font-mono font-bold">{heatNo}</span>
-                      <button onClick={() => setHeatNo("")} className="ml-2 text-gray-500 hover:text-gray-300">✕</button>
-                    </p>
+                  {/* 직접 입력 */}
+                  {!heatLoading && drawingId && (
+                    <input
+                      type="text"
+                      placeholder={heatOptions.length > 0 ? "목록에서 선택하거나 직접 입력" : "판번호 직접 입력"}
+                      value={heatNo}
+                      onChange={e => setHeatNo(e.target.value)}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm font-mono text-white placeholder-gray-600 focus:outline-none focus:border-blue-500"
+                    />
                   )}
                 </div>
               </div>

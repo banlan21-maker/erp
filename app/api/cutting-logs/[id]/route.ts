@@ -52,6 +52,15 @@ export async function PATCH(
         }
       }
 
+      // ── 프로젝트 조회 (SteelPlan + SteelPlanHeat 양쪽에서 사용) ────────────
+      let project: { projectCode: string } | null = null;
+      if (log.projectId) {
+        project = await prisma.project.findUnique({
+          where: { id: log.projectId },
+          select: { projectCode: true },
+        });
+      }
+
       // ── SteelPlan 실사용 기록 + COMPLETED 처리 ────────────────────────────
       let steelPlanVesselCode: string | null = null;
       let steelPlanMaterial: string | null = null;
@@ -59,50 +68,58 @@ export async function PATCH(
       let steelPlanWidth: number | null = null;
       let steelPlanLength: number | null = null;
 
-      if (log.projectId && log.heatNo?.trim() && log.material && log.thickness && log.width && log.length) {
-        const project = await prisma.project.findUnique({
-          where: { id: log.projectId },
-          select: { projectCode: true },
+      if (project && log.heatNo?.trim() && log.material && log.thickness && log.width && log.length) {
+        const steelPlan = await prisma.steelPlan.findFirst({
+          where: {
+            vesselCode: project.projectCode,
+            material:   log.material,
+            thickness:  log.thickness,
+            width:      log.width,
+            length:     log.length,
+            status:     "RECEIVED",
+            actualHeatNo: null,
+          },
+          orderBy: { createdAt: "asc" },
         });
-        if (project) {
-          const steelPlan = await prisma.steelPlan.findFirst({
-            where: {
+        if (steelPlan) {
+          await prisma.steelPlan.update({
+            where: { id: steelPlan.id },
+            data: {
+              actualHeatNo:     log.heatNo.trim(),
+              actualVesselCode: project.projectCode,
+              actualDrawingNo:  log.drawingNo?.trim() || null,
+              status:           "COMPLETED",
+            },
+          });
+          steelPlanVesselCode = project.projectCode;
+          steelPlanMaterial   = log.material;
+          steelPlanThickness  = log.thickness;
+          steelPlanWidth      = log.width;
+          steelPlanLength     = log.length;
+        }
+      }
+
+      // ── SteelPlanHeat 상태 → CUT (없으면 신규 등록) ───────────────────────
+      if (log.heatNo?.trim()) {
+        const heatResult = await prisma.steelPlanHeat.updateMany({
+          where: { heatNo: log.heatNo.trim(), status: "WAITING" },
+          data:  { status: "CUT" },
+        });
+
+        // 판번호 목록에 없는 신규 판번호 → 자동 등록(CUT 상태)
+        if (heatResult.count === 0 && project && log.material && log.thickness && log.width && log.length) {
+          await prisma.steelPlanHeat.create({
+            data: {
               vesselCode: project.projectCode,
               material:   log.material,
               thickness:  log.thickness,
               width:      log.width,
               length:     log.length,
-              status:     "RECEIVED",
-              actualHeatNo: null,
+              heatNo:     log.heatNo.trim(),
+              status:     "CUT",
             },
-            orderBy: { createdAt: "asc" },
           });
-          if (steelPlan) {
-            await prisma.steelPlan.update({
-              where: { id: steelPlan.id },
-              data: {
-                actualHeatNo:     log.heatNo.trim(),
-                actualVesselCode: project.projectCode,
-                actualDrawingNo:  log.drawingNo?.trim() || null,
-                status:           "COMPLETED",
-              },
-            });
-            // DrawingList 재계산을 위해 스펙 저장
-            steelPlanVesselCode = project.projectCode;
-            steelPlanMaterial   = log.material;
-            steelPlanThickness  = log.thickness;
-            steelPlanWidth      = log.width;
-            steelPlanLength     = log.length;
-          }
         }
-      }
-
-      // ── SteelPlanHeat 상태 → CUT ──────────────────────────────────────────
-      if (log.heatNo?.trim()) {
-        await prisma.steelPlanHeat.updateMany({
-          where: { heatNo: log.heatNo.trim(), status: "WAITING" },
-          data:  { status: "CUT" },
-        });
       }
 
       // ── DrawingList 재계산 (COMPLETED 증가 → WAITING 감소 반영) ───────────
