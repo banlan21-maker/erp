@@ -1118,8 +1118,8 @@ export default function SteelPlanMain() {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
               >
                 <option value="">-- 호선을 선택하세요 --</option>
-                {vesselList.map((v) => (
-                  <option key={v} value={v}>{v}</option>
+                {(distinctValues.vesselCode ?? []).map(({ value }) => (
+                  <option key={value} value={value}>{value}</option>
                 ))}
               </select>
             </div>
