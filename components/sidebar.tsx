@@ -173,6 +173,31 @@ export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
             </a>
           </div>
         )}
+
+        {/* 관리 모듈 - 현장 운행일지 링크 */}
+        {module === "management" && (
+          <div className="pt-2 mt-2 border-t border-gray-700">
+            <a
+              href="/field/driving-log"
+              target="_blank"
+              rel="noopener noreferrer"
+              title={isMini ? "현장 운행일지 (새창)" : undefined}
+              className={`
+                flex items-center gap-3 rounded-lg text-sm font-medium transition-colors
+                text-emerald-400 hover:bg-gray-800 hover:text-emerald-300
+                ${isMini ? "justify-center px-0 py-2.5" : "px-3 py-2"}
+              `}
+            >
+              <Smartphone size={18} className="flex-shrink-0" />
+              {!isMini && (
+                <span className="flex-1 flex items-center justify-between">
+                  현장 운행일지
+                  <ExternalLink size={12} className="opacity-60" />
+                </span>
+              )}
+            </a>
+          </div>
+        )}
       </nav>
 
       {/* 하단: 토글 + 버전 */}
