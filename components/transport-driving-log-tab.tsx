@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import type { TransportVehicle } from "@/components/transport-main";
 
 /* ── 타입 ── */
+interface Worker { id: string; name: string; role: string | null; position: string | null }
 interface DrivingLog {
   id: string;
   vehicleId: string;
@@ -64,6 +65,9 @@ export default function TransportDrivingLogTab({
   const [editId,   setEditId]   = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ ...LOG_INIT });
 
+  /* 인원 목록 (운전자 선택용) */
+  const [workers, setWorkers] = useState<Worker[]>([]);
+
   const set  = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
   const setE = (k: string, v: string) => setEditForm(f => ({ ...f, [k]: v }));
 
@@ -81,6 +85,14 @@ export default function TransportDrivingLogTab({
   }, [year, month, selVehicleId]);
 
   useEffect(() => { load(); }, [load]);
+
+  /* 인원 목록 1회 로드 */
+  useEffect(() => {
+    fetch("/api/workers")
+      .then(r => r.json())
+      .then(d => { if (d.success) setWorkers(d.data); })
+      .catch(() => {});
+  }, []);
 
   /* 월 이동 */
   const prevMonth = () => {
@@ -416,7 +428,30 @@ export default function TransportDrivingLogTab({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">운전자 <span className="text-red-500">*</span></label>
-                  <Input value={form.driver} onChange={e => set("driver", e.target.value)} placeholder="이름" />
+                  {workers.length > 0 ? (
+                    <div className="flex gap-2">
+                      <select
+                        value={workers.some(w => w.name === form.driver) ? form.driver : "__custom__"}
+                        onChange={e => {
+                          if (e.target.value !== "__custom__") set("driver", e.target.value);
+                          else set("driver", "");
+                        }}
+                        className="flex-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="__custom__">-- 직접입력 --</option>
+                        {workers.map(w => (
+                          <option key={w.id} value={w.name}>
+                            {w.name}{w.position ? ` (${w.position})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                      {!workers.some(w => w.name === form.driver) && (
+                        <Input value={form.driver} onChange={e => set("driver", e.target.value)} placeholder="이름 직접입력" className="flex-1" />
+                      )}
+                    </div>
+                  ) : (
+                    <Input value={form.driver} onChange={e => set("driver", e.target.value)} placeholder="이름" />
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">목적/용무</label>
