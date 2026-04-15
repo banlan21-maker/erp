@@ -711,6 +711,7 @@ model TransportVehicle {
   consumableLogs   TransportConsumableLog[]
   inspections      TransportInspectionItem[]
   repairs          TransportRepairLog[]
+  drivingLogs      TransportDrivingLog[]
 }
 
 // 기타 사양 (운송장비 전용)
@@ -793,6 +794,27 @@ model TransportRepairLog {
   memo        String?
 
   createdAt   DateTime         @default(now())
+}
+
+// 차량 운행일지
+model TransportDrivingLog {
+  id            String           @id @default(cuid())
+  vehicleId     String
+  vehicle       TransportVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  date          DateTime         // 운행일
+  driver        String           // 운전자
+  departure     String?          // 출발지
+  destination   String?          // 도착지
+  purpose       String?          // 목적/용무
+  startTime     String?          // 출발시간 HH:MM
+  endTime       String?          // 도착시간 HH:MM
+  startMileage  Int?             // 출발 전 주행거리 (km)
+  endMileage    Int?             // 도착 후 주행거리 (km)
+  fuelCost      Int?             // 유류비 (원)
+  tollCost      Int?             // 통행료 (원)
+  memo          String?
+
+  createdAt     DateTime         @default(now())
 }
 
 // ==========================================

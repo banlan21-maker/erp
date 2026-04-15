@@ -7,6 +7,7 @@ import {
   CheckCircle, AlertTriangle, Clock, XCircle, MinusCircle,
   Filter,
 } from "lucide-react";
+import TransportDrivingLogTab from "@/components/transport-driving-log-tab";
 
 // ── 타입 ─────────────────────────────────────────────────────
 
@@ -242,7 +243,7 @@ interface Props {
 
 export default function TransportMain({ initialVehicles }: Props) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"register" | "manage">("manage");
+  const [activeTab, setActiveTab] = useState<"register" | "manage" | "drivingLog">("manage");
   const [vehicles, setVehicles] = useState<TransportVehicle[]>(initialVehicles);
 
   // ── 등록 폼 상태 ──────────────────────────────────────────
@@ -337,17 +338,21 @@ export default function TransportMain({ initialVehicles }: Props) {
       {/* 탭 */}
       <div className="border-b border-gray-200">
         <div className="flex gap-0">
-          {(["register", "manage"] as const).map(tab => (
+          {([
+            { key: "manage",     label: "운송장비 관리" },
+            { key: "register",   label: "운송장비 등록" },
+            { key: "drivingLog", label: "차량운행일지" },
+          ] as const).map(({ key, label }) => (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
+              key={key}
+              onClick={() => setActiveTab(key)}
               className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === tab
+                activeTab === key
                   ? "border-blue-600 text-blue-600"
                   : "border-transparent text-gray-500 hover:text-gray-700"
               }`}
             >
-              {tab === "register" ? "운송장비 등록" : "운송장비 관리"}
+              {label}
             </button>
           ))}
         </div>
@@ -717,6 +722,11 @@ export default function TransportMain({ initialVehicles }: Props) {
             </div>
           )}
         </div>
+      )}
+
+      {/* ── 차량운행일지 탭 ── */}
+      {activeTab === "drivingLog" && (
+        <TransportDrivingLogTab vehicles={vehicles} />
       )}
     </div>
   );
