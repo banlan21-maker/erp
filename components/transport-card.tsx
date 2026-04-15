@@ -98,6 +98,103 @@ export default function TransportCard({ vehicle: initial }: { vehicle: VehicleDe
   const [inspModal, setInspModal] = useState<{ itemId: string; itemName: string } | null>(null);
   const [inspForm, setInspForm] = useState({ completedAt: "", memo: "" });
 
+  // 기본 정보 수정
+  const [editMode, setEditMode] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name:            vehicle.name,
+    plateNo:         vehicle.plateNo         ?? "",
+    maker:           vehicle.maker           ?? "",
+    modelName:       vehicle.modelName       ?? "",
+    madeYear:        vehicle.madeYear        != null ? String(vehicle.madeYear)        : "",
+    acquiredAt:      vehicle.acquiredAt      ?? "",
+    acquiredCost:    vehicle.acquiredCost    != null ? String(vehicle.acquiredCost)    : "",
+    factory:         vehicle.factory,
+    factoryLocation: vehicle.factoryLocation ?? "",
+    manager:         vehicle.manager         ?? "",
+    usage:           vehicle.usage,
+    memo:            vehicle.memo            ?? "",
+    // 일반차량
+    fuelType:        vehicle.fuelType        ?? "DIESEL",
+    displacement:    vehicle.displacement    != null ? String(vehicle.displacement)    : "",
+    insuranceExpiry: vehicle.insuranceExpiry ?? "",
+    inspExpiry:      vehicle.inspExpiry      ?? "",
+    // 운송장비
+    equipSubType:    vehicle.equipSubType    ?? "FORKLIFT",
+    maxLoad:         vehicle.maxLoad         != null ? String(vehicle.maxLoad)         : "",
+    powerType:       vehicle.powerType       ?? "ENGINE",
+    mastHeight:      vehicle.mastHeight      != null ? String(vehicle.mastHeight)      : "",
+  });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError,  setEditError]  = useState("");
+  const setE = (k: string, v: string) => setEditForm(f => ({ ...f, [k]: v }));
+
+  const handleSaveEdit = useCallback(async () => {
+    setEditError("");
+    if (!editForm.name.trim()) { setEditError("차량/장비명은 필수입니다."); return; }
+    setEditSaving(true);
+    try {
+      const res = await fetch(`/api/transport-vehicle/${vehicle.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vehicleType:     vehicle.vehicleType,
+          name:            editForm.name,
+          plateNo:         editForm.plateNo         || null,
+          maker:           editForm.maker           || null,
+          modelName:       editForm.modelName       || null,
+          madeYear:        editForm.madeYear        || null,
+          acquiredAt:      editForm.acquiredAt      || null,
+          acquiredCost:    editForm.acquiredCost    || null,
+          factory:         editForm.factory,
+          factoryLocation: editForm.factoryLocation || null,
+          manager:         editForm.manager         || null,
+          usage:           editForm.usage,
+          memo:            editForm.memo            || null,
+          fuelType:        editForm.fuelType        || null,
+          displacement:    editForm.displacement    || null,
+          insuranceExpiry: editForm.insuranceExpiry || null,
+          inspExpiry:      editForm.inspExpiry      || null,
+          equipSubType:    editForm.equipSubType    || null,
+          maxLoad:         editForm.maxLoad         || null,
+          powerType:       editForm.powerType       || null,
+          mastHeight:      editForm.mastHeight      || null,
+          // 기존 소모품/검사/사양은 그대로 유지
+          specs:       vehicle.specs.map(s => ({ id: s.id, specKey: s.specKey, specValue: s.specValue })),
+          consumables: vehicle.consumables.map(c => ({ id: c.id, itemName: c.itemName, basis: c.basis, intervalKm: c.intervalKm, intervalMonth: c.intervalMonth, lastReplacedAt: c.lastReplacedAt, lastReplacedMileage: c.lastReplacedMileage })),
+          inspections: vehicle.inspections.map(i => ({ id: i.id, itemName: i.itemName, periodMonth: i.periodMonth, lastInspectedAt: i.lastInspectedAt, inspector: i.inspector, memo: i.memo })),
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) { setEditError(data.error || "저장 실패"); return; }
+      // 로컬 상태 반영
+      setVehicle(prev => ({
+        ...prev,
+        name:            editForm.name,
+        plateNo:         editForm.plateNo         || null,
+        maker:           editForm.maker           || null,
+        modelName:       editForm.modelName       || null,
+        madeYear:        editForm.madeYear        ? Number(editForm.madeYear)        : null,
+        acquiredAt:      editForm.acquiredAt      || null,
+        acquiredCost:    editForm.acquiredCost    ? Number(editForm.acquiredCost)    : null,
+        factory:         editForm.factory         as typeof prev.factory,
+        factoryLocation: editForm.factoryLocation || null,
+        manager:         editForm.manager         || null,
+        usage:           editForm.usage           as typeof prev.usage,
+        memo:            editForm.memo            || null,
+        fuelType:        (editForm.fuelType       || null) as typeof prev.fuelType,
+        displacement:    editForm.displacement    ? Number(editForm.displacement)    : null,
+        insuranceExpiry: editForm.insuranceExpiry || null,
+        inspExpiry:      editForm.inspExpiry      || null,
+        equipSubType:    (editForm.equipSubType   || null) as typeof prev.equipSubType,
+        maxLoad:         editForm.maxLoad         ? Number(editForm.maxLoad)         : null,
+        powerType:       (editForm.powerType      || null) as typeof prev.powerType,
+        mastHeight:      editForm.mastHeight      ? Number(editForm.mastHeight)      : null,
+      }));
+      setEditMode(false);
+    } catch { setEditError("서버 오류가 발생했습니다."); }
+    finally { setEditSaving(false); }
+  }, [vehicle, editForm]);
+
   // 수선 이력 등록
   const [repairForm, setRepairForm] = useState({ repairedAt: "", content: "", contractor: "", cost: "", memo: "" });
   const [repairSaving, setRepairSaving] = useState(false);
@@ -252,6 +349,15 @@ export default function TransportCard({ vehicle: initial }: { vehicle: VehicleDe
           </div>
           <p className="text-sm text-gray-500 mt-0.5 ml-8">{FACTORY_LABELS[vehicle.factory]}{vehicle.factoryLocation ? ` · ${vehicle.factoryLocation}` : ""}{vehicle.manager ? ` · 담당: ${vehicle.manager}` : ""}</p>
         </div>
+        {/* 수정 버튼 (기본 정보 탭에서만 표시) */}
+        {activeTab === "info" && !editMode && (
+          <button
+            onClick={() => { setEditMode(true); setEditError(""); }}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 transition-colors"
+          >
+            <Pencil size={14} /> 수정
+          </button>
+        )}
       </div>
 
       {/* 탭 */}
@@ -297,18 +403,39 @@ export default function TransportCard({ vehicle: initial }: { vehicle: VehicleDe
           {/* 공통 정보 */}
           <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">공통 정보</p>
-            <div className="grid grid-cols-3 gap-x-6 gap-y-3 text-sm">
-              <InfoRow label="차량번호" value={vehicle.plateNo} />
-              <InfoRow label="제조사" value={vehicle.maker} />
-              <InfoRow label="모델명" value={vehicle.modelName} />
-              <InfoRow label="연식" value={vehicle.madeYear ? `${vehicle.madeYear}년` : null} />
-              <InfoRow label="취득일" value={vehicle.acquiredAt} />
-              <InfoRow label="취득금액" value={vehicle.acquiredCost ? `${vehicle.acquiredCost.toLocaleString()}원` : null} />
-              <InfoRow label="보관 공장" value={FACTORY_LABELS[vehicle.factory]} />
-              <InfoRow label="세부 위치" value={vehicle.factoryLocation} />
-              <InfoRow label="담당자" value={vehicle.manager} />
-              <InfoRow label="비고" value={vehicle.memo} />
-            </div>
+            {editMode ? (
+              <div className="grid grid-cols-3 gap-x-6 gap-y-4 text-sm">
+                <EditField label="차량/장비명 *" value={editForm.name}            onChange={v => setE("name", v)} />
+                <EditField label="차량번호"       value={editForm.plateNo}         onChange={v => setE("plateNo", v)} />
+                <EditField label="제조사"         value={editForm.maker}           onChange={v => setE("maker", v)} />
+                <EditField label="모델명"         value={editForm.modelName}       onChange={v => setE("modelName", v)} />
+                <EditField label="연식"           value={editForm.madeYear}        onChange={v => setE("madeYear", v)} type="number" />
+                <EditField label="취득일"         value={editForm.acquiredAt}      onChange={v => setE("acquiredAt", v)} type="date" />
+                <EditField label="취득금액 (원)"  value={editForm.acquiredCost}    onChange={v => setE("acquiredCost", v)} type="number" />
+                <EditSelect label="보관 공장" value={editForm.factory} onChange={v => setE("factory", v)}
+                  options={[{ value: "FACTORY1", label: "1공장" }, { value: "FACTORY2", label: "2공장" }]} />
+                <EditField label="세부 위치"      value={editForm.factoryLocation} onChange={v => setE("factoryLocation", v)} />
+                <EditField label="담당자"         value={editForm.manager}         onChange={v => setE("manager", v)} />
+                <EditSelect label="사용 상태" value={editForm.usage} onChange={v => setE("usage", v)}
+                  options={[{ value: "IN_USE", label: "사용중" }, { value: "MAINTENANCE", label: "점검중" }, { value: "DISPOSED", label: "폐기" }]} />
+                <div className="col-span-3">
+                  <EditField label="비고" value={editForm.memo} onChange={v => setE("memo", v)} />
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-x-6 gap-y-3 text-sm">
+                <InfoRow label="차량번호" value={vehicle.plateNo} />
+                <InfoRow label="제조사" value={vehicle.maker} />
+                <InfoRow label="모델명" value={vehicle.modelName} />
+                <InfoRow label="연식" value={vehicle.madeYear ? `${vehicle.madeYear}년` : null} />
+                <InfoRow label="취득일" value={vehicle.acquiredAt} />
+                <InfoRow label="취득금액" value={vehicle.acquiredCost ? `${vehicle.acquiredCost.toLocaleString()}원` : null} />
+                <InfoRow label="보관 공장" value={FACTORY_LABELS[vehicle.factory]} />
+                <InfoRow label="세부 위치" value={vehicle.factoryLocation} />
+                <InfoRow label="담당자" value={vehicle.manager} />
+                <InfoRow label="비고" value={vehicle.memo} />
+              </div>
+            )}
           </div>
 
           {/* 종류별 추가 정보 */}
@@ -316,30 +443,73 @@ export default function TransportCard({ vehicle: initial }: { vehicle: VehicleDe
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">
               {vehicle.vehicleType === "VEHICLE" ? "일반차량 정보" : "운송장비 정보"}
             </p>
-            {vehicle.vehicleType === "VEHICLE" ? (
-              <div className="grid grid-cols-3 gap-x-6 gap-y-3 text-sm">
-                <InfoRow label="연료 종류" value={vehicle.fuelType ? FUEL_LABELS[vehicle.fuelType] : null} />
-                <InfoRow label="배기량" value={vehicle.displacement ? `${vehicle.displacement.toLocaleString()} cc` : null} />
-                <InfoRow label="보험 만료일" value={vehicle.insuranceExpiry} />
-                <InfoRow label="정기검사 만료일" value={vehicle.inspExpiry} />
-              </div>
+            {editMode ? (
+              vehicle.vehicleType === "VEHICLE" ? (
+                <div className="grid grid-cols-3 gap-x-6 gap-y-4 text-sm">
+                  <EditSelect label="연료 종류" value={editForm.fuelType} onChange={v => setE("fuelType", v)}
+                    options={[{ value: "GASOLINE", label: "휘발유" }, { value: "DIESEL", label: "경유" }, { value: "LPG", label: "LPG" }, { value: "ELECTRIC", label: "전기" }]} />
+                  <EditField label="배기량 (cc)"      value={editForm.displacement}    onChange={v => setE("displacement", v)} type="number" />
+                  <EditField label="보험 만료일"       value={editForm.insuranceExpiry} onChange={v => setE("insuranceExpiry", v)} type="date" />
+                  <EditField label="정기검사 만료일"   value={editForm.inspExpiry}      onChange={v => setE("inspExpiry", v)} type="date" />
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-x-6 gap-y-4 text-sm">
+                  <EditSelect label="세부 종류" value={editForm.equipSubType} onChange={v => setE("equipSubType", v)}
+                    options={[{ value: "FORKLIFT", label: "지게차" }, { value: "CRANE", label: "크레인 차량" }, { value: "OTHER", label: "기타" }]} />
+                  <EditField label="최대 하중 (t)"   value={editForm.maxLoad}    onChange={v => setE("maxLoad", v)} type="number" />
+                  <EditSelect label="동력 방식" value={editForm.powerType} onChange={v => setE("powerType", v)}
+                    options={[{ value: "ENGINE", label: "엔진" }, { value: "ELECTRIC", label: "전동" }, { value: "LPG", label: "LPG" }]} />
+                  <EditField label="마스트 높이 (m)" value={editForm.mastHeight} onChange={v => setE("mastHeight", v)} type="number" />
+                </div>
+              )
             ) : (
-              <div className="grid grid-cols-3 gap-x-6 gap-y-3 text-sm">
-                <InfoRow label="세부 종류" value={vehicle.equipSubType ? EQUIP_SUB_LABELS[vehicle.equipSubType] : null} />
-                <InfoRow label="최대 하중" value={vehicle.maxLoad ? `${vehicle.maxLoad}t` : null} />
-                <InfoRow label="동력 방식" value={vehicle.powerType ? POWER_LABELS[vehicle.powerType] : null} />
-                {vehicle.mastHeight && <InfoRow label="마스트 높이" value={`${vehicle.mastHeight}m`} />}
-                {vehicle.specs.length > 0 && (
-                  <div className="col-span-3 mt-2 pt-3 border-t border-gray-100">
-                    <p className="text-xs font-medium text-gray-500 mb-2">기타 사양</p>
-                    <div className="grid grid-cols-3 gap-x-6 gap-y-2">
-                      {vehicle.specs.map(s => <InfoRow key={s.id} label={s.specKey} value={s.specValue} />)}
+              vehicle.vehicleType === "VEHICLE" ? (
+                <div className="grid grid-cols-3 gap-x-6 gap-y-3 text-sm">
+                  <InfoRow label="연료 종류" value={vehicle.fuelType ? FUEL_LABELS[vehicle.fuelType] : null} />
+                  <InfoRow label="배기량" value={vehicle.displacement ? `${vehicle.displacement.toLocaleString()} cc` : null} />
+                  <InfoRow label="보험 만료일" value={vehicle.insuranceExpiry} />
+                  <InfoRow label="정기검사 만료일" value={vehicle.inspExpiry} />
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-x-6 gap-y-3 text-sm">
+                  <InfoRow label="세부 종류" value={vehicle.equipSubType ? EQUIP_SUB_LABELS[vehicle.equipSubType] : null} />
+                  <InfoRow label="최대 하중" value={vehicle.maxLoad ? `${vehicle.maxLoad}t` : null} />
+                  <InfoRow label="동력 방식" value={vehicle.powerType ? POWER_LABELS[vehicle.powerType] : null} />
+                  {vehicle.mastHeight && <InfoRow label="마스트 높이" value={`${vehicle.mastHeight}m`} />}
+                  {vehicle.specs.length > 0 && (
+                    <div className="col-span-3 mt-2 pt-3 border-t border-gray-100">
+                      <p className="text-xs font-medium text-gray-500 mb-2">기타 사양</p>
+                      <div className="grid grid-cols-3 gap-x-6 gap-y-2">
+                        {vehicle.specs.map(s => <InfoRow key={s.id} label={s.specKey} value={s.specValue} />)}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )
             )}
           </div>
+
+          {/* 수정 모드 하단 버튼 */}
+          {editMode && (
+            <div className="flex items-center justify-between">
+              {editError && <p className="text-sm text-red-600">{editError}</p>}
+              <div className="flex gap-2 ml-auto">
+                <button
+                  onClick={() => { setEditMode(false); setEditError(""); }}
+                  className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 transition-colors"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleSaveEdit}
+                  disabled={editSaving}
+                  className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  <Save size={14} /> {editSaving ? "저장 중..." : "저장"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -576,6 +746,40 @@ function InfoRow({ label, value }: { label: string; value: string | number | nul
     <div>
       <p className="text-xs text-gray-400">{label}</p>
       <p className="text-sm font-medium text-gray-800 mt-0.5">{value ?? "-"}</p>
+    </div>
+  );
+}
+
+function EditField({ label, value, onChange, type = "text" }: {
+  label: string; value: string; onChange: (v: string) => void; type?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-xs text-gray-500 mb-1">{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+      />
+    </div>
+  );
+}
+
+function EditSelect({ label, value, onChange, options }: {
+  label: string; value: string; onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <div>
+      <label className="block text-xs text-gray-500 mb-1">{label}</label>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+      >
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
     </div>
   );
 }
