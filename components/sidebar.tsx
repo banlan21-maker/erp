@@ -5,8 +5,10 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, FolderOpen, FileSpreadsheet, ClipboardList,
   Users, BarChart2, ChevronLeft, ChevronRight, Smartphone,
-  ExternalLink, Package, Truck, History, CalendarDays, Eye, Wrench, UtensilsCrossed, Archive,
+  ExternalLink, Package, Truck, History, CalendarDays, Eye, Wrench,
+  UtensilsCrossed, Archive, Zap, List, PlusCircle,
 } from "lucide-react";
+import type { ComponentType } from "react";
 
 export type ModuleType = "cnc" | "material" | "management" | "schedule";
 
@@ -18,12 +20,20 @@ interface SidebarProps {
   module: ModuleType;
 }
 
-const menuGroups = {
+type MenuLink  = { kind?: "link"; href: string; label: string; icon: ComponentType<{ size?: number; className?: string }> };
+type MenuGroup = { kind: "group"; label: string; icon: ComponentType<{ size?: number; className?: string }>; children: { href: string; label: string; icon: ComponentType<{ size?: number; className?: string }> }[] };
+type MenuItem  = MenuLink | MenuGroup;
+
+const menuGroups: Record<string, MenuItem[]> = {
   cnc: [
     { href: "/cutpart/dashboard",  label: "절단 대시보드", icon: LayoutDashboard },
     { href: "/cutpart/steel-plan", label: "강재입고관리",  icon: ClipboardList },
     { href: "/cutpart/projects",   label: "프로젝트",      icon: FolderOpen },
     { href: "/cutpart/scrap",      label: "잔재관리",      icon: Archive },
+    { kind: "group", label: "돌발작업", icon: Zap, children: [
+      { href: "/cutpart/urgent/register", label: "돌발등록",   icon: PlusCircle },
+      { href: "/cutpart/urgent/list",     label: "돌발리스트", icon: List },
+    ]},
     { href: "/cutpart/worklog",    label: "작업일보",      icon: ClipboardList },
     { href: "/cutpart/reports",    label: "보고서",        icon: BarChart2 },
   ],
@@ -45,9 +55,6 @@ const menuGroups = {
     { href: "/management/vendors",    label: "거래처 관리",   icon: Package },
     { href: "/meal",                  label: "식수 관리",     icon: UtensilsCrossed },
   ],
-  meal: [
-    { href: "/meal", label: "식수 관리", icon: UtensilsCrossed },
-  ],
 };
 
 export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
@@ -55,24 +62,42 @@ export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
   const items = menuGroups[module] || menuGroups.cnc;
 
   const cycle = () => {
-    if (mode === "full")   onModeChange("mini");
-    else if (mode === "mini") onModeChange("hidden");
-    else onModeChange("full");
+    if (mode === "full")        onModeChange("mini");
+    else if (mode === "mini")   onModeChange("hidden");
+    else                        onModeChange("full");
   };
 
   if (mode === "hidden") return null;
 
   const isMini = mode === "mini";
-  
+
+  // 링크 활성 여부 (그룹 children 제외한 flat 링크 목록)
+  const allLinks: string[] = items.flatMap(item =>
+    item.kind === "group" ? item.children.map(c => c.href) : [item.href]
+  );
+  const isActive = (href: string) =>
+    pathname === href ||
+    (href !== "/cutpart/dashboard" &&
+     pathname.startsWith(href) &&
+     !allLinks.some(other => other !== href && other.startsWith(href) && pathname.startsWith(other)));
+
   let moduleLabel = "관리";
-  if (module === "cnc")      moduleLabel = "CNC 절단";
+  if (module === "cnc")           moduleLabel = "CNC 절단";
   else if (module === "material") moduleLabel = "구매/자재";
   else if (module === "schedule") moduleLabel = "스케줄";
 
   let moduleShort = "MNG";
-  if (module === "cnc")      moduleShort = "CNC";
+  if (module === "cnc")           moduleShort = "CNC";
   else if (module === "material") moduleShort = "MAT";
   else if (module === "schedule") moduleShort = "SCH";
+
+  const linkClass = (href: string) => `
+    flex items-center gap-3 rounded-lg text-sm font-medium transition-all duration-200
+    ${isMini ? "justify-center px-0 py-2.5" : "px-3 py-2"}
+    ${isActive(href)
+      ? "bg-blue-600 text-white shadow-sm"
+      : "text-gray-300 hover:bg-gray-800 hover:text-white"}
+  `;
 
   return (
     <aside
@@ -84,9 +109,7 @@ export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
       {/* 로고 영역 */}
       <div className={`border-b border-gray-700 flex items-center ${isMini ? "justify-center px-0 py-4" : "px-5 py-5"}`}>
         {isMini ? (
-          <span className="text-blue-400 font-bold text-sm tracking-tighter">
-            {moduleShort}
-          </span>
+          <span className="text-blue-400 font-bold text-sm tracking-tighter">{moduleShort}</span>
         ) : (
           <div>
             <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">{moduleLabel} 파트</p>
@@ -97,26 +120,48 @@ export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
 
       {/* 내비게이션 */}
       <nav className="flex-1 px-2 py-4 space-y-1">
-        {items.map(({ href, label, icon: Icon }) => {
-          const isActive = pathname === href ||
-            (href !== "/cutpart/dashboard" &&
-             pathname.startsWith(href) &&
-             !items.some(other => other.href !== href && other.href.startsWith(href) && pathname.startsWith(other.href)));
+        {items.map((item) => {
+          if (item.kind === "group") {
+            const GroupIcon = item.icon;
+            return (
+              <div key={item.label}>
+                {/* 그룹 헤더 (full 모드에서만) */}
+                {!isMini && (
+                  <div className="flex items-center gap-2 px-3 pt-2 pb-0.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                    <GroupIcon size={12} />
+                    {item.label}
+                  </div>
+                )}
+                {/* 그룹 자식 링크 */}
+                {item.children.map((child) => {
+                  const ChildIcon = child.icon;
+                  return (
+                    <Link
+                      key={child.href}
+                      href={child.href}
+                      title={isMini ? child.label : undefined}
+                      className={linkClass(child.href) + (isMini ? "" : " pl-6")}
+                    >
+                      <ChildIcon size={16} className="flex-shrink-0" />
+                      {!isMini && <span>{child.label}</span>}
+                    </Link>
+                  );
+                })}
+              </div>
+            );
+          }
+
+          // 일반 링크
+          const Icon = item.icon;
           return (
             <Link
-              key={href}
-              href={href}
-              title={isMini ? label : undefined}
-              className={`
-                flex items-center gap-3 rounded-lg text-sm font-medium transition-all duration-200
-                ${isMini ? "justify-center px-0 py-2.5" : "px-3 py-2"}
-                ${isActive
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "text-gray-300 hover:bg-gray-800 hover:text-white"}
-              `}
+              key={item.href}
+              href={item.href}
+              title={isMini ? item.label : undefined}
+              className={linkClass(item.href)}
             >
               <Icon size={18} className="flex-shrink-0" />
-              {!isMini && <span>{label}</span>}
+              {!isMini && <span>{item.label}</span>}
             </Link>
           );
         })}
@@ -186,4 +231,3 @@ export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
     </aside>
   );
 }
-

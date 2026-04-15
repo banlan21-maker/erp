@@ -6,7 +6,6 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import ProjectTree from "@/components/project-tree";
 import DrawingsMain from "@/components/drawings-main";
-import UrgentRegisterButton from "@/components/urgent-register-button";
 import type { DrawingList } from "@prisma/client";
 
 interface VesselBlock {
@@ -64,7 +63,7 @@ export default function ProjectsMain({
   const goTab = (t: string) => router.push(`/cutpart/projects?tab=${t}`);
 
   const tabs = [
-    { key: "vessels", icon: <List size={14} />,          label: "호선/블록·돌발리스트" },
+    { key: "vessels", icon: <List size={14} />,          label: "호선/블록 리스트" },
     { key: "upload",  icon: <Upload size={14} />,         label: "블록별강재등록" },
     { key: "list",    icon: <FileSpreadsheet size={14} />, label: "블록별강재리스트" },
   ];
@@ -84,7 +83,6 @@ export default function ProjectsMain({
         </div>
         {tab === "vessels" && (
           <div className="flex items-center gap-2">
-            <UrgentRegisterButton projects={projectOptions.map(p => ({ id: p.id, projectCode: p.projectCode, projectName: p.projectName }))} />
             <Link href="/cutpart/projects/new">
               <Button className="flex items-center gap-2">
                 <Plus size={16} /> 호선 등록
