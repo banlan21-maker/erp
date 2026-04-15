@@ -16,16 +16,10 @@ export async function GET(req: NextRequest) {
     if (year && month) {
       const y = parseInt(year);
       const m = parseInt(month);
-      where.date = {
-        gte: new Date(y, m - 1, 1),
-        lt:  new Date(y, m, 1),
-      };
+      where.date = { gte: new Date(y, m - 1, 1), lt: new Date(y, m, 1) };
     } else if (year) {
       const y = parseInt(year);
-      where.date = {
-        gte: new Date(y, 0, 1),
-        lt:  new Date(y + 1, 0, 1),
-      };
+      where.date = { gte: new Date(y, 0, 1), lt: new Date(y + 1, 0, 1) };
     }
 
     const logs = await prisma.transportDrivingLog.findMany({
@@ -34,13 +28,14 @@ export async function GET(req: NextRequest) {
       orderBy: [{ date: "desc" }, { startTime: "asc" }],
     });
 
-    const serialized = logs.map(l => ({
-      ...l,
-      date:      l.date.toISOString().split("T")[0],
-      createdAt: l.createdAt.toISOString(),
-    }));
-
-    return NextResponse.json({ success: true, data: serialized });
+    return NextResponse.json({
+      success: true,
+      data: logs.map(l => ({
+        ...l,
+        date:      l.date.toISOString().split("T")[0],
+        createdAt: l.createdAt.toISOString(),
+      })),
+    });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
@@ -56,27 +51,48 @@ export async function POST(req: NextRequest) {
       fuelCost, tollCost, memo,
     } = body;
 
-    if (!vehicleId) return NextResponse.json({ success: false, error: "차량을 선택해주세요." }, { status: 400 });
-    if (!date)      return NextResponse.json({ success: false, error: "운행일을 입력해주세요." }, { status: 400 });
-    if (!driver?.trim()) return NextResponse.json({ success: false, error: "운전자를 입력해주세요." }, { status: 400 });
+    if (!vehicleId)        return NextResponse.json({ success: false, error: "차량을 선택해주세요." },  { status: 400 });
+    if (!date)             return NextResponse.json({ success: false, error: "운행일을 입력해주세요." }, { status: 400 });
+    if (!driver?.trim())   return NextResponse.json({ success: false, error: "운전자를 입력해주세요." }, { status: 400 });
 
-    const log = await prisma.transportDrivingLog.create({
-      data: {
-        vehicleId,
-        date:         new Date(date),
-        driver:       driver.trim(),
-        departure:    departure    || null,
-        destination:  destination  || null,
-        purpose:      purpose      || null,
-        startTime:    startTime    || null,
-        endTime:      endTime      || null,
-        startMileage: startMileage != null && startMileage !== "" ? Number(startMileage) : null,
-        endMileage:   endMileage   != null && endMileage   !== "" ? Number(endMileage)   : null,
-        fuelCost:     fuelCost     != null && fuelCost     !== "" ? Number(fuelCost)     : null,
-        tollCost:     tollCost     != null && tollCost     !== "" ? Number(tollCost)     : null,
-        memo:         memo         || null,
-      },
-      include: { vehicle: { select: { id: true, code: true, name: true, plateNo: true } } },
+    const parsedEnd = endMileage != null && endMileage !== "" ? Number(endMileage) : null;
+
+    const log = await prisma.$transaction(async (tx) => {
+      // 운행일지 생성
+      const created = await tx.transportDrivingLog.create({
+        data: {
+          vehicleId,
+          date:         new Date(date),
+          driver:       driver.trim(),
+          departure:    departure    || null,
+          destination:  destination  || null,
+          purpose:      purpose      || null,
+          startTime:    startTime    || null,
+          endTime:      endTime      || null,
+          startMileage: startMileage != null && startMileage !== "" ? Number(startMileage) : null,
+          endMileage:   parsedEnd,
+          fuelCost:     fuelCost     != null && fuelCost     !== "" ? Number(fuelCost)     : null,
+          tollCost:     tollCost     != null && tollCost     !== "" ? Number(tollCost)     : null,
+          memo:         memo         || null,
+        },
+        include: { vehicle: { select: { id: true, code: true, name: true, plateNo: true } } },
+      });
+
+      // endMileage가 있으면 차량 km 갱신 (현재값보다 클 때만)
+      if (parsedEnd != null) {
+        const vehicle = await tx.transportVehicle.findUnique({
+          where: { id: vehicleId },
+          select: { mileage: true },
+        });
+        if (vehicle && (vehicle.mileage == null || parsedEnd > vehicle.mileage)) {
+          await tx.transportVehicle.update({
+            where: { id: vehicleId },
+            data: { mileage: parsedEnd },
+          });
+        }
+      }
+
+      return created;
     });
 
     return NextResponse.json({
