@@ -6,7 +6,7 @@ import {
   LayoutDashboard, FolderOpen, FileSpreadsheet, ClipboardList,
   Users, BarChart2, ChevronLeft, ChevronRight, Smartphone,
   ExternalLink, Package, Truck, History, CalendarDays, Eye, Wrench,
-  UtensilsCrossed, Archive, Zap, List, PlusCircle,
+  UtensilsCrossed, Archive, Zap,
 } from "lucide-react";
 import type { ComponentType } from "react";
 
@@ -20,9 +20,7 @@ interface SidebarProps {
   module: ModuleType;
 }
 
-type MenuLink  = { kind?: "link"; href: string; label: string; icon: ComponentType<{ size?: number; className?: string }> };
-type MenuGroup = { kind: "group"; label: string; icon: ComponentType<{ size?: number; className?: string }>; children: { href: string; label: string; icon: ComponentType<{ size?: number; className?: string }> }[] };
-type MenuItem  = MenuLink | MenuGroup;
+type MenuItem = { href: string; label: string; icon: ComponentType<{ size?: number; className?: string }> };
 
 const menuGroups: Record<string, MenuItem[]> = {
   cnc: [
@@ -30,10 +28,7 @@ const menuGroups: Record<string, MenuItem[]> = {
     { href: "/cutpart/steel-plan", label: "강재입고관리",  icon: ClipboardList },
     { href: "/cutpart/projects",   label: "프로젝트",      icon: FolderOpen },
     { href: "/cutpart/scrap",      label: "잔재관리",      icon: Archive },
-    { kind: "group", label: "돌발작업", icon: Zap, children: [
-      { href: "/cutpart/urgent/register", label: "돌발등록",   icon: PlusCircle },
-      { href: "/cutpart/urgent/list",     label: "돌발리스트", icon: List },
-    ]},
+    { href: "/cutpart/urgent",     label: "돌발작업",      icon: Zap },
     { href: "/cutpart/worklog",    label: "작업일보",      icon: ClipboardList },
     { href: "/cutpart/reports",    label: "보고서",        icon: BarChart2 },
   ],
@@ -72,14 +67,11 @@ export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
   const isMini = mode === "mini";
 
   // 링크 활성 여부 (그룹 children 제외한 flat 링크 목록)
-  const allLinks: string[] = items.flatMap(item =>
-    item.kind === "group" ? item.children.map(c => c.href) : [item.href]
-  );
   const isActive = (href: string) =>
     pathname === href ||
     (href !== "/cutpart/dashboard" &&
      pathname.startsWith(href) &&
-     !allLinks.some(other => other !== href && other.startsWith(href) && pathname.startsWith(other)));
+     !items.some(other => other.href !== href && other.href.startsWith(href) && pathname.startsWith(other.href)));
 
   let moduleLabel = "관리";
   if (module === "cnc")           moduleLabel = "CNC 절단";
@@ -120,51 +112,17 @@ export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
 
       {/* 내비게이션 */}
       <nav className="flex-1 px-2 py-4 space-y-1">
-        {items.map((item) => {
-          if (item.kind === "group") {
-            const GroupIcon = item.icon;
-            return (
-              <div key={item.label}>
-                {/* 그룹 헤더 (full 모드에서만) */}
-                {!isMini && (
-                  <div className="flex items-center gap-2 px-3 pt-2 pb-0.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
-                    <GroupIcon size={12} />
-                    {item.label}
-                  </div>
-                )}
-                {/* 그룹 자식 링크 */}
-                {item.children.map((child) => {
-                  const ChildIcon = child.icon;
-                  return (
-                    <Link
-                      key={child.href}
-                      href={child.href}
-                      title={isMini ? child.label : undefined}
-                      className={linkClass(child.href) + (isMini ? "" : " pl-6")}
-                    >
-                      <ChildIcon size={16} className="flex-shrink-0" />
-                      {!isMini && <span>{child.label}</span>}
-                    </Link>
-                  );
-                })}
-              </div>
-            );
-          }
-
-          // 일반 링크
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              title={isMini ? item.label : undefined}
-              className={linkClass(item.href)}
-            >
-              <Icon size={18} className="flex-shrink-0" />
-              {!isMini && <span>{item.label}</span>}
-            </Link>
-          );
-        })}
+        {items.map(({ href, label, icon: Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            title={isMini ? label : undefined}
+            className={linkClass(href)}
+          >
+            <Icon size={18} className="flex-shrink-0" />
+            {!isMini && <span>{label}</span>}
+          </Link>
+        ))}
 
         {/* CNC 모듈 - 현장 작업일보 링크 */}
         {module === "cnc" && (
