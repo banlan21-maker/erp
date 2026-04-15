@@ -428,29 +428,21 @@ export default function TransportDrivingLogTab({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">운전자 <span className="text-red-500">*</span></label>
-                  {workers.length > 0 ? (
-                    <div className="flex gap-2">
-                      <select
-                        value={workers.some(w => w.name === form.driver) ? form.driver : "__custom__"}
-                        onChange={e => {
-                          if (e.target.value !== "__custom__") set("driver", e.target.value);
-                          else set("driver", "");
-                        }}
-                        className="flex-1 px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="__custom__">-- 직접입력 --</option>
-                        {workers.map(w => (
-                          <option key={w.id} value={w.name}>
-                            {w.name}{w.position ? ` (${w.position})` : ""}
-                          </option>
-                        ))}
-                      </select>
-                      {!workers.some(w => w.name === form.driver) && (
-                        <Input value={form.driver} onChange={e => set("driver", e.target.value)} placeholder="이름 직접입력" className="flex-1" />
-                      )}
-                    </div>
-                  ) : (
-                    <Input value={form.driver} onChange={e => set("driver", e.target.value)} placeholder="이름" />
+                  <Input
+                    list="driver-suggestions"
+                    value={form.driver}
+                    onChange={e => set("driver", e.target.value)}
+                    placeholder="이름 입력 또는 선택"
+                    autoComplete="off"
+                  />
+                  {workers.length > 0 && (
+                    <datalist id="driver-suggestions">
+                      {workers.map(w => (
+                        <option key={w.id} value={w.name}>
+                          {w.position ? `${w.name} (${w.position})` : w.name}
+                        </option>
+                      ))}
+                    </datalist>
                   )}
                 </div>
                 <div>
