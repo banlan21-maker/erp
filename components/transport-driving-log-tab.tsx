@@ -27,6 +27,9 @@ interface DrivingLog {
   vehicle: { id: string; code: string; name: string; plateNo: string | null };
 }
 
+const PURPOSE_PRESETS = ["자재운반", "현장이동", "정비", "출장"];
+const LOCATION_PRESETS = ["진교", "삼정", "세림", "한국야나세", "통영조선소", "삼부TS", "함안공장"];
+
 const LOG_INIT = {
   vehicleId: "", date: "", driver: "",
   departure: "", destination: "", purpose: "",
@@ -263,7 +266,17 @@ export default function TransportDrivingLogTab({
           </button>
         </div>
 
-        <Button onClick={() => { setShowForm(true); setForm({ ...LOG_INIT, date: `${year}-${String(month).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`, vehicleId: selVehicleId }); setFormErr(""); }}
+        <Button onClick={() => {
+          const selVehicle = inUsedVehicles.find(v => v.id === selVehicleId);
+          setShowForm(true);
+          setForm({
+            ...LOG_INIT,
+            date: `${year}-${String(month).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`,
+            vehicleId:    selVehicleId,
+            startMileage: selVehicle?.mileage != null ? String(selVehicle.mileage) : "",
+          });
+          setFormErr("");
+        }}
           className="flex items-center gap-2">
           <Plus size={15} /> 운행일지 등록
         </Button>
@@ -410,7 +423,14 @@ export default function TransportDrivingLogTab({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">차량 <span className="text-red-500">*</span></label>
-                  <select value={form.vehicleId} onChange={e => set("vehicleId", e.target.value)}
+                  <select
+                    value={form.vehicleId}
+                    onChange={e => {
+                      const vid = e.target.value;
+                      set("vehicleId", vid);
+                      const v = inUsedVehicles.find(v => v.id === vid);
+                      if (v?.mileage != null) set("startMileage", String(v.mileage));
+                    }}
                     className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="">-- 차량 선택 --</option>
                     {inUsedVehicles.map(v => (
@@ -447,7 +467,26 @@ export default function TransportDrivingLogTab({
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">목적/용무</label>
-                  <Input value={form.purpose} onChange={e => set("purpose", e.target.value)} placeholder="예: 자재 운반, 현장 이동" />
+                  <div className="flex flex-wrap gap-1.5 mb-1.5">
+                    {PURPOSE_PRESETS.map(p => (
+                      <button
+                        key={p} type="button"
+                        onClick={() => set("purpose", p)}
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                          form.purpose === p
+                            ? "bg-blue-600 border-blue-600 text-white"
+                            : "border-gray-300 text-gray-600 hover:border-blue-400 hover:text-blue-600"
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                  <Input
+                    value={form.purpose}
+                    onChange={e => set("purpose", e.target.value)}
+                    placeholder="직접 입력"
+                  />
                 </div>
               </div>
 
@@ -455,13 +494,28 @@ export default function TransportDrivingLogTab({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">출발지</label>
-                  <Input value={form.departure} onChange={e => set("departure", e.target.value)} placeholder="예: 본사" />
+                  <Input
+                    list="location-suggestions"
+                    value={form.departure}
+                    onChange={e => set("departure", e.target.value)}
+                    placeholder="입력 또는 선택"
+                    autoComplete="off"
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">도착지</label>
-                  <Input value={form.destination} onChange={e => set("destination", e.target.value)} placeholder="예: 거제 현장" />
+                  <Input
+                    list="location-suggestions"
+                    value={form.destination}
+                    onChange={e => set("destination", e.target.value)}
+                    placeholder="입력 또는 선택"
+                    autoComplete="off"
+                  />
                 </div>
               </div>
+              <datalist id="location-suggestions">
+                {LOCATION_PRESETS.map(loc => <option key={loc} value={loc} />)}
+              </datalist>
 
               {/* 출발·도착 시간 */}
               <div className="grid grid-cols-2 gap-4">
@@ -478,7 +532,14 @@ export default function TransportDrivingLogTab({
               {/* 주행거리 */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">출발 전 주행거리 (km)</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    출발 전 주행거리 (km)
+                    {form.vehicleId && inUsedVehicles.find(v => v.id === form.vehicleId)?.mileage != null && (
+                      <span className="ml-1.5 text-blue-500 font-normal">
+                        (차량 현재 km 자동입력)
+                      </span>
+                    )}
+                  </label>
                   <Input type="number" value={form.startMileage} onChange={e => set("startMileage", e.target.value)} placeholder="0" />
                 </div>
                 <div>
