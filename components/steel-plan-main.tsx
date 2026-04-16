@@ -338,27 +338,14 @@ export default function SteelPlanMain() {
     if (!res.ok) loadPlan();
   };
 
-  /* ── 절단완료 되돌리기 (COMPLETED → RECEIVED) — 작업일보 삭제 후 미복원 시 수동 복원 ── */
-  const revertCut = async (id: string) => {
-    if (!confirm("절단완료 상태를 입고완료로 되돌립니다.\n작업일보 삭제 후 상태가 복원되지 않은 경우에 사용하세요.")) return;
-    // 즉시 로컬 반영
-    updateRowsLocally([id], {
-      status: "RECEIVED",
-      actualHeatNo:     null,
-      actualVesselCode: null,
-      actualDrawingNo:  null,
-    });
-    const res = await fetch(`/api/steel-plan/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        status:           "RECEIVED",
-        actualHeatNo:     null,
-        actualVesselCode: null,
-        actualDrawingNo:  null,
-      }),
-    });
-    if (!res.ok) loadPlan();
+  /* ── 새로고침: 작업일보 기준 강재 상태 자동 동기화 ── */
+  const syncAndRefresh = async () => {
+    setLoading(true);
+    // 작업일보(CuttingLog)와 불일치하는 강재·판번호 상태를 자동 복원
+    await fetch("/api/steel-plan/sync", { method: "POST" });
+    // 동기화 후 최신 데이터 로드
+    await Promise.all([loadDistinct(), loadPlan(), loadHeatDistinct(), loadHeat()]);
+    setLoading(false);
   };
 
   /* ── 다중 선택 입고 — 날짜 모달 오픈 ── */
@@ -680,7 +667,7 @@ export default function SteelPlanMain() {
                 <X size={12} /> 필터 전체 초기화
               </button>
             )}
-            <button onClick={() => { loadDistinct(); loadPlan(); }} className="p-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-500"><RefreshCw size={14} /></button>
+            <button onClick={syncAndRefresh} title="작업일보 기준으로 강재·판번호 상태 자동 동기화" className="p-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-500"><RefreshCw size={14} /></button>
             <span className="text-sm text-gray-500 ml-auto">총 {total}건</span>
             <button
               onClick={handlePrint}
@@ -848,14 +835,6 @@ export default function SteelPlanMain() {
                               >
                                 되돌리기
                               </button>
-                            ) : row.status === "COMPLETED" ? (
-                              <button
-                                onClick={() => revertCut(row.id)}
-                                className="px-2 py-0.5 text-[11px] border border-gray-300 text-gray-500 rounded hover:bg-gray-50 font-medium"
-                                title="작업일보 삭제 후 상태 미복원 시 수동 복원"
-                              >
-                                복원
-                              </button>
                             ) : (
                               <span className="text-gray-300">-</span>
                             )}
@@ -953,7 +932,7 @@ export default function SteelPlanMain() {
                 <X size={12} /> 필터 전체 초기화
               </button>
             )}
-            <button onClick={() => { loadHeatDistinct(); loadHeat(); }} className="p-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-500"><RefreshCw size={14} /></button>
+            <button onClick={syncAndRefresh} title="작업일보 기준으로 강재·판번호 상태 자동 동기화" className="p-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-500"><RefreshCw size={14} /></button>
             <span className="text-sm text-gray-500 ml-auto">총 {heatTotal}건</span>
           </div>
 
