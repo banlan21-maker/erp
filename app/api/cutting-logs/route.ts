@@ -1,8 +1,41 @@
+/**
+ * /api/cutting-logs
+ *
+ * 절단 작업일보 목록 조회 및 작업 시작 등록.
+ *
+ * ── 데이터 구조 ──────────────────────────────────────────────────────────────
+ * CuttingLog
+ *  ├─ isUrgent = false  → 정규작업: Project → DrawingList → SteelPlan(강재입고) 연동
+ *  └─ isUrgent = true   → 돌발작업: UrgentWork → Remnant(잔재관리) 연동
+ *
+ * ── 상태 흐름 ─────────────────────────────────────────────────────────────────
+ *  POST → status: STARTED
+ *  PATCH action="complete" → status: COMPLETED
+ *    └─ 정규작업 완료 시 자동 동기화:
+ *       DrawingList: WAITING → CUT
+ *       SteelPlan:   RECEIVED → COMPLETED (actualHeatNo 기록)
+ *       SteelPlanHeat: WAITING → CUT (없으면 신규 생성)
+ *       syncDrawingListBySpec() 호출로 DrawingList 전체 재계산
+ *  DELETE → status 삭제, 강재 상태 복원:
+ *       DrawingList: CUT → WAITING
+ *       SteelPlan:   COMPLETED → RECEIVED (actualHeatNo 초기화)
+ *       SteelPlanHeat: CUT → WAITING
+ *       syncDrawingListBySpec() 호출로 DrawingList 전체 재계산
+ *
+ * ── stuck 레코드 처리 ─────────────────────────────────────────────────────────
+ * 이전 날짜 미종료(STARTED) 레코드가 있을 경우 새 작업 시작 불가.
+ * GET에 includeStuck=true 또는 equipmentId 파라미터 포함 시 날짜 무관 STARTED 레코드 포함.
+ */
+
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// GET /api/cutting-logs?equipmentId=xxx&date=YYYY-MM-DD
-// GET /api/cutting-logs?projectId=xxx&date=YYYY-MM-DD  (관리자용: date 없으면 전체)
+// ─── GET ───────────────────────────────────────────────────────────────────────
+// 쿼리 파라미터:
+//   equipmentId   : 장비별 조회 (현장용). 지정 시 미종료 레코드 자동 포함.
+//   projectId     : 프로젝트별 조회 (관리자용). date 없으면 전체 기간.
+//   date          : YYYY-MM-DD. 해당 날짜 작업만 조회.
+//   includeStuck  : "true" → 날짜 필터와 관계없이 STARTED 레코드 포함.
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -11,6 +44,7 @@ export async function GET(request: NextRequest) {
     const date         = searchParams.get("date");
     const includeStuck = searchParams.get("includeStuck") === "true";
 
+    // ── 날짜 필터 구성 ──────────────────────────────────────────────────────
     let dateFilter: Record<string, unknown> = {};
     if (date) {
       const targetDate = new Date(date);
@@ -18,15 +52,16 @@ export async function GET(request: NextRequest) {
       const dayEnd   = new Date(targetDate); dayEnd.setHours(23, 59, 59, 999);
       dateFilter = { startAt: { gte: dayStart, lte: dayEnd } };
     } else if (!projectId) {
-      // projectId 없이 date도 없으면 오늘로 제한 (기존 현장용 호환)
-      const today = new Date();
+      // projectId 없이 date 미지정 → 오늘로 제한 (현장 뷰 기본값)
+      const today    = new Date();
       const dayStart = new Date(today); dayStart.setHours(0, 0, 0, 0);
       const dayEnd   = new Date(today); dayEnd.setHours(23, 59, 59, 999);
       dateFilter = { startAt: { gte: dayStart, lte: dayEnd } };
     }
 
-    // STARTED(미종료) 레코드는 날짜 무관하게 포함 (equipmentId 조회 또는 includeStuck=true)
-    // → 이전 날짜에 종료 안 된 stuck 레코드가 UI에 보여야 종료 처리 가능
+    // ── 미종료(stuck) 레코드 포함 여부 ──────────────────────────────────────
+    // equipmentId 조회 시 or includeStuck=true: STARTED 레코드는 날짜 무관 포함
+    // → 이전 날 종료 안 된 레코드가 UI에 표시되어야 작업자가 종료 처리 가능
     const needStuck = includeStuck || !!equipmentId;
     const whereCondition: Record<string, unknown> = {};
 
@@ -35,11 +70,7 @@ export async function GET(request: NextRequest) {
 
     if (Object.keys(dateFilter).length > 0) {
       if (needStuck) {
-        // 날짜 범위 OR 미종료 레코드
-        whereCondition.OR = [
-          { ...dateFilter },
-          { status: "STARTED" },
-        ];
+        whereCondition.OR = [{ ...dateFilter }, { status: "STARTED" }];
       } else {
         Object.assign(whereCondition, dateFilter);
       }
@@ -48,8 +79,8 @@ export async function GET(request: NextRequest) {
     const logs = await prisma.cuttingLog.findMany({
       where: whereCondition,
       include: {
-        equipment: { select: { id: true, name: true, type: true } },
-        project:   { select: { projectCode: true, projectName: true } },
+        equipment:   { select: { id: true, name: true, type: true } },
+        project:     { select: { projectCode: true, projectName: true } },
         drawingList: { select: { drawingNo: true, block: true } },
       },
       orderBy: { startAt: "desc" },
@@ -65,7 +96,9 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/cutting-logs - 절단 시작
+// ─── POST ──────────────────────────────────────────────────────────────────────
+// 절단 시작 등록. status: STARTED 로 생성.
+// 같은 장비에 STARTED 레코드가 있으면 409 반환 (stuckLog 정보 포함).
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -75,10 +108,11 @@ export async function POST(request: NextRequest) {
       operator, memo, isUrgent, urgentWorkId,
     } = body;
 
+    // ── 필수값 검증 ─────────────────────────────────────────────────────────
     if (!equipmentId) {
       return NextResponse.json({ success: false, error: "장비를 선택하세요." }, { status: 400 });
     }
-    // heatNo는 돌발작업일 때는 선택 사항
+    // heatNo: 정규작업은 필수, 돌발작업은 선택
     if (!isUrgent && !heatNo?.trim()) {
       return NextResponse.json({ success: false, error: "Heat NO는 필수입니다." }, { status: 400 });
     }
@@ -86,7 +120,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "작업자명은 필수입니다." }, { status: 400 });
     }
 
-    // 해당 장비에 진행중인 작업 확인
+    // ── 해당 장비에 미종료 작업 확인 ─────────────────────────────────────────
     const ongoing = await prisma.cuttingLog.findFirst({
       where: { equipmentId, status: "STARTED" },
       include: { project: { select: { projectCode: true } } },
@@ -95,7 +129,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "이미 진행중인 절단 작업이 있습니다. 먼저 종료 처리하세요.",
+          error:   "이미 진행중인 절단 작업이 있습니다. 먼저 종료 처리하세요.",
           stuckLog: {
             id:        ongoing.id,
             heatNo:    ongoing.heatNo,
@@ -109,27 +143,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ── 작업 시작 생성 ───────────────────────────────────────────────────────
     const log = await prisma.cuttingLog.create({
       data: {
         equipmentId,
-        projectId: projectId || null,
+        projectId:     projectId     || null,
         drawingListId: drawingListId || null,
-        heatNo: heatNo?.trim() || "",
-        material: material?.trim() || null,
+        urgentWorkId:  urgentWorkId  || null,
+        heatNo:    heatNo?.trim()    || "",
+        material:  material?.trim()  || null,
         thickness: thickness != null ? Number(thickness) : null,
-        width: width != null ? Number(width) : null,
-        length: length != null ? Number(length) : null,
-        qty: qty != null ? Number(qty) : null,
+        width:     width     != null ? Number(width)     : null,
+        length:    length    != null ? Number(length)    : null,
+        qty:       qty       != null ? Number(qty)       : null,
         drawingNo: drawingNo?.trim() || null,
-        operator: operator.trim(),
-        memo: memo?.trim() || null,
-        isUrgent: isUrgent === true,
-        urgentWorkId: urgentWorkId || null,
-        startAt: new Date(),
+        operator:  operator.trim(),
+        memo:      memo?.trim()      || null,
+        isUrgent:  isUrgent === true,
+        startAt:   new Date(),
       },
       include: {
         equipment: { select: { name: true } },
-        project: { select: { projectCode: true, projectName: true } },
+        project:   { select: { projectCode: true, projectName: true } },
       },
     });
 

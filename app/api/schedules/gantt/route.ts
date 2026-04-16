@@ -5,15 +5,25 @@ export const dynamic = "force-dynamic";
 
 /**
  * GET /api/schedules/gantt
- * 간트차트용 데이터: 스케줄 + 작업일보 실적 조인
- * 완료율 = 작업일보 useWeight 합 ÷ DrawingList 총 useWeight × 100
+ *
+ * 간트차트용 스케줄 데이터 반환.
+ *
+ * ── 완료율 계산 ──────────────────────────────────────────────────────────────
+ * 완료율 = CUT 상태 DrawingList의 중량 합 ÷ 전체 DrawingList 중량 합 × 100
+ * (useWeight 우선, 없으면 steelWeight 사용)
+ *
+ * ── 스케줄 ↔ 절단 작업일보 연결 ────────────────────────────────────────────
+ * 절단 작업일보(CuttingLog)와의 직접 연결은 제거됨.
+ * 완료율은 DrawingList.status("CUT") 기준으로만 계산.
+ * 차후 절단파트 전체가 안정화되면 실적(actualStart/actualEnd) 연동 재검토 예정.
  */
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const includeArchive  = searchParams.get("includeArchive") === "true";
-    const includeCompleted = searchParams.get("includeCompleted") === "true";
+    const { searchParams }  = new URL(request.url);
+    const includeArchive    = searchParams.get("includeArchive")   === "true";
+    const includeCompleted  = searchParams.get("includeCompleted") === "true";
 
+    // 상태 필터: 기본값은 CANCELLED·COMPLETED 제외
     const statusFilter = includeArchive
       ? {}
       : includeCompleted
@@ -28,24 +38,14 @@ export async function GET(request: NextRequest) {
             id: true,
             projectCode: true,
             projectName: true,
+            // DrawingList 상태만 포함 (절단 실적 직접 연결 제거)
             drawingLists: {
               select: {
                 id: true,
-                useWeight: true,
+                useWeight:   true,
                 steelWeight: true,
-                status: true,
+                status:      true,
               },
-            },
-            cuttingLogs: {
-              where: { status: "COMPLETED" },
-              select: {
-                id: true,
-                startAt: true,
-                endAt: true,
-                operator: true,
-                equipment: { select: { id: true, name: true } },
-              },
-              orderBy: { startAt: "asc" },
             },
           },
         },
@@ -54,44 +54,26 @@ export async function GET(request: NextRequest) {
     });
 
     const ganttData = schedules.map(s => {
-      const drawings     = s.project?.drawingLists ?? [];
-      const cuttingLogs  = s.project?.cuttingLogs  ?? [];
+      const drawings = s.project?.drawingLists ?? [];
 
-      // 총 중량 (useWeight 우선, 없으면 steelWeight)
-      const totalWeight = drawings.reduce((sum, d) =>
-        sum + (d.useWeight ?? d.steelWeight ?? 0), 0
+      // ── 중량 집계 (useWeight 우선, 없으면 steelWeight) ──────────────────────
+      const totalWeight = drawings.reduce(
+        (sum, d) => sum + (d.useWeight ?? d.steelWeight ?? 0), 0
       );
-
-      // 완료된 강재 중량 합계 (CUT 상태 도면의 useWeight)
       const cutWeight = drawings
         .filter(d => d.status === "CUT")
         .reduce((sum, d) => sum + (d.useWeight ?? d.steelWeight ?? 0), 0);
 
+      // ── 완료율 (0~100%) ────────────────────────────────────────────────────
       const completionRate = totalWeight > 0
         ? Math.min(100, Math.round((cutWeight / totalWeight) * 100))
         : 0;
 
-      // 실제 착수일 / 완료일 (작업일보 기준)
-      const actualStart = cuttingLogs.length > 0
-        ? cuttingLogs[0].startAt.toISOString()
-        : null;
-      const completedLogs = cuttingLogs.filter(l => l.endAt);
-      const actualEnd = completedLogs.length > 0
-        ? completedLogs[completedLogs.length - 1].endAt!.toISOString()
-        : null;
-
-      // 지연일수 (완료율 100% 미만이고 계획 완료일 지난 경우)
+      // ── 지연일수 (계획 완료일 경과 & 미완료인 경우 양수, 단축 시 음수) ─────
       let delayDays: number | null = null;
       if (s.plannedEnd && completionRate < 100) {
-        const diff = Math.floor(
-          (Date.now() - new Date(s.plannedEnd).getTime()) / 86400000
-        );
+        const diff = Math.floor((Date.now() - new Date(s.plannedEnd).getTime()) / 86400000);
         if (diff > 0) delayDays = diff;
-      } else if (s.plannedEnd && actualEnd && completionRate === 100) {
-        const diff = Math.floor(
-          (new Date(actualEnd).getTime() - new Date(s.plannedEnd).getTime()) / 86400000
-        );
-        delayDays = diff; // 음수면 단축
       }
 
       return {
@@ -108,19 +90,20 @@ export async function GET(request: NextRequest) {
         holdReason:       s.holdReason,
         priority:         s.priority,
         memo:             s.memo,
-        // 실적
-        actualStart,
-        actualEnd,
+        // 실적 (차후 절단파트 안정화 후 재연동 예정)
+        actualStart:      null,
+        actualEnd:        null,
         completionRate,
         totalWeight,
         cutWeight,
         delayDays,
-        logCount:         cuttingLogs.length,
+        logCount:         0,
       };
     });
 
     return NextResponse.json({ success: true, data: ganttData });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }

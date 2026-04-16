@@ -1,3 +1,9 @@
+/**
+ * 절단 작업 보고서 페이지
+ *
+ * 정규작업(isUrgent=false)과 돌발작업(isUrgent=true) 모두 포함.
+ * 기간 필터 적용. 기본값: 이번달 1일 ~ 오늘.
+ */
 export const dynamic = "force-dynamic";
 
 import { prisma } from "@/lib/prisma";
@@ -11,11 +17,10 @@ export default async function ReportsPage({
   const params = await searchParams;
 
   // 기본값: 이번달 1일 ~ 오늘
-  const today = new Date();
+  const today       = new Date();
   const defaultFrom = new Date(today.getFullYear(), today.getMonth(), 1)
-    .toISOString()
-    .split("T")[0];
-  const defaultTo = today.toISOString().split("T")[0];
+    .toISOString().split("T")[0];
+  const defaultTo   = today.toISOString().split("T")[0];
 
   const fromStr = params.from ?? defaultFrom;
   const toStr   = params.to   ?? defaultTo;
@@ -32,6 +37,7 @@ export default async function ReportsPage({
       equipment:   { select: { id: true, name: true, type: true } },
       project:     { select: { projectCode: true, projectName: true } },
       drawingList: { select: { steelWeight: true, useWeight: true } },
+      urgentWork:  { select: { urgentNo: true, title: true } },   // 돌발작업 정보
     },
     orderBy: { startAt: "asc" },
   });
@@ -49,6 +55,10 @@ export default async function ReportsPage({
     qty:           l.qty           ?? null,
     drawingNo:     l.drawingNo     ?? null,
     drawingListId: l.drawingListId ?? null,
+    isUrgent:      l.isUrgent,
+    urgentNo:      l.urgentWork?.urgentNo  ?? null,
+    urgentTitle:   l.urgentWork?.title     ?? null,
+    // 강재 중량: DrawingList.steelWeight 우선, 없으면 치수로 계산
     steelWeight: (() => {
       const sw = l.drawingList?.steelWeight;
       if (sw != null) return sw;
@@ -57,7 +67,7 @@ export default async function ReportsPage({
       }
       return null;
     })(),
-    useWeight:     l.drawingList?.useWeight   ?? null,
+    useWeight: l.drawingList?.useWeight ?? null,
   }));
 
   return <ReportsMain logs={logs} fromStr={fromStr} toStr={toStr} />;
