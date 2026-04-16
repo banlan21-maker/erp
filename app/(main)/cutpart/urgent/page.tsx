@@ -13,7 +13,7 @@ export default async function UrgentPage() {
     prisma.remnant.findMany({
       where: { status: "IN_STOCK" },
       orderBy: { remnantNo: "asc" },
-      select: { id: true, remnantNo: true, material: true, thickness: true, weight: true, needsConsult: true },
+      select: { id: true, remnantNo: true, type: true, material: true, thickness: true, width1: true, length1: true, weight: true, location: true, needsConsult: true },
     }),
   ]);
 
