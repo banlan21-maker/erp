@@ -41,6 +41,9 @@ interface SteelPlanHeatRow {
   createdAt: string;
 }
 
+/* ── 일괄 입고 행 타입 ─────────────────────────────────────────────────────── */
+type BulkRow = { vesselCode: string; material: string; thickness: string; width: string; length: string; qty: string };
+
 /* ── 상태 라벨 ─────────────────────────────────────────────────────────────── */
 const PLAN_STATUS: Record<string, { label: string; cls: string }> = {
   REGISTERED: { label: "등록",     cls: "bg-gray-100 text-gray-700" },
@@ -113,6 +116,13 @@ export default function SteelPlanMain() {
   const [heatOpenFilter,     setHeatOpenFilter]     = useState<string | null>(null);
   const [heatFilterAnchorEl, setHeatFilterAnchorEl] = useState<HTMLElement | null>(null);
   const [heatDistinctValues, setHeatDistinctValues] = useState<Record<string, FilterValue[]>>({});
+
+  /* ── 일괄 입고 모달 ── */
+  const emptyBulkRow = (): BulkRow => ({ vesselCode: "", material: "", thickness: "", width: "", length: "", qty: "1" });
+  const [showBulkReceive, setShowBulkReceive]   = useState(false);
+  const [bulkRows,        setBulkRows]          = useState<BulkRow[]>([emptyBulkRow()]);
+  const [bulkSubmitting,  setBulkSubmitting]    = useState(false);
+  const [bulkResults,     setBulkResults]       = useState<{ vesselCode: string; material: string; thickness: number; width: number; length: number; qty: number; matched: number; notFound: boolean; error?: string }[] | null>(null);
 
   /* ── 호선강재 삭제 모달 ── */
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -398,6 +408,39 @@ export default function SteelPlanMain() {
     loadHeat();
   };
 
+  /* ── 일괄 입고 확정 ── */
+  const submitBulkReceive = async () => {
+    const validRows = bulkRows.filter(r => r.vesselCode && r.material && r.thickness && r.width && r.length);
+    if (validRows.length === 0) { alert("입력된 항목이 없습니다."); return; }
+    setBulkSubmitting(true);
+    setBulkResults(null);
+    try {
+      const res = await fetch("/api/steel-plan/receive-bulk", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          items: validRows.map(r => ({
+            vesselCode: r.vesselCode.trim(),
+            material:   r.material.trim(),
+            thickness:  Number(r.thickness),
+            width:      Number(r.width),
+            length:     Number(r.length),
+            qty:        r.qty ? Number(r.qty) : 1,
+          })),
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setBulkResults(json.results);
+        syncAndRefresh();
+      } else {
+        alert(json.error ?? "오류가 발생했습니다.");
+      }
+    } finally {
+      setBulkSubmitting(false);
+    }
+  };
+
   /* ── 위치 저장 ── */
   const saveLocation = async () => {
     if (!locationModal) return;
@@ -586,6 +629,12 @@ export default function SteelPlanMain() {
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700"
           >
             <Plus size={14} /> 직접 등록
+          </button>
+          <button
+            onClick={() => { setBulkRows([emptyBulkRow()]); setBulkResults(null); setShowBulkReceive(true); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600"
+          >
+            <PackageCheck size={14} /> 입고등록
           </button>
         </div>
       </div>
@@ -1182,6 +1231,188 @@ export default function SteelPlanMain() {
               >
                 확인
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 일괄 입고 모달 ── */}
+      {showBulkReceive && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+
+            {/* 헤더 */}
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <PackageCheck size={20} className="text-orange-500" /> 일괄 입고 등록
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  입고된 철판 목록을 입력하고 확정하면 강재 전체목록에서 자동으로 입고 처리됩니다.
+                </p>
+              </div>
+              <button onClick={() => setShowBulkReceive(false)} className="p-1.5 hover:bg-gray-100 rounded-full"><X size={18} /></button>
+            </div>
+
+            {/* 결과 표시 (확정 후) */}
+            {bulkResults && (
+              <div className="mx-6 mt-4 rounded-lg border overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      {["호선","재질","두께","폭","길이","수량","결과"].map(h => (
+                        <th key={h} className="px-3 py-2 text-left text-gray-500 font-semibold">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {bulkResults.map((r, i) => (
+                      <tr key={i} className={r.notFound ? "bg-red-50" : r.matched > 0 ? "bg-green-50" : "bg-gray-50"}>
+                        <td className="px-3 py-2 font-mono font-bold">{r.vesselCode}</td>
+                        <td className="px-3 py-2">{r.material}</td>
+                        <td className="px-3 py-2">{r.thickness}t</td>
+                        <td className="px-3 py-2">{r.width}</td>
+                        <td className="px-3 py-2">{r.length}</td>
+                        <td className="px-3 py-2">{r.qty}장</td>
+                        <td className="px-3 py-2 font-semibold">
+                          {r.error ? <span className="text-gray-500">{r.error}</span>
+                          : r.notFound ? <span className="text-red-600">❌ 목록 없음</span>
+                          : <span className="text-green-700">✅ {r.matched}장 입고 완료</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* 입력 그리드 */}
+            {!bulkResults && (
+              <div className="flex-1 overflow-y-auto px-6 py-4">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left pb-2 text-xs text-gray-500 font-semibold w-8">#</th>
+                      <th className="text-left pb-2 text-xs text-gray-500 font-semibold pr-2">호선</th>
+                      <th className="text-left pb-2 text-xs text-gray-500 font-semibold pr-2">재질</th>
+                      <th className="text-left pb-2 text-xs text-gray-500 font-semibold pr-2">두께(t)</th>
+                      <th className="text-left pb-2 text-xs text-gray-500 font-semibold pr-2">폭(mm)</th>
+                      <th className="text-left pb-2 text-xs text-gray-500 font-semibold pr-2">길이(mm)</th>
+                      <th className="text-left pb-2 text-xs text-gray-500 font-semibold pr-2">수량</th>
+                      <th className="w-8" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {bulkRows.map((row, idx) => {
+                      const cols: (keyof BulkRow)[] = ["vesselCode","material","thickness","width","length","qty"];
+                      const setRow = (key: keyof BulkRow, val: string) =>
+                        setBulkRows(prev => prev.map((r, i) => i === idx ? { ...r, [key]: val } : r));
+
+                      // Enter → 다음 행으로 (마지막 행이면 새 행 추가)
+                      const handleKeyDown = (e: React.KeyboardEvent, colIdx: number) => {
+                        if (e.key !== "Enter") return;
+                        e.preventDefault();
+                        if (colIdx < cols.length - 1) {
+                          // 같은 행의 다음 컬럼으로
+                          const next = document.getElementById(`bulk-${idx}-${colIdx + 1}`);
+                          next?.focus();
+                        } else if (idx === bulkRows.length - 1) {
+                          // 마지막 행 마지막 컬럼 → 새 행 추가 후 첫 컬럼으로
+                          setBulkRows(prev => [...prev, emptyBulkRow()]);
+                          setTimeout(() => document.getElementById(`bulk-${idx + 1}-0`)?.focus(), 50);
+                        } else {
+                          // 다음 행 첫 컬럼으로
+                          document.getElementById(`bulk-${idx + 1}-0`)?.focus();
+                        }
+                      };
+
+                      return (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="py-1.5 pr-2 text-xs text-gray-400 text-center">{idx + 1}</td>
+                          {cols.map((col, colIdx) => (
+                            <td key={col} className="py-1.5 pr-2">
+                              <input
+                                id={`bulk-${idx}-${colIdx}`}
+                                type={["thickness","width","length","qty"].includes(col) ? "number" : "text"}
+                                value={row[col]}
+                                onChange={e => setRow(col, e.target.value)}
+                                onKeyDown={e => handleKeyDown(e, colIdx)}
+                                // 이전 행 값 자동 복사 (호선·재질은 보통 같은 값)
+                                onFocus={e => {
+                                  if (!row[col] && idx > 0 && (col === "vesselCode" || col === "material")) {
+                                    setRow(col, bulkRows[idx - 1][col]);
+                                    setTimeout(() => (e.target as HTMLInputElement).select(), 0);
+                                  }
+                                }}
+                                placeholder={col === "vesselCode" ? "RS01" : col === "material" ? "AH36" : col === "qty" ? "1" : ""}
+                                className="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-300"
+                              />
+                            </td>
+                          ))}
+                          <td className="py-1.5">
+                            {bulkRows.length > 1 && (
+                              <button
+                                onClick={() => setBulkRows(prev => prev.filter((_, i) => i !== idx))}
+                                className="p-1 text-gray-300 hover:text-red-400 rounded"
+                              >
+                                <X size={14} />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                <button
+                  onClick={() => setBulkRows(prev => [...prev, emptyBulkRow()])}
+                  className="mt-3 flex items-center gap-1.5 text-sm text-orange-500 hover:text-orange-700"
+                >
+                  <Plus size={14} /> 행 추가
+                </button>
+              </div>
+            )}
+
+            {/* 하단 버튼 */}
+            <div className="px-6 py-4 border-t flex items-center justify-between">
+              <p className="text-xs text-gray-400">
+                Enter 키로 다음 칸 이동 · 마지막 칸에서 Enter 시 행 자동 추가
+              </p>
+              <div className="flex gap-2">
+                {bulkResults ? (
+                  <>
+                    <button
+                      onClick={() => { setBulkRows([emptyBulkRow()]); setBulkResults(null); }}
+                      className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                    >
+                      다시 입력
+                    </button>
+                    <button
+                      onClick={() => setShowBulkReceive(false)}
+                      className="px-4 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600"
+                    >
+                      닫기
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setShowBulkReceive(false)}
+                      className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                    >
+                      취소
+                    </button>
+                    <button
+                      onClick={submitBulkReceive}
+                      disabled={bulkSubmitting}
+                      className="px-4 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 font-semibold"
+                    >
+                      {bulkSubmitting ? "처리 중..." : "입고 확정"}
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>
