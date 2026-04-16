@@ -325,7 +325,7 @@ export default function SteelPlanMain() {
     if (!res.ok) loadPlan();
   };
 
-  /* ── 입고 되돌리기 — Optimistic Update ── */
+  /* ── 입고 되돌리기 (RECEIVED → REGISTERED) — Optimistic Update ── */
   const revertReceived = async (id: string) => {
     if (!confirm("입고 처리를 되돌리시겠습니까? 입고일이 초기화됩니다.")) return;
     // 즉시 로컬 반영 (reservedFor도 초기화)
@@ -334,6 +334,29 @@ export default function SteelPlanMain() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "REGISTERED", receivedAt: null }),
+    });
+    if (!res.ok) loadPlan();
+  };
+
+  /* ── 절단완료 되돌리기 (COMPLETED → RECEIVED) — 작업일보 삭제 후 미복원 시 수동 복원 ── */
+  const revertCut = async (id: string) => {
+    if (!confirm("절단완료 상태를 입고완료로 되돌립니다.\n작업일보 삭제 후 상태가 복원되지 않은 경우에 사용하세요.")) return;
+    // 즉시 로컬 반영
+    updateRowsLocally([id], {
+      status: "RECEIVED",
+      actualHeatNo:     null,
+      actualVesselCode: null,
+      actualDrawingNo:  null,
+    });
+    const res = await fetch(`/api/steel-plan/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status:           "RECEIVED",
+        actualHeatNo:     null,
+        actualVesselCode: null,
+        actualDrawingNo:  null,
+      }),
     });
     if (!res.ok) loadPlan();
   };
@@ -824,6 +847,14 @@ export default function SteelPlanMain() {
                                 className="px-2 py-0.5 text-[11px] border border-orange-300 text-orange-600 rounded hover:bg-orange-50 font-medium"
                               >
                                 되돌리기
+                              </button>
+                            ) : row.status === "COMPLETED" ? (
+                              <button
+                                onClick={() => revertCut(row.id)}
+                                className="px-2 py-0.5 text-[11px] border border-gray-300 text-gray-500 rounded hover:bg-gray-50 font-medium"
+                                title="작업일보 삭제 후 상태 미복원 시 수동 복원"
+                              >
+                                복원
                               </button>
                             ) : (
                               <span className="text-gray-300">-</span>
