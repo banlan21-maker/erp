@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 /* ── 타입 ── */
 interface Project  { id: string; projectCode: string; projectName: string }
 interface Remnant  {
-  id: string; remnantNo: string; type: string;
+  id: string; remnantNo: string; type: string; shape: string;
   material: string; thickness: number;
   width1: number | null; length1: number | null;
   weight: number; location: string | null; needsConsult: boolean;
@@ -503,6 +503,8 @@ function RemnantPickerModal({
   const [search,          setSearch]          = useState("");
   const [filterMaterial,  setFilterMaterial]  = useState("");
   const [filterThickness, setFilterThickness] = useState("");
+  const [filterShape,     setFilterShape]     = useState("");  // "RECTANGLE" | "L_SHAPE" | "IRREGULAR" | ""
+  const [filterType,      setFilterType]      = useState("");  // "REMNANT" | "SURPLUS" | "REGISTERED" | ""
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { searchRef.current?.focus(); }, []);
@@ -510,11 +512,16 @@ function RemnantPickerModal({
   const materials   = [...new Set(remnants.map(r => r.material))].sort();
   const thicknesses = [...new Set(remnants.map(r => r.thickness))].sort((a, b) => a - b);
 
+  // 띠형(STRIP)은 사각형과 동일하게 취급
+  const normalizeShape = (s: string) => s === "STRIP" ? "RECTANGLE" : s;
+
   const filtered = remnants.filter(r => {
     const q = search.trim().toLowerCase();
     if (q && !r.remnantNo.toLowerCase().includes(q) && !r.material.toLowerCase().includes(q)) return false;
-    if (filterMaterial  && r.material !== filterMaterial)          return false;
+    if (filterMaterial  && r.material !== filterMaterial)           return false;
     if (filterThickness && r.thickness !== Number(filterThickness)) return false;
+    if (filterShape     && normalizeShape(r.shape) !== filterShape) return false;
+    if (filterType      && r.type !== filterType)                   return false;
     return true;
   });
 
@@ -533,35 +540,82 @@ function RemnantPickerModal({
         </div>
 
         {/* 필터 바 */}
-        <div className="px-6 py-3 border-b flex flex-wrap gap-2 items-center bg-gray-50">
-          <div className="relative flex-1 min-w-[180px]">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              ref={searchRef}
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="잔재번호·재질 검색"
-              className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-orange-400"
-            />
+        <div className="px-6 py-3 border-b space-y-2 bg-gray-50">
+          {/* 검색 + 재질 + 두께 */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <div className="relative flex-1 min-w-[180px]">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                ref={searchRef}
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="잔재번호·재질 검색"
+                className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-orange-400"
+              />
+            </div>
+            <select
+              value={filterMaterial}
+              onChange={e => setFilterMaterial(e.target.value)}
+              className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:border-orange-400"
+            >
+              <option value="">재질 전체</option>
+              {materials.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+            <select
+              value={filterThickness}
+              onChange={e => setFilterThickness(e.target.value)}
+              className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:border-orange-400"
+            >
+              <option value="">두께 전체</option>
+              {thicknesses.map(t => <option key={t} value={t}>{t}t</option>)}
+            </select>
+            <span className="text-xs text-gray-400 ml-auto">{filtered.length}건</span>
           </div>
-          <select
-            value={filterMaterial}
-            onChange={e => setFilterMaterial(e.target.value)}
-            className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:border-orange-400"
-          >
-            <option value="">재질 전체</option>
-            {materials.map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
-          <select
-            value={filterThickness}
-            onChange={e => setFilterThickness(e.target.value)}
-            className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:border-orange-400"
-          >
-            <option value="">두께 전체</option>
-            {thicknesses.map(t => <option key={t} value={t}>{t}t</option>)}
-          </select>
-          <span className="text-xs text-gray-400 ml-auto">{filtered.length}건</span>
+          {/* 형태 + 유형 필터 버튼 */}
+          <div className="flex flex-wrap gap-3">
+            <div className="flex gap-1 items-center">
+              {[
+                { value: "",           label: "형태 전체" },
+                { value: "RECTANGLE",  label: "사각형" },
+                { value: "L_SHAPE",    label: "L자형" },
+                { value: "IRREGULAR",  label: "불규칙형" },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => setFilterShape(opt.value)}
+                  className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                    filterShape === opt.value
+                      ? "bg-orange-500 border-orange-500 text-white"
+                      : "border-gray-200 text-gray-500 hover:border-orange-300 hover:text-orange-600 bg-white"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <div className="w-px bg-gray-200" />
+            <div className="flex gap-1 items-center">
+              {[
+                { value: "",           label: "유형 전체" },
+                { value: "REMNANT",    label: "현장잔재" },
+                { value: "SURPLUS",    label: "여유원재" },
+                { value: "REGISTERED", label: "등록잔재" },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => setFilterType(opt.value)}
+                  className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                    filterType === opt.value
+                      ? "bg-orange-500 border-orange-500 text-white"
+                      : "border-gray-200 text-gray-500 hover:border-orange-300 hover:text-orange-600 bg-white"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* 목록 */}
