@@ -193,11 +193,32 @@ export async function DELETE(
       }
     }
 
-    // SteelPlan 실사용 기록 초기화
+    // SteelPlan 실사용 기록 초기화 + 상태 COMPLETED → RECEIVED 복원
+    let steelPlanVesselCode: string | null = null;
+    let steelPlanMaterial: string | null = null;
+    let steelPlanThickness: number | null = null;
+    let steelPlanWidth: number | null = null;
+    let steelPlanLength: number | null = null;
+
     if (log.heatNo?.trim()) {
+      // 복원할 SteelPlan 정보 먼저 조회 (syncDrawingListBySpec 인자용)
+      const affectedPlans = await prisma.steelPlan.findMany({
+        where: { actualHeatNo: log.heatNo.trim() },
+        select: { vesselCode: true, material: true, thickness: true, width: true, length: true },
+      });
+      if (affectedPlans.length > 0) {
+        const p = affectedPlans[0];
+        steelPlanVesselCode = p.vesselCode;
+        steelPlanMaterial   = p.material;
+        steelPlanThickness  = p.thickness;
+        steelPlanWidth      = p.width;
+        steelPlanLength     = p.length;
+      }
+
+      // actualHeatNo 초기화 + status COMPLETED → RECEIVED 복원
       await prisma.steelPlan.updateMany({
         where: { actualHeatNo: log.heatNo.trim() },
-        data:  { actualHeatNo: null, actualVesselCode: null, actualDrawingNo: null },
+        data:  { actualHeatNo: null, actualVesselCode: null, actualDrawingNo: null, status: "RECEIVED" },
       });
       // SteelPlanHeat 상태 복원 CUT → WAITING
       await prisma.steelPlanHeat.updateMany({
@@ -207,6 +228,15 @@ export async function DELETE(
     }
 
     await prisma.cuttingLog.delete({ where: { id } });
+
+    // DrawingList 재계산 (삭제 후 WAITING/REGISTERED 상태 재동기화)
+    if (steelPlanVesselCode && steelPlanMaterial && steelPlanThickness && steelPlanWidth && steelPlanLength) {
+      await syncDrawingListBySpec(
+        steelPlanVesselCode, steelPlanMaterial,
+        steelPlanThickness, steelPlanWidth, steelPlanLength,
+      );
+    }
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("[DELETE /api/cutting-logs/[id]]", error);
