@@ -490,6 +490,11 @@ const REMNANT_TYPE_LABEL: Record<string, { label: string; cls: string }> = {
   SURPLUS:    { label: "여유원재",  cls: "bg-blue-100 text-blue-700" },
   REGISTERED: { label: "등록잔재",  cls: "bg-purple-100 text-purple-700" },
 };
+const REMNANT_SHAPE_LABEL: Record<string, { label: string; cls: string }> = {
+  RECTANGLE:  { label: "사각형",   cls: "bg-green-50 text-green-700" },
+  L_SHAPE:    { label: "L자형",    cls: "bg-yellow-50 text-yellow-700" },
+  IRREGULAR:  { label: "불규칙형", cls: "bg-orange-50 text-orange-700" },
+};
 
 function RemnantPickerModal({
   remnants,
@@ -512,15 +517,12 @@ function RemnantPickerModal({
   const materials   = [...new Set(remnants.map(r => r.material))].sort();
   const thicknesses = [...new Set(remnants.map(r => r.thickness))].sort((a, b) => a - b);
 
-  // 띠형(STRIP)은 사각형과 동일하게 취급
-  const normalizeShape = (s: string) => s === "STRIP" ? "RECTANGLE" : s;
-
   const filtered = remnants.filter(r => {
     const q = search.trim().toLowerCase();
     if (q && !r.remnantNo.toLowerCase().includes(q) && !r.material.toLowerCase().includes(q)) return false;
     if (filterMaterial  && r.material !== filterMaterial)           return false;
     if (filterThickness && r.thickness !== Number(filterThickness)) return false;
-    if (filterShape     && normalizeShape(r.shape) !== filterShape) return false;
+    if (filterShape     && r.shape !== filterShape)                 return false;
     if (filterType      && r.type !== filterType)                   return false;
     return true;
   });
@@ -626,14 +628,15 @@ function RemnantPickerModal({
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
                 <tr>
-                  {["잔재번호", "유형", "재질", "두께(t)", "폭×길이(mm)", "중량(kg)", "보관위치"].map(h => (
+                  {["잔재번호", "유형", "형태", "재질", "두께(t)", "폭×길이(mm)", "중량(kg)", "보관위치"].map(h => (
                     <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filtered.map(r => {
-                  const typeInfo = REMNANT_TYPE_LABEL[r.type] ?? { label: r.type, cls: "bg-gray-100 text-gray-600" };
+                  const typeInfo  = REMNANT_TYPE_LABEL[r.type]  ?? { label: r.type,  cls: "bg-gray-100 text-gray-600" };
+                  const shapeInfo = REMNANT_SHAPE_LABEL[r.shape] ?? { label: r.shape, cls: "bg-gray-100 text-gray-600" };
                   return (
                     <tr
                       key={r.id}
@@ -647,6 +650,11 @@ function RemnantPickerModal({
                       <td className="px-3 py-2.5">
                         <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${typeInfo.cls}`}>
                           {typeInfo.label}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${shapeInfo.cls}`}>
+                          {shapeInfo.label}
                         </span>
                       </td>
                       <td className="px-3 py-2.5 font-medium text-gray-800">{r.material}</td>

@@ -60,7 +60,6 @@ enum RemnantType {
 enum RemnantShape {
   RECTANGLE  // 사각형
   L_SHAPE    // L자형
-  STRIP      // 띠형
   IRREGULAR  // 불규칙형
 }
 
@@ -930,8 +929,8 @@ model Remnant {
   weight       Float         // 중량 (kg)
 
   // 치수 (형태별 입력)
-  width1       Float?        // W 또는 W1 (사각형·L자형 전체폭·띠형폭)
-  length1      Float?        // L 또는 L1 (사각형·L자형 전체길이·띠형길이)
+  width1       Float?        // W 또는 W1 (사각형·L자형 전체폭)
+  length1      Float?        // L 또는 L1 (사각형·L자형 전체길이)
   width2       Float?        // W2 (L자형 절단폭)
   length2      Float?        // L2 (L자형 절단길이)
 
