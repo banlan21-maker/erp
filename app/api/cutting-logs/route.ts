@@ -6,11 +6,12 @@ import { prisma } from "@/lib/prisma";
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const equipmentId = searchParams.get("equipmentId");
-    const projectId   = searchParams.get("projectId");
-    const date        = searchParams.get("date");
+    const equipmentId  = searchParams.get("equipmentId");
+    const projectId    = searchParams.get("projectId");
+    const date         = searchParams.get("date");
+    const includeStuck = searchParams.get("includeStuck") === "true";
 
-    let dateFilter = {};
+    let dateFilter: Record<string, unknown> = {};
     if (date) {
       const targetDate = new Date(date);
       const dayStart = new Date(targetDate); dayStart.setHours(0, 0, 0, 0);
@@ -24,12 +25,28 @@ export async function GET(request: NextRequest) {
       dateFilter = { startAt: { gte: dayStart, lte: dayEnd } };
     }
 
+    // STARTED(미종료) 레코드는 날짜 무관하게 포함 (equipmentId 조회 또는 includeStuck=true)
+    // → 이전 날짜에 종료 안 된 stuck 레코드가 UI에 보여야 종료 처리 가능
+    const needStuck = includeStuck || !!equipmentId;
+    const whereCondition: Record<string, unknown> = {};
+
+    if (equipmentId) whereCondition.equipmentId = equipmentId;
+    if (projectId)   whereCondition.projectId   = projectId;
+
+    if (Object.keys(dateFilter).length > 0) {
+      if (needStuck) {
+        // 날짜 범위 OR 미종료 레코드
+        whereCondition.OR = [
+          { ...dateFilter },
+          { status: "STARTED" },
+        ];
+      } else {
+        Object.assign(whereCondition, dateFilter);
+      }
+    }
+
     const logs = await prisma.cuttingLog.findMany({
-      where: {
-        ...(equipmentId ? { equipmentId } : {}),
-        ...(projectId   ? { projectId }   : {}),
-        ...dateFilter,
-      },
+      where: whereCondition,
       include: {
         equipment: { select: { id: true, name: true, type: true } },
         project:   { select: { projectCode: true, projectName: true } },
@@ -72,10 +89,22 @@ export async function POST(request: NextRequest) {
     // 해당 장비에 진행중인 작업 확인
     const ongoing = await prisma.cuttingLog.findFirst({
       where: { equipmentId, status: "STARTED" },
+      include: { project: { select: { projectCode: true } } },
     });
     if (ongoing) {
       return NextResponse.json(
-        { success: false, error: "이미 진행중인 절단 작업이 있습니다. 먼저 종료 처리하세요." },
+        {
+          success: false,
+          error: "이미 진행중인 절단 작업이 있습니다. 먼저 종료 처리하세요.",
+          stuckLog: {
+            id:        ongoing.id,
+            heatNo:    ongoing.heatNo,
+            drawingNo: ongoing.drawingNo,
+            operator:  ongoing.operator,
+            startAt:   ongoing.startAt,
+            project:   ongoing.project?.projectCode ?? null,
+          },
+        },
         { status: 409 }
       );
     }

@@ -453,10 +453,27 @@ function LogModal({
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stuckLog, setStuckLog] = useState<{ id: string; heatNo: string; drawingNo: string | null; operator: string; startAt: string; project: string | null } | null>(null);
+  const [forceClosing, setForceClosing] = useState(false);
+
+  const handleForceClose = async () => {
+    if (!stuckLog) return;
+    setForceClosing(true);
+    try {
+      await fetch(`/api/cutting-logs/${stuckLog.id}`, { method: "DELETE" });
+      setStuckLog(null);
+      setError(null);
+    } catch {
+      setError("강제 종료 중 오류가 발생했습니다.");
+    } finally {
+      setForceClosing(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setStuckLog(null);
     if (!form.equipmentId || !form.operator.trim() || !form.startAt) {
       setError("장비, 작업자, 시작일시는 필수입니다.");
       return;
@@ -483,7 +500,11 @@ function LogModal({
           }),
         });
         const data = await res.json();
-        if (!data.success) { setError(data.error); return; }
+        if (!data.success) {
+          setError(data.error);
+          if (data.stuckLog) setStuckLog(data.stuckLog);
+          return;
+        }
 
         // 추가 후 바로 완료 처리 (endAt 있는 경우)
         if (form.endAt && data.data?.id) {
@@ -542,8 +563,28 @@ function LogModal({
         )}
 
         {error && (
-          <div className="mx-6 mt-4 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm flex items-center gap-2">
-            <AlertCircle size={14} /> {error}
+          <div className="mx-6 mt-4 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm space-y-2">
+            <div className="flex items-center gap-2"><AlertCircle size={14} /> {error}</div>
+            {stuckLog && (
+              <div className="bg-red-100 rounded p-2 text-xs space-y-1">
+                <div className="font-semibold text-red-800">미종료 작업 정보:</div>
+                <div>
+                  {stuckLog.project && <span className="mr-2">호선: {stuckLog.project}</span>}
+                  {stuckLog.heatNo && <span className="mr-2">판번호: {stuckLog.heatNo}</span>}
+                  {stuckLog.drawingNo && <span className="mr-2">도면: {stuckLog.drawingNo}</span>}
+                  <span className="mr-2">작업자: {stuckLog.operator}</span>
+                  <span>시작: {new Date(stuckLog.startAt).toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleForceClose}
+                  disabled={forceClosing}
+                  className="mt-1 px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-semibold disabled:opacity-50"
+                >
+                  {forceClosing ? "처리중..." : "미종료 작업 강제 삭제 후 재시도"}
+                </button>
+              </div>
+            )}
           </div>
         )}
 

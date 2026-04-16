@@ -126,7 +126,7 @@ export default function FieldWorklog({
   const selDrawing= drawings.find(d => d.id === drawingId);
 
   const refreshLogs = useCallback(async () => {
-    const res = await fetch(`/api/cutting-logs?date=${new Date().toISOString().slice(0, 10)}`);
+    const res = await fetch(`/api/cutting-logs?date=${new Date().toISOString().slice(0, 10)}&includeStuck=true`);
     const d = await res.json();
     if (d.success) setLogs(d.data);
   }, []);
