@@ -1291,17 +1291,27 @@ export default function SteelPlanMain() {
             {/* 입력 그리드 */}
             {!bulkResults && (
               <div className="flex-1 overflow-y-auto px-6 py-4">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm table-fixed">
+                  <colgroup>
+                    <col className="w-8" />       {/* # */}
+                    <col className="w-32" />      {/* 호선 */}
+                    <col className="w-24" />      {/* 재질 */}
+                    <col className="w-20" />      {/* 두께 */}
+                    <col className="w-24" />      {/* 폭 */}
+                    <col className="w-24" />      {/* 길이 */}
+                    <col className="w-16" />      {/* 수량 */}
+                    <col className="w-8" />       {/* 삭제 */}
+                  </colgroup>
                   <thead>
                     <tr className="border-b">
-                      <th className="text-left pb-2 text-xs text-gray-500 font-semibold w-8">#</th>
+                      <th className="text-left pb-2 text-xs text-gray-500 font-semibold">#</th>
                       <th className="text-left pb-2 text-xs text-gray-500 font-semibold pr-2">호선</th>
                       <th className="text-left pb-2 text-xs text-gray-500 font-semibold pr-2">재질</th>
                       <th className="text-left pb-2 text-xs text-gray-500 font-semibold pr-2">두께(t)</th>
                       <th className="text-left pb-2 text-xs text-gray-500 font-semibold pr-2">폭(mm)</th>
                       <th className="text-left pb-2 text-xs text-gray-500 font-semibold pr-2">길이(mm)</th>
                       <th className="text-left pb-2 text-xs text-gray-500 font-semibold pr-2">수량</th>
-                      <th className="w-8" />
+                      <th />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
