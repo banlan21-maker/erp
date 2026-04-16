@@ -1321,12 +1321,12 @@ export default function SteelPlanMain() {
                   <colgroup>
                     <col style={{ width: "2rem" }} />      {/* # */}
                     <col style={{ width: "7rem" }} />      {/* 호선 */}
-                    <col style={{ width: "5rem" }} />      {/* 재질 */}
-                    <col style={{ width: "4rem" }} />      {/* 두께 */}
-                    <col style={{ width: "5.5rem" }} />    {/* 폭 */}
-                    <col style={{ width: "5.5rem" }} />    {/* 길이 */}
-                    <col style={{ width: "3.5rem" }} />    {/* 수량 */}
-                    <col style={{ width: "auto" }} />      {/* 보관위치 */}
+                    <col style={{ width: "88px" }} />      {/* 재질 */}
+                    <col style={{ width: "88px" }} />      {/* 두께 */}
+                    <col style={{ width: "88px" }} />      {/* 폭 */}
+                    <col style={{ width: "88px" }} />      {/* 길이 */}
+                    <col style={{ width: "88px" }} />      {/* 수량 */}
+                    <col style={{ width: "88px" }} />      {/* 보관위치 */}
                     <col style={{ width: "2rem" }} />      {/* 삭제 */}
                   </colgroup>
                   <thead>
