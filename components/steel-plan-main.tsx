@@ -42,7 +42,7 @@ interface SteelPlanHeatRow {
 }
 
 /* ── 일괄 입고 행 타입 ─────────────────────────────────────────────────────── */
-type BulkRow = { vesselCode: string; material: string; thickness: string; width: string; length: string; qty: string };
+type BulkRow = { vesselCode: string; material: string; thickness: string; width: string; length: string; qty: string; storageLocation: string };
 
 /* ── 상태 라벨 ─────────────────────────────────────────────────────────────── */
 const PLAN_STATUS: Record<string, { label: string; cls: string }> = {
@@ -118,12 +118,13 @@ export default function SteelPlanMain() {
   const [heatDistinctValues, setHeatDistinctValues] = useState<Record<string, FilterValue[]>>({});
 
   /* ── 일괄 입고 모달 ── */
-  const emptyBulkRow = (): BulkRow => ({ vesselCode: "", material: "", thickness: "", width: "", length: "", qty: "1" });
+  const emptyBulkRow = (): BulkRow => ({ vesselCode: "", material: "", thickness: "", width: "", length: "", qty: "1", storageLocation: "" });
   const [showBulkReceive, setShowBulkReceive]   = useState(false);
   const [bulkRows,        setBulkRows]          = useState<BulkRow[]>([emptyBulkRow()]);
   const [bulkSubmitting,  setBulkSubmitting]    = useState(false);
   const [bulkResults,     setBulkResults]       = useState<{ vesselCode: string; material: string; thickness: number; width: number; length: number; qty: number; matched: number; notFound: boolean; error?: string }[] | null>(null);
   const [bulkReceiveDate, setBulkReceiveDate]   = useState(() => new Date().toISOString().slice(0, 10));
+  const [bulkLocationAll, setBulkLocationAll]   = useState("");
 
   /* ── 호선강재 삭제 모달 ── */
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -422,12 +423,13 @@ export default function SteelPlanMain() {
         body:    JSON.stringify({
           receivedAt: bulkReceiveDate,
           items: validRows.map(r => ({
-            vesselCode: r.vesselCode.trim(),
-            material:   r.material.trim(),
-            thickness:  Number(r.thickness),
-            width:      Number(r.width),
-            length:     Number(r.length),
-            qty:        r.qty ? Number(r.qty) : 1,
+            vesselCode:      r.vesselCode.trim(),
+            material:        r.material.trim(),
+            thickness:       Number(r.thickness),
+            width:           Number(r.width),
+            length:          Number(r.length),
+            qty:             r.qty ? Number(r.qty) : 1,
+            storageLocation: r.storageLocation.trim() || null,
           })),
         }),
       });
@@ -1241,7 +1243,13 @@ export default function SteelPlanMain() {
       {/* ── 일괄 입고 모달 ── */}
       {showBulkReceive && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+          {/* 호선 datalist - 입력+선택 모두 가능 */}
+          <datalist id="bulk-vessel-list">
+            {(distinctValues.vesselCode ?? []).map((v: FilterValue) => (
+              <option key={String(v.value)} value={String(v.value)} />
+            ))}
+          </datalist>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
 
             {/* 헤더 */}
             <div className="flex items-center justify-between px-6 py-4 border-b">
@@ -1291,16 +1299,35 @@ export default function SteelPlanMain() {
             {/* 입력 그리드 */}
             {!bulkResults && (
               <div className="flex-1 overflow-y-auto px-6 py-4">
+                {/* 보관위치 일괄 적용 */}
+                <div className="flex items-center gap-2 mb-3 p-2 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                  <span className="text-xs text-gray-500 font-medium whitespace-nowrap">보관위치 전체 적용</span>
+                  <input
+                    type="text"
+                    value={bulkLocationAll}
+                    onChange={e => setBulkLocationAll(e.target.value)}
+                    placeholder="예: A동 1번 구역"
+                    className="flex-1 px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:border-orange-400"
+                  />
+                  <button
+                    onClick={() => setBulkRows(prev => prev.map(r => ({ ...r, storageLocation: bulkLocationAll })))}
+                    className="px-3 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 whitespace-nowrap"
+                  >
+                    전체 적용
+                  </button>
+                </div>
+
                 <table className="w-full text-sm table-fixed">
                   <colgroup>
-                    <col className="w-8" />       {/* # */}
-                    <col className="w-32" />      {/* 호선 */}
-                    <col className="w-24" />      {/* 재질 */}
-                    <col className="w-20" />      {/* 두께 */}
-                    <col className="w-24" />      {/* 폭 */}
-                    <col className="w-24" />      {/* 길이 */}
-                    <col className="w-16" />      {/* 수량 */}
-                    <col className="w-8" />       {/* 삭제 */}
+                    <col style={{ width: "2rem" }} />      {/* # */}
+                    <col style={{ width: "7rem" }} />      {/* 호선 */}
+                    <col style={{ width: "5rem" }} />      {/* 재질 */}
+                    <col style={{ width: "4rem" }} />      {/* 두께 */}
+                    <col style={{ width: "5.5rem" }} />    {/* 폭 */}
+                    <col style={{ width: "5.5rem" }} />    {/* 길이 */}
+                    <col style={{ width: "3.5rem" }} />    {/* 수량 */}
+                    <col style={{ width: "auto" }} />      {/* 보관위치 */}
+                    <col style={{ width: "2rem" }} />      {/* 삭제 */}
                   </colgroup>
                   <thead>
                     <tr className="border-b">
@@ -1311,12 +1338,13 @@ export default function SteelPlanMain() {
                       <th className="text-left pb-2 text-xs text-gray-500 font-semibold pr-2">폭(mm)</th>
                       <th className="text-left pb-2 text-xs text-gray-500 font-semibold pr-2">길이(mm)</th>
                       <th className="text-left pb-2 text-xs text-gray-500 font-semibold pr-2">수량</th>
+                      <th className="text-left pb-2 text-xs text-gray-500 font-semibold pr-2">보관위치</th>
                       <th />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {bulkRows.map((row, idx) => {
-                      const cols: (keyof BulkRow)[] = ["vesselCode","material","thickness","width","length","qty"];
+                      const cols: (keyof BulkRow)[] = ["vesselCode","material","thickness","width","length","qty","storageLocation"];
                       const setRow = (key: keyof BulkRow, val: string) =>
                         setBulkRows(prev => prev.map((r, i) => i === idx ? { ...r, [key]: val } : r));
 
@@ -1343,40 +1371,28 @@ export default function SteelPlanMain() {
                           <td className="py-1.5 pr-2 text-xs text-gray-400 text-center">{idx + 1}</td>
                           {cols.map((col, colIdx) => (
                             <td key={col} className="py-1.5 pr-2">
-                              {col === "vesselCode" ? (
-                                <select
-                                  id={`bulk-${idx}-${colIdx}`}
-                                  value={row.vesselCode}
-                                  onChange={e => setRow("vesselCode", e.target.value)}
-                                  onKeyDown={e => handleKeyDown(e, colIdx)}
-                                  onFocus={() => {
-                                    if (!row.vesselCode && idx > 0 && bulkRows[idx - 1].vesselCode)
-                                      setRow("vesselCode", bulkRows[idx - 1].vesselCode);
-                                  }}
-                                  className="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-300 bg-white"
-                                >
-                                  <option value="">-- 선택 --</option>
-                                  {(distinctValues.vesselCode ?? []).map((v: FilterValue) => (
-                                    <option key={String(v.value)} value={String(v.value)}>{String(v.value)}</option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <input
-                                  id={`bulk-${idx}-${colIdx}`}
-                                  type={["thickness","width","length","qty"].includes(col) ? "number" : "text"}
-                                  value={row[col]}
-                                  onChange={e => setRow(col, e.target.value)}
-                                  onKeyDown={e => handleKeyDown(e, colIdx)}
-                                  onFocus={e => {
-                                    if (!row[col] && idx > 0 && col === "material") {
-                                      setRow(col, bulkRows[idx - 1][col]);
-                                      setTimeout(() => (e.target as HTMLInputElement).select(), 0);
-                                    }
-                                  }}
-                                  placeholder={col === "material" ? "AH36" : col === "qty" ? "1" : ""}
-                                  className="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-300"
-                                />
-                              )}
+                              <input
+                                id={`bulk-${idx}-${colIdx}`}
+                                list={col === "vesselCode" ? "bulk-vessel-list" : undefined}
+                                type={["thickness","width","length","qty"].includes(col) ? "number" : "text"}
+                                value={row[col]}
+                                onChange={e => setRow(col, e.target.value)}
+                                onKeyDown={e => handleKeyDown(e, colIdx)}
+                                onFocus={e => {
+                                  // 이전 행 자동복사 (호선·재질은 보통 같은 값)
+                                  if (!row[col] && idx > 0 && (col === "vesselCode" || col === "material")) {
+                                    setRow(col, bulkRows[idx - 1][col]);
+                                    setTimeout(() => (e.target as HTMLInputElement).select(), 0);
+                                  }
+                                }}
+                                placeholder={
+                                  col === "vesselCode" ? "RS01" :
+                                  col === "material"   ? "AH36" :
+                                  col === "qty"        ? "1"    :
+                                  col === "storageLocation" ? "예: A동 1번" : ""
+                                }
+                                className="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-300"
+                              />
                             </td>
                           ))}
                           <td className="py-1.5">

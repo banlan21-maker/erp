@@ -24,12 +24,13 @@ import { prisma } from "@/lib/prisma";
 import { syncDrawingListBySpec } from "@/lib/sync-drawing-spec";
 
 interface BulkItem {
-  vesselCode: string;
-  material:   string;
-  thickness:  number;
-  width:      number;
-  length:     number;
-  qty?:       number;
+  vesselCode:      string;
+  material:        string;
+  thickness:       number;
+  width:           number;
+  length:          number;
+  qty?:            number;
+  storageLocation?: string | null;
 }
 
 export async function POST(req: NextRequest) {
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
     const results = [];
 
     for (const item of items) {
-      const { vesselCode, material, thickness, width, length, qty } = item;
+      const { vesselCode, material, thickness, width, length, qty, storageLocation } = item;
 
       if (!vesselCode || !material || !thickness || !width || !length) {
         results.push({ ...item, matched: 0, notFound: false, error: "필수값 누락" });
@@ -76,7 +77,11 @@ export async function POST(req: NextRequest) {
       // 입고 처리
       const { count } = await prisma.steelPlan.updateMany({
         where: { id: { in: targets.map(t => t.id) } },
-        data:  { status: "RECEIVED", receivedAt: receivedDate },
+        data:  {
+          status:          "RECEIVED",
+          receivedAt:      receivedDate,
+          ...(storageLocation !== undefined ? { storageLocation: storageLocation || null } : {}),
+        },
       });
 
       // DrawingList 재계산
