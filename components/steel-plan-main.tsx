@@ -123,6 +123,7 @@ export default function SteelPlanMain() {
   const [bulkRows,        setBulkRows]          = useState<BulkRow[]>([emptyBulkRow()]);
   const [bulkSubmitting,  setBulkSubmitting]    = useState(false);
   const [bulkResults,     setBulkResults]       = useState<{ vesselCode: string; material: string; thickness: number; width: number; length: number; qty: number; matched: number; notFound: boolean; error?: string }[] | null>(null);
+  const [bulkReceiveDate, setBulkReceiveDate]   = useState(() => new Date().toISOString().slice(0, 10));
 
   /* ── 호선강재 삭제 모달 ── */
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -419,6 +420,7 @@ export default function SteelPlanMain() {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({
+          receivedAt: bulkReceiveDate,
           items: validRows.map(r => ({
             vesselCode: r.vesselCode.trim(),
             material:   r.material.trim(),
@@ -1331,22 +1333,40 @@ export default function SteelPlanMain() {
                           <td className="py-1.5 pr-2 text-xs text-gray-400 text-center">{idx + 1}</td>
                           {cols.map((col, colIdx) => (
                             <td key={col} className="py-1.5 pr-2">
-                              <input
-                                id={`bulk-${idx}-${colIdx}`}
-                                type={["thickness","width","length","qty"].includes(col) ? "number" : "text"}
-                                value={row[col]}
-                                onChange={e => setRow(col, e.target.value)}
-                                onKeyDown={e => handleKeyDown(e, colIdx)}
-                                // 이전 행 값 자동 복사 (호선·재질은 보통 같은 값)
-                                onFocus={e => {
-                                  if (!row[col] && idx > 0 && (col === "vesselCode" || col === "material")) {
-                                    setRow(col, bulkRows[idx - 1][col]);
-                                    setTimeout(() => (e.target as HTMLInputElement).select(), 0);
-                                  }
-                                }}
-                                placeholder={col === "vesselCode" ? "RS01" : col === "material" ? "AH36" : col === "qty" ? "1" : ""}
-                                className="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-300"
-                              />
+                              {col === "vesselCode" ? (
+                                <select
+                                  id={`bulk-${idx}-${colIdx}`}
+                                  value={row.vesselCode}
+                                  onChange={e => setRow("vesselCode", e.target.value)}
+                                  onKeyDown={e => handleKeyDown(e, colIdx)}
+                                  onFocus={() => {
+                                    if (!row.vesselCode && idx > 0 && bulkRows[idx - 1].vesselCode)
+                                      setRow("vesselCode", bulkRows[idx - 1].vesselCode);
+                                  }}
+                                  className="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-300 bg-white"
+                                >
+                                  <option value="">-- 선택 --</option>
+                                  {(distinctValues.vesselCode ?? []).map((v: FilterValue) => (
+                                    <option key={String(v.value)} value={String(v.value)}>{String(v.value)}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input
+                                  id={`bulk-${idx}-${colIdx}`}
+                                  type={["thickness","width","length","qty"].includes(col) ? "number" : "text"}
+                                  value={row[col]}
+                                  onChange={e => setRow(col, e.target.value)}
+                                  onKeyDown={e => handleKeyDown(e, colIdx)}
+                                  onFocus={e => {
+                                    if (!row[col] && idx > 0 && col === "material") {
+                                      setRow(col, bulkRows[idx - 1][col]);
+                                      setTimeout(() => (e.target as HTMLInputElement).select(), 0);
+                                    }
+                                  }}
+                                  placeholder={col === "material" ? "AH36" : col === "qty" ? "1" : ""}
+                                  className="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-300"
+                                />
+                              )}
                             </td>
                           ))}
                           <td className="py-1.5">
@@ -1375,10 +1395,23 @@ export default function SteelPlanMain() {
             )}
 
             {/* 하단 버튼 */}
-            <div className="px-6 py-4 border-t flex items-center justify-between">
-              <p className="text-xs text-gray-400">
-                Enter 키로 다음 칸 이동 · 마지막 칸에서 Enter 시 행 자동 추가
-              </p>
+            <div className="px-6 py-4 border-t flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 flex-shrink-0">
+                {!bulkResults && (
+                  <>
+                    <span className="text-xs text-gray-500 font-medium whitespace-nowrap">입고일</span>
+                    <input
+                      type="date"
+                      value={bulkReceiveDate}
+                      onChange={e => setBulkReceiveDate(e.target.value)}
+                      className="px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:border-orange-400"
+                    />
+                  </>
+                )}
+                {!bulkResults && (
+                  <p className="text-xs text-gray-400 hidden sm:block">Enter 키로 다음 칸 이동</p>
+                )}
+              </div>
               <div className="flex gap-2">
                 {bulkResults ? (
                   <>

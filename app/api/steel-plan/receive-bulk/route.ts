@@ -5,7 +5,7 @@
  * 입력된 행(호선+재질+두께+폭+길이) 각각에 대해 REGISTERED → RECEIVED로 처리.
  *
  * Request body:
- *   { items: Array<{ vesselCode, material, thickness, width, length, qty? }> }
+ *   { receivedAt?: string (ISO date), items: Array<{ vesselCode, material, thickness, width, length, qty? }> }
  *
  * Response:
  *   { results: Array<{ ...item, matched: number, notFound: boolean }> }
@@ -34,11 +34,15 @@ interface BulkItem {
 
 export async function POST(req: NextRequest) {
   try {
-    const { items }: { items: BulkItem[] } = await req.json();
+    const body = await req.json();
+    const { items, receivedAt }: { items: BulkItem[]; receivedAt?: string } = body;
 
     if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: "입고 항목이 없습니다." }, { status: 400 });
     }
+
+    // 입고일: 전달된 날짜 사용, 없으면 현재 시각
+    const receivedDate = receivedAt ? new Date(receivedAt) : new Date();
 
     const results = [];
 
@@ -70,10 +74,9 @@ export async function POST(req: NextRequest) {
       }
 
       // 입고 처리
-      const now = new Date();
       const { count } = await prisma.steelPlan.updateMany({
         where: { id: { in: targets.map(t => t.id) } },
-        data:  { status: "RECEIVED", receivedAt: now },
+        data:  { status: "RECEIVED", receivedAt: receivedDate },
       });
 
       // DrawingList 재계산
