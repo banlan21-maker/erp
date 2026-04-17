@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   RefreshCw, X, Save, AlertTriangle, Edit2,
-  Package, Archive, Filter, StickyNote, Trash2, Search, RotateCcw,
+  Package, Archive, Filter, StickyNote, Trash2, Search, RotateCcw, Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -166,7 +166,7 @@ const INIT_FORM = {
   manualWeight: "",
 };
 
-export function RemnantRegisterTab({ projects }: { projects: ProjectOption[] }) {
+function RemnantDetailForm({ projects }: { projects: ProjectOption[] }) {
   const [form,   setForm]   = useState({ ...INIT_FORM });
   const [saving,        setSaving]        = useState(false);
   const [error,         setError]         = useState<string | null>(null);
@@ -239,11 +239,6 @@ export function RemnantRegisterTab({ projects }: { projects: ProjectOption[] }) 
     } catch { setError("서버 오류가 발생했습니다."); }
     finally { setSaving(false); }
   };
-
-  const tabBtnCls = (active: boolean) =>
-    `px-4 py-2 text-sm font-semibold rounded-lg border-2 transition-all ${
-      active ? "border-blue-500 bg-blue-50 text-blue-700" : "border-gray-200 text-gray-600 hover:border-gray-300"
-    }`;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl">
@@ -453,6 +448,437 @@ export function RemnantRegisterTab({ projects }: { projects: ProjectOption[] }) 
         </Button>
       </div>
     </form>
+  );
+}
+
+// ─── 엑셀식 일괄 등록 폼 ───────────────────────────────────────────────────
+
+type RemnantBulkRow = {
+  remnantNo: string;
+  material: string;
+  thickness: string;
+  width1: string;
+  length1: string;
+  width2: string;
+  length2: string;
+  weight: string;
+  location: string;
+  memo: string;
+};
+
+const emptyRemnantBulkRow = (): RemnantBulkRow => ({
+  remnantNo: "", material: "", thickness: "",
+  width1: "", length1: "", width2: "", length2: "",
+  weight: "", location: "", memo: "",
+});
+
+type BulkResult = { ok: boolean; remnantNo?: string; error?: string };
+
+function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
+  // ── 상단 공통 선택 영역 ─────────────────────────────────────────────────
+  const [type,    setType]    = useState("REMNANT");
+  const [shape,   setShape]   = useState("RECTANGLE");
+  const [sourceMode, setSourceMode] = useState<"project" | "direct" | "none">("project");
+  const [sourceProjectId, setSourceProjectId] = useState("");
+  const [sourceDirect,    setSourceDirect]    = useState("");
+  const [registeredBy,    setRegisteredBy]    = useState("");
+
+  // ── 그리드 행 ─────────────────────────────────────────────────────────────
+  const [rows, setRows] = useState<RemnantBulkRow[]>([emptyRemnantBulkRow()]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error,   setError]   = useState<string | null>(null);
+  const [results, setResults] = useState<BulkResult[] | null>(null);
+
+  const isLShape    = shape === "L_SHAPE";
+  const isIrregular = shape === "IRREGULAR";
+
+  // 형태에 따른 컬럼 순서 (키보드 네비게이션용)
+  const cols: (keyof RemnantBulkRow)[] = useMemo(() => {
+    const base: (keyof RemnantBulkRow)[] = ["remnantNo", "material", "thickness", "width1", "length1"];
+    if (isLShape) base.push("width2", "length2");
+    base.push("weight", "location", "memo");
+    return base;
+  }, [isLShape]);
+
+  // 행별 자동 중량
+  const autoWeightFor = (r: RemnantBulkRow): number | null => {
+    return calcWeight(shape, Number(r.thickness), r.material,
+      Number(r.width1), Number(r.length1),
+      Number(r.width2), Number(r.length2));
+  };
+
+  // 형태 변경 시 W2/L2 초기화
+  const handleShapeChange = (v: string) => {
+    setShape(v);
+    if (v !== "L_SHAPE") {
+      setRows(prev => prev.map(r => ({ ...r, width2: "", length2: "" })));
+    }
+  };
+
+  const setCell = (idx: number, key: keyof RemnantBulkRow, val: string) =>
+    setRows(prev => prev.map((r, i) => i === idx ? { ...r, [key]: val } : r));
+
+  const addRow    = () => setRows(prev => [...prev, emptyRemnantBulkRow()]);
+  const deleteRow = (idx: number) => setRows(prev => prev.length === 1 ? [emptyRemnantBulkRow()] : prev.filter((_, i) => i !== idx));
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, idx: number, colIdx: number) => {
+    const focusCell = (r: number, c: number) => document.getElementById(`rem-${r}-${c}`)?.focus();
+    const appendRowFocus = (c: number) => {
+      setRows(prev => [...prev, emptyRemnantBulkRow()]);
+      setTimeout(() => focusCell(idx + 1, c), 50);
+    };
+    if (e.key === "ArrowUp")   { e.preventDefault(); if (idx > 0) focusCell(idx - 1, colIdx); return; }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (idx === rows.length - 1) appendRowFocus(colIdx);
+      else focusCell(idx + 1, colIdx);
+      return;
+    }
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      const t = e.currentTarget;
+      const isNum = t.type === "number";
+      const atStart = isNum ? true : (t.selectionStart === 0 && t.selectionEnd === 0);
+      const atEnd   = isNum ? true : (t.selectionStart === t.value.length && t.selectionEnd === t.value.length);
+      if (e.key === "ArrowLeft" && atStart) {
+        e.preventDefault();
+        if (colIdx > 0) focusCell(idx, colIdx - 1);
+        else if (idx > 0) focusCell(idx - 1, cols.length - 1);
+        return;
+      }
+      if (e.key === "ArrowRight" && atEnd) {
+        e.preventDefault();
+        if (colIdx < cols.length - 1) focusCell(idx, colIdx + 1);
+        else if (idx === rows.length - 1) appendRowFocus(0);
+        else focusCell(idx + 1, 0);
+        return;
+      }
+      return;
+    }
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (e.shiftKey) {
+      if (idx === rows.length - 1) appendRowFocus(colIdx);
+      else focusCell(idx + 1, colIdx);
+      return;
+    }
+    if (colIdx < cols.length - 1) focusCell(idx, colIdx + 1);
+    else if (idx === rows.length - 1) appendRowFocus(0);
+    else focusCell(idx + 1, 0);
+  };
+
+  const handleSubmit = async () => {
+    setError(null);
+    setResults(null);
+    if (!registeredBy.trim()) { setError("등록자를 입력해주세요."); return; }
+    if (sourceMode === "project" && !sourceProjectId) {
+      setError("기존 호선/블록을 선택하거나 발생출처를 '직접 입력' 또는 '없음'으로 바꿔주세요.");
+      return;
+    }
+
+    const valid = rows.filter(r => r.material.trim() && r.thickness && r.width1 && r.length1);
+    if (valid.length === 0) {
+      setError("최소 1개 행에 재질·두께·W1·L1을 입력해주세요.");
+      return;
+    }
+
+    const selectedProject = projects.find(p => p.id === sourceProjectId);
+
+    setSubmitting(true);
+    const out: BulkResult[] = [];
+
+    for (const r of rows) {
+      // 빈 행 skip
+      if (!r.material.trim() && !r.thickness && !r.width1 && !r.length1 && !r.weight) {
+        out.push({ ok: false, error: "빈 행 (skip)" });
+        continue;
+      }
+      if (!r.material.trim() || !r.thickness) {
+        out.push({ ok: false, error: "재질/두께 누락" });
+        continue;
+      }
+      const auto = autoWeightFor(r);
+      const weight = r.weight ? Number(r.weight) : auto;
+      if (!weight || weight <= 0) {
+        out.push({ ok: false, error: isIrregular ? "중량 직접 입력 필요" : "중량 계산 실패" });
+        continue;
+      }
+      try {
+        const res = await fetch("/api/remnants", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            remnantNo: r.remnantNo.trim() || null,
+            type, shape,
+            material: r.material, thickness: r.thickness, weight,
+            width1:  r.width1  || null,
+            length1: r.length1 || null,
+            width2:  r.width2  || null,
+            length2: r.length2 || null,
+            sourceProjectId:  sourceMode === "project" ? sourceProjectId : null,
+            sourceVesselName: sourceMode === "direct"  ? (sourceDirect || null) : null,
+            sourceBlock:      sourceMode === "project" ? (selectedProject?.projectName ?? null) : null,
+            location: r.location || null,
+            registeredBy,
+            memo: r.memo || null,
+          }),
+        });
+        const data = await res.json();
+        if (data.success) out.push({ ok: true, remnantNo: data.data.remnantNo });
+        else              out.push({ ok: false, error: data.error || "저장 실패" });
+      } catch { out.push({ ok: false, error: "서버 오류" }); }
+    }
+    setSubmitting(false);
+    setResults(out);
+
+    const successCount = out.filter(o => o.ok).length;
+    if (successCount > 0) {
+      setRows([emptyRemnantBulkRow()]);
+    }
+  };
+
+  const typeLabel  = (v: string) => TYPE_LABEL[v]  ?? v;
+  const shapeLabel = (v: string) => SHAPE_LABEL[v] ?? v;
+
+  return (
+    <div className="space-y-4">
+      {/* ─ 결과 메시지 ─────────────────────────────────── */}
+      {results && (
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <div className="px-4 py-2 bg-green-50 border-b border-green-100 text-sm">
+            <strong className="text-green-700">{results.filter(r => r.ok).length}건 등록 완료</strong>
+            <span className="text-gray-500 ml-2">/ 전체 {results.length}건</span>
+            <button onClick={() => setResults(null)} className="float-right text-gray-400 hover:text-gray-600"><X size={14} /></button>
+          </div>
+          <ul className="divide-y text-xs max-h-40 overflow-y-auto">
+            {results.map((r, i) => (
+              <li key={i} className={`px-4 py-1.5 ${r.ok ? "text-green-700" : "text-red-600"}`}>
+                #{i + 1}: {r.ok ? `✅ ${r.remnantNo}` : `❌ ${r.error}`}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm flex items-center gap-2">
+          <AlertTriangle size={14} /> {error}
+        </div>
+      )}
+
+      {/* ─ 상단 공통 선택 영역 ──────────────────────────── */}
+      <div className="bg-gradient-to-b from-blue-50/50 to-white border border-blue-200 rounded-xl p-4 space-y-4">
+        <p className="text-xs text-blue-600 font-semibold uppercase tracking-wide">공통 선택 · 전체 행에 적용됩니다</p>
+
+        {/* 종류 */}
+        <div>
+          <label className="block text-xs font-semibold text-gray-700 mb-1.5">종류 <span className="text-red-500">*</span></label>
+          <div className="flex gap-2 flex-wrap">
+            {Object.entries(TYPE_LABEL).map(([v, l]) => (
+              <label key={v} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border cursor-pointer text-xs font-medium transition-all ${
+                type === v ? "border-blue-500 bg-blue-50 text-blue-700" : "border-gray-200 text-gray-600 hover:border-gray-300"
+              }`}>
+                <input type="radio" name="bulk-type" value={v} checked={type === v} onChange={() => setType(v)} className="hidden" />
+                {l}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* 형태 */}
+        <div>
+          <label className="block text-xs font-semibold text-gray-700 mb-1.5">형태 <span className="text-red-500">*</span></label>
+          <div className="flex gap-2 flex-wrap">
+            {Object.entries(SHAPE_LABEL).map(([v, l]) => (
+              <label key={v} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border cursor-pointer text-xs font-medium transition-all ${
+                shape === v ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-gray-200 text-gray-600 hover:border-gray-300"
+              }`}>
+                <input type="radio" name="bulk-shape" value={v} checked={shape === v} onChange={() => handleShapeChange(v)} className="hidden" />
+                {l}
+              </label>
+            ))}
+          </div>
+          {isIrregular && <p className="text-[11px] text-orange-500 mt-1">* 불규칙형은 각 행마다 중량을 직접 입력해주세요.</p>}
+        </div>
+
+        {/* 발생 출처 */}
+        <div>
+          <label className="block text-xs font-semibold text-gray-700 mb-1.5">발생 출처</label>
+          <div className="flex gap-2 mb-2">
+            {([
+              ["project", "기존 호선/블록"],
+              ["direct",  "직접 입력"],
+              ["none",    "없음"],
+            ] as const).map(([v, l]) => (
+              <label key={v} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border cursor-pointer text-xs font-medium transition-all ${
+                sourceMode === v ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-gray-200 text-gray-600 hover:border-gray-300"
+              }`}>
+                <input type="radio" name="bulk-source-mode" value={v} checked={sourceMode === v} onChange={() => setSourceMode(v)} className="hidden" />
+                {l}
+              </label>
+            ))}
+          </div>
+          {sourceMode === "project" && (
+            <select value={sourceProjectId} onChange={e => setSourceProjectId(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">-- 기존 호선/블록 선택 --</option>
+              {projects.map(p => (
+                <option key={p.id} value={p.id}>[{p.projectCode}] {p.projectName}</option>
+              ))}
+            </select>
+          )}
+          {sourceMode === "direct" && (
+            <Input value={sourceDirect} onChange={e => setSourceDirect(e.target.value)} placeholder="예: 4560호 / 101-1" />
+          )}
+        </div>
+
+        {/* 등록자 */}
+        <div>
+          <label className="block text-xs font-semibold text-gray-700 mb-1.5">등록자 <span className="text-red-500">*</span></label>
+          <Input value={registeredBy} onChange={e => setRegisteredBy(e.target.value)} placeholder="이름" className="max-w-xs" />
+        </div>
+      </div>
+
+      {/* ─ 그리드 ──────────────────────────────────────── */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs text-gray-500">행별 입력 · <span className="font-mono">Enter</span> 다음칸 · <span className="font-mono">Shift+Enter</span> 다음행 · <span className="font-mono">↑↓←→</span> 셀 이동</p>
+          <span className="text-xs text-gray-400">공통 설정: <strong className="text-blue-600">{typeLabel(type)}</strong> · <strong className="text-indigo-600">{shapeLabel(shape)}</strong></span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm table-fixed">
+            <colgroup>
+              <col style={{ width: "2rem" }} />
+              <col style={{ width: "10rem" }} />  {/* 잔재번호 */}
+              <col style={{ width: "7rem"  }} />  {/* 재질 */}
+              <col style={{ width: "5.5rem" }} /> {/* 두께 */}
+              <col style={{ width: "6rem" }} />   {/* W1 */}
+              <col style={{ width: "6rem" }} />   {/* L1 */}
+              {isLShape && <col style={{ width: "6rem" }} />}
+              {isLShape && <col style={{ width: "6rem" }} />}
+              <col style={{ width: "7rem" }} />   {/* 중량 */}
+              <col style={{ width: "8rem" }} />   {/* 위치 */}
+              <col />                              {/* 메모 (flex) */}
+              <col style={{ width: "2rem" }} />
+            </colgroup>
+            <thead>
+              <tr className="border-b text-[11px] text-gray-500 uppercase tracking-wide">
+                <th className="text-center pb-2">#</th>
+                <th className="text-left pb-2 pr-2">잔재번호<span className="text-gray-300 font-normal"> (자동)</span></th>
+                <th className="text-left pb-2 pr-2">재질 *</th>
+                <th className="text-left pb-2 pr-2">두께 *</th>
+                <th className="text-left pb-2 pr-2">W1 *</th>
+                <th className="text-left pb-2 pr-2">L1 *</th>
+                {isLShape && <th className="text-left pb-2 pr-2">W2</th>}
+                {isLShape && <th className="text-left pb-2 pr-2">L2</th>}
+                <th className="text-left pb-2 pr-2">중량(kg){!isIrregular && <span className="text-blue-400 font-normal"> · 자동</span>}</th>
+                <th className="text-left pb-2 pr-2">위치</th>
+                <th className="text-left pb-2 pr-2">메모</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {rows.map((row, idx) => {
+                const auto = autoWeightFor(row);
+                return (
+                  <tr key={idx} className="hover:bg-gray-50">
+                    <td className="py-1.5 text-xs text-gray-400 text-center">{idx + 1}</td>
+                    {cols.map((col, colIdx) => {
+                      const isNum   = ["thickness","width1","length1","width2","length2","weight"].includes(col);
+                      const val     = row[col];
+                      const placeholder =
+                        col === "remnantNo"  ? "자동" :
+                        col === "material"   ? "AH36" :
+                        col === "weight"     ? (auto != null && !isIrregular ? String(auto) : isIrregular ? "직접 입력" : "") :
+                        "";
+                      return (
+                        <td key={col} className="py-1.5 pr-2">
+                          <input
+                            id={`rem-${idx}-${colIdx}`}
+                            type={isNum ? "number" : "text"}
+                            value={val}
+                            onChange={e => {
+                              const v = col === "material"
+                                ? e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "")
+                                : e.target.value;
+                              setCell(idx, col, v);
+                            }}
+                            onKeyDown={e => handleKeyDown(e, idx, colIdx)}
+                            onFocus={e => {
+                              // 이전 행 자동복사 (재질·두께·위치)
+                              if (!row[col] && idx > 0 && (col === "material" || col === "thickness" || col === "location")) {
+                                setCell(idx, col, rows[idx - 1][col]);
+                                setTimeout(() => (e.target as HTMLInputElement).select(), 0);
+                              }
+                            }}
+                            placeholder={placeholder}
+                            style={col === "material" ? { textTransform: "uppercase" } : undefined}
+                            className="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-300"
+                          />
+                        </td>
+                      );
+                    })}
+                    <td className="py-1.5 text-center">
+                      {rows.length > 1 && (
+                        <button onClick={() => deleteRow(idx)} className="p-1 text-gray-300 hover:text-red-400 rounded">
+                          <X size={14} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-gray-300 bg-blue-50/60">
+                <td colSpan={cols.length + 1} className="py-2 px-3 text-xs font-semibold text-gray-600">
+                  총 <strong className="text-blue-700">{rows.length}</strong>행
+                </td>
+                <td />
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <button
+          onClick={addRow}
+          className="mt-3 flex items-center gap-1.5 text-sm text-blue-500 hover:text-blue-700"
+        >
+          <Plus size={14} /> 행 추가
+        </button>
+      </div>
+
+      {/* ─ 등록 버튼 ──────────────────────────────────── */}
+      <div className="flex justify-end">
+        <Button
+          onClick={handleSubmit}
+          disabled={submitting}
+          className="bg-blue-600 hover:bg-blue-700 font-bold px-8"
+        >
+          <Save size={15} className="mr-2" />
+          {submitting ? "등록 중..." : `전체 등록 (${rows.length}건)`}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── 잔재등록 탭 (모드 전환: 엑셀식 / 자세히) ──────────────────────────────
+
+export function RemnantRegisterTab({ projects }: { projects: ProjectOption[] }) {
+  const [mode, setMode] = useState<"bulk" | "detail">("bulk");
+  const btnCls = (active: boolean) =>
+    `px-4 py-2 text-sm font-semibold rounded-lg border-2 transition-all ${
+      active ? "border-blue-500 bg-blue-50 text-blue-700" : "border-gray-200 text-gray-600 hover:border-gray-300"
+    }`;
+  return (
+    <div className="space-y-5">
+      <div className="flex gap-2">
+        <button onClick={() => setMode("bulk")}   className={btnCls(mode === "bulk")}>엑셀식 일괄 등록</button>
+        <button onClick={() => setMode("detail")} className={btnCls(mode === "detail")}>자세히 등록 (단건)</button>
+      </div>
+      {mode === "bulk"   && <RemnantBulkForm   projects={projects} />}
+      {mode === "detail" && <RemnantDetailForm projects={projects} />}
+    </div>
   );
 }
 
