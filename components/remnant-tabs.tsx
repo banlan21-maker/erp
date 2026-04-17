@@ -406,19 +406,18 @@ export function RemnantRegisterTab({ projects }: { projects: ProjectOption[] }) 
           ))}
         </select>
 
-        {/* 기존 호선 미선택 시 직접 입력 */}
+        {/* 기존 호선 미선택 시 직접 입력 (호선/블록 한 필드) */}
         {!form.sourceProjectId && (
-          <div className="grid grid-cols-2 gap-4 mt-2">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">호선명 직접 입력</label>
-              <Input value={form.sourceVesselName} onChange={e => set("sourceVesselName", e.target.value)}
-                placeholder="예: 4560호" />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">블록 번호 직접 입력</label>
-              <Input value={form.sourceBlock} onChange={e => set("sourceBlock", e.target.value)}
-                placeholder="예: 101-1" />
-            </div>
+          <div className="mt-2">
+            <label className="block text-xs text-gray-500 mb-1">호선/블록 직접 입력</label>
+            <Input
+              value={form.sourceVesselName}
+              onChange={e => {
+                // sourceBlock은 더는 별도 입력받지 않음 → 빈 값으로 동기화
+                setForm(f => ({ ...f, sourceVesselName: e.target.value, sourceBlock: "" }));
+              }}
+              placeholder="예: 4560호 / 101-1"
+            />
           </div>
         )}
       </div>
