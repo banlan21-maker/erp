@@ -33,18 +33,38 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "필수 값이 누락되었습니다 (품명/분류/단위)." }, { status: 400 });
     }
 
-    const newItem = await prisma.supplyItem.create({
-      data: {
-        name,
-        category,
-        department: department || "CUTTING",
-        subCategory,
-        unit,
-        stockQty: Number(stockQty) || 0,
-        reorderPoint: category === "CONSUMABLE" && reorderPoint ? Number(reorderPoint) : null,
-        location,
-        memo
+    const initialQty = Number(stockQty) || 0;
+
+    // 품목 등록 + 초기재고 이력 자동 생성 (initialQty > 0인 경우)
+    // 히스토리의 첫 행으로 "초기재고"가 기록되어야 이후 입출고 내역의 재고 추적이 자연스러움
+    const newItem = await prisma.$transaction(async (tx) => {
+      const created = await tx.supplyItem.create({
+        data: {
+          name,
+          category,
+          department: department || "CUTTING",
+          subCategory,
+          unit,
+          stockQty: initialQty,
+          reorderPoint: category === "CONSUMABLE" && reorderPoint ? Number(reorderPoint) : null,
+          location,
+          memo,
+        },
+      });
+
+      if (initialQty > 0) {
+        await tx.supplyInbound.create({
+          data: {
+            itemId:        created.id,
+            qty:           initialQty,
+            stockQtyAfter: initialQty,
+            receivedBy:    "초기재고",
+            memo:          "품목 등록 시 초기재고",
+          },
+        });
       }
+
+      return created;
     });
 
     return NextResponse.json({ success: true, data: newItem });

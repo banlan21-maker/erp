@@ -596,6 +596,8 @@ function HistoryContent() {
                           <td className="px-4 py-3 text-xs text-gray-600">
                             {row.receivedBy === "재고조정"
                               ? <span className="px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 font-semibold">수동조정</span>
+                              : row.receivedBy === "초기재고"
+                              ? <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-semibold">초기재고</span>
                               : row.vendor?.name || <span className="text-gray-300">-</span>}
                           </td>
                           <td className="px-4 py-3 text-right text-xs text-gray-500">{beforeQty != null ? beforeQty : <span className="text-gray-300">-</span>}</td>
