@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { recomputeStockHistory } from "@/lib/recalc-supply-stock";
 
 export const dynamic = "force-dynamic";
 
@@ -58,8 +59,9 @@ export async function POST(request: Request) {
     const usedDate = usedAt ? new Date(usedAt) : new Date();
 
     // 트랜잭션 처리: 출고 이력 추가 + 재고 수량 차감
+    // 백데이트 대응: 이력 기록 후 시간순으로 stockQtyAfter 재계산
     const result = await prisma.$transaction(async (tx) => {
-      // 1. 재고 체크
+      // 1. 재고 체크 (현재 라이브 재고 기준)
       const currentItem = await tx.supplyItem.findUnique({ where: { id: Number(itemId) } });
       if (!currentItem) throw new Error("품목을 찾을 수 없습니다.");
       if (currentItem.stockQty < nQty) {
@@ -67,30 +69,33 @@ export async function POST(request: Request) {
       }
 
       // 2. 재고 차감
-      const updatedItem = await tx.supplyItem.update({
+      await tx.supplyItem.update({
         where: { id: Number(itemId) },
-        data: { stockQty: { decrement: nQty } }
+        data:  { stockQty: { decrement: nQty } },
       });
 
-      // 3. 이력 생성 (총재고 스냅샷 포함)
+      // 3. 출고 이력 insert — stockQtyAfter는 임시값 (이후 recompute에서 확정)
       const outbound = await tx.supplyOutbound.create({
         data: {
-          itemId: Number(itemId),
-          qty: nQty,
-          stockQtyAfter: updatedItem.stockQty,
+          itemId:        Number(itemId),
+          qty:           nQty,
+          stockQtyAfter: 0,
           usedBy,
           memo,
-          usedAt: usedDate,
-        }
+          usedAt:        usedDate,
+        },
       });
 
-      // 4. 발주 기준점 경고 계산 
-      // (소모품이면서 reorderPoint 이하로 떨어졌을 때 토스트를 띄우기 위해 응답 객체에 플래그 전달)
-      const isWarning = currentItem.category === "CONSUMABLE" && 
-                        updatedItem.reorderPoint !== null && 
-                        updatedItem.stockQty <= updatedItem.reorderPoint;
+      // 4. 시간순 재계산 (백데이트 시 전·후 이력의 스냅샷도 보정)
+      const finalQty = await recomputeStockHistory(tx, Number(itemId));
 
-      return { outbound, isWarning, updatedStockQty: updatedItem.stockQty };
+      // 5. 발주 기준점 경고 계산 (재계산된 최종 재고 기준)
+      const isWarning = currentItem.category === "CONSUMABLE" &&
+                        currentItem.reorderPoint !== null &&
+                        finalQty <= currentItem.reorderPoint;
+
+      const refreshed = await tx.supplyOutbound.findUnique({ where: { id: outbound.id } });
+      return { outbound: refreshed ?? outbound, isWarning, updatedStockQty: finalQty };
     });
 
     return NextResponse.json({ success: true, data: result });

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { recomputeStockHistory } from "@/lib/recalc-supply-stock";
 
 export const dynamic = "force-dynamic";
 
@@ -65,26 +66,33 @@ export async function POST(request: Request) {
     const receivedDate = receivedAt ? new Date(receivedAt) : new Date();
 
     // 트랜잭션 처리: 입고 이력 추가 + 재고 수량 증가
+    // 백데이트 대응: 이력 기록 후 시간순으로 stockQtyAfter 재계산
     const result = await prisma.$transaction(async (tx) => {
-      // 재고 증가 후 총수량 스냅샷
-      const updatedItem = await tx.supplyItem.update({
+      // 현재 재고 기준으로 증가 (트랜잭션 중 동시성 안전)
+      await tx.supplyItem.update({
         where: { id: Number(itemId) },
-        data: { stockQty: { increment: nQty } }
+        data:  { stockQty: { increment: nQty } },
       });
 
+      // 입고 이력 insert — stockQtyAfter는 임시값 (이후 recompute에서 확정)
       const inbound = await tx.supplyInbound.create({
         data: {
-          itemId: Number(itemId),
-          vendorId: Number(vendorId),
-          qty: nQty,
-          stockQtyAfter: updatedItem.stockQty,
+          itemId:        Number(itemId),
+          vendorId:      Number(vendorId),
+          qty:           nQty,
+          stockQtyAfter: 0,
           receivedBy,
           memo,
-          receivedAt: receivedDate,
-        }
+          receivedAt:    receivedDate,
+        },
       });
 
-      return inbound;
+      // 시간순 재계산 (백데이트 시 이전 이력의 스냅샷도 보정)
+      await recomputeStockHistory(tx, Number(itemId));
+
+      // 재계산된 최신 값으로 응답 반영
+      const refreshed = await tx.supplyInbound.findUnique({ where: { id: inbound.id } });
+      return refreshed ?? inbound;
     });
 
     return NextResponse.json({ success: true, data: result });
