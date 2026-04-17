@@ -37,7 +37,18 @@ export default async function ReportsPage({
       equipment:   { select: { id: true, name: true, type: true } },
       project:     { select: { projectCode: true, projectName: true } },
       drawingList: { select: { steelWeight: true, useWeight: true } },
-      urgentWork:  { select: { urgentNo: true, title: true } },   // 돌발작업 정보
+      urgentWork:  {
+        select: {
+          urgentNo:   true,
+          title:      true,
+          requester:  true,
+          department: true,
+          // 돌발작업 연결 잔재의 W1/L1/W2/L2 (L자형이면 W2/L2 존재)
+          remnant: {
+            select: { width1: true, length1: true, width2: true, length2: true },
+          },
+        },
+      },
     },
     orderBy: { startAt: "asc" },
   });
@@ -58,6 +69,13 @@ export default async function ReportsPage({
     isUrgent:      l.isUrgent,
     urgentNo:      l.urgentWork?.urgentNo  ?? null,
     urgentTitle:   l.urgentWork?.title     ?? null,
+    requester:     l.urgentWork?.requester  ?? null,
+    department:    l.urgentWork?.department ?? null,
+    // 통합 치수 (정규: CuttingLog.width/length, 돌발: remnant.width1/length1/width2/length2)
+    dimW1: l.urgentWork?.remnant?.width1  ?? l.width  ?? null,
+    dimL1: l.urgentWork?.remnant?.length1 ?? l.length ?? null,
+    dimW2: l.urgentWork?.remnant?.width2  ?? null,
+    dimL2: l.urgentWork?.remnant?.length2 ?? null,
     // 강재 중량: DrawingList.steelWeight 우선, 없으면 치수로 계산
     steelWeight: (() => {
       const sw = l.drawingList?.steelWeight;

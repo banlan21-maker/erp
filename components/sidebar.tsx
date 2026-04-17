@@ -29,8 +29,8 @@ const menuGroups: Record<string, MenuItem[]> = {
     { href: "/cutpart/projects",   label: "프로젝트",      icon: FolderOpen },
     { href: "/cutpart/scrap",      label: "잔재관리",      icon: Archive },
     { href: "/cutpart/urgent",     label: "돌발작업",      icon: Zap },
-    { href: "/cutpart/worklog",    label: "작업일보",      icon: ClipboardList },
-    { href: "/cutpart/reports",    label: "보고서",        icon: BarChart2 },
+    { href: "/cutpart/worklog",    label: "작업일보관리",   icon: ClipboardList },
+    { href: "/cutpart/reports",    label: "절단보고서",     icon: BarChart2 },
   ],
   schedule: [
     { href: "/cutpart/schedule",      label: "스케줄 생성", icon: CalendarDays },
