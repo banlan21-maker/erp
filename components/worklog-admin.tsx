@@ -497,6 +497,7 @@ function LogModal({
             drawingNo:     drawing?.drawingNo ?? null,
             operator:      form.operator,
             memo:          form.memo || null,
+            startAt:       form.startAt ? new Date(form.startAt).toISOString() : undefined,
           }),
         });
         const data = await res.json();
@@ -506,14 +507,16 @@ function LogModal({
           return;
         }
 
-        // 추가 후 바로 완료 처리 (endAt 있는 경우)
+        // 추가 후 바로 완료 처리 (endAt 있는 경우) — 관리자 입력 시작/종료시간 그대로 반영
         if (form.endAt && data.data?.id) {
           await fetch(`/api/cutting-logs/${data.data.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              action: "complete",
-              memo: form.memo || null,
+              action:  "complete",
+              memo:    form.memo || null,
+              startAt: form.startAt ? new Date(form.startAt).toISOString() : undefined,
+              endAt:   new Date(form.endAt).toISOString(),
             }),
           });
         }
@@ -525,8 +528,8 @@ function LogModal({
             equipmentId: form.equipmentId,
             operator:    form.operator,
             heatNo:      form.heatNo || null,
-            startAt:     form.startAt,
-            endAt:       form.endAt || null,
+            startAt:     form.startAt ? new Date(form.startAt).toISOString() : undefined,
+            endAt:       form.endAt   ? new Date(form.endAt).toISOString()   : null,
             status:      form.endAt ? "COMPLETED" : "STARTED",
             memo:        form.memo || null,
           }),
@@ -948,9 +951,13 @@ export default function WorklogAdmin({
                               </td>
                               <td className="px-4 py-3 font-semibold text-gray-800 text-xs">{log.operator}</td>
                               <td className="px-4 py-3 text-xs text-gray-600">
-                                <div>{fmtDt(log.startAt)}</div>
+                                <div>
+                                  <span>{fmtDt(log.startAt)}</span>
+                                  <span className="text-gray-400 mx-1">-</span>
+                                  <span>{log.endAt ? fmtDt(log.endAt) : "진행중"}</span>
+                                </div>
                                 {log.endAt && (
-                                  <div className="text-green-600 font-medium">→ {fmtDuration(log.startAt, log.endAt)}</div>
+                                  <div className="text-green-600 font-medium">{fmtDuration(log.startAt, log.endAt)}</div>
                                 )}
                               </td>
                               <td className="px-4 py-3 text-xs text-gray-500">{log.equipment?.name ?? "-"}</td>
@@ -1053,8 +1060,7 @@ export default function WorklogAdmin({
                           <th className="px-4 py-2.5">도면번호</th>
                           <th className="px-4 py-2.5">Heat NO</th>
                           <th className="px-4 py-2.5">작업자</th>
-                          <th className="px-4 py-2.5">시작일시</th>
-                          <th className="px-4 py-2.5">소요시간</th>
+                          <th className="px-4 py-2.5">작업시간</th>
                           <th className="px-4 py-2.5">장비</th>
                           <th className="px-4 py-2.5 text-center">액션</th>
                         </tr>
@@ -1065,8 +1071,16 @@ export default function WorklogAdmin({
                             <td className="px-4 py-3 font-mono text-xs text-gray-700">{log.drawingNo || "-"}</td>
                             <td className="px-4 py-3 font-mono text-xs text-blue-700">{log.heatNo || "-"}</td>
                             <td className="px-4 py-3 font-semibold text-xs text-gray-800">{log.operator}</td>
-                            <td className="px-4 py-3 text-xs text-gray-500">{fmtDt(log.startAt)}</td>
-                            <td className="px-4 py-3 text-xs text-green-600">{fmtDuration(log.startAt, log.endAt)}</td>
+                            <td className="px-4 py-3 text-xs text-gray-600">
+                              <div>
+                                <span>{fmtDt(log.startAt)}</span>
+                                <span className="text-gray-400 mx-1">-</span>
+                                <span>{log.endAt ? fmtDt(log.endAt) : "진행중"}</span>
+                              </div>
+                              {log.endAt && (
+                                <div className="text-green-600 font-medium">{fmtDuration(log.startAt, log.endAt)}</div>
+                              )}
+                            </td>
                             <td className="px-4 py-3 text-xs text-gray-500">{log.equipment?.name ?? "-"}</td>
                             <td className="px-4 py-3 text-center">
                               <div className="flex items-center justify-center gap-1">

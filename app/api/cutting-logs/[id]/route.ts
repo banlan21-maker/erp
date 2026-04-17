@@ -44,12 +44,14 @@ export async function PATCH(
     const { action, memo, heatNo, material, thickness, operator } = body;
 
     if (action === "complete") {
-      // 절단 종료 처리
+      // 절단 종료 처리 (endAt/startAt 명시 시 관리자 지정값 사용)
+      const { endAt: completeEndAt, startAt: completeStartAt } = body;
       const log = await prisma.cuttingLog.update({
         where: { id },
         data: {
           status: "COMPLETED",
-          endAt: new Date(),
+          endAt: completeEndAt ? new Date(completeEndAt) : new Date(),
+          ...(completeStartAt ? { startAt: new Date(completeStartAt) } : {}),
           ...(memo !== undefined ? { memo: memo?.trim() || null } : {}),
         },
         include: { equipment: { select: { name: true } } },

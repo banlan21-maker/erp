@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
     const {
       equipmentId, projectId, drawingListId,
       heatNo, material, thickness, width, length, qty, drawingNo,
-      operator, memo, isUrgent, urgentWorkId,
+      operator, memo, isUrgent, urgentWorkId, startAt,
     } = body;
 
     // ── 필수값 검증 ─────────────────────────────────────────────────────────
@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
         operator:  operator.trim(),
         memo:      memo?.trim()      || null,
         isUrgent:  isUrgent === true,
-        startAt:   new Date(),
+        startAt:   startAt ? new Date(startAt) : new Date(),
       },
       include: {
         equipment: { select: { name: true } },
