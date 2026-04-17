@@ -1350,29 +1350,67 @@ export default function SteelPlanMain() {
 
                       // Enter          → 같은 행 다음 컬럼 (마지막 컬럼이면 다음 행 첫 컬럼)
                       // Shift+Enter    → 같은 컬럼 다음 행 (마지막 행이면 새 행 추가)
-                      const handleKeyDown = (e: React.KeyboardEvent, colIdx: number) => {
-                        if (e.key !== "Enter") return;
-                        e.preventDefault();
+                      // ArrowUp/Down   → 이전/다음 행 (같은 컬럼 유지, 마지막 행에서 Down 시 새 행 추가)
+                      // ArrowLeft/Right→ 같은 행 이전/다음 컬럼 (텍스트 입력은 커서가 끝/처음일 때만 이동)
+                      const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, colIdx: number) => {
+                        const focusCell = (r: number, c: number) => {
+                          document.getElementById(`bulk-${r}-${c}`)?.focus();
+                        };
+                        const appendRowAndFocus = (c: number) => {
+                          setBulkRows(prev => [...prev, emptyBulkRow()]);
+                          setTimeout(() => focusCell(idx + 1, c), 50);
+                        };
 
-                        if (e.shiftKey) {
-                          if (idx === bulkRows.length - 1) {
-                            setBulkRows(prev => [...prev, emptyBulkRow()]);
-                            setTimeout(() => document.getElementById(`bulk-${idx + 1}-${colIdx}`)?.focus(), 50);
-                          } else {
-                            document.getElementById(`bulk-${idx + 1}-${colIdx}`)?.focus();
+                        // ── Arrow 네비게이션 ────────────────────────────
+                        if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          if (idx > 0) focusCell(idx - 1, colIdx);
+                          return;
+                        }
+                        if (e.key === "ArrowDown") {
+                          e.preventDefault();
+                          if (idx === bulkRows.length - 1) appendRowAndFocus(colIdx);
+                          else focusCell(idx + 1, colIdx);
+                          return;
+                        }
+                        if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                          const target = e.currentTarget;
+                          const isNum = target.type === "number";
+                          // 텍스트 입력은 커서가 경계(0 or end)에 있고 선택영역이 없을 때만 셀 이동
+                          const pos = target.selectionStart;
+                          const end = target.selectionEnd;
+                          const atStart = isNum ? true : (pos === 0 && end === 0);
+                          const atEnd   = isNum ? true : (pos === target.value.length && end === target.value.length);
+
+                          if (e.key === "ArrowLeft" && atStart) {
+                            e.preventDefault();
+                            if (colIdx > 0) focusCell(idx, colIdx - 1);
+                            else if (idx > 0) focusCell(idx - 1, cols.length - 1);
+                            return;
+                          }
+                          if (e.key === "ArrowRight" && atEnd) {
+                            e.preventDefault();
+                            if (colIdx < cols.length - 1) focusCell(idx, colIdx + 1);
+                            else if (idx === bulkRows.length - 1) appendRowAndFocus(0);
+                            else focusCell(idx + 1, 0);
+                            return;
                           }
                           return;
                         }
 
-                        if (colIdx < cols.length - 1) {
-                          const next = document.getElementById(`bulk-${idx}-${colIdx + 1}`);
-                          next?.focus();
-                        } else if (idx === bulkRows.length - 1) {
-                          setBulkRows(prev => [...prev, emptyBulkRow()]);
-                          setTimeout(() => document.getElementById(`bulk-${idx + 1}-0`)?.focus(), 50);
-                        } else {
-                          document.getElementById(`bulk-${idx + 1}-0`)?.focus();
+                        // ── Enter / Shift+Enter ─────────────────────────
+                        if (e.key !== "Enter") return;
+                        e.preventDefault();
+
+                        if (e.shiftKey) {
+                          if (idx === bulkRows.length - 1) appendRowAndFocus(colIdx);
+                          else focusCell(idx + 1, colIdx);
+                          return;
                         }
+
+                        if (colIdx < cols.length - 1) focusCell(idx, colIdx + 1);
+                        else if (idx === bulkRows.length - 1) appendRowAndFocus(0);
+                        else focusCell(idx + 1, 0);
                       };
 
                       return (
@@ -1466,7 +1504,7 @@ export default function SteelPlanMain() {
                   </>
                 )}
                 {!bulkResults && (
-                  <p className="text-xs text-gray-400 hidden sm:block">Enter: 다음 칸 · Shift+Enter: 다음 행</p>
+                  <p className="text-xs text-gray-400 hidden sm:block">← → ↑ ↓ 셀 이동 · Enter: 다음 칸 · Shift+Enter: 다음 행</p>
                 )}
               </div>
               <div className="flex gap-2">
