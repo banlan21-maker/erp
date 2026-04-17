@@ -11,6 +11,13 @@
  *   - POST /api/supply/outbound (insert 후)
  *   - 재고 수동조정 PATCH      (insert 후)
  *
+ * Legacy 데이터 자동 보정:
+ *   품목 등록 시 초기재고가 history에 기록되지 않은 과거 품목은
+ *   Σ(inbound) - Σ(outbound) < stockQty 형태로 드리프트가 존재.
+ *   첫 recompute 실행 시 이 드리프트를 감지하여 "자동 생성" 보정
+ *   레코드(초기재고)를 이력의 맨 앞에 삽입해 invariant를 복구.
+ *   이후 수동조정·입출고가 항상 정합하게 동작.
+ *
  * 주의: 동일 타임스탬프 이벤트는 createdAt을 2차 정렬키로 사용 (삽입 순서 보존).
  */
 
@@ -19,7 +26,10 @@ import type { Prisma } from "@prisma/client";
 type Tx = Prisma.TransactionClient;
 
 export async function recomputeStockHistory(tx: Tx, itemId: number): Promise<number> {
-  const [inbounds, outbounds] = await Promise.all([
+  const item = await tx.supplyItem.findUnique({ where: { id: itemId } });
+  if (!item) throw new Error("품목을 찾을 수 없습니다.");
+
+  let [inbounds, outbounds] = await Promise.all([
     tx.supplyInbound.findMany({
       where: { itemId },
       select: { id: true, qty: true, receivedAt: true, createdAt: true },
@@ -29,6 +39,52 @@ export async function recomputeStockHistory(tx: Tx, itemId: number): Promise<num
       select: { id: true, qty: true, usedAt: true, createdAt: true },
     }),
   ]);
+
+  // ── Legacy 드리프트 자동 보정 ──────────────────────────────────────────
+  // 기존 이력의 net total과 item.stockQty가 불일치하면 초기재고 보정 레코드 삽입
+  const recordSum =
+    inbounds.reduce((s, r) => s + r.qty, 0) -
+    outbounds.reduce((s, r) => s + r.qty, 0);
+  const drift = item.stockQty - recordSum;
+
+  if (drift !== 0) {
+    // 기존 이력의 최초 시점 직전을 보정 레코드 일시로 사용
+    const allTimes = [
+      ...inbounds.map((r) => r.receivedAt.getTime()),
+      ...outbounds.map((r) => r.usedAt.getTime()),
+    ];
+    const earliest = allTimes.length > 0
+      ? new Date(Math.min(...allTimes) - 1000)
+      : item.createdAt;
+
+    if (drift > 0) {
+      const created = await tx.supplyInbound.create({
+        data: {
+          itemId,
+          qty:           drift,
+          stockQtyAfter: 0,
+          receivedBy:    "초기재고",
+          memo:          "자동 보정 — 기존 품목 초기재고 누락분",
+          receivedAt:    earliest,
+        },
+        select: { id: true, qty: true, receivedAt: true, createdAt: true },
+      });
+      inbounds = [...inbounds, created];
+    } else {
+      const created = await tx.supplyOutbound.create({
+        data: {
+          itemId,
+          qty:           Math.abs(drift),
+          stockQtyAfter: 0,
+          usedBy:        "초기재고보정",
+          memo:          "자동 보정 — 기존 품목 초기재고 차이분(음수)",
+          usedAt:        earliest,
+        },
+        select: { id: true, qty: true, usedAt: true, createdAt: true },
+      });
+      outbounds = [...outbounds, created];
+    }
+  }
 
   type Event =
     | { kind: "in";  id: number; qty: number; time: Date; createdAt: Date }
@@ -66,11 +122,14 @@ export async function recomputeStockHistory(tx: Tx, itemId: number): Promise<num
     }
   }
 
-  // SupplyItem.stockQty를 재계산된 final running total로 동기화
-  await tx.supplyItem.update({
-    where: { id: itemId },
-    data:  { stockQty: running },
-  });
+  // 최종 running은 item.stockQty와 일치해야 함 (보정 덕분에)
+  // 만약 여전히 차이가 있으면 안전하게 sync
+  if (running !== item.stockQty) {
+    await tx.supplyItem.update({
+      where: { id: itemId },
+      data:  { stockQty: running },
+    });
+  }
 
   return running;
 }
