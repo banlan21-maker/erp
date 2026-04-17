@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   RefreshCw, X, Save, AlertTriangle, Edit2,
   Package, Archive, Filter, StickyNote, Trash2, Search, RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import ColumnFilterDropdown, { type FilterValue } from "./column-filter-dropdown";
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -734,45 +735,91 @@ function DetailModal({
 export function RemnantManageTab({ projects: _projects }: { projects: ProjectOption[] }) {
   const [remnants,    setRemnants]    = useState<Remnant[]>([]);
   const [loading,     setLoading]     = useState(true);
-  const [status,      setStatus]      = useState("IN_STOCK");
-  const [typeF,       setTypeF]       = useState("");
-  const [shapeF,      setShapeF]      = useState("");
   const [search,      setSearch]      = useState("");
   const [detailItem,  setDetailItem]  = useState<Remnant | null>(null);
   const [editItem,    setEditItem]    = useState<Remnant | null>(null);
   const [reregItem,   setReregItem]   = useState<Remnant | null>(null);
 
+  // 엑셀 스타일 컬럼 필터 (기본값: 재고있음만 노출)
+  const [colFilters,     setColFilters]     = useState<Record<string, string[]>>({ status: ["IN_STOCK"] });
+  const [openFilter,     setOpenFilter]     = useState<string | null>(null);
+  const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
+
   const fetchRemnants = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (status) params.set("status", status);
-      if (typeF)  params.set("type",   typeF);
-      if (shapeF) params.set("shape",  shapeF);
-      const res  = await fetch(`/api/remnants?${params}`);
+      // 전체 로드 (필터링은 클라이언트에서 처리 - 컬럼 필터 distinct 계산 일관성)
+      const res  = await fetch(`/api/remnants`);
       const data = await res.json();
       if (data.success) setRemnants(data.data);
     } catch { /* ignore */ }
     finally { setLoading(false); }
-  }, [status, typeF, shapeF]);
+  }, []);
 
   useEffect(() => { fetchRemnants(); }, [fetchRemnants]);
 
-  // 검색 필터 (클라이언트)
-  const filtered = remnants.filter(r => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return (
-      r.remnantNo.toLowerCase().includes(q) ||
-      r.material.toLowerCase().includes(q) ||
-      (r.sourceVesselName  ?? "").toLowerCase().includes(q) ||
-      (r.sourceProject?.projectName ?? "").toLowerCase().includes(q) ||
-      (r.sourceBlock ?? "").toLowerCase().includes(q) ||
-      (r.location    ?? "").toLowerCase().includes(q) ||
-      (r.registeredBy ?? "").toLowerCase().includes(q) ||
-      (r.memo ?? "").toLowerCase().includes(q)
-    );
-  });
+  // ─── 컬럼별 고유값 (필터 드롭다운 소스) ──────────────────────────────────
+  // 현재 필터 결과에 관계없이 전체 잔재 기준 distinct 값을 항상 노출
+  const distinctValues = useMemo((): Record<string, FilterValue[]> => {
+    const uniq = <T extends string | number>(xs: (T | null | undefined)[]) =>
+      Array.from(new Set(xs.filter((v): v is T => v != null && v !== "")));
+
+    const numLabel = (v: number | null) => (v == null ? "" : String(v));
+
+    const toFV = (xs: (string | number)[], labelMap?: Record<string, string>): FilterValue[] =>
+      xs
+        .map(v => ({ value: String(v), label: labelMap?.[String(v)] ?? String(v) }))
+        .sort((a, b) => a.label.localeCompare(b.label, "ko", { numeric: true }));
+
+    return {
+      type:      toFV(uniq(remnants.map(r => r.type)),     TYPE_LABEL),
+      shape:     toFV(uniq(remnants.map(r => r.shape)),    SHAPE_LABEL),
+      material:  toFV(uniq(remnants.map(r => r.material))),
+      thickness: toFV(uniq(remnants.map(r => r.thickness))),
+      width1:    toFV(uniq(remnants.map(r => numLabel(r.width1)).filter(Boolean))),
+      length1:   toFV(uniq(remnants.map(r => numLabel(r.length1)).filter(Boolean))),
+      width2:    toFV(uniq(remnants.map(r => numLabel(r.width2)).filter(Boolean))),
+      length2:   toFV(uniq(remnants.map(r => numLabel(r.length2)).filter(Boolean))),
+      location:  toFV(uniq(remnants.map(r => r.location ?? ""))),
+      status:    toFV(uniq(remnants.map(r => r.status)),   STATUS_LABEL),
+    };
+  }, [remnants]);
+
+  // ─── 필터링: 컬럼 필터 + 텍스트 검색 ─────────────────────────────────────
+  const filtered = useMemo(() => {
+    const cf = colFilters;
+    const passCol = (key: string, val: string | number | null | undefined) => {
+      const sel = cf[key];
+      if (!sel || sel.length === 0) return true;
+      return sel.includes(val == null ? "" : String(val));
+    };
+    const q = search.trim().toLowerCase();
+    return remnants.filter(r => {
+      if (!passCol("type",      r.type))      return false;
+      if (!passCol("shape",     r.shape))     return false;
+      if (!passCol("material",  r.material))  return false;
+      if (!passCol("thickness", r.thickness)) return false;
+      if (!passCol("width1",    r.width1))    return false;
+      if (!passCol("length1",   r.length1))   return false;
+      if (!passCol("width2",    r.width2))    return false;
+      if (!passCol("length2",   r.length2))   return false;
+      if (!passCol("location",  r.location))  return false;
+      if (!passCol("status",    r.status))    return false;
+      if (!q) return true;
+      return (
+        r.remnantNo.toLowerCase().includes(q) ||
+        r.material.toLowerCase().includes(q) ||
+        (r.sourceVesselName  ?? "").toLowerCase().includes(q) ||
+        (r.sourceProject?.projectName ?? "").toLowerCase().includes(q) ||
+        (r.sourceBlock ?? "").toLowerCase().includes(q) ||
+        (r.location    ?? "").toLowerCase().includes(q) ||
+        (r.registeredBy ?? "").toLowerCase().includes(q) ||
+        (r.memo ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [remnants, colFilters, search]);
+
+  const hasAnyColFilter = Object.values(colFilters).some(v => v && v.length > 0);
 
   const handleExhaust = async (id: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -785,37 +832,31 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
     fetchRemnants();
   };
 
-  const filterBtn = (val: string, cur: string, setter: (v: string) => void, label: string) => (
-    <button key={val} onClick={() => setter(cur === val ? "" : val)}
-      className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
-        cur === val ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
-      }`}>
-      {label}
-    </button>
-  );
+  // ─── 컬럼 헤더 (필터 버튼 포함) ──────────────────────────────────────────
+  const ColHeader = ({ col, label, align = "left" }: { col: string; label: string; align?: "left" | "right" | "center" }) => {
+    const active = (colFilters[col]?.length ?? 0) > 0;
+    const justify = align === "right" ? "justify-end" : align === "center" ? "justify-center" : "justify-start";
+    return (
+      <th className={`px-3 py-2 font-medium text-gray-600 text-[11px] ${align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left"}`}>
+        <div className={`flex items-center gap-0.5 ${justify}`}>
+          <span>{label}</span>
+          <button
+            onClick={(e) => { setOpenFilter(col); setFilterAnchorEl(e.currentTarget); }}
+            className={`rounded hover:bg-gray-200 p-0.5 ${active ? "text-blue-500" : "text-gray-400"}`}
+          >
+            <Filter size={10} fill={active ? "currentColor" : "none"} />
+          </button>
+        </div>
+      </th>
+    );
+  };
 
   return (
     <div className="space-y-4">
-      {/* 필터 */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-semibold text-gray-500 flex items-center gap-1"><Filter size={11} /> 상태</span>
-          {[["IN_STOCK","재고있음"],["IN_USE","사용중"],["EXHAUSTED","소진"]].map(([v,l]) => filterBtn(v, status, setStatus, l))}
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-semibold text-gray-500 flex items-center gap-1"><Filter size={11} /> 종류</span>
-          {Object.entries(TYPE_LABEL).map(([v,l]) => filterBtn(v, typeF, setTypeF, l))}
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-semibold text-gray-500 flex items-center gap-1"><Filter size={11} /> 형태</span>
-          {Object.entries(SHAPE_LABEL).map(([v,l]) => filterBtn(v, shapeF, setShapeF, l))}
-        </div>
-      </div>
-
       {/* 목록 카드 */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        {/* 헤더: 검색 + 새로고침 */}
-        <div className="px-4 py-3 border-b bg-gray-50 flex items-center gap-3">
+        {/* 헤더: 검색 + 필터초기화 + 새로고침 */}
+        <div className="px-4 py-3 border-b bg-gray-50 flex items-center gap-3 flex-wrap">
           <Package size={14} className="text-blue-500 shrink-0" />
           <span className="text-sm font-semibold text-gray-700 shrink-0">
             잔재 목록 ({filtered.length}/{remnants.length}건)
@@ -829,6 +870,14 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
               className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
             />
           </div>
+          {hasAnyColFilter && (
+            <button
+              onClick={() => setColFilters({})}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50"
+            >
+              <X size={12} /> 필터 전체 초기화
+            </button>
+          )}
           <Button variant="outline" size="sm" onClick={fetchRemnants} className="text-xs shrink-0 ml-auto">
             <RefreshCw size={12} className="mr-1" /> 새로고침
           </Button>
@@ -841,7 +890,7 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
         ) : filtered.length === 0 ? (
           <div className="text-center py-12 text-gray-400">
             <Package size={32} className="mx-auto mb-2 opacity-30" />
-            <p className="text-sm">{search ? "검색 결과가 없습니다." : "해당하는 잔재가 없습니다."}</p>
+            <p className="text-sm">{search || hasAnyColFilter ? "검색 결과가 없습니다." : "해당하는 잔재가 없습니다."}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -849,15 +898,18 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
               <thead className="bg-gray-50 border-b text-[11px] text-gray-500 uppercase tracking-wide">
                 <tr>
                   <th className="px-4 py-2.5">잔재번호</th>
-                  <th className="px-3 py-2.5">종류</th>
-                  <th className="px-3 py-2.5">형태</th>
-                  <th className="px-3 py-2.5">재질</th>
-                  <th className="px-3 py-2.5 text-right">두께</th>
-                  <th className="px-3 py-2.5">사이즈(mm)</th>
+                  <ColHeader col="type"      label="종류"  />
+                  <ColHeader col="shape"     label="형태"  />
+                  <ColHeader col="material"  label="재질"  />
+                  <ColHeader col="thickness" label="두께"  align="right" />
+                  <ColHeader col="width1"    label="W1"    align="right" />
+                  <ColHeader col="length1"   label="L1"    align="right" />
+                  <ColHeader col="width2"    label="W2"    align="right" />
+                  <ColHeader col="length2"   label="L2"    align="right" />
                   <th className="px-3 py-2.5 text-right">중량</th>
                   <th className="px-3 py-2.5">출처</th>
-                  <th className="px-3 py-2.5">위치</th>
-                  <th className="px-3 py-2.5">상태</th>
+                  <ColHeader col="location"  label="위치"  />
+                  <ColHeader col="status"    label="상태"  />
                   <th className="px-3 py-2.5 text-center">메모</th>
                   <th className="px-4 py-2.5 text-center">설정</th>
                 </tr>
@@ -891,11 +943,14 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
                       {/* 재질 */}
                       <td className="px-3 py-3 text-xs font-semibold text-gray-800">{r.material}</td>
 
-                      {/* 두께 */}
-                      <td className="px-3 py-3 text-xs text-gray-600 text-right">t{r.thickness}</td>
+                      {/* 두께 (t 제거, 숫자만) */}
+                      <td className="px-3 py-3 text-xs text-gray-600 text-right font-mono">{r.thickness}</td>
 
-                      {/* 사이즈 */}
-                      <td className="px-3 py-3 text-xs text-gray-600 font-mono">{sizeText(r)}</td>
+                      {/* W1 / L1 / W2 / L2 개별 컬럼 */}
+                      <td className="px-3 py-3 text-xs text-gray-600 text-right font-mono">{r.width1  ?? <span className="text-gray-300">-</span>}</td>
+                      <td className="px-3 py-3 text-xs text-gray-600 text-right font-mono">{r.length1 ?? <span className="text-gray-300">-</span>}</td>
+                      <td className="px-3 py-3 text-xs text-gray-600 text-right font-mono">{r.width2  ?? <span className="text-gray-300">-</span>}</td>
+                      <td className="px-3 py-3 text-xs text-gray-600 text-right font-mono">{r.length2 ?? <span className="text-gray-300">-</span>}</td>
 
                       {/* 중량 */}
                       <td className="px-3 py-3 text-xs font-bold text-gray-800 text-right">{r.weight.toLocaleString()} kg</td>
@@ -954,6 +1009,21 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
           </div>
         )}
       </div>
+
+      {/* 컬럼 필터 드롭다운 */}
+      {openFilter && filterAnchorEl && (
+        <ColumnFilterDropdown
+          anchorEl={filterAnchorEl}
+          values={distinctValues[openFilter] ?? []}
+          selected={colFilters[openFilter] ?? []}
+          onApply={(vals) => {
+            setColFilters((prev) => ({ ...prev, [openFilter]: vals }));
+            setOpenFilter(null);
+            setFilterAnchorEl(null);
+          }}
+          onClose={() => { setOpenFilter(null); setFilterAnchorEl(null); }}
+        />
+      )}
 
       {/* 상세 모달 */}
       {detailItem && !editItem && !reregItem && (
