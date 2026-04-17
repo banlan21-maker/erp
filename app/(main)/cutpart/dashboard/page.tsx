@@ -165,15 +165,15 @@ function SummaryCard({
   title: string; value: number; sub: string; icon: React.ReactNode; bg: string;
 }) {
   return (
-    <Card className={bg}>
-      <CardContent className="pt-5">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs text-gray-500 font-medium">{title}</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{value.toLocaleString()}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
+    <Card className={`${bg} py-0`}>
+      <CardContent className="px-4 py-2.5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] text-gray-500 font-medium leading-tight">{title}</p>
+            <p className="text-lg font-bold text-gray-900 leading-tight mt-0.5">{value.toLocaleString()}</p>
+            <p className="text-[10px] text-gray-400 leading-tight">{sub}</p>
           </div>
-          <div className="p-2 bg-white rounded-lg shadow-sm">{icon}</div>
+          <div className="p-1.5 bg-white rounded-md shadow-sm shrink-0">{icon}</div>
         </div>
       </CardContent>
     </Card>
