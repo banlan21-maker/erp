@@ -1348,20 +1348,29 @@ export default function SteelPlanMain() {
                       const setRow = (key: keyof BulkRow, val: string) =>
                         setBulkRows(prev => prev.map((r, i) => i === idx ? { ...r, [key]: val } : r));
 
-                      // Enter → 다음 행으로 (마지막 행이면 새 행 추가)
+                      // Enter          → 같은 행 다음 컬럼 (마지막 컬럼이면 다음 행 첫 컬럼)
+                      // Shift+Enter    → 같은 컬럼 다음 행 (마지막 행이면 새 행 추가)
                       const handleKeyDown = (e: React.KeyboardEvent, colIdx: number) => {
                         if (e.key !== "Enter") return;
                         e.preventDefault();
+
+                        if (e.shiftKey) {
+                          if (idx === bulkRows.length - 1) {
+                            setBulkRows(prev => [...prev, emptyBulkRow()]);
+                            setTimeout(() => document.getElementById(`bulk-${idx + 1}-${colIdx}`)?.focus(), 50);
+                          } else {
+                            document.getElementById(`bulk-${idx + 1}-${colIdx}`)?.focus();
+                          }
+                          return;
+                        }
+
                         if (colIdx < cols.length - 1) {
-                          // 같은 행의 다음 컬럼으로
                           const next = document.getElementById(`bulk-${idx}-${colIdx + 1}`);
                           next?.focus();
                         } else if (idx === bulkRows.length - 1) {
-                          // 마지막 행 마지막 컬럼 → 새 행 추가 후 첫 컬럼으로
                           setBulkRows(prev => [...prev, emptyBulkRow()]);
                           setTimeout(() => document.getElementById(`bulk-${idx + 1}-0`)?.focus(), 50);
                         } else {
-                          // 다음 행 첫 컬럼으로
                           document.getElementById(`bulk-${idx + 1}-0`)?.focus();
                         }
                       };
@@ -1376,7 +1385,13 @@ export default function SteelPlanMain() {
                                 list={col === "vesselCode" ? "bulk-vessel-list" : undefined}
                                 type={["thickness","width","length","qty"].includes(col) ? "number" : "text"}
                                 value={row[col]}
-                                onChange={e => setRow(col, e.target.value)}
+                                onChange={e => {
+                                  // 재질: 한글/소문자 IME 입력도 즉시 영어 대문자+숫자로 필터링
+                                  const v = col === "material"
+                                    ? e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "")
+                                    : e.target.value;
+                                  setRow(col, v);
+                                }}
                                 onKeyDown={e => handleKeyDown(e, colIdx)}
                                 onFocus={e => {
                                   // 이전 행 자동복사 (호선·재질은 보통 같은 값)
@@ -1391,6 +1406,9 @@ export default function SteelPlanMain() {
                                   col === "qty"        ? "1"    :
                                   col === "storageLocation" ? "예: A동 1번" : ""
                                 }
+                                style={col === "material" ? { textTransform: "uppercase", imeMode: "disabled" } as React.CSSProperties : undefined}
+                                autoCapitalize={col === "material" ? "characters" : undefined}
+                                lang={col === "material" ? "en" : undefined}
                                 className="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-300"
                               />
                             </td>
@@ -1409,6 +1427,19 @@ export default function SteelPlanMain() {
                       );
                     })}
                   </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-gray-300 bg-orange-50/60">
+                      <td colSpan={6} className="py-2 pr-2 text-right text-xs font-semibold text-gray-600">
+                        수량 합계
+                      </td>
+                      <td className="py-2 pr-2 text-sm font-bold text-orange-700">
+                        {bulkRows.reduce((sum, r) => sum + (Number(r.qty) || 0), 0)}장
+                      </td>
+                      <td colSpan={2} className="py-2 text-xs text-gray-400">
+                        ({bulkRows.length}행)
+                      </td>
+                    </tr>
+                  </tfoot>
                 </table>
 
                 <button
@@ -1435,7 +1466,7 @@ export default function SteelPlanMain() {
                   </>
                 )}
                 {!bulkResults && (
-                  <p className="text-xs text-gray-400 hidden sm:block">Enter 키로 다음 칸 이동</p>
+                  <p className="text-xs text-gray-400 hidden sm:block">Enter: 다음 칸 · Shift+Enter: 다음 행</p>
                 )}
               </div>
               <div className="flex gap-2">
