@@ -1292,6 +1292,19 @@ export default function SteelPlanMain() {
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-gray-300 bg-orange-50/60">
+                      <td colSpan={5} className="px-3 py-2 text-right font-semibold text-gray-600">
+                        수량 합계
+                      </td>
+                      <td className="px-3 py-2 font-bold text-orange-700">
+                        {bulkResults.reduce((s, r) => s + (r.qty || 0), 0)}장
+                      </td>
+                      <td className="px-3 py-2 font-semibold text-green-700">
+                        ✅ {bulkResults.reduce((s, r) => s + (r.matched || 0), 0)}장 입고 완료
+                      </td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             )}
