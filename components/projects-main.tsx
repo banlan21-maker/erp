@@ -1,11 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Anchor, List, Upload, FileSpreadsheet, Plus } from "lucide-react";
+import { Anchor, List, Upload, FileSpreadsheet, Plus, ClipboardList } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import ProjectTree from "@/components/project-tree";
 import DrawingsMain from "@/components/drawings-main";
+import BomMain from "@/components/bom-main";
 import type { DrawingList } from "@prisma/client";
 
 interface VesselBlock {
@@ -63,9 +64,10 @@ export default function ProjectsMain({
   const goTab = (t: string) => router.push(`/cutpart/projects?tab=${t}`);
 
   const tabs = [
-    { key: "vessels", icon: <List size={14} />,          label: "호선/블록 리스트" },
-    { key: "upload",  icon: <Upload size={14} />,         label: "블록별강재등록" },
+    { key: "vessels", icon: <List size={14} />,           label: "호선/블록 리스트" },
+    { key: "upload",  icon: <Upload size={14} />,          label: "블록별강재등록" },
     { key: "list",    icon: <FileSpreadsheet size={14} />, label: "블록별강재리스트" },
+    { key: "bom",     icon: <ClipboardList size={14} />,   label: "블록별BOM리스트" },
   ];
 
   return (
@@ -111,6 +113,9 @@ export default function ProjectsMain({
 
       {/* 호선리스트 탭 */}
       {tab === "vessels" && <ProjectTree vessels={vessels} />}
+
+      {/* BOM리스트 탭 */}
+      {tab === "bom" && <BomMain projectOptions={projectOptions} />}
 
       {/* 호선강재등록 / 호선강재리스트 탭 */}
       {(tab === "upload" || tab === "list") && (
