@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import { ClipboardList, FolderOpen, ArrowLeft, Trash2 } from "lucide-react";
 import Link from "next/link";
 import ColumnFilterDropdown from "@/components/column-filter-dropdown";
-import { ListFilter, XCircle } from "lucide-react";
+import { Filter, XCircle } from "lucide-react";
 
 interface ProjectOption {
   id: string;
@@ -144,7 +144,7 @@ export default function BomMain({
           <div className="ml-auto flex items-center gap-2">
             {filterCount > 0 && (
               <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md">
-                <ListFilter size={11} />
+                <Filter size={11} fill="currentColor" />
                 <span>필터 {filterCount}개 적용 ({filtered.length}/{items.length}행)</span>
                 <button onClick={() => setFilters({})} className="ml-0.5 hover:text-blue-800" title="모든 필터 초기화">
                   <XCircle size={12} />
@@ -195,7 +195,7 @@ export default function BomMain({
                                 className={`p-0.5 rounded hover:bg-gray-200 transition-colors ${isActive ? "text-blue-600" : "text-gray-400"}`}
                                 title={isActive ? `필터 적용 중 (${filters[c.key]?.length}개)` : "필터"}
                               >
-                                <ListFilter size={11} />
+                                <Filter size={11} fill={isActive ? "currentColor" : "none"} />
                               </button>
                             )}
                           </div>

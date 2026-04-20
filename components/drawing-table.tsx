@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { DrawingList } from "@prisma/client";
-import { Pencil, Trash2, Check, X, ListFilter, XCircle, Plus, CalendarCheck } from "lucide-react";
+import { Pencil, Trash2, Check, X, Filter, XCircle, Plus, CalendarCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ColumnFilterDropdown from "@/components/column-filter-dropdown";
@@ -117,7 +117,7 @@ function FilterHeader({
           className={`p-0.5 rounded hover:bg-gray-200 transition-colors ${isActive ? "text-blue-600" : "text-gray-400"}`}
           title={isActive ? `필터 적용 중 (${selected.length}개)` : "필터"}
         >
-          <ListFilter size={11} />
+          <Filter size={11} fill={isActive ? "currentColor" : "none"} />
         </button>
       </div>
       {openCol === col && anchorEl && (
@@ -387,7 +387,7 @@ export default function DrawingTable({
           {/* 필터 적용 중 표시 */}
           {activeFilterCount > 0 && (
             <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md">
-              <ListFilter size={11} />
+              <Filter size={11} fill="currentColor" />
               <span>필터 {activeFilterCount}개 적용 ({filteredDrawings.length}/{drawings.length}행)</span>
               <button
                 onClick={() => setFilters({})}
