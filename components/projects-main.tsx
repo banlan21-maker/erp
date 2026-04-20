@@ -65,7 +65,7 @@ export default function ProjectsMain({
 
   const tabs = [
     { key: "vessels", icon: <List size={14} />,           label: "호선/블록 리스트" },
-    { key: "upload",  icon: <Upload size={14} />,          label: "블록별강재등록" },
+    { key: "upload",  icon: <Upload size={14} />,          label: "블록별 강재/BOM 등록" },
     { key: "list",    icon: <FileSpreadsheet size={14} />, label: "블록별강재리스트" },
     { key: "bom",     icon: <ClipboardList size={14} />,   label: "블록별BOM리스트" },
   ];
