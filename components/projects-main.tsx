@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import ProjectTree from "@/components/project-tree";
 import DrawingsMain from "@/components/drawings-main";
 import BomMain from "@/components/bom-main";
+import BomUpload from "@/components/bom-upload";
 import type { DrawingList } from "@prisma/client";
 
 interface VesselBlock {
@@ -158,11 +159,7 @@ export default function ProjectsMain({
           )}
 
           {uploadSubTab === "bom" && (
-            <div className="flex flex-col items-center justify-center py-24 text-gray-400 bg-white rounded-xl border">
-              <ClipboardList size={44} className="mb-4 opacity-30" />
-              <p className="text-base font-semibold text-gray-500">BOM 등록</p>
-              <p className="text-sm mt-1 text-gray-400">준비 중입니다.</p>
-            </div>
+            <BomUpload projectOptions={projectOptions} />
           )}
         </div>
       )}

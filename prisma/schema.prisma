@@ -161,8 +161,44 @@ model Project {
   schedules    CncSchedule[]
   urgentWorks  UrgentWork[]
   remnants     Remnant[]
+  bomItems     BomItem[]
 
   @@unique([projectCode, projectName])
+}
+
+// BOM 업체 프리셋 (업체별 엑셀 컬럼 매핑 설정)
+model BomVendor {
+  id        String   @id @default(cuid())
+  name      String   @unique // 업체명
+  desc      String?          // 설명
+  preset    Json             // 파싱 설정 (header_row, project_cell, block_cell, filter, fields, ...)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bomItems  BomItem[]
+}
+
+// BOM 항목 (업체 엑셀 파싱 후 DB 저장)
+model BomItem {
+  id         String     @id @default(cuid())
+  projectId  String
+  project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  vendorId   String?
+  vendor     BomVendor? @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+
+  hosin      String     // 호선
+  block      String     // 블록
+  partName   String     // 파트명
+  thickness  String?    // 두께 (문자열, dim_parse 결과 포함)
+  size       String?    // 사이즈
+  material   String?    // 재질
+  process    String?    // 가공
+  qty        Int?       // 수량
+  weight     Float?     // 중량(kg)
+  nestNo     String?    // NEST NO
+  sourceFile String?    // 원본 파일명
+
+  createdAt  DateTime   @default(now())
 }
 
 // 강재리스트 (Excel 업로드 파싱)
