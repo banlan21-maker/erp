@@ -44,7 +44,7 @@ function toEditForm(d: DrawingList): EditForm {
 }
 
 function calcSteelWeight(t: number | string, w: number | string, l: number | string): number {
-  return Math.round(Number(t) * Number(w) * Number(l) * 7.85 / 1_000_000 * 100) / 100;
+  return Math.round(Number(t) * Number(w) * Number(l) * 7.85 / 1_000_000 * 10) / 10;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -509,7 +509,7 @@ export default function DrawingTable({
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-full text-right" value={editForm.thickness}  onChange={e => f("thickness",  e.target.value)} /></td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-full text-right" value={editForm.width}      onChange={e => f("width",      e.target.value)} /></td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-full text-right" value={editForm.length}     onChange={e => f("length",     e.target.value)} /></td>
-                      <td className="px-2 py-1.5 text-right text-xs text-gray-500">{calcSteelWeight(editForm.thickness, editForm.width, editForm.length).toLocaleString()}</td>
+                      <td className="px-2 py-1.5 text-right text-xs text-gray-500">{calcSteelWeight(editForm.thickness, editForm.width, editForm.length).toFixed(1)}</td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-full text-right" value={editForm.useWeight}  onChange={e => f("useWeight",  e.target.value)} /></td>
                       <td className="px-2 py-1.5 text-center text-xs text-blue-600 font-mono">{d.heatNo ?? <span className="text-gray-300">-</span>}</td>
                       <td className="px-2 py-1.5">
@@ -533,8 +533,8 @@ export default function DrawingTable({
                     <td className="px-2 py-2 text-right text-xs text-gray-700">{d.thickness}</td>
                     <td className="px-2 py-2 text-right text-xs text-gray-700">{d.width.toLocaleString()}</td>
                     <td className="px-2 py-2 text-right text-xs text-gray-700">{d.length.toLocaleString()}</td>
-                    <td className="px-2 py-2 text-right text-xs text-gray-700">{calcSteelWeight(d.thickness, d.width, d.length).toLocaleString()}</td>
-                    <td className="px-2 py-2 text-right text-xs text-gray-500">{d.useWeight != null ? d.useWeight.toLocaleString() : "-"}</td>
+                    <td className="px-2 py-2 text-right text-xs text-gray-700">{calcSteelWeight(d.thickness, d.width, d.length).toFixed(1)}</td>
+                    <td className="px-2 py-2 text-right text-xs text-gray-500">{d.useWeight != null ? d.useWeight.toFixed(1) : "-"}</td>
                     <td className="px-2 py-2 text-center text-xs font-mono text-blue-600 truncate">{d.heatNo ?? <span className="text-gray-300">-</span>}</td>
                     <td className="px-2 py-2">
                       <div className="flex gap-1 justify-end items-center">
@@ -567,10 +567,10 @@ export default function DrawingTable({
                 합계 ({filteredDrawings.length}행{activeFilterCount > 0 ? ` / 전체 ${drawings.length}행` : ""})
               </td>
               <td className="px-2 py-2 text-right text-xs font-bold text-gray-700">
-                {filteredDrawings.reduce((s, d) => s + calcSteelWeight(d.thickness, d.width, d.length), 0).toLocaleString()}kg
+                {filteredDrawings.reduce((s, d) => s + calcSteelWeight(d.thickness, d.width, d.length), 0).toFixed(1)}kg
               </td>
               <td className="px-2 py-2 text-right text-xs font-bold text-gray-700">
-                {filteredDrawings.reduce((s, d) => s + (d.useWeight ?? 0), 0).toLocaleString()}kg
+                {filteredDrawings.reduce((s, d) => s + (d.useWeight ?? 0), 0).toFixed(1)}kg
               </td>
               <td></td>
               <td></td>

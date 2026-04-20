@@ -53,7 +53,7 @@ const PLAN_STATUS: Record<string, { label: string; cls: string }> = {
 
 // 강재 중량 계산 (단위: kg, 밀도 7.85 g/cm³)
 const calcWeight = (t: number, w: number, l: number) =>
-  Math.round(t * w * l * 7.85 / 1_000_000 * 100) / 100;
+  Math.round(t * w * l * 7.85 / 1_000_000 * 10) / 10;
 
 const HEAT_STATUS: Record<string, { label: string; cls: string }> = {
   WAITING: { label: "대기", cls: "bg-yellow-100 text-yellow-700" },
@@ -835,7 +835,7 @@ export default function SteelPlanMain() {
                           <td className="px-2 py-1 text-center">{row.width}</td>
                           <td className="px-2 py-1 text-center">{row.length}</td>
                           <td className="px-2 py-1 text-center font-medium text-gray-700">
-                            {calcWeight(row.thickness, row.width, row.length).toLocaleString()}
+                            {calcWeight(row.thickness, row.width, row.length).toFixed(1)}
                           </td>
                           <td className="px-2 py-1 text-center text-gray-500 font-mono">
                             {row.receivedAt ? new Date(row.receivedAt).toLocaleDateString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit" }) : <span className="text-gray-300">-</span>}

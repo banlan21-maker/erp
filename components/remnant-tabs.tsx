@@ -114,7 +114,7 @@ function calcWeight(
     return null; // 불규칙형: 직접 입력
   }
   const weightKg = area * thickness * d; // kg (d 단위: kg/mm³)
-  return Math.round(weightKg * 100) / 100; // kg, 소수점 2자리
+  return Math.round(weightKg * 10) / 10; // kg, 소수점 1자리
 }
 
 
@@ -755,7 +755,7 @@ function DetailModal({
             <DetailRow label="재질" value={remnant.material} />
             <DetailRow label="두께" value={`${remnant.thickness} mm`} />
             <DetailRow label="사이즈 (mm)" value={sizeText(remnant)} />
-            <DetailRow label="중량" value={`${remnant.weight.toLocaleString()} kg`} />
+            <DetailRow label="중량" value={`${remnant.weight.toFixed(1)} kg`} />
             <DetailRow label="발생 출처" value={src.vessel} sub={src.block ? `블록: ${src.block}` : undefined} />
             <DetailRow label="보관 위치" value={remnant.location || "-"} />
             <DetailRow label="등록자" value={remnant.registeredBy} />
@@ -1029,7 +1029,7 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
                       <td className="px-3 py-3 text-xs text-gray-600 text-right font-mono">{r.length2 ?? <span className="text-gray-300">-</span>}</td>
 
                       {/* 중량 */}
-                      <td className="px-3 py-3 text-xs font-bold text-gray-800 text-right">{r.weight.toLocaleString()} kg</td>
+                      <td className="px-3 py-3 text-xs font-bold text-gray-800 text-right">{r.weight.toFixed(1)} kg</td>
 
                       {/* 출처 */}
                       <td className="px-3 py-3 text-xs text-gray-500">
