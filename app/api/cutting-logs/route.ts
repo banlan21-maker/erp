@@ -47,33 +47,36 @@ export async function GET(request: NextRequest) {
     const dateFrom     = searchParams.get("dateFrom");
     const dateTo       = searchParams.get("dateTo");
     const includeStuck = searchParams.get("includeStuck") === "true";
+    const all          = searchParams.get("all") === "true"; // 날짜 제한 없이 전체 조회
 
     // ── 날짜 필터 구성 ──────────────────────────────────────────────────────
     let dateFilter: Record<string, unknown> = {};
-    if (dateFrom || dateTo) {
-      // 관리자 범위 필터
-      const rangeFilter: Record<string, Date> = {};
-      if (dateFrom) {
-        const d = new Date(dateFrom); d.setHours(0, 0, 0, 0);
-        rangeFilter.gte = d;
+    if (!all) {
+      if (dateFrom || dateTo) {
+        // 관리자 범위 필터
+        const rangeFilter: Record<string, Date> = {};
+        if (dateFrom) {
+          const d = new Date(dateFrom); d.setHours(0, 0, 0, 0);
+          rangeFilter.gte = d;
+        }
+        if (dateTo) {
+          const d = new Date(dateTo); d.setHours(23, 59, 59, 999);
+          rangeFilter.lte = d;
+        }
+        dateFilter = { startAt: rangeFilter };
+      } else if (date) {
+        // 단일 날짜 (하위 호환 / 현장 뷰)
+        const targetDate = new Date(date);
+        const dayStart = new Date(targetDate); dayStart.setHours(0, 0, 0, 0);
+        const dayEnd   = new Date(targetDate); dayEnd.setHours(23, 59, 59, 999);
+        dateFilter = { startAt: { gte: dayStart, lte: dayEnd } };
+      } else if (!projectId && !equipmentId) {
+        // 아무 조건도 없고 all=false → 오늘로 제한 (현장 뷰 기본값)
+        const today    = new Date();
+        const dayStart = new Date(today); dayStart.setHours(0, 0, 0, 0);
+        const dayEnd   = new Date(today); dayEnd.setHours(23, 59, 59, 999);
+        dateFilter = { startAt: { gte: dayStart, lte: dayEnd } };
       }
-      if (dateTo) {
-        const d = new Date(dateTo); d.setHours(23, 59, 59, 999);
-        rangeFilter.lte = d;
-      }
-      dateFilter = { startAt: rangeFilter };
-    } else if (date) {
-      // 단일 날짜 (하위 호환 / 현장 뷰)
-      const targetDate = new Date(date);
-      const dayStart = new Date(targetDate); dayStart.setHours(0, 0, 0, 0);
-      const dayEnd   = new Date(targetDate); dayEnd.setHours(23, 59, 59, 999);
-      dateFilter = { startAt: { gte: dayStart, lte: dayEnd } };
-    } else if (!projectId) {
-      // projectId 없이 날짜 미지정 → 오늘로 제한 (현장 뷰 기본값)
-      const today    = new Date();
-      const dayStart = new Date(today); dayStart.setHours(0, 0, 0, 0);
-      const dayEnd   = new Date(today); dayEnd.setHours(23, 59, 59, 999);
-      dateFilter = { startAt: { gte: dayStart, lte: dayEnd } };
     }
 
     // ── 미종료(stuck) 레코드 포함 여부 ──────────────────────────────────────
@@ -98,7 +101,7 @@ export async function GET(request: NextRequest) {
       include: {
         equipment:   { select: { id: true, name: true, type: true } },
         project:     { select: { projectCode: true, projectName: true } },
-        drawingList: { select: { drawingNo: true, block: true } },
+        drawingList: { select: { drawingNo: true, block: true, useWeight: true } },
       },
       orderBy: { startAt: "desc" },
     });

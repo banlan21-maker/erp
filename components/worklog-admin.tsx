@@ -56,6 +56,7 @@ interface CuttingLog {
   equipmentId: string;
   equipment: { id: string; name: string; type: string };
   project: { projectCode: string; projectName: string } | null;
+  drawingList: { drawingNo: string | null; block: string | null; useWeight: number | null } | null;
   heatNo: string;
   material: string | null;
   thickness: number | null;
@@ -113,16 +114,12 @@ const USTATUS_COLOR: Record<string, string>  = {
 };
 const TYPE_LABEL:   Record<string, string> = { PLASMA: "플라즈마", GAS: "가스" };
 const STATUS_LABEL: Record<string, string> = {
-  REGISTERED: "등록",
-  WAITING:    "대기",
-  CUT:        "절단완료",
-  CAUTION:    "경고",
+  STARTED:   "진행중",
+  COMPLETED: "완료",
 };
 const STATUS_COLOR: Record<string, string> = {
-  REGISTERED: "bg-gray-100 text-gray-600",
-  WAITING:    "bg-yellow-100 text-yellow-700",
-  CUT:        "bg-green-100 text-green-700",
-  CAUTION:    "bg-red-100 text-red-700",
+  STARTED:   "bg-yellow-100 text-yellow-700",
+  COMPLETED: "bg-green-100 text-green-700",
 };
 
 function fmtDt(iso: string) {
@@ -713,45 +710,35 @@ export default function WorklogAdmin({
   workers: Worker[];
 }) {
   const [mainTab, setMainTab] = useState<"normal" | "urgent">("normal");
-  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo,   setDateTo]   = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [page, setPage] = useState(1);
 
-  const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [logs, setLogs] = useState<CuttingLog[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // 모달 상태
+  // 모달 상태 (수정/삭제용)
   const [modal, setModal] = useState<{
     open: boolean;
-    mode: "add" | "edit";
-    drawing: Drawing | null;
     log: CuttingLog | null;
-  }>({ open: false, mode: "add", drawing: null, log: null });
+  }>({ open: false, log: null });
 
   // 필터 상태
   const [filters,  setFilters]  = useState<Record<string, string[]>>({});
   const [openCol,  setOpenCol]  = useState<string | null>(null);
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
 
-  const vesselCodes = [...new Set(projects.map(p => p.projectCode))].sort();
-  const [selectedVessel, setSelectedVessel] = useState("");
-  const blocksForVessel = projects.filter(p => p.projectCode === selectedVessel);
-  const selectedProject = projects.find(p => p.id === selectedProjectId);
-
-  const fetchData = async (projectId: string) => {
-    if (!projectId) return;
+  const fetchData = async () => {
     setLoading(true);
     try {
-      const [drawingsRes, logsRes] = await Promise.all([
-        fetch(`/api/drawings?projectId=${projectId}`),
-        fetch(`/api/cutting-logs?projectId=${projectId}${dateFrom ? `&dateFrom=${dateFrom}` : ""}${dateTo ? `&dateTo=${dateTo}` : ""}`),
-      ]);
-      const drawingsJson = await drawingsRes.json();
-      const logsJson     = await logsRes.json();
-      if (drawingsJson.success) setDrawings(drawingsJson.data);
-      if (logsJson.success)     setLogs(logsJson.data);
+      const params = new URLSearchParams();
+      if (dateFrom) params.set("dateFrom", dateFrom);
+      if (dateTo)   params.set("dateTo",   dateTo);
+      if (!dateFrom && !dateTo) params.set("all", "true");
+      const res  = await fetch(`/api/cutting-logs?${params}`);
+      const json = await res.json();
+      if (json.success) setLogs(json.data);
     } catch (e) {
       console.error(e);
     } finally {
@@ -759,44 +746,32 @@ export default function WorklogAdmin({
     }
   };
 
-  useEffect(() => {
-    if (selectedProjectId) fetchData(selectedProjectId);
-    else { setDrawings([]); setLogs([]); }
-  }, [selectedProjectId, dateFrom, dateTo]);
-
-  // 필터 열리면 검색어 초기화
-  useEffect(() => { setFilters({}); }, [selectedProjectId]);
-
-  const logByDrawingId = useMemo(() => {
-    const map = new Map<string, CuttingLog>();
-    logs.forEach(l => { if (l.drawingListId) map.set(l.drawingListId, l); });
-    return map;
-  }, [logs]);
+  useEffect(() => { fetchData(); }, [dateFrom, dateTo]);
+  useEffect(() => { setPage(1); }, [dateFrom, dateTo, searchTerm, filters]);
 
   // ── 필터 헬퍼 ───────────────────────────────────────────────────────────
 
-  const getVal = (d: Drawing, log: CuttingLog | null, col: FCKey): string => {
+  const getVal = (log: CuttingLog, col: FCKey): string => {
     switch (col) {
-      case "hosin":     return selectedProject?.projectCode ?? "";
-      case "block":     return d.block ?? "";
-      case "drawingNo": return d.drawingNo ?? "";
-      case "material":  return d.material;
-      case "thickness": return String(d.thickness);
-      case "width":     return String(d.width);
-      case "length":    return String(d.length);
-      case "heatNo":    return d.heatNo ?? "";
-      case "status":    return d.status;
-      case "operator":  return log?.operator ?? "";
-      case "equipment": return log?.equipment?.name ?? "";
+      case "hosin":     return log.project?.projectCode ?? "";
+      case "block":     return log.drawingList?.block ?? "";
+      case "drawingNo": return log.drawingNo ?? "";
+      case "material":  return log.material ?? "";
+      case "thickness": return log.thickness != null ? String(log.thickness) : "";
+      case "width":     return log.width     != null ? String(log.width)     : "";
+      case "length":    return log.length    != null ? String(log.length)    : "";
+      case "heatNo":    return log.heatNo ?? "";
+      case "status":    return log.status;
+      case "operator":  return log.operator;
+      case "equipment": return log.equipment?.name ?? "";
     }
   };
 
   const allValues = (col: FCKey): FilterValue[] => {
     const set = new Set<string>();
     let hasEmpty = false;
-    for (const d of drawings) {
-      const log = logByDrawingId.get(d.id) ?? null;
-      const v = getVal(d, log, col);
+    for (const log of logs) {
+      const v = getVal(log, col);
       if (v) set.add(v);
       else hasEmpty = true;
     }
@@ -817,38 +792,40 @@ export default function WorklogAdmin({
 
   // ── 필터 적용 ───────────────────────────────────────────────────────────
 
-  const filteredDrawings = useMemo(() => {
-    let result = drawings;
+  const filteredLogs = useMemo(() => {
+    let result = logs;
     // 텍스트 검색
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase();
-      result = result.filter(d =>
-        d.drawingNo?.toLowerCase().includes(q) ||
-        d.heatNo?.toLowerCase().includes(q) ||
-        d.block?.toLowerCase().includes(q) ||
-        d.material?.toLowerCase().includes(q)
+      result = result.filter(l =>
+        l.drawingNo?.toLowerCase().includes(q) ||
+        l.heatNo?.toLowerCase().includes(q) ||
+        l.drawingList?.block?.toLowerCase().includes(q) ||
+        l.material?.toLowerCase().includes(q) ||
+        l.operator?.toLowerCase().includes(q)
       );
     }
     // 컬럼 필터
-    result = result.filter(d => {
-      const log = logByDrawingId.get(d.id) ?? null;
-      return FILTER_COLS.every(col => {
+    result = result.filter(l =>
+      FILTER_COLS.every(col => {
         const sel = filters[col.key as FCKey];
         if (!sel || sel.length === 0) return true;
-        const v = getVal(d, log, col.key as FCKey);
+        const v = getVal(l, col.key as FCKey);
         return sel.includes(v || "__EMPTY__");
-      });
-    });
+      })
+    );
     return result;
-  }, [drawings, logByDrawingId, searchTerm, filters]);
+  }, [logs, searchTerm, filters]);
 
+  const PAGE_SIZE = 50;
+  const totalPages = Math.ceil(filteredLogs.length / PAGE_SIZE);
+  const pagedLogs  = filteredLogs.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const filterCount = Object.keys(filters).length;
-  const cutCount    = filteredDrawings.filter(d => logByDrawingId.has(d.id)).length;
 
   const handleDelete = async (logId: string) => {
     if (!confirm("이 작업일보를 삭제할까요? (강재 상태가 복원됩니다)")) return;
     await fetch(`/api/cutting-logs/${logId}`, { method: "DELETE" });
-    fetchData(selectedProjectId);
+    fetchData();
   };
 
   return (
@@ -859,7 +836,7 @@ export default function WorklogAdmin({
           <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <ClipboardList size={24} className="text-blue-600" /> 작업일보 관리
           </h2>
-          <p className="text-sm text-gray-500 mt-1">강재 리스트 기준으로 작업 현황을 확인하고 누락 항목을 등록합니다.</p>
+          <p className="text-sm text-gray-500 mt-1">날짜 필터로 작업일보를 조회하고 수정·삭제할 수 있습니다.</p>
         </div>
       </div>
 
@@ -887,32 +864,9 @@ export default function WorklogAdmin({
 
       {mainTab === "normal" && (<>
 
-      {/* 프로젝트 + 날짜 선택 */}
+      {/* 날짜 필터 */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5">호선 선택</label>
-            <select
-              value={selectedVessel}
-              onChange={e => { setSelectedVessel(e.target.value); setSelectedProjectId(""); }}
-              className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">-- 호선 선택 --</option>
-              {vesselCodes.map(code => <option key={code} value={code}>[{code}]</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5">블록 선택</label>
-            <select
-              value={selectedProjectId}
-              onChange={e => setSelectedProjectId(e.target.value)}
-              disabled={!selectedVessel}
-              className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-            >
-              <option value="">-- 블록 선택 --</option>
-              {blocksForVessel.map(p => <option key={p.id} value={p.id}>{p.projectName}</option>)}
-            </select>
-          </div>
+        <div className="flex flex-wrap items-end gap-4">
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1.5">
               날짜 필터 <span className="font-normal text-gray-400">(비우면 전체)</span>
@@ -928,221 +882,235 @@ export default function WorklogAdmin({
               )}
             </div>
           </div>
+          <button
+            onClick={() => fetchData()}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-600 transition-colors pb-1"
+          >
+            <RefreshCw size={13} /> 새로고침
+          </button>
         </div>
       </div>
 
-      {/* 선택 전 안내 */}
-      {!selectedProjectId && (
-        <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-300 text-gray-400">
-          <ClipboardList size={40} className="mx-auto mb-3 opacity-30" />
-          <p>호선과 블록을 선택하면 작업 리스트가 표시됩니다.</p>
-        </div>
-      )}
-
       {/* 데이터 영역 */}
-      {selectedProjectId && (
-        <>
-          {loading ? (
-            <div className="flex justify-center items-center py-20 text-gray-400 gap-3">
-              <RefreshCw className="animate-spin text-blue-500" size={24} /> 데이터를 불러오는 중...
-            </div>
-          ) : (
-            <div className="space-y-3">
+      {loading ? (
+        <div className="flex justify-center items-center py-20 text-gray-400 gap-3">
+          <RefreshCw className="animate-spin text-blue-500" size={24} /> 데이터를 불러오는 중...
+        </div>
+      ) : (
+        <div className="space-y-3">
 
-              {/* 요약 + 검색 + 필터 뱃지 */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white border border-gray-200 rounded-xl px-5 py-3 shadow-sm">
-                <div className="flex items-center gap-4 text-sm flex-wrap">
-                  <span className="text-gray-500">
-                    {selectedProject && <><strong className="text-blue-700">[{selectedProject.projectCode}]</strong> {selectedProject.projectName} ·{" "}</>}
-                    전체 <strong className="text-gray-900">{drawings.length}</strong>건
-                  </span>
-                  <span className="text-green-600">절단완료 <strong>{cutCount}</strong>건</span>
-                  <span className="text-orange-500">미등록 <strong>{drawings.length - cutCount}</strong>건</span>
-                  {filterCount > 0 && (
-                    <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md">
-                      <Filter size={11} fill="currentColor" />
-                      <span>필터 {filterCount}개 적용 ({filteredDrawings.length}/{drawings.length}행)</span>
-                      <button onClick={() => setFilters({})} className="ml-0.5 hover:text-blue-800" title="모든 필터 초기화">
-                        <XCircle size={12} />
-                      </button>
-                    </div>
-                  )}
+          {/* 요약 + 검색 + 필터 뱃지 */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white border border-gray-200 rounded-xl px-5 py-3 shadow-sm">
+            <div className="flex items-center gap-4 text-sm flex-wrap">
+              <span className="text-gray-500">
+                전체 <strong className="text-gray-900">{logs.length}</strong>건
+              </span>
+              <span className="text-green-600">완료 <strong>{logs.filter(l => l.status === "COMPLETED").length}</strong>건</span>
+              <span className="text-yellow-600">진행중 <strong>{logs.filter(l => l.status === "STARTED").length}</strong>건</span>
+              {filterCount > 0 && (
+                <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md">
+                  <Filter size={11} fill="currentColor" />
+                  <span>필터 {filterCount}개 적용 ({filteredLogs.length}/{logs.length}행)</span>
+                  <button onClick={() => setFilters({})} className="ml-0.5 hover:text-blue-800" title="모든 필터 초기화">
+                    <XCircle size={12} />
+                  </button>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <Input
-                      placeholder="도면번호 / Heat NO / 블록 검색"
-                      value={searchTerm}
-                      onChange={e => setSearchTerm(e.target.value)}
-                      className="pl-8 h-9 text-sm w-52"
-                    />
-                    {searchTerm && (
-                      <button onClick={() => setSearchTerm("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                        <X size={13} />
-                      </button>
-                    )}
-                  </div>
+              )}
+            </div>
+            <div className="relative">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Input
+                placeholder="도면번호 / Heat NO / 블록 / 작업자 검색"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="pl-8 h-9 text-sm w-60"
+              />
+              {searchTerm && (
+                <button onClick={() => setSearchTerm("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* 작업일보 리스트 */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="px-2 py-2.5 text-center text-xs font-semibold text-gray-500 w-8">No</th>
+                    {COLUMNS.map(col => {
+                      const isFilterable = col.filterable;
+                      const isActive     = isFilterable && (filters[col.key as FCKey]?.length ?? 0) > 0;
+                      const alignCls     = col.align === "right" ? "justify-end" : "";
+                      return (
+                        <th key={col.key} className={`px-3 py-2.5 text-xs font-semibold text-gray-500 whitespace-nowrap ${col.align === "right" ? "text-right" : "text-left"}`}>
+                          <div className={`flex items-center gap-1 ${alignCls}`}>
+                            <span>{col.label}</span>
+                            {isFilterable && (
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  if (openCol === col.key) { handleFilterClose(); return; }
+                                  handleFilterOpen(col.key, e.currentTarget);
+                                }}
+                                className={`p-0.5 rounded hover:bg-gray-200 transition-colors ${isActive ? "text-blue-600" : "text-gray-400"}`}
+                                title={isActive ? `필터 적용 중 (${filters[col.key as FCKey]?.length}개)` : "필터"}
+                              >
+                                <Filter size={11} fill={isActive ? "currentColor" : "none"} />
+                              </button>
+                            )}
+                          </div>
+                          {isFilterable && openCol === col.key && anchorEl && (
+                            <ColumnFilterDropdown
+                              anchorEl={anchorEl}
+                              values={allValues(col.key as FCKey)}
+                              selected={filters[col.key as FCKey] ?? []}
+                              onApply={values => { handleFilterChange(col.key, values); handleFilterClose(); }}
+                              onClose={handleFilterClose}
+                            />
+                          )}
+                        </th>
+                      );
+                    })}
+                    <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">액션</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {pagedLogs.map((log, i) => {
+                    const t = log.thickness, w = log.width, l = log.length;
+                    const rowNo = (page - 1) * PAGE_SIZE + i + 1;
+                    return (
+                      <tr key={log.id} className="hover:bg-gray-50/60 transition-colors">
+                        <td className="px-2 py-1.5 text-center text-gray-400">{rowNo}</td>
+                        {/* 호선 */}
+                        <td className="px-3 py-1.5 text-gray-600 font-mono text-[11px]">{log.project?.projectCode ?? "-"}</td>
+                        {/* 블록 */}
+                        <td className="px-3 py-1.5 text-gray-600">{log.drawingList?.block ?? "-"}</td>
+                        {/* 도면번호 */}
+                        <td className="px-3 py-1.5 font-mono text-[11px] font-bold text-gray-800">{log.drawingNo ?? "-"}</td>
+                        {/* 재질 */}
+                        <td className="px-3 py-1.5 text-gray-600">{log.material ?? "-"}</td>
+                        {/* 두께 */}
+                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{t ?? "-"}</td>
+                        {/* 폭 */}
+                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{w ?? "-"}</td>
+                        {/* 길이 */}
+                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{l ?? "-"}</td>
+                        {/* 철판중량 */}
+                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">
+                          {t != null && w != null && l != null ? calcSteelWeight(t, w, l).toFixed(1) : "-"}
+                        </td>
+                        {/* 사용중량 */}
+                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">
+                          {log.drawingList?.useWeight?.toFixed(1) ?? "-"}
+                        </td>
+                        {/* Heat NO */}
+                        <td className="px-3 py-1.5 font-mono text-[11px] text-blue-700">{log.heatNo || "-"}</td>
+                        {/* 작업상태 */}
+                        <td className="px-3 py-1.5">
+                          <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${STATUS_COLOR[log.status] ?? "bg-gray-100 text-gray-600"}`}>
+                            {STATUS_LABEL[log.status] ?? log.status}
+                          </span>
+                        </td>
+                        {/* 작업자 */}
+                        <td className="px-3 py-1.5 font-semibold text-gray-800">{log.operator}</td>
+                        {/* 장비 */}
+                        <td className="px-3 py-1.5 text-gray-500">{log.equipment?.name ?? "-"}</td>
+                        {/* 작업시간 */}
+                        <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">
+                          <div className="text-[11px] text-gray-500">{fmtDt(log.startAt)} ~ {log.endAt ? fmtDt(log.endAt) : "진행중"}</div>
+                          {log.endAt && <div className="text-green-600 font-medium">{fmtDuration(log.startAt, log.endAt)}</div>}
+                        </td>
+                        {/* 비고 */}
+                        <td className="px-3 py-1.5 text-gray-400 max-w-[120px] truncate">{log.memo ?? "-"}</td>
+                        {/* 액션 */}
+                        <td className="px-3 py-1.5 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => setModal({ open: true, log })}
+                              className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md transition-colors"
+                              title="수정"
+                            >
+                              <Edit2 size={13} />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(log.id)}
+                              className="p-1.5 text-red-400 hover:bg-red-50 rounded-md transition-colors"
+                              title="삭제"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredLogs.length === 0 && (
+                    <tr>
+                      <td colSpan={16} className="px-4 py-10 text-center text-gray-400">
+                        {logs.length === 0 ? "등록된 작업일보가 없습니다." : "필터 결과가 없습니다."}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 페이지네이션 */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-gray-50">
+                <span className="text-xs text-gray-500">
+                  {filteredLogs.length}건 중 {(page-1)*PAGE_SIZE+1}~{Math.min(page*PAGE_SIZE, filteredLogs.length)}번째
+                </span>
+                <div className="flex items-center gap-1">
                   <button
-                    onClick={() => fetchData(selectedProjectId)}
-                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-600 transition-colors"
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="px-2.5 py-1 text-xs rounded border border-gray-200 disabled:opacity-40 hover:bg-white transition-colors"
                   >
-                    <RefreshCw size={13} /> 새로고침
+                    이전
+                  </button>
+                  {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => {
+                    const p = i + 1;
+                    return (
+                      <button
+                        key={p}
+                        onClick={() => setPage(p)}
+                        className={`px-2.5 py-1 text-xs rounded border transition-colors ${page === p ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 hover:bg-white"}`}
+                      >
+                        {p}
+                      </button>
+                    );
+                  })}
+                  {totalPages > 10 && <span className="text-xs text-gray-400">... {totalPages}p</span>}
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    className="px-2.5 py-1 text-xs rounded border border-gray-200 disabled:opacity-40 hover:bg-white transition-colors"
+                  >
+                    다음
                   </button>
                 </div>
               </div>
+            )}
+          </div>
 
-              {/* 통합 작업 리스트 */}
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs border-collapse">
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-200">
-                        <th className="px-2 py-2.5 text-center text-xs font-semibold text-gray-500 w-8">No</th>
-                        {COLUMNS.map(col => {
-                          const isFilterable = col.filterable;
-                          const isActive     = isFilterable && (filters[col.key as FCKey]?.length ?? 0) > 0;
-                          const alignCls     = col.align === "right" ? "justify-end" : "";
-                          return (
-                            <th key={col.key} className={`px-3 py-2.5 text-xs font-semibold text-gray-500 whitespace-nowrap ${col.align === "right" ? "text-right" : "text-left"}`}>
-                              <div className={`flex items-center gap-1 ${alignCls}`}>
-                                <span>{col.label}</span>
-                                {isFilterable && (
-                                  <button
-                                    onClick={e => {
-                                      e.stopPropagation();
-                                      if (openCol === col.key) { handleFilterClose(); return; }
-                                      handleFilterOpen(col.key, e.currentTarget);
-                                    }}
-                                    className={`p-0.5 rounded hover:bg-gray-200 transition-colors ${isActive ? "text-blue-600" : "text-gray-400"}`}
-                                    title={isActive ? `필터 적용 중 (${filters[col.key as FCKey]?.length}개)` : "필터"}
-                                  >
-                                    <Filter size={11} fill={isActive ? "currentColor" : "none"} />
-                                  </button>
-                                )}
-                              </div>
-                              {isFilterable && openCol === col.key && anchorEl && (
-                                <ColumnFilterDropdown
-                                  anchorEl={anchorEl}
-                                  values={allValues(col.key as FCKey)}
-                                  selected={filters[col.key as FCKey] ?? []}
-                                  onApply={values => { handleFilterChange(col.key, values); handleFilterClose(); }}
-                                  onClose={handleFilterClose}
-                                />
-                              )}
-                            </th>
-                          );
-                        })}
-                        <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">액션</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {filteredDrawings.map((d, i) => {
-                        const log    = logByDrawingId.get(d.id) ?? null;
-                        const hasCut = !!log;
-                        return (
-                          <tr key={d.id} className={`transition-colors ${hasCut ? "hover:bg-green-50/30" : "hover:bg-orange-50/30"}`}>
-                            <td className="px-2 py-1.5 text-center text-gray-400">{i + 1}</td>
-                            {/* 호선 */}
-                            <td className="px-3 py-1.5 text-gray-600 font-mono text-[11px]">{selectedProject?.projectCode ?? "-"}</td>
-                            {/* 블록 */}
-                            <td className="px-3 py-1.5 text-gray-600">{d.block ?? "-"}</td>
-                            {/* 도면번호 */}
-                            <td className="px-3 py-1.5 font-mono text-[11px] font-bold text-gray-800">{d.drawingNo ?? "-"}</td>
-                            {/* 재질 */}
-                            <td className="px-3 py-1.5 text-gray-600">{d.material}</td>
-                            {/* 두께 */}
-                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.thickness}</td>
-                            {/* 폭 */}
-                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.width}</td>
-                            {/* 길이 */}
-                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.length}</td>
-                            {/* 철판중량 */}
-                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{calcSteelWeight(d.thickness, d.width, d.length).toFixed(1)}</td>
-                            {/* 사용중량 */}
-                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.useWeight?.toFixed(1) ?? "-"}</td>
-                            {/* Heat NO */}
-                            <td className="px-3 py-1.5 font-mono text-[11px] text-blue-700">{d.heatNo ?? "-"}</td>
-                            {/* 강재상태 */}
-                            <td className="px-3 py-1.5">
-                              <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${STATUS_COLOR[d.status] ?? "bg-gray-100 text-gray-600"}`}>
-                                {STATUS_LABEL[d.status] ?? d.status}
-                              </span>
-                            </td>
-                            {/* 작업자 */}
-                            <td className="px-3 py-1.5 font-semibold text-gray-800">{log?.operator ?? "-"}</td>
-                            {/* 장비 */}
-                            <td className="px-3 py-1.5 text-gray-500">{log?.equipment?.name ?? "-"}</td>
-                            {/* 작업시간 */}
-                            <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">
-                              {log ? (
-                                <div>
-                                  <div className="text-[11px] text-gray-500">{fmtDt(log.startAt)} ~ {log.endAt ? fmtDt(log.endAt) : "진행중"}</div>
-                                  {log.endAt && <div className="text-green-600 font-medium">{fmtDuration(log.startAt, log.endAt)}</div>}
-                                </div>
-                              ) : "-"}
-                            </td>
-                            {/* 비고 */}
-                            <td className="px-3 py-1.5 text-gray-400 max-w-[120px] truncate">{log?.memo ?? "-"}</td>
-                            {/* 액션 */}
-                            <td className="px-3 py-1.5 text-center">
-                              {hasCut ? (
-                                <div className="flex items-center justify-center gap-1">
-                                  <button
-                                    onClick={() => setModal({ open: true, mode: "edit", drawing: d, log })}
-                                    className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md transition-colors"
-                                    title="수정"
-                                  >
-                                    <Edit2 size={13} />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDelete(log.id)}
-                                    className="p-1.5 text-red-400 hover:bg-red-50 rounded-md transition-colors"
-                                    title="삭제"
-                                  >
-                                    <Trash2 size={13} />
-                                  </button>
-                                </div>
-                              ) : (
-                                <button
-                                  onClick={() => setModal({ open: true, mode: "add", drawing: d, log: null })}
-                                  className="flex items-center gap-1 text-[11px] px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-semibold transition-colors mx-auto"
-                                >
-                                  <Plus size={11} /> 추가
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                      {filteredDrawings.length === 0 && (
-                        <tr>
-                          <td colSpan={15} className="px-4 py-10 text-center text-gray-400">
-                            {drawings.length === 0 ? "등록된 강재리스트가 없습니다." : "필터 결과가 없습니다."}
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-            </div>
-          )}
-        </>
+        </div>
       )}
 
-      {/* 모달 */}
-      {modal.open && (
+      {/* 수정 모달 */}
+      {modal.open && modal.log && (
         <LogModal
-          mode={modal.mode}
-          drawing={modal.drawing}
+          mode="edit"
+          drawing={null}
           log={modal.log}
           equipment={equipment}
           workers={workers}
-          projectId={selectedProjectId}
+          projectId={modal.log.project ? "" : ""}
           onClose={() => setModal(m => ({ ...m, open: false }))}
-          onSaved={() => { setModal(m => ({ ...m, open: false })); fetchData(selectedProjectId); }}
+          onSaved={() => { setModal(m => ({ ...m, open: false })); fetchData(); }}
         />
       )}
       </>)}
