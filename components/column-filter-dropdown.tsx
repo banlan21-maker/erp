@@ -26,11 +26,15 @@ export default function ColumnFilterDropdown({ anchorEl, values, selected, onApp
   const [search, setSearch] = useState("");
   const ref = useRef<HTMLDivElement>(null);
 
-  // Position: anchor to the button
-  const rect = anchorEl.getBoundingClientRect();
-  const W = 220;
-  const left = Math.min(rect.left, window.innerWidth - W - 8);
-  const top  = rect.bottom + 2;
+  // Position: 마운트 시 한 번만 계산 (리렌더 시 재계산 방지)
+  const [pos] = useState(() => {
+    const rect = anchorEl.getBoundingClientRect();
+    const W = 220;
+    return {
+      left: Math.min(rect.left, window.innerWidth - W - 8),
+      top:  rect.bottom + 2,
+    };
+  });
 
   // Click-outside to close
   useEffect(() => {
@@ -76,7 +80,7 @@ export default function ColumnFilterDropdown({ anchorEl, values, selected, onApp
   return (
     <div
       ref={ref}
-      style={{ position: "fixed", top, left, width: W, zIndex: 9999 }}
+      style={{ position: "fixed", top: pos.top, left: pos.left, width: 220, zIndex: 9999 }}
       className="bg-white border border-gray-200 rounded-lg shadow-2xl flex flex-col text-xs"
     >
       {/* Search */}
