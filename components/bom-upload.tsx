@@ -499,21 +499,27 @@ export default function BomUpload({ projectOptions }: { projectOptions: ProjectO
 
               {/* 컬럼 매핑 */}
               <div>
-                <p className="text-xs font-bold text-gray-700 mb-2">컬럼 매핑 <span className="font-normal text-gray-400">(A열=1, B열=2 …)</span></p>
+                <p className="text-xs font-bold text-gray-700 mb-1.5">컬럼 매핑</p>
+                <p className="text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 mb-2">
+                  💡 A열=1, B열=2 … / <strong>합산·조합 타입은 열 번호를 쉼표로 구분</strong> (예: 11, 12, 13)
+                </p>
                 <div className="border rounded-lg overflow-hidden">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="bg-gray-50 text-gray-500 font-semibold">
-                        <th className="px-3 py-2 text-left">항목</th>
+                        <th className="px-3 py-2 text-left w-20">항목</th>
                         <th className="px-3 py-2 text-left">타입</th>
                         <th className="px-3 py-2 text-left">열 번호</th>
+                        <th className="px-3 py-2 text-left w-24">추가 설정</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
                       {EDITABLE_FIELDS.map((field) => {
                         const fc = form.preset.fields[field] ?? { type: "direct", col: 1 };
+                        const isMulti = fc.type === "sum" || fc.type === "join";
+                        const isDim   = fc.type === "dim_parse";
                         return (
-                          <tr key={field} className="hover:bg-gray-50">
+                          <tr key={field} className={isMulti ? "bg-amber-50" : isDim ? "bg-purple-50" : "hover:bg-gray-50"}>
                             <td className="px-3 py-2 font-semibold text-gray-700">{field}</td>
                             <td className="px-3 py-2">
                               <select
@@ -527,18 +533,70 @@ export default function BomUpload({ projectOptions }: { projectOptions: ProjectO
                               </select>
                             </td>
                             <td className="px-3 py-2">
-                              <input
-                                value={fc.cols ? fc.cols.join(", ") : (fc.col ?? 1)}
-                                onChange={e => {
-                                  const raw = e.target.value;
-                                  if (raw.includes(",")) {
-                                    setFieldCfg(field, { cols: raw.split(",").map(x => parseInt(x.trim())).filter(Boolean), col: undefined });
-                                  } else {
-                                    setFieldCfg(field, { col: parseInt(raw) || 1, cols: undefined });
-                                  }
-                                }}
-                                className="border rounded px-2 py-1 text-xs w-24 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                placeholder="열 (쉼표=복수)" />
+                              <div className="flex items-center gap-1">
+                                <input
+                                  value={fc.cols ? fc.cols.join(", ") : (fc.col ?? 1)}
+                                  onChange={e => {
+                                    const raw = e.target.value;
+                                    if (raw.includes(",")) {
+                                      setFieldCfg(field, { cols: raw.split(",").map(x => parseInt(x.trim())).filter(Boolean), col: undefined });
+                                    } else {
+                                      setFieldCfg(field, { col: parseInt(raw) || 1, cols: undefined });
+                                    }
+                                  }}
+                                  className={`border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 ${isMulti ? "w-full font-mono" : "w-16"}`}
+                                  placeholder={isMulti ? "예: 11, 12, 13" : "열번호"} />
+                                {isMulti && fc.cols && fc.cols.length > 0 && (
+                                  <span className="text-xs text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-medium whitespace-nowrap">
+                                    {fc.cols.length}개 열
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2">
+                              {/* join 구분자 */}
+                              {fc.type === "join" && (
+                                <div className="flex items-center gap-1">
+                                  <span className="text-gray-400">구분:</span>
+                                  <input
+                                    value={fc.sep ?? "-"}
+                                    onChange={e => setFieldCfg(field, { sep: e.target.value })}
+                                    className="border rounded px-1.5 py-1 text-xs w-10 text-center focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                                </div>
+                              )}
+                              {/* dim_parse 옵션 */}
+                              {isDim && (
+                                <div className="space-y-1">
+                                  <select
+                                    value={fc.dim_sep ?? "*"}
+                                    onChange={e => setFieldCfg(field, { dim_sep: e.target.value })}
+                                    className="border rounded px-1.5 py-1 text-xs w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  >
+                                    <option value="*">* 구분</option>
+                                    <option value="x">x / X 구분</option>
+                                    <option value=",">, 구분</option>
+                                    <option value="/">/ 구분</option>
+                                  </select>
+                                  <div className="flex gap-1">
+                                    <select
+                                      value={fc.dim_pos ?? "last"}
+                                      onChange={e => setFieldCfg(field, { dim_pos: e.target.value as "first" | "last" })}
+                                      className="border rounded px-1.5 py-1 text-xs flex-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    >
+                                      <option value="last">두께:마지막</option>
+                                      <option value="first">두께:처음</option>
+                                    </select>
+                                    <select
+                                      value={fc.dim_extract ?? "thickness"}
+                                      onChange={e => setFieldCfg(field, { dim_extract: e.target.value as "thickness" | "size" })}
+                                      className="border rounded px-1.5 py-1 text-xs flex-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    >
+                                      <option value="thickness">→두께</option>
+                                      <option value="size">→사이즈</option>
+                                    </select>
+                                  </div>
+                                </div>
+                              )}
                             </td>
                           </tr>
                         );
