@@ -1007,9 +1007,10 @@ model SteelPlan {
   thickness        Float           // 두께 (mm)
   width            Float           // 폭 (mm)
   length           Float           // 길이 (mm)
-  status           SteelPlanStatus @default(REGISTERED)
-  receivedAt       DateTime?       // 입고 처리일
-  issuedAt         DateTime?       // 출고 처리일 (절단장 투입일)
+  status              SteelPlanStatus @default(REGISTERED)
+  receivedAt          DateTime?       // 입고 처리일
+  selectionPrintedAt  DateTime?       // 선별지시서 출력일
+  issuedAt            DateTime?       // 출고 처리일 (절단장 투입일)
   actualHeatNo     String?         // 레거시 필드 (사용 안 함)
   actualVesselCode String?         // 레거시 필드 (사용 안 함)
   actualDrawingNo  String?         // 레거시 필드 (사용 안 함)

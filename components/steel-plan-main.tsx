@@ -17,9 +17,10 @@ interface SteelPlanRow {
   width: number;
   length: number;
   status: "REGISTERED" | "RECEIVED" | "ISSUED" | "COMPLETED";
-  receivedAt:      string | null;
-  issuedAt:        string | null;
-  memo:            string | null;
+  receivedAt:         string | null;
+  selectionPrintedAt: string | null;
+  issuedAt:           string | null;
+  memo:               string | null;
   storageLocation: string | null;
   sourceFile:      string | null;
   reservedFor:     string | null;
@@ -92,6 +93,10 @@ export default function SteelPlanMain() {
   /* ── 선택입고 날짜 모달 ── */
   const [receivedDateModal, setReceivedDateModal] = useState<{ targetIds: string[] } | null>(null);
   const [receivedDateInput, setReceivedDateInput] = useState("");
+
+  /* ── 선택출고 날짜 모달 ── */
+  const [issuedDateModal, setIssuedDateModal] = useState<{ targetIds: string[] } | null>(null);
+  const [issuedDateInput, setIssuedDateInput] = useState("");
 
   /* ── 메모 모달 ── */
   type MemoModalMode = "input" | "view" | "edit";
@@ -309,6 +314,16 @@ export default function SteelPlanMain() {
 
     const win = window.open("", "_blank", "width=1100,height=750");
     if (win) { win.document.write(html); win.document.close(); }
+
+    // 출력된 행에 선별지시일 기록 + 로컬 즉시 반영
+    const now = new Date().toISOString();
+    const printedIds = data.map((r) => r.id);
+    updateRowsLocally(printedIds, { selectionPrintedAt: now });
+    fetch("/api/steel-plan/mark-printed", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: printedIds }),
+    });
   };
 
   /* ── 체크박스 전체 선택 (현재 페이지 기준) ── */
@@ -416,6 +431,32 @@ export default function SteelPlanMain() {
       )
     );
     if (results.some((r) => !r.ok)) loadPlan();
+  };
+
+  /* ── 다중 선택 출고 — 날짜 모달 오픈 ── */
+  const markSelectedIssued = () => {
+    const targets = Array.from(selectedIds).filter(
+      (id) => rows.find((r) => r.id === id)?.status === "RECEIVED"
+    );
+    if (targets.length === 0) { alert("출고 처리할 수 있는 항목(입고완료 상태)이 없습니다."); return; }
+    setIssuedDateInput(new Date().toISOString().split("T")[0]);
+    setIssuedDateModal({ targetIds: targets });
+  };
+
+  /* ── 선택출고 확정 (날짜 모달에서 확인 클릭) ── */
+  const confirmSelectedIssued = async () => {
+    if (!issuedDateModal) return;
+    const { targetIds } = issuedDateModal;
+    const iso = new Date(issuedDateInput + "T00:00:00").toISOString();
+    setIssuedDateModal(null);
+    updateRowsLocally(targetIds, { status: "ISSUED", issuedAt: iso });
+    setSelectedIds(new Set());
+    const res = await fetch("/api/steel-plan/issue-bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: targetIds, issuedAt: iso }),
+    });
+    if (!res.ok) loadPlan();
   };
 
   /* ── 호선 단위 삭제 (SteelPlan + SteelPlanHeat 동시) ── */
@@ -774,6 +815,9 @@ export default function SteelPlanMain() {
               >
                 위치 설정
               </button>
+              <button onClick={markSelectedIssued} className="flex items-center gap-1.5 px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                <PackageOpen size={13} /> 선택 출고
+              </button>
               <button onClick={() => setSelectedIds(new Set())} className="ml-auto text-sm text-green-600 hover:underline">선택 해제</button>
             </div>
           )}
@@ -818,6 +862,7 @@ export default function SteelPlanMain() {
                         </th>
                       );
                     })}
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">선별지시일</th>
                     <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">출고일</th>
                     <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">메모</th>
                     <th className="w-16 px-2 py-1 text-center font-medium text-gray-600 text-[11px]">입고</th>
@@ -826,9 +871,9 @@ export default function SteelPlanMain() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {loading ? (
-                    <tr><td colSpan={16} className="py-12 text-center text-gray-400">불러오는 중...</td></tr>
+                    <tr><td colSpan={17} className="py-12 text-center text-gray-400">불러오는 중...</td></tr>
                   ) : rows.length === 0 ? (
-                    <tr><td colSpan={16} className="py-12 text-center text-gray-400">등록된 강재 계획이 없습니다</td></tr>
+                    <tr><td colSpan={17} className="py-12 text-center text-gray-400">등록된 강재 계획이 없습니다</td></tr>
                   ) : (
                     rows.map((row) => {
                       const st = PLAN_STATUS[row.status];
@@ -874,6 +919,10 @@ export default function SteelPlanMain() {
                             ) : (
                               <span className="text-gray-300">-</span>
                             )}
+                          </td>
+                          {/* 선별지시일 */}
+                          <td className="px-2 py-1 text-center text-gray-500 font-mono">
+                            {row.selectionPrintedAt ? new Date(row.selectionPrintedAt).toLocaleDateString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit" }) : <span className="text-gray-300">-</span>}
                           </td>
                           {/* 출고일 */}
                           <td className="px-2 py-1 text-center text-gray-500 font-mono">
@@ -1264,6 +1313,43 @@ export default function SteelPlanMain() {
               <button
                 onClick={confirmSelectedReceived}
                 disabled={!receivedDateInput}
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 font-medium"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 선택출고 날짜 모달 ── */}
+      {issuedDateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-xs p-6 space-y-4">
+            <h3 className="text-base font-bold text-gray-900">출고일 선택</h3>
+            <p className="text-sm text-gray-500">
+              {issuedDateModal.targetIds.length}건을 출고 처리합니다.<br />
+              출고일을 선택하세요.
+            </p>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">출고일</label>
+              <input
+                type="date"
+                value={issuedDateInput}
+                onChange={(e) => setIssuedDateInput(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setIssuedDateModal(null)}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                취소
+              </button>
+              <button
+                onClick={confirmSelectedIssued}
+                disabled={!issuedDateInput}
                 className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 font-medium"
               >
                 확인
