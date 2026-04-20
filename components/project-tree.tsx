@@ -167,13 +167,15 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
                             <span className="text-xs text-gray-400 ml-auto">{block.drawingCount}행</span>
                           </Link>
 
-                          {/* BOM리스트 (구조만 — 추후 구현) */}
-                          <div className="flex items-center gap-2 px-10 py-2 opacity-40 cursor-not-allowed">
+                          {/* BOM리스트 */}
+                          <Link
+                            href={`/cutpart/projects?tab=bom&projectId=${block.id}`}
+                            className="flex items-center gap-2 px-10 py-2 hover:bg-purple-50 transition-colors group"
+                          >
                             <span className="w-3 border-l-2 border-b-2 border-gray-200 inline-block mr-1 flex-shrink-0 rounded-bl" />
                             <ClipboardList size={12} className="text-purple-400 flex-shrink-0" />
-                            <span className="text-xs text-gray-500 font-medium">BOM리스트</span>
-                            <span className="text-xs text-gray-400 ml-auto">준비중</span>
-                          </div>
+                            <span className="text-xs text-gray-600 group-hover:text-purple-700 font-medium">BOM리스트</span>
+                          </Link>
                         </div>
                       )}
                     </div>
