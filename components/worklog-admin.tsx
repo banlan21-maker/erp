@@ -69,18 +69,24 @@ interface CuttingLog {
   memo: string | null;
 }
 
-// ─── 필터 컬럼 ─────────────────────────────────────────────────────────────
+// ─── 컬럼 정의 (순서 = 테이블 표시 순서) ─────────────────────────────────
 
-const FILTER_COLS = [
-  { key: "block",     label: "블록"     },
-  { key: "drawingNo", label: "도면번호" },
-  { key: "material",  label: "재질"     },
-  { key: "thickness", label: "두께"     },
-  { key: "heatNo",    label: "Heat NO"  },
-  { key: "status",    label: "강재상태" },
-  { key: "operator",  label: "작업자"   },
-  { key: "equipment", label: "장비"     },
+const COLUMNS = [
+  { key: "hosin",     label: "호선",    align: "left"  as const, filterable: true  },
+  { key: "block",     label: "블록",    align: "left"  as const, filterable: true  },
+  { key: "drawingNo", label: "도면번호", align: "left"  as const, filterable: true  },
+  { key: "material",  label: "재질",    align: "left"  as const, filterable: true  },
+  { key: "thickness", label: "두께",    align: "right" as const, filterable: true  },
+  { key: "size",      label: "사이즈",  align: "left"  as const, filterable: false },
+  { key: "heatNo",    label: "Heat NO", align: "left"  as const, filterable: true  },
+  { key: "status",    label: "강재상태", align: "left"  as const, filterable: true  },
+  { key: "operator",  label: "작업자",  align: "left"  as const, filterable: true  },
+  { key: "equipment", label: "장비",    align: "left"  as const, filterable: true  },
+  { key: "duration",  label: "작업시간", align: "left"  as const, filterable: false },
+  { key: "memo",      label: "비고",    align: "left"  as const, filterable: false },
 ] as const;
+type ColKey = (typeof COLUMNS)[number]["key"];
+const FILTER_COLS = COLUMNS.filter(c => c.filterable);
 type FCKey = (typeof FILTER_COLS)[number]["key"];
 
 // ─── 헬퍼 ──────────────────────────────────────────────────────────────────
@@ -762,6 +768,7 @@ export default function WorklogAdmin({
 
   const getVal = (d: Drawing, log: CuttingLog | null, col: FCKey): string => {
     switch (col) {
+      case "hosin":     return selectedProject?.projectCode ?? "";
       case "block":     return d.block ?? "";
       case "drawingNo": return d.drawingNo ?? "";
       case "material":  return d.material;
@@ -815,9 +822,9 @@ export default function WorklogAdmin({
     result = result.filter(d => {
       const log = logByDrawingId.get(d.id) ?? null;
       return FILTER_COLS.every(col => {
-        const sel = filters[col.key];
+        const sel = filters[col.key as FCKey];
         if (!sel || sel.length === 0) return true;
-        const v = getVal(d, log, col.key);
+        const v = getVal(d, log, col.key as FCKey);
         return sel.includes(v || "__EMPTY__");
       });
     });
@@ -970,32 +977,33 @@ export default function WorklogAdmin({
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-200">
                         <th className="px-2 py-2.5 text-center text-xs font-semibold text-gray-500 w-8">No</th>
-                        {/* 호선 - 필터 없음 (선택된 호선 고정) */}
-                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">호선</th>
-                        {/* 필터 가능 컬럼 */}
-                        {FILTER_COLS.map(col => {
-                          const isActive = (filters[col.key]?.length ?? 0) > 0;
+                        {COLUMNS.map(col => {
+                          const isFilterable = col.filterable;
+                          const isActive     = isFilterable && (filters[col.key as FCKey]?.length ?? 0) > 0;
+                          const alignCls     = col.align === "right" ? "justify-end" : "";
                           return (
-                            <th key={col.key} className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">
-                              <div className="flex items-center gap-1">
+                            <th key={col.key} className={`px-3 py-2.5 text-xs font-semibold text-gray-500 whitespace-nowrap ${col.align === "right" ? "text-right" : "text-left"}`}>
+                              <div className={`flex items-center gap-1 ${alignCls}`}>
                                 <span>{col.label}</span>
-                                <button
-                                  onClick={e => {
-                                    e.stopPropagation();
-                                    if (openCol === col.key) { handleFilterClose(); return; }
-                                    handleFilterOpen(col.key, e.currentTarget);
-                                  }}
-                                  className={`p-0.5 rounded hover:bg-gray-200 transition-colors ${isActive ? "text-blue-600" : "text-gray-400"}`}
-                                  title={isActive ? `필터 적용 중 (${filters[col.key]?.length}개)` : "필터"}
-                                >
-                                  <Filter size={11} fill={isActive ? "currentColor" : "none"} />
-                                </button>
+                                {isFilterable && (
+                                  <button
+                                    onClick={e => {
+                                      e.stopPropagation();
+                                      if (openCol === col.key) { handleFilterClose(); return; }
+                                      handleFilterOpen(col.key, e.currentTarget);
+                                    }}
+                                    className={`p-0.5 rounded hover:bg-gray-200 transition-colors ${isActive ? "text-blue-600" : "text-gray-400"}`}
+                                    title={isActive ? `필터 적용 중 (${filters[col.key as FCKey]?.length}개)` : "필터"}
+                                  >
+                                    <Filter size={11} fill={isActive ? "currentColor" : "none"} />
+                                  </button>
+                                )}
                               </div>
-                              {openCol === col.key && anchorEl && (
+                              {isFilterable && openCol === col.key && anchorEl && (
                                 <ColumnFilterDropdown
                                   anchorEl={anchorEl}
-                                  values={allValues(col.key)}
-                                  selected={filters[col.key] ?? []}
+                                  values={allValues(col.key as FCKey)}
+                                  selected={filters[col.key as FCKey] ?? []}
                                   onApply={values => { handleFilterChange(col.key, values); handleFilterClose(); }}
                                   onClose={handleFilterClose}
                                 />
@@ -1003,10 +1011,6 @@ export default function WorklogAdmin({
                             </th>
                           );
                         })}
-                        {/* 나머지 컬럼 */}
-                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">사이즈</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">작업시간</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">비고</th>
                         <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">액션</th>
                       </tr>
                     </thead>
@@ -1018,9 +1022,7 @@ export default function WorklogAdmin({
                           <tr key={d.id} className={`transition-colors ${hasCut ? "hover:bg-green-50/30" : "hover:bg-orange-50/30"}`}>
                             <td className="px-2 py-1.5 text-center text-gray-400">{i + 1}</td>
                             {/* 호선 */}
-                            <td className="px-3 py-1.5 text-gray-600 font-mono text-[11px]">
-                              {selectedProject?.projectCode ?? "-"}
-                            </td>
+                            <td className="px-3 py-1.5 text-gray-600 font-mono text-[11px]">{selectedProject?.projectCode ?? "-"}</td>
                             {/* 블록 */}
                             <td className="px-3 py-1.5 text-gray-600">{d.block ?? "-"}</td>
                             {/* 도면번호 */}
@@ -1029,6 +1031,8 @@ export default function WorklogAdmin({
                             <td className="px-3 py-1.5 text-gray-600">{d.material}</td>
                             {/* 두께 */}
                             <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.thickness}</td>
+                            {/* 사이즈 */}
+                            <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">{d.width} × {d.length}</td>
                             {/* Heat NO */}
                             <td className="px-3 py-1.5 font-mono text-[11px] text-blue-700">{d.heatNo ?? "-"}</td>
                             {/* 강재상태 */}
@@ -1041,8 +1045,6 @@ export default function WorklogAdmin({
                             <td className="px-3 py-1.5 font-semibold text-gray-800">{log?.operator ?? "-"}</td>
                             {/* 장비 */}
                             <td className="px-3 py-1.5 text-gray-500">{log?.equipment?.name ?? "-"}</td>
-                            {/* 사이즈 */}
-                            <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">{d.width} × {d.length}</td>
                             {/* 작업시간 */}
                             <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">
                               {log ? (
