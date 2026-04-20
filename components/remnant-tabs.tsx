@@ -832,6 +832,7 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
         .sort((a, b) => a.label.localeCompare(b.label, "ko", { numeric: true }));
 
     return {
+      remnantNo: toFV(uniq(remnants.map(r => r.remnantNo))),
       type:      toFV(uniq(remnants.map(r => r.type)),     TYPE_LABEL),
       shape:     toFV(uniq(remnants.map(r => r.shape)),    SHAPE_LABEL),
       material:  toFV(uniq(remnants.map(r => r.material))),
@@ -840,6 +841,8 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
       length1:   toFV(uniq(remnants.map(r => numLabel(r.length1)).filter(Boolean))),
       width2:    toFV(uniq(remnants.map(r => numLabel(r.width2)).filter(Boolean))),
       length2:   toFV(uniq(remnants.map(r => numLabel(r.length2)).filter(Boolean))),
+      weight:    toFV(uniq(remnants.map(r => String(r.weight)))),
+      source:    toFV(uniq(remnants.map(r => sourceInfo(r).vessel).filter(v => v !== "-"))),
       location:  toFV(uniq(remnants.map(r => r.location ?? ""))),
       status:    toFV(uniq(remnants.map(r => r.status)),   STATUS_LABEL),
     };
@@ -855,16 +858,19 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
     };
     const q = search.trim().toLowerCase();
     return remnants.filter(r => {
-      if (!passCol("type",      r.type))      return false;
-      if (!passCol("shape",     r.shape))     return false;
-      if (!passCol("material",  r.material))  return false;
-      if (!passCol("thickness", r.thickness)) return false;
-      if (!passCol("width1",    r.width1))    return false;
-      if (!passCol("length1",   r.length1))   return false;
-      if (!passCol("width2",    r.width2))    return false;
-      if (!passCol("length2",   r.length2))   return false;
-      if (!passCol("location",  r.location))  return false;
-      if (!passCol("status",    r.status))    return false;
+      if (!passCol("remnantNo", r.remnantNo))              return false;
+      if (!passCol("type",      r.type))                   return false;
+      if (!passCol("shape",     r.shape))                  return false;
+      if (!passCol("material",  r.material))               return false;
+      if (!passCol("thickness", r.thickness))              return false;
+      if (!passCol("width1",    r.width1))                 return false;
+      if (!passCol("length1",   r.length1))                return false;
+      if (!passCol("width2",    r.width2))                 return false;
+      if (!passCol("length2",   r.length2))                return false;
+      if (!passCol("weight",    r.weight))                 return false;
+      if (!passCol("source",    sourceInfo(r).vessel))     return false;
+      if (!passCol("location",  r.location))               return false;
+      if (!passCol("status",    r.status))                 return false;
       if (!q) return true;
       return (
         r.remnantNo.toLowerCase().includes(q) ||
@@ -957,7 +963,7 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
             <table className="w-full text-sm text-left whitespace-nowrap">
               <thead className="bg-gray-50 border-b text-[11px] text-gray-500 uppercase tracking-wide">
                 <tr>
-                  <th className="px-4 py-2.5">잔재번호</th>
+                  <ColHeader col="remnantNo" label="잔재번호" />
                   <ColHeader col="type"      label="종류"  />
                   <ColHeader col="shape"     label="형태"  />
                   <ColHeader col="material"  label="재질"  />
@@ -966,8 +972,8 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
                   <ColHeader col="length1"   label="L1"    align="right" />
                   <ColHeader col="width2"    label="W2"    align="right" />
                   <ColHeader col="length2"   label="L2"    align="right" />
-                  <th className="px-3 py-2.5 text-right">중량</th>
-                  <th className="px-3 py-2.5">출처</th>
+                  <ColHeader col="weight" label="중량" align="right" />
+                  <ColHeader col="source" label="출처" />
                   <ColHeader col="location"  label="위치"  />
                   <ColHeader col="status"    label="상태"  />
                   <th className="px-3 py-2.5 text-center">메모</th>

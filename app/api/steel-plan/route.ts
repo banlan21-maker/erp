@@ -53,8 +53,11 @@ export async function GET(req: NextRequest) {
   const lengths         = parseList(sp.get("lengths")).map(Number).filter((n) => !isNaN(n));
   const statuses        = parseList(sp.get("statuses")) as ("REGISTERED" | "RECEIVED" | "COMPLETED")[];
   const receivedDates   = parseList(sp.get("receivedDates"));
-  const storageLocations = parseList(sp.get("storageLocations"));
-  const reservedFors    = parseList(sp.get("reservedFors"));
+  const storageLocations  = parseList(sp.get("storageLocations"));
+  const reservedFors      = parseList(sp.get("reservedFors"));
+  const actualHeatNos     = parseList(sp.get("actualHeatNos"));
+  const actualVesselCodes = parseList(sp.get("actualVesselCodes"));
+  const actualDrawingNos  = parseList(sp.get("actualDrawingNos"));
 
   const where = {
     ...(search
@@ -70,8 +73,11 @@ export async function GET(req: NextRequest) {
     ...(lengths.length      ? { length:     { in: lengths } }      : {}),
     ...(statuses.length     ? { status:     { in: statuses } }     : {}),
     ...buildDateFilter(receivedDates),
-    ...nullableIn(storageLocations, "storageLocation"),
-    ...nullableIn(reservedFors,     "reservedFor"),
+    ...nullableIn(storageLocations,  "storageLocation"),
+    ...nullableIn(reservedFors,      "reservedFor"),
+    ...nullableIn(actualHeatNos,     "actualHeatNo"),
+    ...nullableIn(actualVesselCodes, "actualVesselCode"),
+    ...nullableIn(actualDrawingNos,  "actualDrawingNo"),
   };
 
   const [total, rows, allVessels] = await Promise.all([

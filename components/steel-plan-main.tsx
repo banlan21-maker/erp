@@ -164,6 +164,9 @@ export default function SteelPlanMain() {
     if (cf.receivedAt?.length)       p.set("receivedDates",     cf.receivedAt.join(","));
     if (cf.storageLocation?.length)  p.set("storageLocations",  cf.storageLocation.join(","));
     if (cf.reservedFor?.length)      p.set("reservedFors",      cf.reservedFor.join(","));
+    if (cf.actualHeatNo?.length)     p.set("actualHeatNos",     cf.actualHeatNo.join(","));
+    if (cf.actualVesselCode?.length) p.set("actualVesselCodes", cf.actualVesselCode.join(","));
+    if (cf.actualDrawingNo?.length)  p.set("actualDrawingNos",  cf.actualDrawingNo.join(","));
     const res = await fetch(`/api/steel-plan?${p}`);
     if (res.ok) {
       const json = await res.json();
@@ -793,9 +796,20 @@ export default function SteelPlanMain() {
                         </th>
                       );
                     })}
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">실사용판번호</th>
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">실사용호선</th>
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">실사용도면번호</th>
+                    {(["actualHeatNo","actualVesselCode","actualDrawingNo"] as const).map((col, i) => {
+                      const labels = ["실사용판번호","실사용호선","실사용도면번호"];
+                      const active = (colFilters[col]?.length ?? 0) > 0;
+                      return (
+                        <th key={col} className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <span>{labels[i]}</span>
+                            <button onClick={(e) => { setOpenFilter(col); setFilterAnchorEl(e.currentTarget); }} className={`rounded hover:bg-gray-200 p-0.5 ${active ? "text-blue-500" : "text-gray-400"}`}>
+                              <Filter size={10} fill={active ? "currentColor" : "none"} />
+                            </button>
+                          </div>
+                        </th>
+                      );
+                    })}
                     <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">메모</th>
                     <th className="w-16 px-2 py-1 text-center font-medium text-gray-600 text-[11px]">입고</th>
                   </tr>
