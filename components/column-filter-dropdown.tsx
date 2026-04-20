@@ -64,13 +64,13 @@ export default function ColumnFilterDropdown({ anchorEl, values, selected, onApp
   };
 
   const handleApply = () => {
-    // If every value is selected → no filter (empty array)
-    const isAll = values.every((v) => checked.has(v.value));
-    onApply(isAll ? [] : [...checked]);
+    onApply([...checked]);
   };
 
   const handleReset = () => {
-    setChecked(new Set(values.map((v) => v.value)));
+    // 초기화 = 필터 완전 해제
+    onApply([]);
+    onClose();
   };
 
   return (
