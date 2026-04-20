@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ClipboardList, FolderOpen, ArrowLeft, Trash2 } from "lucide-react";
 import Link from "next/link";
-import ColumnFilterDropdown from "@/components/column-filter-dropdown";
+import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
 import { Filter, XCircle } from "lucide-react";
 
 interface ProjectOption {
@@ -74,13 +74,17 @@ export default function BomMain({
   const handleFilterClose = () => { setOpenCol(null); setAnchorEl(null); };
 
   // Unique values per column (for dropdown)
-  const allValues = (col: ColKey): string[] => {
+  const allValues = (col: ColKey): FilterValue[] => {
     const set = new Set<string>();
+    let hasEmpty = false;
     for (const item of items) {
       const v = String(item[col as keyof BomItem] ?? "");
       if (v) set.add(v);
+      else hasEmpty = true;
     }
-    return Array.from(set).sort();
+    const result: FilterValue[] = Array.from(set).sort().map(v => ({ value: v, label: v }));
+    if (hasEmpty) result.push({ value: "__EMPTY__", label: "항목없음" });
+    return result;
   };
 
   const filtered = items.filter(item =>
@@ -88,7 +92,7 @@ export default function BomMain({
       const sel = filters[col.key];
       if (!sel || sel.length === 0) return true;
       const v = String(item[col.key as keyof BomItem] ?? "");
-      return sel.includes(v);
+      return sel.includes(v || "__EMPTY__");
     })
   );
 
@@ -202,7 +206,7 @@ export default function BomMain({
                           {c.filterable && openCol === c.key && anchorEl && (
                             <ColumnFilterDropdown
                               anchorEl={anchorEl}
-                              values={allValues(c.key).map(v => ({ value: v, label: v }))}
+                              values={allValues(c.key)}
                               selected={filters[c.key] ?? []}
                               onApply={values => { handleFilterChange(c.key, values); handleFilterClose(); }}
                               onClose={handleFilterClose}

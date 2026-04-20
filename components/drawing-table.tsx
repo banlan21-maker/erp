@@ -65,15 +65,15 @@ function formatDate(val: Date | string | null | undefined): string {
 function colValue(d: DrawingList, col: string): string {
   switch (col) {
     case "status":      return STATUS_LABEL[(d.status ?? "REGISTERED") as DrawingStatusType] ?? d.status ?? "";
-    case "block":       return d.block ?? "(없음)";
-    case "drawingNo":   return d.drawingNo ?? "(없음)";
-    case "heatNo":      return d.heatNo ?? "(없음)";
+    case "block":       return d.block ?? "__EMPTY__";
+    case "drawingNo":   return d.drawingNo ?? "__EMPTY__";
+    case "heatNo":      return d.heatNo ?? "__EMPTY__";
     case "material":    return d.material;
     case "thickness":   return String(d.thickness);
     case "width":       return String(d.width);
     case "length":      return String(d.length);
     case "steelWeight": return String(calcSteelWeight(d.thickness, d.width, d.length));
-    case "useWeight":   return d.useWeight != null ? String(d.useWeight) : "(없음)";
+    case "useWeight":   return d.useWeight != null ? String(d.useWeight) : "__EMPTY__";
     default:            return "";
   }
 }
@@ -97,10 +97,13 @@ function FilterHeader({
   col, label, align = "left", drawings, filters,
   onFilterChange, openCol, anchorEl, onOpen, onClose,
 }: FilterHeaderProps) {
-  const allValues = useMemo(
-    () => [...new Set(drawings.map(d => colValue(d, col)))].sort().map(v => ({ value: v, label: v })),
-    [drawings, col]
-  );
+  const allValues = useMemo(() => {
+    const vals = [...new Set(drawings.map(d => colValue(d, col)))];
+    const nonEmpty = vals.filter(v => v !== "__EMPTY__").sort().map(v => ({ value: v, label: v }));
+    const hasEmpty = vals.includes("__EMPTY__");
+    if (hasEmpty) nonEmpty.push({ value: "__EMPTY__", label: "항목없음" });
+    return nonEmpty;
+  }, [drawings, col]);
   const selected = filters[col] ?? [];
   const isActive = selected.length > 0;
 

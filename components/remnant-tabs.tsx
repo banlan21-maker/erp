@@ -837,13 +837,13 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
       shape:     toFV(uniq(remnants.map(r => r.shape)),    SHAPE_LABEL),
       material:  toFV(uniq(remnants.map(r => r.material))),
       thickness: toFV(uniq(remnants.map(r => r.thickness))),
-      width1:    toFV(uniq(remnants.map(r => numLabel(r.width1)).filter(Boolean))),
-      length1:   toFV(uniq(remnants.map(r => numLabel(r.length1)).filter(Boolean))),
-      width2:    toFV(uniq(remnants.map(r => numLabel(r.width2)).filter(Boolean))),
-      length2:   toFV(uniq(remnants.map(r => numLabel(r.length2)).filter(Boolean))),
+      width1:    [...toFV(uniq(remnants.map(r => numLabel(r.width1)).filter(Boolean))),  ...(remnants.some(r => r.width1  == null) ? [{ value: "__EMPTY__", label: "항목없음" }] : [])],
+      length1:   [...toFV(uniq(remnants.map(r => numLabel(r.length1)).filter(Boolean))), ...(remnants.some(r => r.length1 == null) ? [{ value: "__EMPTY__", label: "항목없음" }] : [])],
+      width2:    [...toFV(uniq(remnants.map(r => numLabel(r.width2)).filter(Boolean))),  ...(remnants.some(r => r.width2  == null) ? [{ value: "__EMPTY__", label: "항목없음" }] : [])],
+      length2:   [...toFV(uniq(remnants.map(r => numLabel(r.length2)).filter(Boolean))), ...(remnants.some(r => r.length2 == null) ? [{ value: "__EMPTY__", label: "항목없음" }] : [])],
       weight:    toFV(uniq(remnants.map(r => String(r.weight)))),
-      source:    toFV(uniq(remnants.map(r => sourceInfo(r).vessel).filter(v => v !== "-"))),
-      location:  toFV(uniq(remnants.map(r => r.location ?? ""))),
+      source:    [...toFV(uniq(remnants.map(r => sourceInfo(r).vessel).filter(v => v !== "-"))), ...(remnants.some(r => sourceInfo(r).vessel === "-") ? [{ value: "-", label: "항목없음" }] : [])],
+      location:  [...toFV(uniq(remnants.map(r => r.location).filter((v): v is string => !!v))),  ...(remnants.some(r => !r.location) ? [{ value: "__EMPTY__", label: "항목없음" }] : [])],
       status:    toFV(uniq(remnants.map(r => r.status)),   STATUS_LABEL),
     };
   }, [remnants]);
@@ -854,7 +854,8 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
     const passCol = (key: string, val: string | number | null | undefined) => {
       const sel = cf[key];
       if (!sel || sel.length === 0) return true;
-      return sel.includes(val == null ? "" : String(val));
+      const str = (val == null || val === "") ? "__EMPTY__" : String(val);
+      return sel.includes(str);
     };
     const q = search.trim().toLowerCase();
     return remnants.filter(r => {
