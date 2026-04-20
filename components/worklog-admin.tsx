@@ -1043,9 +1043,9 @@ export default function WorklogAdmin({
                             {/* 길이 */}
                             <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.length}</td>
                             {/* 철판중량 */}
-                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.steelWeight?.toFixed(2) ?? "-"}</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.steelWeight?.toFixed(1) ?? "-"}</td>
                             {/* 사용중량 */}
-                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.useWeight?.toFixed(2) ?? "-"}</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.useWeight?.toFixed(1) ?? "-"}</td>
                             {/* Heat NO */}
                             <td className="px-3 py-1.5 font-mono text-[11px] text-blue-700">{d.heatNo ?? "-"}</td>
                             {/* 강재상태 */}
