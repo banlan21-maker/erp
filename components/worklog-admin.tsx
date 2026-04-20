@@ -1,9 +1,13 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { ClipboardList, RefreshCw, Plus, Edit2, Trash2, AlertCircle, Search, X, Save, ChevronDown, ChevronUp, Zap, AlertTriangle } from "lucide-react";
+import {
+  ClipboardList, RefreshCw, Plus, Edit2, Trash2,
+  AlertCircle, Search, X, Save, Zap, AlertTriangle, Filter, XCircle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -65,6 +69,20 @@ interface CuttingLog {
   memo: string | null;
 }
 
+// ─── 필터 컬럼 ─────────────────────────────────────────────────────────────
+
+const FILTER_COLS = [
+  { key: "block",     label: "블록"     },
+  { key: "drawingNo", label: "도면번호" },
+  { key: "material",  label: "재질"     },
+  { key: "thickness", label: "두께"     },
+  { key: "heatNo",    label: "Heat NO"  },
+  { key: "status",    label: "강재상태" },
+  { key: "operator",  label: "작업자"   },
+  { key: "equipment", label: "장비"     },
+] as const;
+type FCKey = (typeof FILTER_COLS)[number]["key"];
+
 // ─── 헬퍼 ──────────────────────────────────────────────────────────────────
 
 const URGENCY_LABEL: Record<string, string>  = { URGENT: "⚡ 긴급", FLEXIBLE: "✅ 여유있음", PRECUT: "📦 선행절단" };
@@ -79,6 +97,37 @@ const USTATUS_COLOR: Record<string, string>  = {
   IN_PROGRESS: "bg-blue-100 text-blue-700",
   COMPLETED:   "bg-green-100 text-green-700",
 };
+const TYPE_LABEL:   Record<string, string> = { PLASMA: "플라즈마", GAS: "가스" };
+const STATUS_LABEL: Record<string, string> = {
+  REGISTERED: "등록",
+  WAITING:    "대기",
+  CUT:        "절단완료",
+  CAUTION:    "경고",
+};
+const STATUS_COLOR: Record<string, string> = {
+  REGISTERED: "bg-gray-100 text-gray-600",
+  WAITING:    "bg-yellow-100 text-yellow-700",
+  CUT:        "bg-green-100 text-green-700",
+  CAUTION:    "bg-red-100 text-red-700",
+};
+
+function fmtDt(iso: string) {
+  const d = new Date(iso);
+  return `${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+}
+function fmtDuration(start: string, end: string | null) {
+  if (!end) return "-";
+  const ms = new Date(end).getTime() - new Date(start).getTime();
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  return h > 0 ? `${h}시간 ${m}분` : `${m}분`;
+}
+function toLocalDatetimeValue(iso: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 // ─── 돌발 수정 모달 ────────────────────────────────────────────────────────
 
@@ -263,7 +312,6 @@ function UrgentWorkTab() {
 
   return (
     <div className="space-y-4">
-      {/* 요약 */}
       <div className="flex flex-wrap items-center gap-4 bg-white border border-gray-200 rounded-xl px-5 py-3 shadow-sm text-sm">
         <span className="text-gray-500">전체 <strong className="text-gray-900">{works.length}</strong>건</span>
         <span className="text-yellow-600">대기 <strong>{pendingCount}</strong>건</span>
@@ -274,7 +322,6 @@ function UrgentWorkTab() {
         </button>
       </div>
 
-      {/* 필터 */}
       <div className="flex flex-wrap gap-3">
         <div className="flex gap-1.5">
           {[["", "전체"], ["PENDING", "대기"], ["IN_PROGRESS", "진행중"], ["COMPLETED", "완료"]].map(([v, l]) => (
@@ -294,7 +341,6 @@ function UrgentWorkTab() {
         </div>
       </div>
 
-      {/* 목록 */}
       {loading ? (
         <div className="flex justify-center items-center py-20 text-gray-400 gap-3">
           <RefreshCw className="animate-spin text-blue-500" size={24} /> 불러오는 중...
@@ -389,49 +435,10 @@ function UrgentWorkTab() {
   );
 }
 
-const TYPE_LABEL: Record<string, string> = { PLASMA: "플라즈마", GAS: "가스" };
-const STATUS_LABEL: Record<string, string> = {
-  REGISTERED: "등록",
-  WAITING: "대기",
-  CUT: "절단완료",
-  CAUTION: "경고",
-};
-const STATUS_COLOR: Record<string, string> = {
-  REGISTERED: "bg-gray-100 text-gray-600",
-  WAITING: "bg-yellow-100 text-yellow-700",
-  CUT: "bg-green-100 text-green-700",
-  CAUTION: "bg-red-100 text-red-700",
-};
-
-function fmtDt(iso: string) {
-  const d = new Date(iso);
-  return `${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
-}
-function fmtDuration(start: string, end: string | null) {
-  if (!end) return "-";
-  const ms = new Date(end).getTime() - new Date(start).getTime();
-  const h = Math.floor(ms / 3600000);
-  const m = Math.floor((ms % 3600000) / 60000);
-  return h > 0 ? `${h}시간 ${m}분` : `${m}분`;
-}
-function toLocalDatetimeValue(iso: string | null) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 // ─── 로그 등록/수정 모달 ────────────────────────────────────────────────────
 
 function LogModal({
-  mode,
-  drawing,
-  log,
-  equipment,
-  workers,
-  projectId,
-  onClose,
-  onSaved,
+  mode, drawing, log, equipment, workers, projectId, onClose, onSaved,
 }: {
   mode: "add" | "edit";
   drawing: Drawing | null;
@@ -506,8 +513,6 @@ function LogModal({
           if (data.stuckLog) setStuckLog(data.stuckLog);
           return;
         }
-
-        // 추가 후 바로 완료 처리 (endAt 있는 경우) — 관리자 입력 시작/종료시간 그대로 반영
         if (form.endAt && data.data?.id) {
           await fetch(`/api/cutting-logs/${data.data.id}`, {
             method: "PATCH",
@@ -592,7 +597,6 @@ function LogModal({
         )}
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {/* 장비 */}
           <div>
             <label className="block text-sm font-semibold text-gray-800 mb-1.5">장비 <span className="text-red-500">*</span></label>
             <select
@@ -606,7 +610,6 @@ function LogModal({
             </select>
           </div>
 
-          {/* 작업자 */}
           <div>
             <label className="block text-sm font-semibold text-gray-800 mb-1.5">작업자 <span className="text-red-500">*</span></label>
             <div className="flex gap-2">
@@ -629,7 +632,6 @@ function LogModal({
             </div>
           </div>
 
-          {/* Heat NO */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Heat NO</label>
             <Input
@@ -640,7 +642,6 @@ function LogModal({
             />
           </div>
 
-          {/* 시작/종료 */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-semibold text-gray-800 mb-1.5">시작 일시 <span className="text-red-500">*</span></label>
@@ -662,7 +663,6 @@ function LogModal({
             </div>
           </div>
 
-          {/* 비고 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">특이사항</label>
             <textarea
@@ -715,8 +715,10 @@ export default function WorklogAdmin({
     log: CuttingLog | null;
   }>({ open: false, mode: "add", drawing: null, log: null });
 
-  // 접기/펼치기 (미등록 항목)
-  const [showUnregistered, setShowUnregistered] = useState(true);
+  // 필터 상태
+  const [filters,  setFilters]  = useState<Record<string, string[]>>({});
+  const [openCol,  setOpenCol]  = useState<string | null>(null);
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
 
   const vesselCodes = [...new Set(projects.map(p => p.projectCode))].sort();
   const [selectedVessel, setSelectedVessel] = useState("");
@@ -747,41 +749,88 @@ export default function WorklogAdmin({
     else { setDrawings([]); setLogs([]); }
   }, [selectedProjectId, dateFilter]);
 
-  // 각 drawing에 연결된 로그 매핑
+  // 필터 열리면 검색어 초기화
+  useEffect(() => { setFilters({}); }, [selectedProjectId]);
+
   const logByDrawingId = useMemo(() => {
     const map = new Map<string, CuttingLog>();
     logs.forEach(l => { if (l.drawingListId) map.set(l.drawingListId, l); });
     return map;
   }, [logs]);
 
-  // 강재 리스트와 연결 안 된 orphan 로그 (drawingListId 없는 것)
-  const orphanLogs = useMemo(() => logs.filter(l => !l.drawingListId), [logs]);
+  // ── 필터 헬퍼 ───────────────────────────────────────────────────────────
+
+  const getVal = (d: Drawing, log: CuttingLog | null, col: FCKey): string => {
+    switch (col) {
+      case "block":     return d.block ?? "";
+      case "drawingNo": return d.drawingNo ?? "";
+      case "material":  return d.material;
+      case "thickness": return String(d.thickness);
+      case "heatNo":    return d.heatNo ?? "";
+      case "status":    return d.status;
+      case "operator":  return log?.operator ?? "";
+      case "equipment": return log?.equipment?.name ?? "";
+    }
+  };
+
+  const allValues = (col: FCKey): FilterValue[] => {
+    const set = new Set<string>();
+    let hasEmpty = false;
+    for (const d of drawings) {
+      const log = logByDrawingId.get(d.id) ?? null;
+      const v = getVal(d, log, col);
+      if (v) set.add(v);
+      else hasEmpty = true;
+    }
+    // 강재상태는 한글 라벨로 표시
+    const result: FilterValue[] = col === "status"
+      ? Array.from(set).sort().map(v => ({ value: v, label: STATUS_LABEL[v] ?? v }))
+      : Array.from(set).sort().map(v => ({ value: v, label: v }));
+    if (hasEmpty) result.push({ value: "__EMPTY__", label: "항목없음" });
+    return result;
+  };
+
+  const handleFilterChange = (col: string, values: string[]) =>
+    setFilters(p => values.length === 0
+      ? Object.fromEntries(Object.entries(p).filter(([k]) => k !== col))
+      : { ...p, [col]: values });
+  const handleFilterOpen  = (col: string, el: HTMLElement) => { setOpenCol(col); setAnchorEl(el); };
+  const handleFilterClose = () => { setOpenCol(null); setAnchorEl(null); };
+
+  // ── 필터 적용 ───────────────────────────────────────────────────────────
 
   const filteredDrawings = useMemo(() => {
-    if (!searchTerm.trim()) return drawings;
-    const q = searchTerm.toLowerCase();
-    return drawings.filter(d =>
-      d.drawingNo?.toLowerCase().includes(q) ||
-      d.heatNo?.toLowerCase().includes(q) ||
-      d.block?.toLowerCase().includes(q) ||
-      d.material?.toLowerCase().includes(q)
-    );
-  }, [drawings, searchTerm]);
+    let result = drawings;
+    // 텍스트 검색
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase();
+      result = result.filter(d =>
+        d.drawingNo?.toLowerCase().includes(q) ||
+        d.heatNo?.toLowerCase().includes(q) ||
+        d.block?.toLowerCase().includes(q) ||
+        d.material?.toLowerCase().includes(q)
+      );
+    }
+    // 컬럼 필터
+    result = result.filter(d => {
+      const log = logByDrawingId.get(d.id) ?? null;
+      return FILTER_COLS.every(col => {
+        const sel = filters[col.key];
+        if (!sel || sel.length === 0) return true;
+        const v = getVal(d, log, col.key);
+        return sel.includes(v || "__EMPTY__");
+      });
+    });
+    return result;
+  }, [drawings, logByDrawingId, searchTerm, filters]);
 
-  const registeredDrawings   = filteredDrawings.filter(d => logByDrawingId.has(d.id));
-  const unregisteredDrawings = filteredDrawings.filter(d => !logByDrawingId.has(d.id));
+  const filterCount = Object.keys(filters).length;
+  const cutCount    = filteredDrawings.filter(d => logByDrawingId.has(d.id)).length;
 
   const handleDelete = async (logId: string) => {
     if (!confirm("이 작업일보를 삭제할까요? (강재 상태가 복원됩니다)")) return;
     await fetch(`/api/cutting-logs/${logId}`, { method: "DELETE" });
     fetchData(selectedProjectId);
-  };
-
-  const openAdd = (drawing: Drawing) => {
-    setModal({ open: true, mode: "add", drawing, log: null });
-  };
-  const openEdit = (drawing: Drawing | null, log: CuttingLog) => {
-    setModal({ open: true, mode: "edit", drawing, log });
   };
 
   return (
@@ -796,14 +845,12 @@ export default function WorklogAdmin({
         </div>
       </div>
 
-      {/* 탭 전환 */}
+      {/* 탭 */}
       <div className="flex gap-1 border-b border-gray-200">
         <button
           onClick={() => setMainTab("normal")}
           className={`px-5 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
-            mainTab === "normal"
-              ? "border-blue-600 text-blue-600"
-              : "border-transparent text-gray-500 hover:text-gray-700"
+            mainTab === "normal" ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"
           }`}
         >
           <ClipboardList size={14} className="inline mr-1.5 mb-0.5" />정규 작업일보
@@ -811,25 +858,20 @@ export default function WorklogAdmin({
         <button
           onClick={() => setMainTab("urgent")}
           className={`px-5 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
-            mainTab === "urgent"
-              ? "border-orange-500 text-orange-600"
-              : "border-transparent text-gray-500 hover:text-gray-700"
+            mainTab === "urgent" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"
           }`}
         >
           <Zap size={14} className="inline mr-1.5 mb-0.5" />돌발 작업
         </button>
       </div>
 
-      {/* 돌발 탭 */}
       {mainTab === "urgent" && <UrgentWorkTab />}
 
-      {/* 정규 탭 */}
       {mainTab === "normal" && (<>
 
       {/* 프로젝트 + 날짜 선택 */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-4">
+      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {/* 호선 */}
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1.5">호선 선택</label>
             <select
@@ -841,7 +883,6 @@ export default function WorklogAdmin({
               {vesselCodes.map(code => <option key={code} value={code}>[{code}]</option>)}
             </select>
           </div>
-          {/* 블록 */}
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1.5">블록 선택</label>
             <select
@@ -854,15 +895,9 @@ export default function WorklogAdmin({
               {blocksForVessel.map(p => <option key={p.id} value={p.id}>{p.projectName}</option>)}
             </select>
           </div>
-          {/* 날짜 (선택) */}
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1.5">날짜 필터 <span className="font-normal text-gray-400">(비우면 전체)</span></label>
-            <Input
-              type="date"
-              value={dateFilter}
-              onChange={e => setDateFilter(e.target.value)}
-              className="text-sm"
-            />
+            <Input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} className="text-sm" />
           </div>
         </div>
       </div>
@@ -871,11 +906,11 @@ export default function WorklogAdmin({
       {!selectedProjectId && (
         <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-300 text-gray-400">
           <ClipboardList size={40} className="mx-auto mb-3 opacity-30" />
-          <p>호선과 블록을 선택하면 강재 리스트가 표시됩니다.</p>
+          <p>호선과 블록을 선택하면 작업 리스트가 표시됩니다.</p>
         </div>
       )}
 
-      {/* 선택 후 데이터 영역 */}
+      {/* 데이터 영역 */}
       {selectedProjectId && (
         <>
           {loading ? (
@@ -883,89 +918,148 @@ export default function WorklogAdmin({
               <RefreshCw className="animate-spin text-blue-500" size={24} /> 데이터를 불러오는 중...
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
 
-              {/* 요약 + 검색 */}
+              {/* 요약 + 검색 + 필터 뱃지 */}
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white border border-gray-200 rounded-xl px-5 py-3 shadow-sm">
-                <div className="flex items-center gap-4 text-sm">
-                  <span className="text-gray-500">전체 <strong className="text-gray-900">{drawings.length}</strong>건</span>
-                  <span className="text-green-600">완료 <strong>{drawings.filter(d => logByDrawingId.has(d.id)).length}</strong>건</span>
-                  <span className="text-orange-500">미등록 <strong>{drawings.filter(d => !logByDrawingId.has(d.id)).length}</strong>건</span>
-                  {orphanLogs.length > 0 && (
-                    <span className="text-purple-500">별도등록 <strong>{orphanLogs.length}</strong>건</span>
+                <div className="flex items-center gap-4 text-sm flex-wrap">
+                  <span className="text-gray-500">
+                    {selectedProject && <><strong className="text-blue-700">[{selectedProject.projectCode}]</strong> {selectedProject.projectName} ·{" "}</>}
+                    전체 <strong className="text-gray-900">{drawings.length}</strong>건
+                  </span>
+                  <span className="text-green-600">절단완료 <strong>{cutCount}</strong>건</span>
+                  <span className="text-orange-500">미등록 <strong>{drawings.length - cutCount}</strong>건</span>
+                  {filterCount > 0 && (
+                    <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md">
+                      <Filter size={11} fill="currentColor" />
+                      <span>필터 {filterCount}개 적용 ({filteredDrawings.length}/{drawings.length}행)</span>
+                      <button onClick={() => setFilters({})} className="ml-0.5 hover:text-blue-800" title="모든 필터 초기화">
+                        <XCircle size={12} />
+                      </button>
+                    </div>
                   )}
                 </div>
-                <div className="relative w-full sm:w-auto">
-                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <Input
-                    placeholder="도면번호 / Heat NO / 블록 검색"
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                    className="pl-8 h-9 text-sm sm:w-64"
-                  />
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <Input
+                      placeholder="도면번호 / Heat NO / 블록 검색"
+                      value={searchTerm}
+                      onChange={e => setSearchTerm(e.target.value)}
+                      className="pl-8 h-9 text-sm w-52"
+                    />
+                    {searchTerm && (
+                      <button onClick={() => setSearchTerm("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => fetchData(selectedProjectId)}
+                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-600 transition-colors"
+                  >
+                    <RefreshCw size={13} /> 새로고침
+                  </button>
                 </div>
-                <button
-                  onClick={() => fetchData(selectedProjectId)}
-                  className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-600 transition-colors"
-                >
-                  <RefreshCw size={13} /> 새로고침
-                </button>
               </div>
 
-              {/* ── 작업일보 등록된 항목 ── */}
-              {registeredDrawings.length > 0 && (
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                  <div className="px-5 py-3 border-b border-gray-100 bg-green-50/50 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                    <span className="text-sm font-semibold text-gray-700">작업 완료 ({registeredDrawings.length}건)</span>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left whitespace-nowrap">
-                      <thead className="bg-gray-50 border-b border-gray-100 text-xs text-gray-500 uppercase">
-                        <tr>
-                          <th className="px-4 py-2.5">도면번호</th>
-                          <th className="px-4 py-2.5">블록</th>
-                          <th className="px-4 py-2.5">규격</th>
-                          <th className="px-4 py-2.5">강재상태</th>
-                          <th className="px-4 py-2.5">작업자</th>
-                          <th className="px-4 py-2.5">작업시간</th>
-                          <th className="px-4 py-2.5">장비</th>
-                          <th className="px-4 py-2.5">비고</th>
-                          <th className="px-4 py-2.5 text-center">액션</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {registeredDrawings.map(d => {
-                          const log = logByDrawingId.get(d.id)!;
+              {/* 통합 작업 리스트 */}
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200">
+                        <th className="px-2 py-2.5 text-center text-xs font-semibold text-gray-500 w-8">No</th>
+                        {/* 호선 - 필터 없음 (선택된 호선 고정) */}
+                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">호선</th>
+                        {/* 필터 가능 컬럼 */}
+                        {FILTER_COLS.map(col => {
+                          const isActive = (filters[col.key]?.length ?? 0) > 0;
                           return (
-                            <tr key={d.id} className="hover:bg-green-50/30 transition-colors">
-                              <td className="px-4 py-3 font-mono text-xs font-bold text-gray-800">{d.drawingNo || "-"}</td>
-                              <td className="px-4 py-3 text-gray-600 text-xs">{d.block || "-"}</td>
-                              <td className="px-4 py-3 text-xs text-gray-600">
-                                {d.material} {d.thickness}t × {d.width} × {d.length}
-                              </td>
-                              <td className="px-4 py-3">
-                                <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${STATUS_COLOR[d.status] ?? "bg-gray-100 text-gray-600"}`}>
-                                  {STATUS_LABEL[d.status] ?? d.status}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 font-semibold text-gray-800 text-xs">{log.operator}</td>
-                              <td className="px-4 py-3 text-xs text-gray-600">
+                            <th key={col.key} className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">
+                              <div className="flex items-center gap-1">
+                                <span>{col.label}</span>
+                                <button
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    if (openCol === col.key) { handleFilterClose(); return; }
+                                    handleFilterOpen(col.key, e.currentTarget);
+                                  }}
+                                  className={`p-0.5 rounded hover:bg-gray-200 transition-colors ${isActive ? "text-blue-600" : "text-gray-400"}`}
+                                  title={isActive ? `필터 적용 중 (${filters[col.key]?.length}개)` : "필터"}
+                                >
+                                  <Filter size={11} fill={isActive ? "currentColor" : "none"} />
+                                </button>
+                              </div>
+                              {openCol === col.key && anchorEl && (
+                                <ColumnFilterDropdown
+                                  anchorEl={anchorEl}
+                                  values={allValues(col.key)}
+                                  selected={filters[col.key] ?? []}
+                                  onApply={values => { handleFilterChange(col.key, values); handleFilterClose(); }}
+                                  onClose={handleFilterClose}
+                                />
+                              )}
+                            </th>
+                          );
+                        })}
+                        {/* 나머지 컬럼 */}
+                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">사이즈</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">작업시간</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">비고</th>
+                        <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">액션</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {filteredDrawings.map((d, i) => {
+                        const log    = logByDrawingId.get(d.id) ?? null;
+                        const hasCut = !!log;
+                        return (
+                          <tr key={d.id} className={`transition-colors ${hasCut ? "hover:bg-green-50/30" : "hover:bg-orange-50/30"}`}>
+                            <td className="px-2 py-1.5 text-center text-gray-400">{i + 1}</td>
+                            {/* 호선 */}
+                            <td className="px-3 py-1.5 text-gray-600 font-mono text-[11px]">
+                              {selectedProject?.projectCode ?? "-"}
+                            </td>
+                            {/* 블록 */}
+                            <td className="px-3 py-1.5 text-gray-600">{d.block ?? "-"}</td>
+                            {/* 도면번호 */}
+                            <td className="px-3 py-1.5 font-mono text-[11px] font-bold text-gray-800">{d.drawingNo ?? "-"}</td>
+                            {/* 재질 */}
+                            <td className="px-3 py-1.5 text-gray-600">{d.material}</td>
+                            {/* 두께 */}
+                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.thickness}</td>
+                            {/* Heat NO */}
+                            <td className="px-3 py-1.5 font-mono text-[11px] text-blue-700">{d.heatNo ?? "-"}</td>
+                            {/* 강재상태 */}
+                            <td className="px-3 py-1.5">
+                              <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${STATUS_COLOR[d.status] ?? "bg-gray-100 text-gray-600"}`}>
+                                {STATUS_LABEL[d.status] ?? d.status}
+                              </span>
+                            </td>
+                            {/* 작업자 */}
+                            <td className="px-3 py-1.5 font-semibold text-gray-800">{log?.operator ?? "-"}</td>
+                            {/* 장비 */}
+                            <td className="px-3 py-1.5 text-gray-500">{log?.equipment?.name ?? "-"}</td>
+                            {/* 사이즈 */}
+                            <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">{d.width} × {d.length}</td>
+                            {/* 작업시간 */}
+                            <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">
+                              {log ? (
                                 <div>
-                                  <span>{fmtDt(log.startAt)}</span>
-                                  <span className="text-gray-400 mx-1">-</span>
-                                  <span>{log.endAt ? fmtDt(log.endAt) : "진행중"}</span>
+                                  <div className="text-[11px] text-gray-500">{fmtDt(log.startAt)} ~ {log.endAt ? fmtDt(log.endAt) : "진행중"}</div>
+                                  {log.endAt && <div className="text-green-600 font-medium">{fmtDuration(log.startAt, log.endAt)}</div>}
                                 </div>
-                                {log.endAt && (
-                                  <div className="text-green-600 font-medium">{fmtDuration(log.startAt, log.endAt)}</div>
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-xs text-gray-500">{log.equipment?.name ?? "-"}</td>
-                              <td className="px-4 py-3 text-xs text-gray-400 max-w-[120px] truncate">{log.memo || "-"}</td>
-                              <td className="px-4 py-3 text-center">
+                              ) : "-"}
+                            </td>
+                            {/* 비고 */}
+                            <td className="px-3 py-1.5 text-gray-400 max-w-[120px] truncate">{log?.memo ?? "-"}</td>
+                            {/* 액션 */}
+                            <td className="px-3 py-1.5 text-center">
+                              {hasCut ? (
                                 <div className="flex items-center justify-center gap-1">
                                   <button
-                                    onClick={() => openEdit(d, log)}
+                                    onClick={() => setModal({ open: true, mode: "edit", drawing: d, log })}
                                     className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md transition-colors"
                                     title="수정"
                                   >
@@ -979,128 +1073,30 @@ export default function WorklogAdmin({
                                     <Trash2 size={13} />
                                   </button>
                                 </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* ── 미등록 항목 ── */}
-              {unregisteredDrawings.length > 0 && (
-                <div className="bg-white rounded-xl border border-orange-200 shadow-sm overflow-hidden">
-                  <button
-                    onClick={() => setShowUnregistered(v => !v)}
-                    className="w-full px-5 py-3 border-b border-orange-100 bg-orange-50/50 flex items-center justify-between hover:bg-orange-50 transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-orange-400"></span>
-                      <span className="text-sm font-semibold text-gray-700">작업일보 미등록 ({unregisteredDrawings.length}건)</span>
-                      <span className="text-xs text-orange-500">— 아래 항목은 작업일보가 없습니다. 누락된 경우 추가하세요.</span>
-                    </div>
-                    {showUnregistered ? <ChevronUp size={15} className="text-gray-400" /> : <ChevronDown size={15} className="text-gray-400" />}
-                  </button>
-                  {showUnregistered && (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm text-left whitespace-nowrap">
-                        <thead className="bg-gray-50 border-b border-gray-100 text-xs text-gray-500 uppercase">
-                          <tr>
-                            <th className="px-4 py-2.5">도면번호</th>
-                            <th className="px-4 py-2.5">블록</th>
-                            <th className="px-4 py-2.5">규격</th>
-                            <th className="px-4 py-2.5">강재상태</th>
-                            <th className="px-4 py-2.5 text-center">액션</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                          {unregisteredDrawings.map(d => (
-                            <tr key={d.id} className="hover:bg-orange-50/30 transition-colors">
-                              <td className="px-4 py-3 font-mono text-xs font-bold text-gray-700">{d.drawingNo || "-"}</td>
-                              <td className="px-4 py-3 text-gray-600 text-xs">{d.block || "-"}</td>
-                              <td className="px-4 py-3 text-xs text-gray-600">
-                                {d.material} {d.thickness}t × {d.width} × {d.length}
-                              </td>
-                              <td className="px-4 py-3">
-                                <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${STATUS_COLOR[d.status] ?? "bg-gray-100 text-gray-600"}`}>
-                                  {STATUS_LABEL[d.status] ?? d.status}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-center">
+                              ) : (
                                 <button
-                                  onClick={() => openAdd(d)}
-                                  className="flex items-center gap-1 text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-semibold transition-colors mx-auto"
+                                  onClick={() => setModal({ open: true, mode: "add", drawing: d, log: null })}
+                                  className="flex items-center gap-1 text-[11px] px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-semibold transition-colors mx-auto"
                                 >
-                                  <Plus size={12} /> 추가
+                                  <Plus size={11} /> 추가
                                 </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* ── 강재 미연결 로그 (별도 등록된 것) ── */}
-              {orphanLogs.length > 0 && (
-                <div className="bg-white rounded-xl border border-purple-200 shadow-sm overflow-hidden">
-                  <div className="px-5 py-3 border-b border-purple-100 bg-purple-50/50 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-purple-400"></span>
-                    <span className="text-sm font-semibold text-gray-700">강재 미연결 작업일보 ({orphanLogs.length}건)</span>
-                    <span className="text-xs text-purple-400">— 강재리스트와 연결되지 않은 작업 기록</span>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left whitespace-nowrap">
-                      <thead className="bg-gray-50 border-b border-gray-100 text-xs text-gray-500 uppercase">
-                        <tr>
-                          <th className="px-4 py-2.5">도면번호</th>
-                          <th className="px-4 py-2.5">Heat NO</th>
-                          <th className="px-4 py-2.5">작업자</th>
-                          <th className="px-4 py-2.5">작업시간</th>
-                          <th className="px-4 py-2.5">장비</th>
-                          <th className="px-4 py-2.5 text-center">액션</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {orphanLogs.map(log => (
-                          <tr key={log.id} className="hover:bg-purple-50/30 transition-colors">
-                            <td className="px-4 py-3 font-mono text-xs text-gray-700">{log.drawingNo || "-"}</td>
-                            <td className="px-4 py-3 font-mono text-xs text-blue-700">{log.heatNo || "-"}</td>
-                            <td className="px-4 py-3 font-semibold text-xs text-gray-800">{log.operator}</td>
-                            <td className="px-4 py-3 text-xs text-gray-600">
-                              <div>
-                                <span>{fmtDt(log.startAt)}</span>
-                                <span className="text-gray-400 mx-1">-</span>
-                                <span>{log.endAt ? fmtDt(log.endAt) : "진행중"}</span>
-                              </div>
-                              {log.endAt && (
-                                <div className="text-green-600 font-medium">{fmtDuration(log.startAt, log.endAt)}</div>
                               )}
                             </td>
-                            <td className="px-4 py-3 text-xs text-gray-500">{log.equipment?.name ?? "-"}</td>
-                            <td className="px-4 py-3 text-center">
-                              <div className="flex items-center justify-center gap-1">
-                                <button onClick={() => openEdit(null, log)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md transition-colors"><Edit2 size={13} /></button>
-                                <button onClick={() => handleDelete(log.id)} className="p-1.5 text-red-400 hover:bg-red-50 rounded-md transition-colors"><Trash2 size={13} /></button>
-                              </div>
-                            </td>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        );
+                      })}
+                      {filteredDrawings.length === 0 && (
+                        <tr>
+                          <td colSpan={15} className="px-4 py-10 text-center text-gray-400">
+                            {drawings.length === 0 ? "등록된 강재리스트가 없습니다." : "필터 결과가 없습니다."}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
-              )}
+              </div>
 
-              {drawings.length === 0 && (
-                <div className="text-center py-16 text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">
-                  등록된 강재리스트가 없습니다.
-                </div>
-              )}
             </div>
           )}
         </>
@@ -1116,10 +1112,7 @@ export default function WorklogAdmin({
           workers={workers}
           projectId={selectedProjectId}
           onClose={() => setModal(m => ({ ...m, open: false }))}
-          onSaved={() => {
-            setModal(m => ({ ...m, open: false }));
-            fetchData(selectedProjectId);
-          }}
+          onSaved={() => { setModal(m => ({ ...m, open: false })); fetchData(selectedProjectId); }}
         />
       )}
       </>)}
