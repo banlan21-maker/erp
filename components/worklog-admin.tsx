@@ -712,7 +712,6 @@ export default function WorklogAdmin({
   const [mainTab, setMainTab] = useState<"normal" | "urgent">("normal");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo,   setDateTo]   = useState<string>("");
-  const [searchTerm, setSearchTerm] = useState("");
   const [page, setPage] = useState(1);
 
   const [logs, setLogs] = useState<CuttingLog[]>([]);
@@ -747,7 +746,7 @@ export default function WorklogAdmin({
   };
 
   useEffect(() => { fetchData(); }, [dateFrom, dateTo]);
-  useEffect(() => { setPage(1); }, [dateFrom, dateTo, searchTerm, filters]);
+  useEffect(() => { setPage(1); }, [dateFrom, dateTo, filters]);
 
   // ── 필터 헬퍼 ───────────────────────────────────────────────────────────
 
@@ -794,17 +793,6 @@ export default function WorklogAdmin({
 
   const filteredLogs = useMemo(() => {
     let result = logs;
-    // 텍스트 검색
-    if (searchTerm.trim()) {
-      const q = searchTerm.toLowerCase();
-      result = result.filter(l =>
-        l.drawingNo?.toLowerCase().includes(q) ||
-        l.heatNo?.toLowerCase().includes(q) ||
-        l.drawingList?.block?.toLowerCase().includes(q) ||
-        l.material?.toLowerCase().includes(q) ||
-        l.operator?.toLowerCase().includes(q)
-      );
-    }
     // 컬럼 필터
     result = result.filter(l =>
       FILTER_COLS.every(col => {
@@ -815,7 +803,7 @@ export default function WorklogAdmin({
       })
     );
     return result;
-  }, [logs, searchTerm, filters]);
+  }, [logs, filters]);
 
   const PAGE_SIZE = 50;
   const totalPages = Math.ceil(filteredLogs.length / PAGE_SIZE);
@@ -899,38 +887,20 @@ export default function WorklogAdmin({
       ) : (
         <div className="space-y-3">
 
-          {/* 요약 + 검색 + 필터 뱃지 */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white border border-gray-200 rounded-xl px-5 py-3 shadow-sm">
-            <div className="flex items-center gap-4 text-sm flex-wrap">
-              <span className="text-gray-500">
-                전체 <strong className="text-gray-900">{logs.length}</strong>건
-              </span>
-              <span className="text-green-600">완료 <strong>{logs.filter(l => l.status === "COMPLETED").length}</strong>건</span>
-              <span className="text-yellow-600">진행중 <strong>{logs.filter(l => l.status === "STARTED").length}</strong>건</span>
-              {filterCount > 0 && (
-                <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md">
-                  <Filter size={11} fill="currentColor" />
-                  <span>필터 {filterCount}개 적용 ({filteredLogs.length}/{logs.length}행)</span>
-                  <button onClick={() => setFilters({})} className="ml-0.5 hover:text-blue-800" title="모든 필터 초기화">
-                    <XCircle size={12} />
-                  </button>
-                </div>
-              )}
-            </div>
-            <div className="relative">
-              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-              <Input
-                placeholder="도면번호 / Heat NO / 블록 / 작업자 검색"
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                className="pl-8 h-9 text-sm w-60"
-              />
-              {searchTerm && (
-                <button onClick={() => setSearchTerm("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  <X size={13} />
+          {/* 요약 + 필터 뱃지 */}
+          <div className="flex items-center gap-4 text-sm flex-wrap bg-white border border-gray-200 rounded-xl px-5 py-3 shadow-sm">
+            <span className="text-gray-500">전체 <strong className="text-gray-900">{logs.length}</strong>건</span>
+            <span className="text-green-600">완료 <strong>{logs.filter(l => l.status === "COMPLETED").length}</strong>건</span>
+            <span className="text-yellow-600">진행중 <strong>{logs.filter(l => l.status === "STARTED").length}</strong>건</span>
+            {filterCount > 0 && (
+              <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md">
+                <Filter size={11} fill="currentColor" />
+                <span>필터 {filterCount}개 적용 ({filteredLogs.length}/{logs.length}행)</span>
+                <button onClick={() => setFilters({})} className="ml-0.5 hover:text-blue-800" title="모든 필터 초기화">
+                  <XCircle size={12} />
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* 작업일보 리스트 */}
