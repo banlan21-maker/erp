@@ -97,6 +97,8 @@ export default function BomUpload({ projectOptions }: { projectOptions: ProjectO
     name: "", desc: "", preset: emptyPreset(),
   });
   const [modalSaving, setModalSaving] = useState(false);
+  // 컬럼 입력창 raw 문자열 — 입력 중 쉼표 허용, blur 시 preset 반영
+  const [colInputs, setColInputs] = useState<Record<string, string>>({});
 
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -154,14 +156,26 @@ export default function BomUpload({ projectOptions }: { projectOptions: ProjectO
   };
 
   // ── 업체 모달 열기 ──
+  // preset의 fields → colInputs 초기화 (raw 문자열로 변환)
+  const initColInputs = (fields: Record<string, FieldConfig>) => {
+    const init: Record<string, string> = {};
+    for (const [f, fc] of Object.entries(fields)) {
+      init[f] = fc.cols ? fc.cols.join(", ") : String(fc.col ?? 1);
+    }
+    setColInputs(init);
+  };
+
   const openAdd = () => {
     setEditTarget(null);
-    setForm({ name: "", desc: "", preset: emptyPreset() });
+    const preset = emptyPreset();
+    setForm({ name: "", desc: "", preset });
+    initColInputs(preset.fields);
     setShowModal(true);
   };
   const openEdit = (v: BomVendor) => {
     setEditTarget(v);
     setForm({ name: v.name, desc: v.desc ?? "", preset: v.preset });
+    initColInputs(v.preset.fields);
     setShowModal(true);
   };
 
@@ -535,13 +549,18 @@ export default function BomUpload({ projectOptions }: { projectOptions: ProjectO
                             <td className="px-3 py-2">
                               <div className="flex items-center gap-1">
                                 <input
-                                  value={fc.cols ? fc.cols.join(", ") : (fc.col ?? 1)}
-                                  onChange={e => {
+                                  value={colInputs[field] ?? (fc.cols ? fc.cols.join(", ") : String(fc.col ?? 1))}
+                                  onChange={e => setColInputs(p => ({ ...p, [field]: e.target.value }))}
+                                  onBlur={e => {
                                     const raw = e.target.value;
                                     if (raw.includes(",")) {
-                                      setFieldCfg(field, { cols: raw.split(",").map(x => parseInt(x.trim())).filter(Boolean), col: undefined });
+                                      const cols = raw.split(",").map(x => parseInt(x.trim())).filter(Boolean);
+                                      setFieldCfg(field, { cols, col: undefined });
+                                      setColInputs(p => ({ ...p, [field]: cols.join(", ") }));
                                     } else {
-                                      setFieldCfg(field, { col: parseInt(raw) || 1, cols: undefined });
+                                      const col = parseInt(raw) || 1;
+                                      setFieldCfg(field, { col, cols: undefined });
+                                      setColInputs(p => ({ ...p, [field]: String(col) }));
                                     }
                                   }}
                                   className={`border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 ${isMulti ? "w-full font-mono" : "w-16"}`}
