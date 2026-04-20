@@ -8,8 +8,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ClipboardList, FolderOpen, ArrowLeft, Trash2, X } from "lucide-react";
+import { ClipboardList, FolderOpen, ArrowLeft, Trash2 } from "lucide-react";
 import Link from "next/link";
+import { FilterHeader, FilterBadge } from "@/components/table-filter";
 
 interface ProjectOption {
   id: string;
@@ -59,17 +60,34 @@ export default function BomMain({
   const [items,   setItems]   = useState<BomItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [deleting,setDeleting]= useState(false);
-  const [filters, setFilters] = useState<Partial<Record<ColKey, string>>>({});
 
-  const setFilter = (key: ColKey, val: string) =>
-    setFilters(p => val ? { ...p, [key]: val } : Object.fromEntries(Object.entries(p).filter(([k]) => k !== key)));
+  // Excel-style filter state
+  const [filters,    setFilters]    = useState<Record<string, string[]>>({});
+  const [openCol,    setOpenCol]    = useState<string | null>(null);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+
+  const handleFilterChange = (col: string, values: string[]) =>
+    setFilters(p => values.length === 0 ? Object.fromEntries(Object.entries(p).filter(([k]) => k !== col)) : { ...p, [col]: values });
+
+  const handleFilterOpen  = (col: string, rect: DOMRect) => { setOpenCol(col); setAnchorRect(rect); };
+  const handleFilterClose = () => { setOpenCol(null); setAnchorRect(null); };
+
+  // Unique values per column (for dropdown)
+  const allValues = (col: ColKey): string[] => {
+    const set = new Set<string>();
+    for (const item of items) {
+      const v = String(item[col as keyof BomItem] ?? "");
+      if (v) set.add(v);
+    }
+    return Array.from(set).sort();
+  };
 
   const filtered = items.filter(item =>
     COLUMNS.every(col => {
-      const f = filters[col.key];
-      if (!f) return true;
-      const v = String(item[col.key as keyof BomItem] ?? "").toLowerCase();
-      return v.includes(f.toLowerCase());
+      const sel = filters[col.key];
+      if (!sel || sel.length === 0) return true;
+      const v = String(item[col.key as keyof BomItem] ?? "");
+      return sel.includes(v);
     })
   );
 
@@ -99,10 +117,10 @@ export default function BomMain({
 
   // ── 블록 선택 후: BOM 테이블 ──
   if (projectId && activeProject) {
-    const totalQty = filtered.reduce((s, r) => s + (r.qty ?? 0), 0);
-    const totalWt  = filtered.reduce((s, r) => s + (r.weight ?? 0), 0);
-    const vendor   = items[0]?.vendor?.name ?? null;
-    const hasFilter = Object.keys(filters).length > 0;
+    const totalQty    = filtered.reduce((s, r) => s + (r.qty ?? 0), 0);
+    const totalWt     = filtered.reduce((s, r) => s + (r.weight ?? 0), 0);
+    const vendor      = items[0]?.vendor?.name ?? null;
+    const filterCount = Object.keys(filters).length;
 
     return (
       <div className="space-y-4">
@@ -123,16 +141,16 @@ export default function BomMain({
             </span>
           )}
           <div className="ml-auto flex items-center gap-2">
+            <FilterBadge
+              count={filtered.length}
+              total={items.length}
+              filterCount={filterCount}
+              onClear={() => setFilters({})}
+            />
             <span className="text-xs text-gray-400">
-              {hasFilter ? `${filtered.length}/${items.length}건` : `${items.length}건`}
+              {filterCount > 0 ? `${filtered.length}/${items.length}건` : `${items.length}건`}
               {" · "}수량 {totalQty.toLocaleString()} · {totalWt.toFixed(3)}t
             </span>
-            {hasFilter && (
-              <button onClick={() => setFilters({})}
-                className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100">
-                <X size={10} /> 필터초기화
-              </button>
-            )}
             {items.length > 0 && (
               <button
                 onClick={deleteAll}
@@ -158,38 +176,29 @@ export default function BomMain({
             <div className="overflow-x-auto">
               <table className="w-full text-xs border-collapse">
                 <thead>
-                  {/* 컬럼 헤더 */}
-                  <tr className="bg-gray-800 text-white">
-                    <th className="px-2 py-2 text-center font-semibold w-8">No</th>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="px-2 py-2.5 text-center text-xs font-semibold text-gray-500 w-8">No</th>
                     {COLUMNS.map(c => (
-                      <th key={c.key}
-                        className={`px-3 py-2 font-semibold whitespace-nowrap ${c.align === "right" ? "text-right" : "text-left"}`}>
-                        {c.label}
-                      </th>
-                    ))}
-                  </tr>
-                  {/* 필터 행 */}
-                  <tr className="bg-gray-700">
-                    <td className="px-2 py-1" />
-                    {COLUMNS.map(c => (
-                      <td key={c.key} className="px-1.5 py-1">
-                        {c.filterable ? (
-                          <div className="relative">
-                            <input
-                              value={filters[c.key] ?? ""}
-                              onChange={e => setFilter(c.key, e.target.value)}
-                              placeholder="필터..."
-                              className="w-full bg-gray-600 text-white placeholder-gray-400 text-xs px-2 py-0.5 rounded border border-gray-500 focus:outline-none focus:border-blue-400"
-                            />
-                            {filters[c.key] && (
-                              <button onClick={() => setFilter(c.key, "")}
-                                className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
-                                <X size={10} />
-                              </button>
-                            )}
-                          </div>
-                        ) : null}
-                      </td>
+                      c.filterable ? (
+                        <FilterHeader
+                          key={c.key}
+                          col={c.key}
+                          label={c.label}
+                          align={c.align}
+                          allValues={allValues(c.key)}
+                          filters={filters}
+                          onFilterChange={handleFilterChange}
+                          openCol={openCol}
+                          anchorRect={anchorRect}
+                          onOpen={handleFilterOpen}
+                          onClose={handleFilterClose}
+                        />
+                      ) : (
+                        <th key={c.key}
+                          className={`px-2 py-2.5 text-xs font-semibold text-gray-500 whitespace-nowrap ${c.align === "right" ? "text-right" : "text-left"}`}>
+                          {c.label}
+                        </th>
+                      )
                     ))}
                   </tr>
                 </thead>
