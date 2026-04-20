@@ -82,3 +82,11 @@ export async function GET(req: NextRequest) {
   });
   return NextResponse.json(items);
 }
+
+/** DELETE /api/bom?projectId=xxx — BOM 전체 삭제 */
+export async function DELETE(req: NextRequest) {
+  const projectId = req.nextUrl.searchParams.get("projectId");
+  if (!projectId) return NextResponse.json({ error: "projectId 필수" }, { status: 400 });
+  await prisma.bomItem.deleteMany({ where: { projectId } });
+  return NextResponse.json({ ok: true });
+}

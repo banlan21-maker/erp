@@ -120,7 +120,7 @@ export default function ProjectsMain({
       {tab === "vessels" && <ProjectTree vessels={vessels} />}
 
       {/* BOM리스트 탭 */}
-      {tab === "bom" && <BomMain projectOptions={projectOptions} />}
+      {tab === "bom" && <BomMain projectOptions={projectOptions} projectId={projectId} />}
 
       {/* 강재/BOM 등록 탭 — 서브탭 */}
       {tab === "upload" && (
