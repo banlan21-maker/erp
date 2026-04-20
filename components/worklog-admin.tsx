@@ -38,6 +38,8 @@ interface UrgentWork {
 
 interface Drawing {
   id: string;
+  projectId: string;
+  project: { id: string; projectCode: string; projectName: string } | null;
   block: string | null;
   drawingNo: string | null;
   heatNo: string | null;
@@ -714,14 +716,17 @@ export default function WorklogAdmin({
   const [dateTo,   setDateTo]   = useState<string>("");
   const [page, setPage] = useState(1);
 
-  const [logs, setLogs] = useState<CuttingLog[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [drawings, setDrawings] = useState<Drawing[]>([]);
+  const [logs,     setLogs]     = useState<CuttingLog[]>([]);
+  const [loading,  setLoading]  = useState(false);
 
-  // 모달 상태 (수정/삭제용)
+  // 모달 상태
   const [modal, setModal] = useState<{
     open: boolean;
+    mode: "add" | "edit";
+    drawing: Drawing | null;
     log: CuttingLog | null;
-  }>({ open: false, log: null });
+  }>({ open: false, mode: "add", drawing: null, log: null });
 
   // 필터 상태
   const [filters,  setFilters]  = useState<Record<string, string[]>>({});
@@ -731,13 +736,18 @@ export default function WorklogAdmin({
   const fetchData = async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (dateFrom) params.set("dateFrom", dateFrom);
-      if (dateTo)   params.set("dateTo",   dateTo);
-      if (!dateFrom && !dateTo) params.set("all", "true");
-      const res  = await fetch(`/api/cutting-logs?${params}`);
-      const json = await res.json();
-      if (json.success) setLogs(json.data);
+      const logParams = new URLSearchParams();
+      if (dateFrom) logParams.set("dateFrom", dateFrom);
+      if (dateTo)   logParams.set("dateTo",   dateTo);
+      if (!dateFrom && !dateTo) logParams.set("all", "true");
+
+      const [drawRes, logRes] = await Promise.all([
+        fetch("/api/drawings?allConfirmed=true"),
+        fetch(`/api/cutting-logs?${logParams}`),
+      ]);
+      const [drawJson, logJson] = await Promise.all([drawRes.json(), logRes.json()]);
+      if (drawJson.success) setDrawings(drawJson.data);
+      if (logJson.success)  setLogs(logJson.data);
     } catch (e) {
       console.error(e);
     } finally {
@@ -748,33 +758,39 @@ export default function WorklogAdmin({
   useEffect(() => { fetchData(); }, [dateFrom, dateTo]);
   useEffect(() => { setPage(1); }, [dateFrom, dateTo, filters]);
 
+  const logByDrawingId = useMemo(() => {
+    const map = new Map<string, CuttingLog>();
+    logs.forEach(l => { if (l.drawingListId) map.set(l.drawingListId, l); });
+    return map;
+  }, [logs]);
+
   // ── 필터 헬퍼 ───────────────────────────────────────────────────────────
 
-  const getVal = (log: CuttingLog, col: FCKey): string => {
+  const getVal = (d: Drawing, log: CuttingLog | null, col: FCKey): string => {
     switch (col) {
-      case "hosin":     return log.project?.projectCode ?? "";
-      case "block":     return log.drawingList?.block ?? "";
-      case "drawingNo": return log.drawingNo ?? "";
-      case "material":  return log.material ?? "";
-      case "thickness": return log.thickness != null ? String(log.thickness) : "";
-      case "width":     return log.width     != null ? String(log.width)     : "";
-      case "length":    return log.length    != null ? String(log.length)    : "";
-      case "heatNo":    return log.heatNo ?? "";
-      case "status":    return log.status;
-      case "operator":  return log.operator;
-      case "equipment": return log.equipment?.name ?? "";
+      case "hosin":     return d.project?.projectCode ?? "";
+      case "block":     return d.block ?? "";
+      case "drawingNo": return d.drawingNo ?? "";
+      case "material":  return d.material;
+      case "thickness": return String(d.thickness);
+      case "width":     return String(d.width);
+      case "length":    return String(d.length);
+      case "heatNo":    return d.heatNo ?? "";
+      case "status":    return log?.status ?? "";
+      case "operator":  return log?.operator ?? "";
+      case "equipment": return log?.equipment?.name ?? "";
     }
   };
 
   const allValues = (col: FCKey): FilterValue[] => {
     const set = new Set<string>();
     let hasEmpty = false;
-    for (const log of logs) {
-      const v = getVal(log, col);
+    for (const d of drawings) {
+      const log = logByDrawingId.get(d.id) ?? null;
+      const v = getVal(d, log, col);
       if (v) set.add(v);
       else hasEmpty = true;
     }
-    // 강재상태는 한글 라벨로 표시
     const result: FilterValue[] = col === "status"
       ? Array.from(set).sort().map(v => ({ value: v, label: STATUS_LABEL[v] ?? v }))
       : Array.from(set).sort().map(v => ({ value: v, label: v }));
@@ -791,24 +807,30 @@ export default function WorklogAdmin({
 
   // ── 필터 적용 ───────────────────────────────────────────────────────────
 
-  const filteredLogs = useMemo(() => {
-    let result = logs;
+  const filteredDrawings = useMemo(() => {
+    let result = drawings;
+    // 날짜 필터가 있으면 작업일보가 있는 행만 표시
+    if (dateFrom || dateTo) {
+      result = result.filter(d => logByDrawingId.has(d.id));
+    }
     // 컬럼 필터
-    result = result.filter(l =>
-      FILTER_COLS.every(col => {
+    result = result.filter(d => {
+      const log = logByDrawingId.get(d.id) ?? null;
+      return FILTER_COLS.every(col => {
         const sel = filters[col.key as FCKey];
         if (!sel || sel.length === 0) return true;
-        const v = getVal(l, col.key as FCKey);
+        const v = getVal(d, log, col.key as FCKey);
         return sel.includes(v || "__EMPTY__");
-      })
-    );
+      });
+    });
     return result;
-  }, [logs, filters]);
+  }, [drawings, logByDrawingId, dateFrom, dateTo, filters]);
 
-  const PAGE_SIZE = 50;
-  const totalPages = Math.ceil(filteredLogs.length / PAGE_SIZE);
-  const pagedLogs  = filteredLogs.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const PAGE_SIZE   = 50;
+  const totalPages  = Math.ceil(filteredDrawings.length / PAGE_SIZE);
+  const pagedRows   = filteredDrawings.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const filterCount = Object.keys(filters).length;
+  const cutCount    = filteredDrawings.filter(d => logByDrawingId.has(d.id)).length;
 
   const handleDelete = async (logId: string) => {
     if (!confirm("이 작업일보를 삭제할까요? (강재 상태가 복원됩니다)")) return;
@@ -889,13 +911,14 @@ export default function WorklogAdmin({
 
           {/* 요약 + 필터 뱃지 */}
           <div className="flex items-center gap-4 text-sm flex-wrap bg-white border border-gray-200 rounded-xl px-5 py-3 shadow-sm">
-            <span className="text-gray-500">전체 <strong className="text-gray-900">{logs.length}</strong>건</span>
-            <span className="text-green-600">완료 <strong>{logs.filter(l => l.status === "COMPLETED").length}</strong>건</span>
-            <span className="text-yellow-600">진행중 <strong>{logs.filter(l => l.status === "STARTED").length}</strong>건</span>
+            <span className="text-gray-500">전체 <strong className="text-gray-900">{filteredDrawings.length}</strong>건</span>
+            <span className="text-green-600">완료 <strong>{cutCount}</strong>건</span>
+            <span className="text-yellow-600">진행중 <strong>{filteredDrawings.filter(d => logByDrawingId.get(d.id)?.status === "STARTED").length}</strong>건</span>
+            <span className="text-gray-400">미등록 <strong>{filteredDrawings.length - cutCount}</strong>건</span>
             {filterCount > 0 && (
               <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md">
                 <Filter size={11} fill="currentColor" />
-                <span>필터 {filterCount}개 적용 ({filteredLogs.length}/{logs.length}행)</span>
+                <span>필터 {filterCount}개 적용 ({filteredDrawings.length}/{drawings.length}행)</span>
                 <button onClick={() => setFilters({})} className="ml-0.5 hover:text-blue-800" title="모든 필터 초기화">
                   <XCircle size={12} />
                 </button>
@@ -948,79 +971,93 @@ export default function WorklogAdmin({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {pagedLogs.map((log, i) => {
-                    const t = log.thickness, w = log.width, l = log.length;
-                    const rowNo = (page - 1) * PAGE_SIZE + i + 1;
+                  {pagedRows.map((d, i) => {
+                    const log    = logByDrawingId.get(d.id) ?? null;
+                    const hasCut = !!log;
+                    const rowNo  = (page - 1) * PAGE_SIZE + i + 1;
                     return (
-                      <tr key={log.id} className="hover:bg-gray-50/60 transition-colors">
+                      <tr key={d.id} className={`transition-colors ${hasCut ? "hover:bg-green-50/30" : "hover:bg-gray-50/60"}`}>
                         <td className="px-2 py-1.5 text-center text-gray-400">{rowNo}</td>
                         {/* 호선 */}
-                        <td className="px-3 py-1.5 text-gray-600 font-mono text-[11px]">{log.project?.projectCode ?? "-"}</td>
+                        <td className="px-3 py-1.5 text-gray-600 font-mono text-[11px]">{d.project?.projectCode ?? "-"}</td>
                         {/* 블록 */}
-                        <td className="px-3 py-1.5 text-gray-600">{log.drawingList?.block ?? "-"}</td>
+                        <td className="px-3 py-1.5 text-gray-600">{d.block ?? "-"}</td>
                         {/* 도면번호 */}
-                        <td className="px-3 py-1.5 font-mono text-[11px] font-bold text-gray-800">{log.drawingNo ?? "-"}</td>
+                        <td className="px-3 py-1.5 font-mono text-[11px] font-bold text-gray-800">{d.drawingNo ?? "-"}</td>
                         {/* 재질 */}
-                        <td className="px-3 py-1.5 text-gray-600">{log.material ?? "-"}</td>
+                        <td className="px-3 py-1.5 text-gray-600">{d.material}</td>
                         {/* 두께 */}
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{t ?? "-"}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.thickness}</td>
                         {/* 폭 */}
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{w ?? "-"}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.width}</td>
                         {/* 길이 */}
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{l ?? "-"}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.length}</td>
                         {/* 철판중량 */}
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">
-                          {t != null && w != null && l != null ? calcSteelWeight(t, w, l).toFixed(1) : "-"}
-                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{calcSteelWeight(d.thickness, d.width, d.length).toFixed(1)}</td>
                         {/* 사용중량 */}
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">
-                          {log.drawingList?.useWeight?.toFixed(1) ?? "-"}
-                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.useWeight?.toFixed(1) ?? "-"}</td>
                         {/* Heat NO */}
-                        <td className="px-3 py-1.5 font-mono text-[11px] text-blue-700">{log.heatNo || "-"}</td>
+                        <td className="px-3 py-1.5 font-mono text-[11px] text-blue-700">{d.heatNo ?? "-"}</td>
                         {/* 작업상태 */}
                         <td className="px-3 py-1.5">
-                          <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${STATUS_COLOR[log.status] ?? "bg-gray-100 text-gray-600"}`}>
-                            {STATUS_LABEL[log.status] ?? log.status}
-                          </span>
+                          {log ? (
+                            <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${STATUS_COLOR[log.status] ?? "bg-gray-100 text-gray-600"}`}>
+                              {STATUS_LABEL[log.status] ?? log.status}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold bg-gray-100 text-gray-400">미등록</span>
+                          )}
                         </td>
                         {/* 작업자 */}
-                        <td className="px-3 py-1.5 font-semibold text-gray-800">{log.operator}</td>
+                        <td className="px-3 py-1.5 font-semibold text-gray-800">{log?.operator ?? "-"}</td>
                         {/* 장비 */}
-                        <td className="px-3 py-1.5 text-gray-500">{log.equipment?.name ?? "-"}</td>
+                        <td className="px-3 py-1.5 text-gray-500">{log?.equipment?.name ?? "-"}</td>
                         {/* 작업시간 */}
                         <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">
-                          <div className="text-[11px] text-gray-500">{fmtDt(log.startAt)} ~ {log.endAt ? fmtDt(log.endAt) : "진행중"}</div>
-                          {log.endAt && <div className="text-green-600 font-medium">{fmtDuration(log.startAt, log.endAt)}</div>}
+                          {log ? (
+                            <div>
+                              <div className="text-[11px] text-gray-500">{fmtDt(log.startAt)} ~ {log.endAt ? fmtDt(log.endAt) : "진행중"}</div>
+                              {log.endAt && <div className="text-green-600 font-medium">{fmtDuration(log.startAt, log.endAt)}</div>}
+                            </div>
+                          ) : "-"}
                         </td>
                         {/* 비고 */}
-                        <td className="px-3 py-1.5 text-gray-400 max-w-[120px] truncate">{log.memo ?? "-"}</td>
+                        <td className="px-3 py-1.5 text-gray-400 max-w-[120px] truncate">{log?.memo ?? "-"}</td>
                         {/* 액션 */}
                         <td className="px-3 py-1.5 text-center">
-                          <div className="flex items-center justify-center gap-1">
+                          {hasCut ? (
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                onClick={() => setModal({ open: true, mode: "edit", drawing: d, log })}
+                                className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md transition-colors"
+                                title="수정"
+                              >
+                                <Edit2 size={13} />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(log.id)}
+                                className="p-1.5 text-red-400 hover:bg-red-50 rounded-md transition-colors"
+                                title="삭제"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          ) : (
                             <button
-                              onClick={() => setModal({ open: true, log })}
-                              className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md transition-colors"
-                              title="수정"
+                              onClick={() => setModal({ open: true, mode: "add", drawing: d, log: null })}
+                              className="flex items-center gap-1 text-[11px] px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-semibold transition-colors mx-auto"
                             >
-                              <Edit2 size={13} />
+                              <Plus size={11} /> 추가
                             </button>
-                            <button
-                              onClick={() => handleDelete(log.id)}
-                              className="p-1.5 text-red-400 hover:bg-red-50 rounded-md transition-colors"
-                              title="삭제"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
+                          )}
                         </td>
                       </tr>
                     );
                   })}
-                  {filteredLogs.length === 0 && (
+                  {filteredDrawings.length === 0 && (
                     <tr>
                       <td colSpan={16} className="px-4 py-10 text-center text-gray-400">
-                        {logs.length === 0 ? "등록된 작업일보가 없습니다." : "필터 결과가 없습니다."}
+                        {drawings.length === 0 ? "확정된 강재리스트가 없습니다." : "필터 결과가 없습니다."}
                       </td>
                     </tr>
                   )}
@@ -1032,7 +1069,7 @@ export default function WorklogAdmin({
             {totalPages > 1 && (
               <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-gray-50">
                 <span className="text-xs text-gray-500">
-                  {filteredLogs.length}건 중 {(page-1)*PAGE_SIZE+1}~{Math.min(page*PAGE_SIZE, filteredLogs.length)}번째
+                  {filteredDrawings.length}건 중 {(page-1)*PAGE_SIZE+1}~{Math.min(page*PAGE_SIZE, filteredDrawings.length)}번째
                 </span>
                 <div className="flex items-center gap-1">
                   <button
@@ -1070,15 +1107,15 @@ export default function WorklogAdmin({
         </div>
       )}
 
-      {/* 수정 모달 */}
-      {modal.open && modal.log && (
+      {/* 모달 */}
+      {modal.open && (
         <LogModal
-          mode="edit"
-          drawing={null}
+          mode={modal.mode}
+          drawing={modal.drawing}
           log={modal.log}
           equipment={equipment}
           workers={workers}
-          projectId={modal.log.project ? "" : ""}
+          projectId={modal.drawing?.projectId ?? ""}
           onClose={() => setModal(m => ({ ...m, open: false }))}
           onSaved={() => { setModal(m => ({ ...m, open: false })); fetchData(); }}
         />

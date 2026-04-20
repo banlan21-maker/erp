@@ -64,10 +64,22 @@ async function syncSpecsAfterUpload(
 
 // GET /api/drawings?projectId=xxx&status=WAITING — 강재리스트 조회
 // GET /api/drawings?projectId=xxx&confirmed=true  — 확정된 항목만 조회 (현장 작업일보용)
+// GET /api/drawings?allConfirmed=true             — 전체 프로젝트 확정(WAITING/CUT) 목록 (관리자 작업일보용)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const projectId = searchParams.get("projectId");
+    const projectId    = searchParams.get("projectId");
+    const allConfirmed = searchParams.get("allConfirmed") === "true";
+
+    // 전체 프로젝트 확정 목록 (projectId 불필요)
+    if (allConfirmed) {
+      const drawings = await prisma.drawingList.findMany({
+        where: { status: { in: ["WAITING", "CUT"] } },
+        include: { project: { select: { id: true, projectCode: true, projectName: true } } },
+        orderBy: [{ projectId: "asc" }, { createdAt: "asc" }],
+      });
+      return NextResponse.json({ success: true, data: drawings });
+    }
 
     if (!projectId) {
       return NextResponse.json(
