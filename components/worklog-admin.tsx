@@ -77,7 +77,8 @@ const COLUMNS = [
   { key: "drawingNo", label: "도면번호", align: "left"  as const, filterable: true  },
   { key: "material",  label: "재질",    align: "left"  as const, filterable: true  },
   { key: "thickness", label: "두께",    align: "right" as const, filterable: true  },
-  { key: "size",      label: "사이즈",  align: "left"  as const, filterable: false },
+  { key: "width",     label: "폭",      align: "right" as const, filterable: true  },
+  { key: "length",    label: "길이",    align: "right" as const, filterable: true  },
   { key: "heatNo",    label: "Heat NO", align: "left"  as const, filterable: true  },
   { key: "status",    label: "강재상태", align: "left"  as const, filterable: true  },
   { key: "operator",  label: "작업자",  align: "left"  as const, filterable: true  },
@@ -773,6 +774,8 @@ export default function WorklogAdmin({
       case "drawingNo": return d.drawingNo ?? "";
       case "material":  return d.material;
       case "thickness": return String(d.thickness);
+      case "width":     return String(d.width);
+      case "length":    return String(d.length);
       case "heatNo":    return d.heatNo ?? "";
       case "status":    return d.status;
       case "operator":  return log?.operator ?? "";
@@ -1031,8 +1034,10 @@ export default function WorklogAdmin({
                             <td className="px-3 py-1.5 text-gray-600">{d.material}</td>
                             {/* 두께 */}
                             <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.thickness}</td>
-                            {/* 사이즈 */}
-                            <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">{d.width} × {d.length}</td>
+                            {/* 폭 */}
+                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.width}</td>
+                            {/* 길이 */}
+                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.length}</td>
                             {/* Heat NO */}
                             <td className="px-3 py-1.5 font-mono text-[11px] text-blue-700">{d.heatNo ?? "-"}</td>
                             {/* 강재상태 */}
