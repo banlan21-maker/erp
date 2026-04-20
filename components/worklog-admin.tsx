@@ -46,7 +46,6 @@ interface Drawing {
   width: number;
   length: number;
   qty: number;
-  steelWeight: number | null;
   useWeight: number | null;
   status: string;
 }
@@ -69,6 +68,10 @@ interface CuttingLog {
   startAt: string;
   endAt: string | null;
   memo: string | null;
+}
+
+function calcSteelWeight(t: number, w: number, l: number): number {
+  return Math.round(t * w * l * 7.85 / 1_000_000 * 10) / 10;
 }
 
 // ─── 컬럼 정의 (순서 = 테이블 표시 순서) ─────────────────────────────────
@@ -1055,7 +1058,7 @@ export default function WorklogAdmin({
                             {/* 길이 */}
                             <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.length}</td>
                             {/* 철판중량 */}
-                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.steelWeight?.toFixed(1) ?? "-"}</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{calcSteelWeight(d.thickness, d.width, d.length).toFixed(1)}</td>
                             {/* 사용중량 */}
                             <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.useWeight?.toFixed(1) ?? "-"}</td>
                             {/* Heat NO */}
