@@ -46,6 +46,8 @@ interface Drawing {
   width: number;
   length: number;
   qty: number;
+  steelWeight: number | null;
+  useWeight: number | null;
   status: string;
 }
 
@@ -78,8 +80,10 @@ const COLUMNS = [
   { key: "material",  label: "재질",    align: "left"  as const, filterable: true  },
   { key: "thickness", label: "두께",    align: "right" as const, filterable: true  },
   { key: "width",     label: "폭",      align: "right" as const, filterable: true  },
-  { key: "length",    label: "길이",    align: "right" as const, filterable: true  },
-  { key: "heatNo",    label: "Heat NO", align: "left"  as const, filterable: true  },
+  { key: "length",      label: "길이",    align: "right" as const, filterable: true  },
+  { key: "steelWeight", label: "철판중량", align: "right" as const, filterable: false },
+  { key: "useWeight",   label: "사용중량", align: "right" as const, filterable: false },
+  { key: "heatNo",      label: "Heat NO", align: "left"  as const, filterable: true  },
   { key: "status",    label: "강재상태", align: "left"  as const, filterable: true  },
   { key: "operator",  label: "작업자",  align: "left"  as const, filterable: true  },
   { key: "equipment", label: "장비",    align: "left"  as const, filterable: true  },
@@ -1038,6 +1042,10 @@ export default function WorklogAdmin({
                             <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.width}</td>
                             {/* 길이 */}
                             <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.length}</td>
+                            {/* 철판중량 */}
+                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.steelWeight?.toFixed(2) ?? "-"}</td>
+                            {/* 사용중량 */}
+                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.useWeight?.toFixed(2) ?? "-"}</td>
                             {/* Heat NO */}
                             <td className="px-3 py-1.5 font-mono text-[11px] text-blue-700">{d.heatNo ?? "-"}</td>
                             {/* 강재상태 */}
