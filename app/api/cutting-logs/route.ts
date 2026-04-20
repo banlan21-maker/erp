@@ -33,8 +33,10 @@ import { prisma } from "@/lib/prisma";
 // ─── GET ───────────────────────────────────────────────────────────────────────
 // 쿼리 파라미터:
 //   equipmentId   : 장비별 조회 (현장용). 지정 시 미종료 레코드 자동 포함.
-//   projectId     : 프로젝트별 조회 (관리자용). date 없으면 전체 기간.
-//   date          : YYYY-MM-DD. 해당 날짜 작업만 조회.
+//   projectId     : 프로젝트별 조회 (관리자용). 날짜 미지정 시 전체 기간.
+//   date          : YYYY-MM-DD. 단일 날짜 (하위 호환용, 현장 뷰).
+//   dateFrom      : YYYY-MM-DD. 범위 시작일 (관리자 뷰).
+//   dateTo        : YYYY-MM-DD. 범위 종료일 (관리자 뷰).
 //   includeStuck  : "true" → 날짜 필터와 관계없이 STARTED 레코드 포함.
 export async function GET(request: NextRequest) {
   try {
@@ -42,17 +44,32 @@ export async function GET(request: NextRequest) {
     const equipmentId  = searchParams.get("equipmentId");
     const projectId    = searchParams.get("projectId");
     const date         = searchParams.get("date");
+    const dateFrom     = searchParams.get("dateFrom");
+    const dateTo       = searchParams.get("dateTo");
     const includeStuck = searchParams.get("includeStuck") === "true";
 
     // ── 날짜 필터 구성 ──────────────────────────────────────────────────────
     let dateFilter: Record<string, unknown> = {};
-    if (date) {
+    if (dateFrom || dateTo) {
+      // 관리자 범위 필터
+      const rangeFilter: Record<string, Date> = {};
+      if (dateFrom) {
+        const d = new Date(dateFrom); d.setHours(0, 0, 0, 0);
+        rangeFilter.gte = d;
+      }
+      if (dateTo) {
+        const d = new Date(dateTo); d.setHours(23, 59, 59, 999);
+        rangeFilter.lte = d;
+      }
+      dateFilter = { startAt: rangeFilter };
+    } else if (date) {
+      // 단일 날짜 (하위 호환 / 현장 뷰)
       const targetDate = new Date(date);
       const dayStart = new Date(targetDate); dayStart.setHours(0, 0, 0, 0);
       const dayEnd   = new Date(targetDate); dayEnd.setHours(23, 59, 59, 999);
       dateFilter = { startAt: { gte: dayStart, lte: dayEnd } };
     } else if (!projectId) {
-      // projectId 없이 date 미지정 → 오늘로 제한 (현장 뷰 기본값)
+      // projectId 없이 날짜 미지정 → 오늘로 제한 (현장 뷰 기본값)
       const today    = new Date();
       const dayStart = new Date(today); dayStart.setHours(0, 0, 0, 0);
       const dayEnd   = new Date(today); dayEnd.setHours(23, 59, 59, 999);

@@ -711,7 +711,8 @@ export default function WorklogAdmin({
 }) {
   const [mainTab, setMainTab] = useState<"normal" | "urgent">("normal");
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
-  const [dateFilter, setDateFilter] = useState<string>("");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo,   setDateTo]   = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
 
   const [drawings, setDrawings] = useState<Drawing[]>([]);
@@ -742,7 +743,7 @@ export default function WorklogAdmin({
     try {
       const [drawingsRes, logsRes] = await Promise.all([
         fetch(`/api/drawings?projectId=${projectId}`),
-        fetch(`/api/cutting-logs?projectId=${projectId}${dateFilter ? `&date=${dateFilter}` : ""}`),
+        fetch(`/api/cutting-logs?projectId=${projectId}${dateFrom ? `&dateFrom=${dateFrom}` : ""}${dateTo ? `&dateTo=${dateTo}` : ""}`),
       ]);
       const drawingsJson = await drawingsRes.json();
       const logsJson     = await logsRes.json();
@@ -758,7 +759,7 @@ export default function WorklogAdmin({
   useEffect(() => {
     if (selectedProjectId) fetchData(selectedProjectId);
     else { setDrawings([]); setLogs([]); }
-  }, [selectedProjectId, dateFilter]);
+  }, [selectedProjectId, dateFrom, dateTo]);
 
   // 필터 열리면 검색어 초기화
   useEffect(() => { setFilters({}); }, [selectedProjectId]);
@@ -910,8 +911,19 @@ export default function WorklogAdmin({
             </select>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5">날짜 필터 <span className="font-normal text-gray-400">(비우면 전체)</span></label>
-            <Input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} className="text-sm" />
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+              날짜 필터 <span className="font-normal text-gray-400">(비우면 전체)</span>
+            </label>
+            <div className="flex items-center gap-1.5">
+              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="text-sm" />
+              <span className="text-gray-400 text-xs">~</span>
+              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="text-sm" />
+              {(dateFrom || dateTo) && (
+                <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
