@@ -804,6 +804,8 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
   const [colFilters,     setColFilters]     = useState<Record<string, string[]>>({ status: ["IN_STOCK"] });
   const [openFilter,     setOpenFilter]     = useState<string | null>(null);
   const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
+  const [page,           setPage]           = useState(1);
+  const PAGE_SIZE = 50;
 
   const fetchRemnants = useCallback(async () => {
     setLoading(true);
@@ -888,6 +890,12 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
 
   const hasAnyColFilter = Object.values(colFilters).some(v => v && v.length > 0);
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  // 필터/검색 변경 시 첫 페이지로
+  useEffect(() => { setPage(1); }, [colFilters, search]);
+
   const handleExhaust = async (id: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (!confirm("이 잔재를 소진(삭제) 처리하시겠습니까?")) return;
@@ -960,6 +968,7 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
             <p className="text-sm">{search || hasAnyColFilter ? "검색 결과가 없습니다." : "해당하는 잔재가 없습니다."}</p>
           </div>
         ) : (
+          <>
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left whitespace-nowrap">
               <thead className="bg-gray-50 border-b text-[11px] text-gray-500 uppercase tracking-wide">
@@ -982,7 +991,7 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filtered.map(r => {
+                {paginated.map(r => {
                   const src = sourceInfo(r);
                   return (
                     <tr key={r.id}
@@ -1074,6 +1083,47 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
               </tbody>
             </table>
           </div>
+          {/* 페이지네이션 */}
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-2.5 border-t bg-gray-50 text-xs text-gray-500">
+              <span>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} / {filtered.length}건</span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage(1)}
+                  disabled={page === 1}
+                  className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                >«</button>
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                >‹</button>
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  const start = Math.max(1, Math.min(page - 2, totalPages - 4));
+                  const p = start + i;
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => setPage(p)}
+                      className={`px-2.5 py-1 rounded border text-xs ${p === page ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 hover:bg-gray-100"}`}
+                    >{p}</button>
+                  );
+                })}
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                >›</button>
+                <button
+                  onClick={() => setPage(totalPages)}
+                  disabled={page === totalPages}
+                  className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                >»</button>
+              </div>
+            </div>
+          )}
+          </>
         )}
       </div>
 
