@@ -16,15 +16,13 @@ interface SteelPlanRow {
   thickness: number;
   width: number;
   length: number;
-  status: "REGISTERED" | "RECEIVED" | "COMPLETED";
-  receivedAt:       string | null;
-  actualHeatNo:     string | null;
-  actualVesselCode: string | null;
-  actualDrawingNo:  string | null;
-  memo:             string | null;
-  storageLocation:  string | null;
-  sourceFile: string | null;
-  reservedFor:      string | null;
+  status: "REGISTERED" | "RECEIVED" | "ISSUED" | "COMPLETED";
+  receivedAt:      string | null;
+  issuedAt:        string | null;
+  memo:            string | null;
+  storageLocation: string | null;
+  sourceFile:      string | null;
+  reservedFor:     string | null;
   createdAt: string;
 }
 
@@ -48,7 +46,8 @@ type BulkRow = { vesselCode: string; material: string; thickness: string; width:
 const PLAN_STATUS: Record<string, { label: string; cls: string }> = {
   REGISTERED: { label: "등록",     cls: "bg-gray-100 text-gray-700" },
   RECEIVED:   { label: "입고완료", cls: "bg-green-100 text-green-700" },
-  COMPLETED:  { label: "절단완료", cls: "bg-blue-100  text-blue-700" },
+  ISSUED:     { label: "출고완료", cls: "bg-blue-100  text-blue-700" },
+  COMPLETED:  { label: "출고완료", cls: "bg-blue-100  text-blue-700" }, // 레거시
 };
 
 // 강재 중량 계산 (단위: kg, 밀도 7.85 g/cm³)
@@ -233,7 +232,7 @@ export default function SteelPlanMain() {
     setPrinting(false);
 
     const PLAN_LABEL: Record<string, string> = {
-      REGISTERED: "등록", RECEIVED: "입고완료", COMPLETED: "절단완료",
+      REGISTERED: "등록", RECEIVED: "입고완료", ISSUED: "출고완료", COMPLETED: "출고완료",
     };
     const fmt = (iso: string | null) =>
       iso ? new Date(iso).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" }) : "-";
@@ -343,12 +342,35 @@ export default function SteelPlanMain() {
   /* ── 입고 되돌리기 (RECEIVED → REGISTERED) — Optimistic Update ── */
   const revertReceived = async (id: string) => {
     if (!confirm("입고를 취소하시겠습니까? 입고일이 초기화됩니다.")) return;
-    // 즉시 로컬 반영 (reservedFor도 초기화)
     updateRowsLocally([id], { status: "REGISTERED", receivedAt: null, reservedFor: null });
     const res = await fetch(`/api/steel-plan/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "REGISTERED", receivedAt: null }),
+    });
+    if (!res.ok) loadPlan();
+  };
+
+  /* ── 출고 처리 (RECEIVED → ISSUED) — Optimistic Update ── */
+  const markIssued = async (id: string) => {
+    const now = new Date().toISOString();
+    updateRowsLocally([id], { status: "ISSUED", issuedAt: now });
+    const res = await fetch(`/api/steel-plan/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "ISSUED" }),
+    });
+    if (!res.ok) loadPlan();
+  };
+
+  /* ── 출고 되돌리기 (ISSUED → RECEIVED) — Optimistic Update ── */
+  const revertIssued = async (id: string) => {
+    if (!confirm("출고를 취소하시겠습니까? 강재가 적치장으로 복귀됩니다.")) return;
+    updateRowsLocally([id], { status: "RECEIVED", issuedAt: null });
+    const res = await fetch(`/api/steel-plan/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "RECEIVED", cancelIssue: true }),
     });
     if (!res.ok) loadPlan();
   };
@@ -796,22 +818,10 @@ export default function SteelPlanMain() {
                         </th>
                       );
                     })}
-                    {(["actualHeatNo","actualVesselCode","actualDrawingNo"] as const).map((col, i) => {
-                      const labels = ["실사용판번호","실사용호선","실사용도면번호"];
-                      const active = (colFilters[col]?.length ?? 0) > 0;
-                      return (
-                        <th key={col} className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">
-                          <div className="flex items-center justify-center gap-0.5">
-                            <span>{labels[i]}</span>
-                            <button onClick={(e) => { setOpenFilter(col); setFilterAnchorEl(e.currentTarget); }} className={`rounded hover:bg-gray-200 p-0.5 ${active ? "text-blue-500" : "text-gray-400"}`}>
-                              <Filter size={10} fill={active ? "currentColor" : "none"} />
-                            </button>
-                          </div>
-                        </th>
-                      );
-                    })}
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">출고일</th>
                     <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">메모</th>
                     <th className="w-16 px-2 py-1 text-center font-medium text-gray-600 text-[11px]">입고</th>
+                    <th className="w-16 px-2 py-1 text-center font-medium text-gray-600 text-[11px]">출고</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -857,7 +867,7 @@ export default function SteelPlanMain() {
                             <span className={`px-1.5 py-0 rounded-full text-[11px] font-medium ${st.cls}`}>{st.label}</span>
                           </td>
                           <td className="px-2 py-1 text-center">
-                            {row.status === "RECEIVED" && row.reservedFor ? (
+                            {(row.status === "RECEIVED" || row.status === "ISSUED") && row.reservedFor ? (
                               <span className="px-1.5 py-0 rounded text-[11px] font-semibold bg-purple-100 text-purple-700">
                                 {row.reservedFor} 확정
                               </span>
@@ -865,9 +875,10 @@ export default function SteelPlanMain() {
                               <span className="text-gray-300">-</span>
                             )}
                           </td>
-                          <td className="px-2 py-1 text-center font-mono text-blue-700">{row.actualHeatNo ?? "-"}</td>
-                          <td className="px-2 py-1 text-center text-gray-600">{row.actualVesselCode ?? "-"}</td>
-                          <td className="px-2 py-1 text-center text-gray-600">{row.actualDrawingNo ?? "-"}</td>
+                          {/* 출고일 */}
+                          <td className="px-2 py-1 text-center text-gray-500 font-mono">
+                            {row.issuedAt ? new Date(row.issuedAt).toLocaleDateString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit" }) : <span className="text-gray-300">-</span>}
+                          </td>
                           {/* 메모 버튼 */}
                           <td className="px-2 py-1 text-center">
                             {row.memo ? (
@@ -886,20 +897,28 @@ export default function SteelPlanMain() {
                               </button>
                             )}
                           </td>
-                          {/* 입고/되돌리기 버튼 */}
+                          {/* 입고/입고취소 버튼 */}
                           <td className="px-2 py-1 text-center">
                             {row.status === "REGISTERED" ? (
-                              <button
-                                onClick={() => markReceived(row.id)}
-                                className="px-2 py-0.5 text-[11px] bg-green-600 text-white rounded hover:bg-green-700 font-medium"
-                              >
+                              <button onClick={() => markReceived(row.id)} className="px-2 py-0.5 text-[11px] bg-green-600 text-white rounded hover:bg-green-700 font-medium">
                                 입고
                               </button>
                             ) : row.status === "RECEIVED" ? (
-                              <button
-                                onClick={() => revertReceived(row.id)}
-                                className="px-2 py-0.5 text-[11px] bg-red-600 text-white rounded hover:bg-red-700 font-medium"
-                              >
+                              <button onClick={() => revertReceived(row.id)} className="px-2 py-0.5 text-[11px] bg-gray-400 text-white rounded hover:bg-gray-500 font-medium">
+                                취소
+                              </button>
+                            ) : (
+                              <span className="text-gray-300">-</span>
+                            )}
+                          </td>
+                          {/* 출고/출고취소 버튼 */}
+                          <td className="px-2 py-1 text-center">
+                            {row.status === "RECEIVED" ? (
+                              <button onClick={() => markIssued(row.id)} className="px-2 py-0.5 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-700 font-medium">
+                                출고
+                              </button>
+                            ) : row.status === "ISSUED" ? (
+                              <button onClick={() => revertIssued(row.id)} className="px-2 py-0.5 text-[11px] bg-gray-400 text-white rounded hover:bg-gray-500 font-medium">
                                 취소
                               </button>
                             ) : (

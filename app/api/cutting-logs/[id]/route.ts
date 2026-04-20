@@ -94,44 +94,6 @@ export async function PATCH(
         });
       }
 
-      // ── SteelPlan 실사용 기록 + COMPLETED 처리 ────────────────────────────
-      let steelPlanVesselCode: string | null = null;
-      let steelPlanMaterial: string | null = null;
-      let steelPlanThickness: number | null = null;
-      let steelPlanWidth: number | null = null;
-      let steelPlanLength: number | null = null;
-
-      if (project && log.heatNo?.trim() && log.material && log.thickness && log.width && log.length) {
-        const steelPlan = await prisma.steelPlan.findFirst({
-          where: {
-            vesselCode: project.projectCode,
-            material:   log.material,
-            thickness:  log.thickness,
-            width:      log.width,
-            length:     log.length,
-            status:     "RECEIVED",
-            actualHeatNo: null,
-          },
-          orderBy: { createdAt: "asc" },
-        });
-        if (steelPlan) {
-          await prisma.steelPlan.update({
-            where: { id: steelPlan.id },
-            data: {
-              actualHeatNo:     log.heatNo.trim(),
-              actualVesselCode: project.projectCode,
-              actualDrawingNo:  log.drawingNo?.trim() || null,
-              status:           "COMPLETED",
-            },
-          });
-          steelPlanVesselCode = project.projectCode;
-          steelPlanMaterial   = log.material;
-          steelPlanThickness  = log.thickness;
-          steelPlanWidth      = log.width;
-          steelPlanLength     = log.length;
-        }
-      }
-
       // ── SteelPlanHeat 상태 → CUT (없으면 신규 등록) ───────────────────────
       if (log.heatNo?.trim()) {
         const heatResult = await prisma.steelPlanHeat.updateMany({
@@ -153,14 +115,6 @@ export async function PATCH(
             },
           });
         }
-      }
-
-      // ── DrawingList 재계산 (COMPLETED 증가 → WAITING 감소 반영) ───────────
-      if (steelPlanVesselCode && steelPlanMaterial && steelPlanThickness && steelPlanWidth && steelPlanLength) {
-        await syncDrawingListBySpec(
-          steelPlanVesselCode, steelPlanMaterial,
-          steelPlanThickness, steelPlanWidth, steelPlanLength,
-        );
       }
 
       return NextResponse.json({ success: true, data: log });
@@ -226,34 +180,8 @@ export async function DELETE(
       }
     }
 
-    // SteelPlan 실사용 기록 초기화 + 상태 COMPLETED → RECEIVED 복원
-    let steelPlanVesselCode: string | null = null;
-    let steelPlanMaterial: string | null = null;
-    let steelPlanThickness: number | null = null;
-    let steelPlanWidth: number | null = null;
-    let steelPlanLength: number | null = null;
-
+    // SteelPlanHeat 상태 복원 CUT → WAITING
     if (log.heatNo?.trim()) {
-      // 복원할 SteelPlan 정보 먼저 조회 (syncDrawingListBySpec 인자용)
-      const affectedPlans = await prisma.steelPlan.findMany({
-        where: { actualHeatNo: log.heatNo.trim() },
-        select: { vesselCode: true, material: true, thickness: true, width: true, length: true },
-      });
-      if (affectedPlans.length > 0) {
-        const p = affectedPlans[0];
-        steelPlanVesselCode = p.vesselCode;
-        steelPlanMaterial   = p.material;
-        steelPlanThickness  = p.thickness;
-        steelPlanWidth      = p.width;
-        steelPlanLength     = p.length;
-      }
-
-      // actualHeatNo 초기화 + status COMPLETED → RECEIVED 복원
-      await prisma.steelPlan.updateMany({
-        where: { actualHeatNo: log.heatNo.trim() },
-        data:  { actualHeatNo: null, actualVesselCode: null, actualDrawingNo: null, status: "RECEIVED" },
-      });
-      // SteelPlanHeat 상태 복원 CUT → WAITING
       await prisma.steelPlanHeat.updateMany({
         where: { heatNo: log.heatNo.trim(), status: "CUT" },
         data:  { status: "WAITING" },
@@ -261,14 +189,6 @@ export async function DELETE(
     }
 
     await prisma.cuttingLog.delete({ where: { id } });
-
-    // DrawingList 재계산 (삭제 후 WAITING/REGISTERED 상태 재동기화)
-    if (steelPlanVesselCode && steelPlanMaterial && steelPlanThickness && steelPlanWidth && steelPlanLength) {
-      await syncDrawingListBySpec(
-        steelPlanVesselCode, steelPlanMaterial,
-        steelPlanThickness, steelPlanWidth, steelPlanLength,
-      );
-    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
