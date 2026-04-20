@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { Anchor, List, Upload, FileSpreadsheet, Plus, ClipboardList } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -63,6 +64,9 @@ export default function ProjectsMain({
   const router = useRouter();
   const goTab = (t: string) => router.push(`/cutpart/projects?tab=${t}`);
 
+  // 강재/BOM 등록 탭 내 서브탭
+  const [uploadSubTab, setUploadSubTab] = useState<"steel" | "bom">("steel");
+
   const tabs = [
     { key: "vessels", icon: <List size={14} />,           label: "호선/블록 리스트" },
     { key: "upload",  icon: <Upload size={14} />,          label: "블록별 강재/BOM 등록" },
@@ -117,8 +121,54 @@ export default function ProjectsMain({
       {/* BOM리스트 탭 */}
       {tab === "bom" && <BomMain projectOptions={projectOptions} />}
 
-      {/* 호선강재등록 / 호선강재리스트 탭 */}
-      {(tab === "upload" || tab === "list") && (
+      {/* 강재/BOM 등록 탭 — 서브탭 */}
+      {tab === "upload" && (
+        <div className="space-y-4">
+          <div className="flex gap-0 border-b border-gray-200">
+            {([
+              { key: "steel", icon: <FileSpreadsheet size={13} />, label: "강재 등록" },
+              { key: "bom",   icon: <ClipboardList size={13} />,   label: "BOM 등록" },
+            ] as const).map(({ key, icon, label }) => (
+              <button
+                key={key}
+                onClick={() => setUploadSubTab(key)}
+                className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  uploadSubTab === key
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {icon} {label}
+              </button>
+            ))}
+          </div>
+
+          {uploadSubTab === "steel" && (
+            <DrawingsMain
+              tab="upload"
+              projectId={projectId}
+              projectOptions={projectOptions}
+              recentUploads={recentUploads}
+              drawings={drawings}
+              activeProject={activeProject}
+              baseUrl="/cutpart/projects"
+              hideHeader={true}
+              hideTabs={true}
+            />
+          )}
+
+          {uploadSubTab === "bom" && (
+            <div className="flex flex-col items-center justify-center py-24 text-gray-400 bg-white rounded-xl border">
+              <ClipboardList size={44} className="mb-4 opacity-30" />
+              <p className="text-base font-semibold text-gray-500">BOM 등록</p>
+              <p className="text-sm mt-1 text-gray-400">준비 중입니다.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 블록별강재리스트 탭 */}
+      {tab === "list" && (
         <DrawingsMain
           tab={tab}
           projectId={projectId}
