@@ -36,7 +36,7 @@ export default async function ReportsPage({
     include: {
       equipment:   { select: { id: true, name: true, type: true } },
       project:     { select: { projectCode: true, projectName: true } },
-      drawingList: { select: { steelWeight: true, useWeight: true } },
+      drawingList: { select: { steelWeight: true, useWeight: true, block: true } },
       urgentWork:  {
         select: {
           urgentNo:   true,
@@ -86,6 +86,7 @@ export default async function ReportsPage({
       return null;
     })(),
     useWeight: l.drawingList?.useWeight ?? null,
+    block: l.drawingList?.block ?? null,
   }));
 
   return <ReportsMain logs={logs} fromStr={fromStr} toStr={toStr} />;

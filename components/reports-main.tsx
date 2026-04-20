@@ -44,6 +44,8 @@ interface CuttingLog {
   // 돌발작업 요청 정보
   requester:   string | null;
   department:  string | null;
+  // 블록
+  block:       string | null;
   // 통합 치수 (정규: 강재의 폭/길이, 돌발: 잔재의 W1/L1/W2/L2)
   dimW1:       number | null;
   dimL1:       number | null;
@@ -135,6 +137,18 @@ export default function ReportsMain({
     return acc;
   }, {} as Record<string, { count: number; qty: number }>);
 
+  // 호선별 집계 (정규작업만 — 청구서 기반 데이터)
+  const byProject = filteredLogs
+    .filter(l => !l.isUrgent && l.project)
+    .reduce((acc, l) => {
+      const key = l.project!.projectCode;
+      if (!acc[key]) acc[key] = { name: l.project!.projectName, count: 0, qty: 0, useWeight: 0 };
+      acc[key].count++;
+      acc[key].qty += l.qty ?? 0;
+      acc[key].useWeight += l.useWeight ?? 0;
+      return acc;
+    }, {} as Record<string, { name: string; count: number; qty: number; useWeight: number }>);
+
   // ── 삭제 ─────────────────────────────────────────────────────────────────
   const deleteLog = async (id: string) => {
     if (!confirm("이 작업 기록을 삭제하시겠습니까?\n해당 강재의 상태가 '대기'로 되돌아갑니다.")) return;
@@ -158,7 +172,8 @@ export default function ReportsMain({
       "날짜":         formatDate(l.startAt),
       "장비":         l.equipment.name,
       "작업자":       l.operator,
-      "호선/블록":    locationLabel(l),
+      "호선":         l.project ? `[${l.project.projectCode}] ${l.project.projectName}` : (l.urgentTitle ?? ""),
+      "블록":         l.block ?? "",
       "돌발번호":     l.urgentNo ?? "",
       "도면번호":     l.drawingNo ?? "",
       "Heat NO":      l.heatNo ?? "",
@@ -346,6 +361,50 @@ export default function ReportsMain({
           </div>
         </div>
 
+        {/* 호선별 사용중량 집계 (정규작업 — 청구서 기반) */}
+        {Object.keys(byProject).length > 0 && (
+          <div className="bg-white border rounded-xl p-4 no-print">
+            <h3 className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
+              <ClipboardList size={13} className="text-blue-500" />
+              호선별 사용중량 집계
+              <span className="text-gray-400 font-normal">(정규작업 기준 · 청구서 데이터)</span>
+            </h3>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-gray-400 border-b">
+                  <th className="text-left py-1">호선코드</th>
+                  <th className="text-left py-1">호선명</th>
+                  <th className="text-right py-1">건수</th>
+                  <th className="text-right py-1">수량(매)</th>
+                  <th className="text-right py-1">사용중량(kg)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {Object.entries(byProject).map(([code, v]) => (
+                  <tr key={code}>
+                    <td className="py-1 font-mono text-blue-700">{code}</td>
+                    <td className="py-1 text-gray-700">{v.name}</td>
+                    <td className="py-1 text-right">{v.count}건</td>
+                    <td className="py-1 text-right">{v.qty.toLocaleString()}매</td>
+                    <td className="py-1 text-right font-semibold text-gray-800">
+                      {v.useWeight.toLocaleString(undefined, { maximumFractionDigits: 1 })}kg
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="border-t font-semibold bg-blue-50">
+                <tr>
+                  <td colSpan={4} className="py-1 text-gray-600">합계</td>
+                  <td className="py-1 text-right text-blue-800">
+                    {Object.values(byProject).reduce((s, v) => s + v.useWeight, 0)
+                      .toLocaleString(undefined, { maximumFractionDigits: 1 })}kg
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+
         {/* 상세 내역 테이블 (탭별 컬럼 구성) */}
         <div className="bg-white border rounded-xl print-table-wrap overflow-x-auto">
           <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between no-print">
@@ -494,7 +553,7 @@ function NormalDetailTable({
       <thead className="bg-gray-50 border-b">
         <tr>
           {[
-            ["날짜", "left"], ["장비", "left"], ["작업자", "left"], ["호선/블록", "left"],
+            ["날짜", "left"], ["장비", "left"], ["작업자", "left"], ["호선", "left"], ["블록", "left"],
             ["도면번호", "left"], ["Heat NO", "left"], ["재질", "left"], ["두께", "right"],
             ["폭×길이", "right"], ["수량", "right"], ["작업시간", "center"],
             ["강재중량(kg)", "right"], ["사용중량(kg)", "right"], ["특이사항", "left"],
@@ -513,6 +572,7 @@ function NormalDetailTable({
             <td className="px-3 py-2 text-gray-600 text-[11px] whitespace-nowrap">
               {log.project ? `[${log.project.projectCode}] ${log.project.projectName}` : <span className="text-gray-400">-</span>}
             </td>
+            <td className="px-3 py-2 text-gray-700 font-medium whitespace-nowrap">{log.block ?? <span className="text-gray-300">-</span>}</td>
             <td className="px-3 py-2 font-mono text-gray-800">{log.drawingNo ?? "-"}</td>
             <td className="px-3 py-2 font-mono text-blue-700">{log.heatNo || "-"}</td>
             <td className="px-3 py-2">
@@ -649,8 +709,8 @@ function TotalFootNormal({ totalQty, totalSteel, totalUse, totalMs, count }: {
   return (
     <tfoot className="bg-gray-50 border-t font-semibold text-xs">
       <tr>
-        {/* 날짜·장비·작업자·호선/블록·도면·Heat·재질·두께·폭×길이 = 9칸 */}
-        <td colSpan={9} className="px-3 py-2 text-gray-500">합계 ({count}건)</td>
+        {/* 날짜·장비·작업자·호선·블록·도면·Heat·재질·두께·폭×길이 = 10칸 */}
+        <td colSpan={10} className="px-3 py-2 text-gray-500">합계 ({count}건)</td>
         {/* 수량 */}
         <td className="px-3 py-2 text-right text-gray-800">{totalQty.toLocaleString()}매</td>
         {/* 작업시간 */}
