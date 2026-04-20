@@ -43,8 +43,8 @@ const COLUMNS = [
   { key: "size",      label: "사이즈",   align: "left"  as const, filterable: true  },
   { key: "material",  label: "재질",     align: "left"  as const, filterable: true  },
   { key: "process",   label: "가공",     align: "left"  as const, filterable: true  },
-  { key: "qty",       label: "수량",     align: "right" as const, filterable: false },
-  { key: "weight",    label: "중량(kg)", align: "right" as const, filterable: false },
+  { key: "qty",       label: "수량",     align: "right" as const, filterable: true  },
+  { key: "weight",    label: "중량(kg)", align: "right" as const, filterable: true  },
   { key: "nestNo",    label: "NEST NO",  align: "left"  as const, filterable: true  },
 ] as const;
 
