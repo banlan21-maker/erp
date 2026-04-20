@@ -10,7 +10,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ClipboardList, FolderOpen, ArrowLeft, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { FilterHeader, FilterBadge } from "@/components/table-filter";
+import ColumnFilterDropdown from "@/components/column-filter-dropdown";
+import { ListFilter, XCircle } from "lucide-react";
 
 interface ProjectOption {
   id: string;
@@ -62,15 +63,15 @@ export default function BomMain({
   const [deleting,setDeleting]= useState(false);
 
   // Excel-style filter state
-  const [filters,    setFilters]    = useState<Record<string, string[]>>({});
-  const [openCol,    setOpenCol]    = useState<string | null>(null);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const [filters,  setFilters]  = useState<Record<string, string[]>>({});
+  const [openCol,  setOpenCol]  = useState<string | null>(null);
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
 
   const handleFilterChange = (col: string, values: string[]) =>
     setFilters(p => values.length === 0 ? Object.fromEntries(Object.entries(p).filter(([k]) => k !== col)) : { ...p, [col]: values });
 
-  const handleFilterOpen  = (col: string, rect: DOMRect) => { setOpenCol(col); setAnchorRect(rect); };
-  const handleFilterClose = () => { setOpenCol(null); setAnchorRect(null); };
+  const handleFilterOpen  = (col: string, el: HTMLElement) => { setOpenCol(col); setAnchorEl(el); };
+  const handleFilterClose = () => { setOpenCol(null); setAnchorEl(null); };
 
   // Unique values per column (for dropdown)
   const allValues = (col: ColKey): string[] => {
@@ -141,12 +142,15 @@ export default function BomMain({
             </span>
           )}
           <div className="ml-auto flex items-center gap-2">
-            <FilterBadge
-              count={filtered.length}
-              total={items.length}
-              filterCount={filterCount}
-              onClear={() => setFilters({})}
-            />
+            {filterCount > 0 && (
+              <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md">
+                <ListFilter size={11} />
+                <span>필터 {filterCount}개 적용 ({filtered.length}/{items.length}행)</span>
+                <button onClick={() => setFilters({})} className="ml-0.5 hover:text-blue-800" title="모든 필터 초기화">
+                  <XCircle size={12} />
+                </button>
+              </div>
+            )}
             <span className="text-xs text-gray-400">
               {filterCount > 0 ? `${filtered.length}/${items.length}건` : `${items.length}건`}
               {" · "}수량 {totalQty.toLocaleString()} · {totalWt.toFixed(3)}t
@@ -178,28 +182,35 @@ export default function BomMain({
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
                     <th className="px-2 py-2.5 text-center text-xs font-semibold text-gray-500 w-8">No</th>
-                    {COLUMNS.map(c => (
-                      c.filterable ? (
-                        <FilterHeader
-                          key={c.key}
-                          col={c.key}
-                          label={c.label}
-                          align={c.align}
-                          allValues={allValues(c.key)}
-                          filters={filters}
-                          onFilterChange={handleFilterChange}
-                          openCol={openCol}
-                          anchorRect={anchorRect}
-                          onOpen={handleFilterOpen}
-                          onClose={handleFilterClose}
-                        />
-                      ) : (
+                    {COLUMNS.map(c => {
+                      const isActive = (filters[c.key]?.length ?? 0) > 0;
+                      return (
                         <th key={c.key}
                           className={`px-2 py-2.5 text-xs font-semibold text-gray-500 whitespace-nowrap ${c.align === "right" ? "text-right" : "text-left"}`}>
-                          {c.label}
+                          <div className={`flex items-center gap-1 ${c.align === "right" ? "justify-end" : ""}`}>
+                            <span>{c.label}</span>
+                            {c.filterable && (
+                              <button
+                                onClick={e => { e.stopPropagation(); if (openCol === c.key) { handleFilterClose(); return; } handleFilterOpen(c.key, e.currentTarget); }}
+                                className={`p-0.5 rounded hover:bg-gray-200 transition-colors ${isActive ? "text-blue-600" : "text-gray-400"}`}
+                                title={isActive ? `필터 적용 중 (${filters[c.key]?.length}개)` : "필터"}
+                              >
+                                <ListFilter size={11} />
+                              </button>
+                            )}
+                          </div>
+                          {c.filterable && openCol === c.key && anchorEl && (
+                            <ColumnFilterDropdown
+                              anchorEl={anchorEl}
+                              values={allValues(c.key).map(v => ({ value: v, label: v }))}
+                              selected={filters[c.key] ?? []}
+                              onApply={values => { handleFilterChange(c.key, values); handleFilterClose(); }}
+                              onClose={handleFilterClose}
+                            />
+                          )}
                         </th>
-                      )
-                    ))}
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">

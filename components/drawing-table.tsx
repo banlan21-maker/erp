@@ -6,6 +6,7 @@ import type { DrawingList } from "@prisma/client";
 import { Pencil, Trash2, Check, X, ListFilter, XCircle, Plus, CalendarCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import ColumnFilterDropdown from "@/components/column-filter-dropdown";
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
@@ -77,112 +78,6 @@ function colValue(d: DrawingList, col: string): string {
   }
 }
 
-// ─── 필터 드롭다운 컴포넌트 ──────────────────────────────────────────────────
-
-interface FilterDropdownProps {
-  col: string;
-  allValues: string[];
-  selected: string[];
-  onChange: (col: string, values: string[]) => void;
-  onClose: () => void;
-  anchorRect: DOMRect;
-}
-
-function FilterDropdown({ col, allValues, selected, onChange, onClose, anchorRect }: FilterDropdownProps) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [search, setSearch] = useState("");
-
-  // 외부 클릭 닫기
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [onClose]);
-
-  const filtered = allValues.filter(v => v.toLowerCase().includes(search.toLowerCase()));
-  const allChecked = selected.length === 0 || selected.length === allValues.length;
-
-  const toggle = (v: string) => {
-    if (selected.includes(v)) {
-      const next = selected.filter(x => x !== v);
-      onChange(col, next.length === allValues.length ? [] : next);
-    } else {
-      const next = [...selected, v];
-      onChange(col, next.length === allValues.length ? [] : next);
-    }
-  };
-
-  const toggleAll = () => {
-    onChange(col, allChecked ? [] : []);
-  };
-
-  // 화면 오른쪽 잘림 방지
-  const left = Math.min(anchorRect.left, window.innerWidth - 220);
-  const top  = anchorRect.bottom + 4;
-
-  return (
-    <div
-      ref={ref}
-      style={{ position: "fixed", top, left, zIndex: 9999, minWidth: 200 }}
-      className="bg-white border border-gray-200 rounded-lg shadow-xl text-xs"
-    >
-      {/* 검색 */}
-      <div className="p-2 border-b">
-        <Input
-          autoFocus
-          placeholder="검색..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="h-7 text-xs"
-        />
-      </div>
-      {/* 전체 선택 */}
-      <div className="px-2 py-1.5 border-b">
-        <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5">
-          <input
-            type="checkbox"
-            checked={allChecked}
-            onChange={toggleAll}
-            className="rounded"
-          />
-          <span className="font-semibold text-gray-600">전체 선택</span>
-        </label>
-      </div>
-      {/* 항목 목록 */}
-      <div className="max-h-52 overflow-y-auto py-1">
-        {filtered.length === 0 ? (
-          <div className="px-3 py-2 text-gray-400">검색 결과 없음</div>
-        ) : (
-          filtered.map(v => (
-            <label key={v} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 px-3 py-1">
-              <input
-                type="checkbox"
-                checked={selected.length === 0 || selected.includes(v)}
-                onChange={() => toggle(v)}
-                className="rounded"
-              />
-              <span className="text-gray-700 truncate max-w-[160px]">{v}</span>
-            </label>
-          ))
-        )}
-      </div>
-      {/* 초기화 */}
-      {selected.length > 0 && (
-        <div className="p-2 border-t">
-          <button
-            onClick={() => onChange(col, [])}
-            className="w-full text-center text-xs text-red-500 hover:text-red-700 py-0.5"
-          >
-            필터 초기화
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── 필터 헤더 버튼 ───────────────────────────────────────────────────────────
 
 interface FilterHeaderProps {
@@ -193,17 +88,17 @@ interface FilterHeaderProps {
   filters: Record<string, string[]>;
   onFilterChange: (col: string, values: string[]) => void;
   openCol: string | null;
-  anchorRect: DOMRect | null;
-  onOpen: (col: string, rect: DOMRect) => void;
+  anchorEl: HTMLElement | null;
+  onOpen: (col: string, el: HTMLElement) => void;
   onClose: () => void;
 }
 
 function FilterHeader({
   col, label, align = "left", drawings, filters,
-  onFilterChange, openCol, anchorRect, onOpen, onClose,
+  onFilterChange, openCol, anchorEl, onOpen, onClose,
 }: FilterHeaderProps) {
   const allValues = useMemo(
-    () => [...new Set(drawings.map(d => colValue(d, col)))].sort(),
+    () => [...new Set(drawings.map(d => colValue(d, col)))].sort().map(v => ({ value: v, label: v })),
     [drawings, col]
   );
   const selected = filters[col] ?? [];
@@ -217,7 +112,7 @@ function FilterHeader({
           onClick={e => {
             e.stopPropagation();
             if (openCol === col) { onClose(); return; }
-            onOpen(col, e.currentTarget.getBoundingClientRect());
+            onOpen(col, e.currentTarget);
           }}
           className={`p-0.5 rounded hover:bg-gray-200 transition-colors ${isActive ? "text-blue-600" : "text-gray-400"}`}
           title={isActive ? `필터 적용 중 (${selected.length}개)` : "필터"}
@@ -225,15 +120,13 @@ function FilterHeader({
           <ListFilter size={11} />
         </button>
       </div>
-      {/* 열린 드롭다운 */}
-      {openCol === col && anchorRect && (
-        <FilterDropdown
-          col={col}
-          allValues={allValues}
+      {openCol === col && anchorEl && (
+        <ColumnFilterDropdown
+          anchorEl={anchorEl}
+          values={allValues}
           selected={selected}
-          onChange={onFilterChange}
+          onApply={values => { onFilterChange(col, values); onClose(); }}
           onClose={onClose}
-          anchorRect={anchorRect}
         />
       )}
     </th>
@@ -352,20 +245,20 @@ export default function DrawingTable({
   // 필터
   const [filters, setFilters] = useState<Record<string, string[]>>({});
   const [openCol, setOpenCol] = useState<string | null>(null);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
 
   const handleFilterChange = useCallback((col: string, values: string[]) => {
     setFilters(prev => ({ ...prev, [col]: values }));
   }, []);
 
-  const handleFilterOpen = useCallback((col: string, rect: DOMRect) => {
+  const handleFilterOpen = useCallback((col: string, el: HTMLElement) => {
     setOpenCol(col);
-    setAnchorRect(rect);
+    setAnchorEl(el);
   }, []);
 
   const handleFilterClose = useCallback(() => {
     setOpenCol(null);
-    setAnchorRect(null);
+    setAnchorEl(null);
   }, []);
 
   const activeFilterCount = Object.values(filters).filter(v => v.length > 0).length;
@@ -434,7 +327,7 @@ export default function DrawingTable({
   const filterHeaderProps = {
     drawings, filters,
     onFilterChange: handleFilterChange,
-    openCol, anchorRect,
+    openCol, anchorEl,
     onOpen: handleFilterOpen,
     onClose: handleFilterClose,
   };
