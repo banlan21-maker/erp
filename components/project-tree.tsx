@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronRight, FolderOpen, Folder, FileSpreadsheet, Plus, MapPin } from "lucide-react";
+import {
+  ChevronDown, ChevronRight, FolderOpen, Folder,
+  FileSpreadsheet, Plus, MapPin, ClipboardList,
+} from "lucide-react";
 import ProjectDeleteButton from "@/components/project-delete-button";
 
 interface Block {
@@ -24,9 +27,9 @@ interface VesselGroup {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  ACTIVE: "bg-green-100 text-green-700",
+  ACTIVE:    "bg-green-100 text-green-700",
   COMPLETED: "bg-gray-100 text-gray-600",
-  ON_HOLD: "bg-yellow-100 text-yellow-700",
+  ON_HOLD:   "bg-yellow-100 text-yellow-700",
 };
 const STATUS_LABEL: Record<string, string> = {
   ACTIVE: "진행중", COMPLETED: "완료", ON_HOLD: "보류",
@@ -37,13 +40,15 @@ const TYPE_COLOR: Record<string, string> = {
 };
 
 export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
-  // 처음엔 모든 호선 펼쳐진 상태
+  // 호선 펼침 (기본 모두 열림)
   const [expanded, setExpanded] = useState<Record<string, boolean>>(
     Object.fromEntries(vessels.map((v) => [v.code, true]))
   );
+  // 블록 폴더 펼침 (기본 모두 닫힘)
+  const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({});
 
-  const toggle = (code: string) =>
-    setExpanded((prev) => ({ ...prev, [code]: !prev[code] }));
+  const toggle      = (code: string) => setExpanded(p => ({ ...p, [code]: !p[code] }));
+  const toggleBlock = (id: string)   => setExpandedBlocks(p => ({ ...p, [id]: !p[id] }));
 
   if (vessels.length === 0) {
     return (
@@ -61,60 +66,61 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
         const isOpen = expanded[vessel.code] ?? true;
         return (
           <div key={vessel.code} className="bg-white rounded-xl border overflow-hidden">
+
             {/* ── 호선 헤더 ── */}
-            <button
-              onClick={() => toggle(vessel.code)}
-              className="w-full flex items-center gap-2 px-4 py-3 bg-gray-800 text-white hover:bg-gray-700 transition-colors text-left"
-            >
-              {isOpen
-                ? <ChevronDown size={15} className="text-gray-400 flex-shrink-0" />
-                : <ChevronRight size={15} className="text-gray-400 flex-shrink-0" />}
-              {isOpen
-                ? <FolderOpen size={16} className="text-yellow-400 flex-shrink-0" />
-                : <Folder size={16} className="text-yellow-400 flex-shrink-0" />}
-              <span className="font-bold text-sm">호선 [{vessel.code}]</span>
-              <span className="text-xs text-gray-400 ml-1">
-                {vessel.blocks.length}개 블록 · 강재리스트 {vessel.totalDrawings}행
-              </span>
-            </button>
+            <div className="flex items-center bg-gray-800 text-white">
+              <button
+                onClick={() => toggle(vessel.code)}
+                className="flex items-center gap-2 px-4 py-3 flex-1 text-left hover:bg-gray-700 transition-colors"
+              >
+                {isOpen
+                  ? <ChevronDown size={15} className="text-gray-400 flex-shrink-0" />
+                  : <ChevronRight size={15} className="text-gray-400 flex-shrink-0" />}
+                {isOpen
+                  ? <FolderOpen size={16} className="text-yellow-400 flex-shrink-0" />
+                  : <Folder size={16} className="text-yellow-400 flex-shrink-0" />}
+                <span className="font-bold text-sm">호선 [{vessel.code}]</span>
+                <span className="text-xs text-gray-400 ml-1">
+                  {vessel.blocks.length}개 블록 · 강재리스트 {vessel.totalDrawings}행
+                </span>
+              </button>
+
+              {/* 전체 강재리스트 버튼 — 호선 헤더 우측 */}
+              <Link
+                href={`/cutpart/projects/vessel/${encodeURIComponent(vessel.code)}`}
+                className="flex items-center gap-1.5 px-4 py-3 text-xs text-blue-300 hover:text-white hover:bg-gray-700 transition-colors border-l border-gray-700 whitespace-nowrap"
+              >
+                <FileSpreadsheet size={13} />
+                전체 강재리스트
+              </Link>
+            </div>
 
             {isOpen && (
               <div>
-                {/* ── 전체 강재리스트 링크 ── */}
-                <Link
-                  href={`/cutpart/projects/vessel/${encodeURIComponent(vessel.code)}`}
-                  className="flex items-center gap-2 px-6 py-2 bg-gray-50 border-b hover:bg-blue-50 transition-colors group"
-                >
-                  <span className="w-3 h-3 border-l-2 border-b-2 border-gray-300 inline-block ml-1 mr-1 flex-shrink-0" />
-                  <FileSpreadsheet size={13} className="text-blue-400 flex-shrink-0" />
-                  <span className="text-xs text-gray-600 group-hover:text-blue-700 font-medium">
-                    전체 강재리스트
-                  </span>
-                  <span className="text-xs text-gray-400 ml-auto">{vessel.totalDrawings}행</span>
-                </Link>
-
                 {/* ── 블록 목록 ── */}
-                {vessel.blocks.map((block, idx) => {
-                  const isLast = idx === vessel.blocks.length - 1;
+                {vessel.blocks.map((block) => {
+                  const isBlockOpen = expandedBlocks[block.id] ?? false;
                   return (
-                    <div
-                      key={block.id}
-                      className={`border-b last:border-b-0 hover:bg-gray-50 transition-colors`}
-                    >
-                      <div className="flex items-center gap-0 px-6 py-2.5">
-                        {/* 트리 라인 */}
-                        <span className={`w-3 h-full border-l-2 border-gray-200 inline-block mr-1 flex-shrink-0 self-stretch ${isLast ? "border-b-2 rounded-bl" : ""}`} />
+                    <div key={block.id} className="border-b last:border-b-0">
+                      {/* 블록 행 */}
+                      <div className="flex items-center gap-0 px-6 py-2.5 hover:bg-gray-50 transition-colors">
+                        <span className="w-3 border-l-2 border-b-2 border-gray-200 inline-block mr-1 self-stretch flex-shrink-0 rounded-bl" />
 
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <Folder size={13} className="text-yellow-500 flex-shrink-0" />
+                        {/* 블록 폴더 토글 */}
+                        <button
+                          onClick={() => toggleBlock(block.id)}
+                          className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                        >
+                          {isBlockOpen
+                            ? <ChevronDown size={13} className="text-gray-400 flex-shrink-0" />
+                            : <ChevronRight size={13} className="text-gray-400 flex-shrink-0" />}
+                          {isBlockOpen
+                            ? <FolderOpen size={13} className="text-yellow-500 flex-shrink-0" />
+                            : <Folder size={13} className="text-yellow-500 flex-shrink-0" />}
 
-                          {/* 블록명 클릭 → 블록별강재리스트 */}
-                          <Link
-                            href={`/cutpart/projects?tab=list&projectId=${block.id}`}
-                            className="text-sm font-semibold text-gray-800 hover:text-blue-600 hover:underline"
-                          >
+                          <span className="text-sm font-semibold text-gray-800 hover:text-blue-600">
                             {block.projectName}
-                          </Link>
+                          </span>
 
                           <span className={`text-xs px-1.5 py-0.5 rounded font-bold ${TYPE_COLOR[block.type]}`}>
                             {block.type}
@@ -122,24 +128,21 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
                           {block.storageLocation && (
                             <span className="flex items-center gap-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
                               <MapPin size={10} />
-                              보관장소: {block.storageLocation}
+                              {block.storageLocation}
                             </span>
                           )}
                           <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLOR[block.status]}`}>
                             {STATUS_LABEL[block.status]}
                           </span>
                           <span className="text-xs text-gray-400">{block.client}</span>
-                        </div>
+                        </button>
 
-                        {/* 강재리스트 수 + 등록일 + 삭제 */}
+                        {/* 우측: 강재 수 + 등록일 + 삭제 */}
                         <div className="flex items-center gap-3 ml-auto flex-shrink-0">
-                          <Link
-                            href={`/cutpart/projects?tab=list&projectId=${block.id}`}
-                            className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600"
-                          >
+                          <span className="flex items-center gap-1 text-xs text-gray-400">
                             <FileSpreadsheet size={12} />
                             {block.drawingCount}행
-                          </Link>
+                          </span>
                           <span className="text-xs text-gray-300">
                             {new Date(block.createdAt).toLocaleDateString("ko-KR")}
                           </span>
@@ -149,6 +152,30 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
                           />
                         </div>
                       </div>
+
+                      {/* 블록 하위 항목 (폴더 펼침 시) */}
+                      {isBlockOpen && (
+                        <div className="bg-gray-50 border-t">
+                          {/* 강재리스트 */}
+                          <Link
+                            href={`/cutpart/projects?tab=list&projectId=${block.id}`}
+                            className="flex items-center gap-2 px-10 py-2 hover:bg-blue-50 transition-colors group border-b"
+                          >
+                            <span className="w-3 border-l-2 border-b-2 border-gray-200 inline-block mr-1 flex-shrink-0 rounded-bl" />
+                            <FileSpreadsheet size={12} className="text-blue-400 flex-shrink-0" />
+                            <span className="text-xs text-gray-600 group-hover:text-blue-700 font-medium">강재리스트</span>
+                            <span className="text-xs text-gray-400 ml-auto">{block.drawingCount}행</span>
+                          </Link>
+
+                          {/* BOM리스트 (구조만 — 추후 구현) */}
+                          <div className="flex items-center gap-2 px-10 py-2 opacity-40 cursor-not-allowed">
+                            <span className="w-3 border-l-2 border-b-2 border-gray-200 inline-block mr-1 flex-shrink-0 rounded-bl" />
+                            <ClipboardList size={12} className="text-purple-400 flex-shrink-0" />
+                            <span className="text-xs text-gray-500 font-medium">BOM리스트</span>
+                            <span className="text-xs text-gray-400 ml-auto">준비중</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
