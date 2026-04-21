@@ -116,7 +116,7 @@ export default function ReportsMain({
   const sumDurationMs = (arr: CuttingLog[]) =>
     arr.reduce((s, l) => s + durationMs(l.startAt, l.endAt), 0);
 
-  const totalQty      = sumNum(filteredLogs, "qty");
+  const totalQty      = filteredLogs.length;  // 1작업=1매이므로 건수=수량
   const totalSteel    = sumNum(filteredLogs, "steelWeight");
   const totalUse      = sumNum(filteredLogs, "useWeight");
   const totalDuration = sumDurationMs(filteredLogs);
@@ -124,35 +124,31 @@ export default function ReportsMain({
   // ── 장비별 / 작업자별 집계 ────────────────────────────────────────────────
   const byEq = filteredLogs.reduce((acc, l) => {
     const k = l.equipment.name;
-    if (!acc[k]) acc[k] = { count: 0, qty: 0 };
-    acc[k].count++;
-    acc[k].qty += l.qty ?? 0;
+    if (!acc[k]) acc[k] = { qty: 0 };
+    acc[k].qty++;
     return acc;
-  }, {} as Record<string, { count: number; qty: number }>);
+  }, {} as Record<string, { qty: number }>);
 
   const byOp = filteredLogs.reduce((acc, l) => {
-    if (!acc[l.operator]) acc[l.operator] = { count: 0, qty: 0 };
-    acc[l.operator].count++;
-    acc[l.operator].qty += l.qty ?? 0;
+    if (!acc[l.operator]) acc[l.operator] = { qty: 0 };
+    acc[l.operator].qty++;
     return acc;
-  }, {} as Record<string, { count: number; qty: number }>);
+  }, {} as Record<string, { qty: number }>);
 
   // 호선 > 블록 2단계 집계 (정규작업만 — 청구서 기반 데이터)
-  type BlockStat = { count: number; qty: number; steelWeight: number; useWeight: number };
-  type VesselStat = { name: string; count: number; qty: number; steelWeight: number; useWeight: number; blocks: Record<string, BlockStat> };
+  type BlockStat = { qty: number; steelWeight: number; useWeight: number };
+  type VesselStat = { name: string; qty: number; steelWeight: number; useWeight: number; blocks: Record<string, BlockStat> };
   const byProject = filteredLogs
     .filter(l => !l.isUrgent && l.project)
     .reduce((acc, l) => {
       const code  = l.project!.projectCode;
       const block = l.block ?? "(블록미상)";
-      if (!acc[code]) acc[code] = { name: l.project!.projectName, count: 0, qty: 0, steelWeight: 0, useWeight: 0, blocks: {} };
-      if (!acc[code].blocks[block]) acc[code].blocks[block] = { count: 0, qty: 0, steelWeight: 0, useWeight: 0 };
-      acc[code].count++;
-      acc[code].qty         += l.qty         ?? 0;
+      if (!acc[code]) acc[code] = { name: l.project!.projectName, qty: 0, steelWeight: 0, useWeight: 0, blocks: {} };
+      if (!acc[code].blocks[block]) acc[code].blocks[block] = { qty: 0, steelWeight: 0, useWeight: 0 };
+      acc[code].qty++;
       acc[code].steelWeight += l.steelWeight ?? 0;
       acc[code].useWeight   += l.useWeight   ?? 0;
-      acc[code].blocks[block].count++;
-      acc[code].blocks[block].qty         += l.qty         ?? 0;
+      acc[code].blocks[block].qty++;
       acc[code].blocks[block].steelWeight += l.steelWeight ?? 0;
       acc[code].blocks[block].useWeight   += l.useWeight   ?? 0;
       return acc;
