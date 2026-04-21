@@ -699,7 +699,7 @@ export default function SteelPlanMain() {
             onClick={() => { setDeleteVessel(""); setShowDeleteModal(true); }}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-red-300 text-red-600 rounded-lg hover:bg-red-50"
           >
-            <Trash2 size={14} /> 호선강재 삭제
+            <Trash2 size={14} /> 리스트 삭제
           </button>
           <button
             onClick={downloadTemplate}
