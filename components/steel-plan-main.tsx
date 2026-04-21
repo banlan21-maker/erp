@@ -853,6 +853,7 @@ export default function SteelPlanMain() {
                         {allChecked ? <CheckSquare size={13} className="text-blue-600" /> : <Square size={13} className="text-gray-400" />}
                       </button>
                     </th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">업로드번호</th>
                     {(["vesselCode","material","thickness","width","length"] as const).map((col, i) => {
                       const labels = ["호선","재질","두께","폭","길이"];
                       const active = (colFilters[col]?.length ?? 0) > 0;
@@ -882,7 +883,6 @@ export default function SteelPlanMain() {
                         </th>
                       );
                     })}
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">업로드번호</th>
                     <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">선별지시일</th>
                     <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">출고일</th>
                     <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">메모</th>
@@ -904,6 +904,9 @@ export default function SteelPlanMain() {
                             <button onClick={() => toggleOne(row.id)}>
                               {selectedIds.has(row.id) ? <CheckSquare size={13} className="text-blue-600" /> : <Square size={13} className="text-gray-400" />}
                             </button>
+                          </td>
+                          <td className="px-2 py-1 text-center font-mono text-[10px] text-gray-400">
+                            {row.uploadBatchNo ?? <span className="text-gray-200">-</span>}
                           </td>
                           <td className="px-2 py-1 text-center font-medium">{row.vesselCode}</td>
                           <td className="px-2 py-1 text-center">{row.material}</td>
@@ -940,10 +943,6 @@ export default function SteelPlanMain() {
                             ) : (
                               <span className="text-gray-300">-</span>
                             )}
-                          </td>
-                          {/* 업로드번호 */}
-                          <td className="px-2 py-1 text-center font-mono text-[10px] text-gray-400">
-                            {row.uploadBatchNo ?? <span className="text-gray-200">-</span>}
                           </td>
                           {/* 선별지시일 */}
                           <td className="px-2 py-1 text-center text-gray-500 font-mono">
