@@ -333,15 +333,13 @@ export default function ReportsMain({
               <thead>
                 <tr className="text-gray-400 border-b">
                   <th className="text-left py-1">장비</th>
-                  <th className="text-right py-1">건수</th>
-                  <th className="text-right py-1">수량</th>
+                  <th className="text-right py-1">수량(매)</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {Object.entries(byEq).map(([name, v]) => (
                   <tr key={name}>
                     <td className="py-1 font-medium">{name}</td>
-                    <td className="py-1 text-right">{v.count}건</td>
                     <td className="py-1 text-right">{v.qty}매</td>
                   </tr>
                 ))}
@@ -354,15 +352,13 @@ export default function ReportsMain({
               <thead>
                 <tr className="text-gray-400 border-b">
                   <th className="text-left py-1">작업자</th>
-                  <th className="text-right py-1">건수</th>
-                  <th className="text-right py-1">수량</th>
+                  <th className="text-right py-1">수량(매)</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {Object.entries(byOp).map(([name, v]) => (
                   <tr key={name}>
                     <td className="py-1 font-medium">{name}</td>
-                    <td className="py-1 text-right">{v.count}건</td>
                     <td className="py-1 text-right">{v.qty}매</td>
                   </tr>
                 ))}
@@ -381,9 +377,8 @@ export default function ReportsMain({
               <span className="text-xs text-gray-400 font-normal">(정규작업 기준 · 청구서 데이터)</span>
             </div>
             {/* 컬럼 헤더 */}
-            <div className="grid grid-cols-[1fr_60px_60px_90px_90px] gap-2 px-4 py-1.5 bg-gray-50 border-b text-[11px] text-gray-400 font-semibold">
+            <div className="grid grid-cols-[1fr_60px_90px_90px] gap-2 px-4 py-1.5 bg-gray-50 border-b text-[11px] text-gray-400 font-semibold">
               <span>호선 / 블록</span>
-              <span className="text-right">건수</span>
               <span className="text-right">수량(매)</span>
               <span className="text-right">강재중량(kg)</span>
               <span className="text-right">사용중량(kg)</span>
@@ -402,14 +397,13 @@ export default function ReportsMain({
                     {/* 호선 행 */}
                     <button
                       onClick={toggleVessel}
-                      className="w-full grid grid-cols-[1fr_60px_60px_90px_90px] gap-2 px-4 py-2.5 hover:bg-blue-50 transition-colors text-left"
+                      className="w-full grid grid-cols-[1fr_60px_90px_90px] gap-2 px-4 py-2.5 hover:bg-blue-50 transition-colors text-left"
                     >
                       <span className="flex items-center gap-1.5 font-semibold text-blue-700 text-xs">
                         {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                         <span className="font-mono">{code}</span>
                         <span className="text-gray-500 font-normal">{v.name}</span>
                       </span>
-                      <span className="text-right text-xs text-gray-600">{v.count}건</span>
                       <span className="text-right text-xs text-gray-600">{v.qty.toLocaleString()}매</span>
                       <span className="text-right text-xs text-gray-700 font-medium">
                         {v.steelWeight.toLocaleString(undefined, { maximumFractionDigits: 1 })}
@@ -422,12 +416,11 @@ export default function ReportsMain({
                     {expanded && (
                       <div className="bg-blue-50/50 divide-y divide-blue-100">
                         {Object.entries(v.blocks).map(([block, b]) => (
-                          <div key={block} className="grid grid-cols-[1fr_60px_60px_90px_90px] gap-2 px-4 py-2 text-xs">
+                          <div key={block} className="grid grid-cols-[1fr_60px_90px_90px] gap-2 px-4 py-2 text-xs">
                             <span className="flex items-center gap-1.5 pl-6 text-gray-600">
                               <span className="w-1.5 h-1.5 rounded-full bg-blue-300 shrink-0" />
                               <span className="font-medium text-gray-700">{block}</span>
                             </span>
-                            <span className="text-right text-gray-500">{b.count}건</span>
                             <span className="text-right text-gray-500">{b.qty.toLocaleString()}매</span>
                             <span className="text-right text-gray-600">
                               {b.steelWeight.toLocaleString(undefined, { maximumFractionDigits: 1 })}
@@ -444,9 +437,8 @@ export default function ReportsMain({
               })}
             </div>
             {/* 전체 합계 */}
-            <div className="grid grid-cols-[1fr_60px_60px_90px_90px] gap-2 px-4 py-2.5 bg-blue-50 border-t text-xs font-bold">
+            <div className="grid grid-cols-[1fr_60px_90px_90px] gap-2 px-4 py-2.5 bg-blue-50 border-t text-xs font-bold">
               <span className="text-gray-600">합계</span>
-              <span className="text-right text-gray-700">{Object.values(byProject).reduce((s,v) => s+v.count, 0)}건</span>
               <span className="text-right text-gray-700">{Object.values(byProject).reduce((s,v) => s+v.qty, 0).toLocaleString()}매</span>
               <span className="text-right text-gray-700">
                 {Object.values(byProject).reduce((s,v) => s+v.steelWeight, 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}
