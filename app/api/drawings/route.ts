@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
             thickness:  row.thickness,
             width:      row.width,
             length:     row.length,
-            status:     "RECEIVED",
+            status:     { in: ["RECEIVED", "ISSUED", "COMPLETED"] },
             reservedFor: row.block ?? "UNKNOWN",
           },
           select: { id: true },
