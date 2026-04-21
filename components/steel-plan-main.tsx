@@ -37,7 +37,8 @@ interface SteelPlanHeatRow {
   length: number;
   heatNo: string;
   status: "WAITING" | "CUT";
-  sourceFile: string | null;
+  sourceFile:    string | null;
+  uploadBatchNo: string | null;
   createdAt: string;
 }
 
@@ -1101,6 +1102,7 @@ export default function SteelPlanMain() {
               <table className="w-full" style={{ fontSize: "12px" }}>
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">업로드번호</th>
                     {(["vesselCode","material","thickness","width","length","heatNo","status"] as const).map((col, i) => {
                       const labels = ["호선","재질","두께","폭","길이","판번호","상태"];
                       const active = (heatColFilters[col]?.length ?? 0) > 0;
@@ -1119,14 +1121,17 @@ export default function SteelPlanMain() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {heatLoading ? (
-                    <tr><td colSpan={7} className="py-8 text-center text-gray-400">불러오는 중...</td></tr>
+                    <tr><td colSpan={8} className="py-8 text-center text-gray-400">불러오는 중...</td></tr>
                   ) : heatRows.length === 0 ? (
-                    <tr><td colSpan={7} className="py-8 text-center text-gray-400">등록된 판번호가 없습니다</td></tr>
+                    <tr><td colSpan={8} className="py-8 text-center text-gray-400">등록된 판번호가 없습니다</td></tr>
                   ) : (
                     heatRows.map((row) => {
                       const st = HEAT_STATUS[row.status];
                       return (
                         <tr key={row.id} className="hover:bg-gray-50">
+                          <td className="px-2 py-1 text-center font-mono text-[10px] text-gray-400">
+                            {row.uploadBatchNo ?? <span className="text-gray-200">-</span>}
+                          </td>
                           <td className="px-2 py-1 text-center font-medium">{row.vesselCode}</td>
                           <td className="px-2 py-1 text-center">{row.material}</td>
                           <td className="px-2 py-1 text-center">{row.thickness}</td>
