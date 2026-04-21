@@ -103,6 +103,18 @@ export async function GET(req: NextRequest) {
   });
 }
 
+// 업로드 배치번호 생성: YYMMDDHHMMSS
+function genBatchNo(): string {
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(2);
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mi = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  return `${yy}${mm}${dd}${hh}${mi}${ss}`;
+}
+
 // POST /api/steel-plan
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -112,10 +124,13 @@ export async function POST(req: NextRequest) {
     memo?: string | null; sourceFile?: string | null;
   }[] = Array.isArray(body) ? body : [body];
 
+  const uploadBatchNo = genBatchNo();
+
   const planData = items.map((item) => ({
     vesselCode: item.vesselCode, material: item.material,
     thickness: item.thickness,  width: item.width, length: item.length,
     memo: item.memo ?? null,    sourceFile: item.sourceFile ?? null,
+    uploadBatchNo,
   }));
 
   const created = await prisma.steelPlan.createMany({ data: planData });
@@ -126,16 +141,28 @@ export async function POST(req: NextRequest) {
       vesselCode: item.vesselCode, material: item.material,
       thickness: item.thickness,  width: item.width, length: item.length,
       heatNo: item.heatNo!.trim(), sourceFile: item.sourceFile ?? null,
+      uploadBatchNo,
     }));
 
   if (heatData.length > 0) await prisma.steelPlanHeat.createMany({ data: heatData });
 
-  return NextResponse.json({ count: created.count }, { status: 201 });
+  return NextResponse.json({ count: created.count, uploadBatchNo }, { status: 201 });
 }
 
 // DELETE /api/steel-plan
+// body: { vesselCode } → 호선 전체 삭제
+// body: { uploadBatchNo } → 배치 단위 삭제
 export async function DELETE(req: NextRequest) {
   const body = await req.json();
+
+  if (body.uploadBatchNo) {
+    const [plan, heat] = await Promise.all([
+      prisma.steelPlan.deleteMany({ where: { uploadBatchNo: body.uploadBatchNo } }),
+      prisma.steelPlanHeat.deleteMany({ where: { uploadBatchNo: body.uploadBatchNo } }),
+    ]);
+    return NextResponse.json({ planCount: plan.count, heatCount: heat.count });
+  }
+
   if (body.vesselCode) {
     const [plan, heat] = await Promise.all([
       prisma.steelPlan.deleteMany({ where: { vesselCode: body.vesselCode } }),
@@ -143,5 +170,6 @@ export async function DELETE(req: NextRequest) {
     ]);
     return NextResponse.json({ planCount: plan.count, heatCount: heat.count });
   }
-  return NextResponse.json({ error: "vesselCode required" }, { status: 400 });
+
+  return NextResponse.json({ error: "uploadBatchNo 또는 vesselCode 필요" }, { status: 400 });
 }

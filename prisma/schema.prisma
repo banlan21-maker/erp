@@ -1017,6 +1017,7 @@ model SteelPlan {
   memo             String?
   storageLocation  String?         // 보관위치
   sourceFile       String?         // 업로드 파일명
+  uploadBatchNo    String?         // 업로드 배치번호 (YYMMDDHHMMSS, 같은 업로드끼리 공유)
   reservedFor      String?         // 확정 블록 (예: "B80C")
 
   createdAt  DateTime        @default(now())
@@ -1024,15 +1025,16 @@ model SteelPlan {
 }
 
 model SteelPlanHeat {
-  id         String              @id @default(cuid())
-  vesselCode String              // 호선
-  material   String              // 재질
-  thickness  Float               // 두께 (mm)
-  width      Float               // 폭 (mm)
-  length     Float               // 길이 (mm)
-  heatNo     String              // 판번호
-  status     SteelPlanHeatStatus @default(WAITING)
-  sourceFile String?             // 업로드 파일명
+  id            String              @id @default(cuid())
+  vesselCode    String              // 호선
+  material      String              // 재질
+  thickness     Float               // 두께 (mm)
+  width         Float               // 폭 (mm)
+  length        Float               // 길이 (mm)
+  heatNo        String              // 판번호
+  status        SteelPlanHeatStatus @default(WAITING)
+  sourceFile    String?             // 업로드 파일명
+  uploadBatchNo String?             // 업로드 배치번호 (YYMMDDHHMMSS, 같은 업로드끼리 공유)
 
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt

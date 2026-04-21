@@ -23,6 +23,7 @@ interface SteelPlanRow {
   memo:               string | null;
   storageLocation: string | null;
   sourceFile:      string | null;
+  uploadBatchNo:   string | null;
   reservedFor:     string | null;
   createdAt: string;
 }
@@ -130,10 +131,12 @@ export default function SteelPlanMain() {
   const [bulkReceiveDate, setBulkReceiveDate]   = useState(() => new Date().toISOString().slice(0, 10));
   const [bulkLocationAll, setBulkLocationAll]   = useState("");
 
-  /* ── 호선강재 삭제 모달 ── */
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteVessel, setDeleteVessel]       = useState("");
-  const [deleting, setDeleting]               = useState(false);
+  /* ── 삭제 모달 (호선/배치) ── */
+  const [showDeleteModal, setShowDeleteModal]   = useState(false);
+  const [deleteVessel, setDeleteVessel]         = useState("");
+  const [deleteBatchNo, setDeleteBatchNo]       = useState("");
+  const [deleteTab, setDeleteTab]               = useState<"vessel" | "batch">("vessel");
+  const [deleting, setDeleting]                 = useState(false);
 
   /* ── 엑셀 업로드 ── */
   const fileRef   = useRef<HTMLInputElement>(null);
@@ -472,6 +475,23 @@ export default function SteelPlanMain() {
     setDeleting(false);
     setShowDeleteModal(false);
     setDeleteVessel("");
+    loadPlan();
+    loadHeat();
+  };
+
+  /* ── 배치 단위 삭제 ── */
+  const handleBatchDelete = async () => {
+    if (!deleteBatchNo) return;
+    if (!confirm(`업로드 배치 [${deleteBatchNo}]의 강재 전체목록 및 판번호 리스트를 모두 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
+    setDeleting(true);
+    await fetch("/api/steel-plan", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uploadBatchNo: deleteBatchNo }),
+    });
+    setDeleting(false);
+    setShowDeleteModal(false);
+    setDeleteBatchNo("");
     loadPlan();
     loadHeat();
   };
@@ -862,6 +882,7 @@ export default function SteelPlanMain() {
                         </th>
                       );
                     })}
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">업로드번호</th>
                     <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">선별지시일</th>
                     <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">출고일</th>
                     <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">메모</th>
@@ -871,9 +892,9 @@ export default function SteelPlanMain() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {loading ? (
-                    <tr><td colSpan={17} className="py-12 text-center text-gray-400">불러오는 중...</td></tr>
+                    <tr><td colSpan={18} className="py-12 text-center text-gray-400">불러오는 중...</td></tr>
                   ) : rows.length === 0 ? (
-                    <tr><td colSpan={17} className="py-12 text-center text-gray-400">등록된 강재 계획이 없습니다</td></tr>
+                    <tr><td colSpan={18} className="py-12 text-center text-gray-400">등록된 강재 계획이 없습니다</td></tr>
                   ) : (
                     rows.map((row) => {
                       const st = PLAN_STATUS[row.status];
@@ -919,6 +940,10 @@ export default function SteelPlanMain() {
                             ) : (
                               <span className="text-gray-300">-</span>
                             )}
+                          </td>
+                          {/* 업로드번호 */}
+                          <td className="px-2 py-1 text-center font-mono text-[10px] text-gray-400">
+                            {row.uploadBatchNo ?? <span className="text-gray-200">-</span>}
                           </td>
                           {/* 선별지시일 */}
                           <td className="px-2 py-1 text-center text-gray-500 font-mono">
@@ -1678,51 +1703,90 @@ export default function SteelPlanMain() {
         </div>
       )}
 
-      {/* ── 호선강재 삭제 모달 ── */}
+      {/* ── 강재 삭제 모달 (호선 전체 / 업로드 배치) ── */}
       {showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-5">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <Trash2 size={16} className="text-red-500" /> 호선강재 삭제
+                <Trash2 size={16} className="text-red-500" /> 강재 삭제
               </h3>
               <button onClick={() => setShowDeleteModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
 
-            <p className="text-sm text-gray-500">
-              삭제할 호선을 선택하세요.<br />
-              <span className="text-red-600 font-medium">강재 전체목록 + 판번호 리스트가 모두 삭제됩니다.</span>
-            </p>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-gray-600">호선 선택</label>
-              <select
-                value={deleteVessel}
-                onChange={(e) => setDeleteVessel(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
-              >
-                <option value="">-- 호선을 선택하세요 --</option>
-                {(distinctValues.vesselCode ?? []).map(({ value }) => (
-                  <option key={value} value={value}>{value}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex gap-2 justify-end">
+            {/* 탭 */}
+            <div className="flex border-b">
               <button
-                onClick={() => setShowDeleteModal(false)}
-                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                onClick={() => setDeleteTab("vessel")}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${deleteTab === "vessel" ? "border-red-500 text-red-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
               >
-                취소
+                호선 전체 삭제
               </button>
               <button
-                onClick={handleVesselDelete}
-                disabled={!deleteVessel || deleting}
-                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40 font-medium"
+                onClick={() => setDeleteTab("batch")}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${deleteTab === "batch" ? "border-red-500 text-red-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
               >
-                {deleting ? "삭제 중..." : "삭제"}
+                업로드 배치 삭제
               </button>
             </div>
+
+            {deleteTab === "vessel" ? (
+              <>
+                <p className="text-sm text-gray-500">
+                  선택 호선의 <span className="text-red-600 font-medium">강재 전체목록 + 판번호 리스트 전체</span>가 삭제됩니다.
+                </p>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-gray-600">호선 선택</label>
+                  <select
+                    value={deleteVessel}
+                    onChange={(e) => setDeleteVessel(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+                  >
+                    <option value="">-- 호선을 선택하세요 --</option>
+                    {(distinctValues.vesselCode ?? []).map(({ value }) => (
+                      <option key={value} value={value}>{value}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <button onClick={() => setShowDeleteModal(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">취소</button>
+                  <button
+                    onClick={handleVesselDelete}
+                    disabled={!deleteVessel || deleting}
+                    className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40 font-medium"
+                  >
+                    {deleting ? "삭제 중..." : "삭제"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-gray-500">
+                  업로드 배치번호를 입력하면 <span className="text-red-600 font-medium">해당 배치만</span> 삭제됩니다.<br />
+                  <span className="text-gray-400 text-xs">예) 260421092030 (테이블의 업로드번호 컬럼 참고)</span>
+                </p>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-gray-600">업로드 배치번호</label>
+                  <input
+                    type="text"
+                    value={deleteBatchNo}
+                    onChange={(e) => setDeleteBatchNo(e.target.value)}
+                    placeholder="예: 260421092030"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-red-400"
+                  />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <button onClick={() => setShowDeleteModal(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">취소</button>
+                  <button
+                    onClick={handleBatchDelete}
+                    disabled={!deleteBatchNo || deleting}
+                    className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40 font-medium"
+                  >
+                    {deleting ? "삭제 중..." : "배치 삭제"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
