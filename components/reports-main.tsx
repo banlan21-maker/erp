@@ -14,7 +14,7 @@
 
 import { useRouter, usePathname } from "next/navigation";
 import { useState } from "react";
-import { Printer, Search, FileDown, Trash2, BarChart2, Zap, ClipboardList, ChevronRight, ChevronDown } from "lucide-react";
+import { Printer, Search, FileDown, BarChart2, Zap, ClipboardList, ChevronRight, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input }  from "@/components/ui/input";
 import * as XLSX  from "xlsx";
@@ -98,7 +98,6 @@ export default function ReportsMain({
   const [from,       setFrom]       = useState(fromStr);
   const [to,         setTo]         = useState(toStr);
   const [workType,      setWorkType]      = useState<WorkTypeFilter>("all");
-  const [deletingId,    setDeletingId]    = useState<string | null>(null);
   const [expandedVessel, setExpandedVessel] = useState<Set<string>>(new Set());
 
   // ── 필터링 ────────────────────────────────────────────────────────────────
@@ -158,19 +157,6 @@ export default function ReportsMain({
       acc[code].blocks[block].useWeight   += l.useWeight   ?? 0;
       return acc;
     }, {} as Record<string, VesselStat>);
-
-  // ── 삭제 ─────────────────────────────────────────────────────────────────
-  const deleteLog = async (id: string) => {
-    if (!confirm("이 작업 기록을 삭제하시겠습니까?\n해당 강재의 상태가 '대기'로 되돌아갑니다.")) return;
-    setDeletingId(id);
-    try {
-      const res  = await fetch(`/api/cutting-logs/${id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (data.success) router.refresh();
-      else alert(data.error ?? "삭제 오류");
-    } catch { alert("서버 연결 오류"); }
-    finally { setDeletingId(null); }
-  };
 
   // ── 기간 조회 ─────────────────────────────────────────────────────────────
   const applyFilter = () => router.push(`${pathname}?from=${from}&to=${to}`);
@@ -472,8 +458,6 @@ export default function ReportsMain({
               totalSteel={totalSteel}
               totalUse={totalUse}
               totalDurationMs={totalDuration}
-              onDelete={deleteLog}
-              deletingId={deletingId}
             />
           ) : workType === "urgent" ? (
             <UrgentDetailTable
@@ -482,8 +466,6 @@ export default function ReportsMain({
               totalSteel={totalSteel}
               totalUse={totalUse}
               totalDurationMs={totalDuration}
-              onDelete={deleteLog}
-              deletingId={deletingId}
             />
           ) : (
             <AllDetailTable
@@ -492,8 +474,6 @@ export default function ReportsMain({
               totalSteel={totalSteel}
               totalUse={totalUse}
               totalDurationMs={totalDuration}
-              onDelete={deleteLog}
-              deletingId={deletingId}
             />
           )}
         </div>
@@ -511,12 +491,10 @@ const DashIfNull = ({ v }: { v: string | number | null }) =>
 
 // ─── 전체 탭: 구분 + W1/L1/W2/L2 + 강재/사용중량 ───────────────────────────────
 function AllDetailTable({
-  logs, totalQty, totalSteel, totalUse, totalDurationMs: totalMs, onDelete, deletingId,
+  logs, totalQty, totalSteel, totalUse, totalDurationMs: totalMs,
 }: {
   logs: CuttingLog[];
   totalQty: number; totalSteel: number; totalUse: number; totalDurationMs: number;
-  onDelete: (id: string) => void;
-  deletingId: string | null;
 }) {
   return (
     <table className="w-full text-xs min-w-[1100px]">
@@ -530,7 +508,7 @@ function AllDetailTable({
           ].map(([l, a]) => (
             <th key={l} className={`px-3 py-2 text-gray-500 font-semibold text-${a} whitespace-nowrap`}>{l}</th>
           ))}
-          <th className="px-3 py-2 no-print" />
+
         </tr>
       </thead>
       <tbody className="divide-y">
@@ -566,16 +544,6 @@ function AllDetailTable({
             <td className="px-3 py-2 text-right text-gray-700 font-mono"><DashIfNull v={log.dimL2} /></td>
             <td className="px-3 py-2 text-right text-gray-700">{numCell(log.steelWeight)}</td>
             <td className="px-3 py-2 text-right text-gray-700">{numCell(log.useWeight)}</td>
-            <td className="px-3 py-2 no-print">
-              <button
-                onClick={() => onDelete(log.id)}
-                disabled={deletingId === log.id}
-                className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded disabled:opacity-40"
-                title="삭제 (강재 상태 대기로 복원)"
-              >
-                <Trash2 size={13} />
-              </button>
-            </td>
           </tr>
         ))}
       </tbody>
@@ -586,12 +554,10 @@ function AllDetailTable({
 
 // ─── 정규작업 탭: Heat NO + 폭×길이 + 수량 + 작업시간 + 특이사항 ──────────────
 function NormalDetailTable({
-  logs, totalQty, totalSteel, totalUse, totalDurationMs: totalMs, onDelete, deletingId,
+  logs, totalQty, totalSteel, totalUse, totalDurationMs: totalMs,
 }: {
   logs: CuttingLog[];
   totalQty: number; totalSteel: number; totalUse: number; totalDurationMs: number;
-  onDelete: (id: string) => void;
-  deletingId: string | null;
 }) {
   return (
     <table className="w-full text-xs min-w-[1100px]">
@@ -605,7 +571,7 @@ function NormalDetailTable({
           ].map(([l, a]) => (
             <th key={l} className={`px-3 py-2 text-gray-500 font-semibold text-${a} whitespace-nowrap`}>{l}</th>
           ))}
-          <th className="px-3 py-2 no-print" />
+
         </tr>
       </thead>
       <tbody className="divide-y">
@@ -635,16 +601,6 @@ function NormalDetailTable({
             <td className="px-3 py-2 text-right text-gray-700">{numCell(log.steelWeight)}</td>
             <td className="px-3 py-2 text-right text-gray-700">{numCell(log.useWeight)}</td>
             <td className="px-3 py-2 text-gray-400 max-w-[120px] truncate">{log.memo ?? "-"}</td>
-            <td className="px-3 py-2 no-print">
-              <button
-                onClick={() => onDelete(log.id)}
-                disabled={deletingId === log.id}
-                className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded disabled:opacity-40"
-                title="삭제 (강재 상태 대기로 복원)"
-              >
-                <Trash2 size={13} />
-              </button>
-            </td>
           </tr>
         ))}
       </tbody>
@@ -655,12 +611,10 @@ function NormalDetailTable({
 
 // ─── 돌발작업 탭: W1/L1/W2/L2 + 요청자/부서 ────────────────────────────────────
 function UrgentDetailTable({
-  logs, totalQty, totalSteel, totalUse, totalDurationMs: totalMs, onDelete, deletingId,
+  logs, totalQty, totalSteel, totalUse, totalDurationMs: totalMs,
 }: {
   logs: CuttingLog[];
   totalQty: number; totalSteel: number; totalUse: number; totalDurationMs: number;
-  onDelete: (id: string) => void;
-  deletingId: string | null;
 }) {
   return (
     <table className="w-full text-xs min-w-[1100px]">
@@ -675,7 +629,7 @@ function UrgentDetailTable({
           ].map(([l, a]) => (
             <th key={l} className={`px-3 py-2 text-gray-500 font-semibold text-${a} whitespace-nowrap`}>{l}</th>
           ))}
-          <th className="px-3 py-2 no-print" />
+
         </tr>
       </thead>
       <tbody className="divide-y">
@@ -702,16 +656,6 @@ function UrgentDetailTable({
             <td className="px-3 py-2 text-right text-gray-700">{numCell(log.useWeight)}</td>
             <td className="px-3 py-2 text-gray-700">{log.requester ?? "-"}</td>
             <td className="px-3 py-2 text-gray-500">{log.department ?? "-"}</td>
-            <td className="px-3 py-2 no-print">
-              <button
-                onClick={() => onDelete(log.id)}
-                disabled={deletingId === log.id}
-                className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded disabled:opacity-40"
-                title="삭제 (강재 상태 대기로 복원)"
-              >
-                <Trash2 size={13} />
-              </button>
-            </td>
           </tr>
         ))}
       </tbody>
