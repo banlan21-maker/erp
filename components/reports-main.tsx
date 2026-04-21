@@ -274,13 +274,13 @@ export default function ReportsMain({
           ))}
         </div>
 
-        {/* 요약 카드 - 현재 필터 기준 집계 */}
+        {/* 요약 카드 */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 no-print">
           {[
-            { label: "총 절단 건수", value: `${filteredLogs.length}건`, color: "text-blue-700 bg-blue-50" },
-            { label: "총 수량",      value: `${totalQty.toLocaleString()}매`, color: "text-green-700 bg-green-50" },
-            { label: "강재중량",     value: `${totalSteel.toLocaleString()}kg`, color: "text-orange-700 bg-orange-50" },
-            { label: "사용중량",     value: `${totalUse.toLocaleString()}kg`,   color: "text-purple-700 bg-purple-50" },
+            { label: "총 가동시간", value: formatDurationMs(totalDuration), color: "text-blue-700 bg-blue-50" },
+            { label: "총 수량",     value: `${totalQty.toLocaleString()}매`, color: "text-green-700 bg-green-50" },
+            { label: "강재중량",    value: `${totalSteel.toLocaleString()}kg`, color: "text-orange-700 bg-orange-50" },
+            { label: "사용중량",    value: `${totalUse.toLocaleString()}kg`,   color: "text-purple-700 bg-purple-50" },
           ].map(({ label, value, color }) => (
             <div key={label} className={`rounded-xl p-4 ${color}`}>
               <p className="text-xs font-medium opacity-70">{label}</p>
@@ -288,28 +288,6 @@ export default function ReportsMain({
             </div>
           ))}
         </div>
-
-        {/* 정규 / 돌발 분리 요약 (전체 탭에서만 표시) */}
-        {workType === "all" && (
-          <div className="grid grid-cols-2 gap-3 no-print">
-            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-center gap-4">
-              <ClipboardList size={28} className="text-blue-500 shrink-0" />
-              <div>
-                <p className="text-xs font-medium text-blue-600">정규작업</p>
-                <p className="text-xl font-bold text-blue-800">{normalLogs.length}건</p>
-                <p className="text-xs text-blue-500">{sumNum(normalLogs, "qty").toLocaleString()}매 절단</p>
-              </div>
-            </div>
-            <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 flex items-center gap-4">
-              <Zap size={28} className="text-orange-500 shrink-0" />
-              <div>
-                <p className="text-xs font-medium text-orange-600">돌발작업</p>
-                <p className="text-xl font-bold text-orange-800">{urgentLogs.length}건</p>
-                <p className="text-xs text-orange-500">{sumNum(urgentLogs, "qty").toLocaleString()}매 절단</p>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* 장비 / 작업자 소계 */}
         <div className="grid grid-cols-2 gap-3 no-print">
