@@ -474,6 +474,22 @@ function LogModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stuckLog, setStuckLog] = useState<{ id: string; heatNo: string; drawingNo: string | null; operator: string; startAt: string; project: string | null } | null>(null);
+  const [heatOptions, setHeatOptions] = useState<{ id: string; heatNo: string }[]>([]);
+
+  useEffect(() => {
+    if (!drawing) return;
+    const p = new URLSearchParams({
+      vesselCode: drawing.project?.projectCode ?? "",
+      material:   drawing.material,
+      thickness:  String(drawing.thickness),
+      width:      String(drawing.width),
+      length:     String(drawing.length),
+    });
+    fetch(`/api/steel-plan/heat-options?${p}`)
+      .then(r => r.json())
+      .then(setHeatOptions)
+      .catch(() => {});
+  }, [drawing]);
   const [forceClosing, setForceClosing] = useState(false);
 
   const handleForceClose = async () => {
@@ -646,13 +662,23 @@ function LogModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Heat NO</label>
-            <Input
-              value={form.heatNo}
-              onChange={e => setForm(f => ({ ...f, heatNo: e.target.value }))}
-              placeholder="Heat NO (선택)"
-              className="font-mono"
-            />
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Heat NO (판번호)</label>
+            {heatOptions.length > 0 ? (
+              <select
+                value={form.heatNo}
+                onChange={e => setForm(f => ({ ...f, heatNo: e.target.value }))}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">-- 판번호 선택 --</option>
+                {heatOptions.map(h => (
+                  <option key={h.id} value={h.heatNo}>{h.heatNo}</option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-xs text-yellow-600 bg-yellow-50 border border-yellow-200 rounded-md px-3 py-2">
+                등록된 판번호가 없습니다. 강재입고관리에서 판번호를 먼저 등록하세요.
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

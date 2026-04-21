@@ -114,6 +114,8 @@ export default function SteelPlanMain() {
   /* ── 판번호 리스트 상태 ── */
   const [heatRows, setHeatRows]         = useState<SteelPlanHeatRow[]>([]);
   const [heatLoading, setHeatLoading]   = useState(false);
+  const [editingHeat, setEditingHeat]   = useState<{ id: string; heatNo: string } | null>(null);
+  const [editHeatNo,  setEditHeatNo]    = useState("");
   const [heatSearch, setHeatSearch]     = useState("");
   const [heatPage,       setHeatPage]       = useState(1);
   const [heatTotal,      setHeatTotal]      = useState(0);
@@ -495,6 +497,27 @@ export default function SteelPlanMain() {
     setDeleteBatchNo("");
     loadPlan();
     loadHeat();
+  };
+
+  /* ── 판번호 행 단위 삭제 ── */
+  const deleteHeatRow = async (id: string, heatNo: string) => {
+    if (!confirm(`판번호 [${heatNo}]를 삭제하시겠습니까?`)) return;
+    const res = await fetch(`/api/steel-plan-heat/${id}`, { method: "DELETE" });
+    if ((await res.json()).success) loadHeat();
+    else alert("삭제 실패");
+  };
+
+  /* ── 판번호 수정 저장 ── */
+  const saveHeatEdit = async () => {
+    if (!editingHeat || !editHeatNo.trim()) return;
+    const res = await fetch(`/api/steel-plan-heat/${editingHeat.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ heatNo: editHeatNo.trim() }),
+    });
+    const data = await res.json();
+    if (data.success) { setEditingHeat(null); loadHeat(); }
+    else alert(data.error ?? "수정 실패");
   };
 
   /* ── 일괄 입고 확정 ── */
@@ -1117,13 +1140,14 @@ export default function SteelPlanMain() {
                         </th>
                       );
                     })}
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">수정/삭제</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {heatLoading ? (
-                    <tr><td colSpan={8} className="py-8 text-center text-gray-400">불러오는 중...</td></tr>
+                    <tr><td colSpan={9} className="py-8 text-center text-gray-400">불러오는 중...</td></tr>
                   ) : heatRows.length === 0 ? (
-                    <tr><td colSpan={8} className="py-8 text-center text-gray-400">등록된 판번호가 없습니다</td></tr>
+                    <tr><td colSpan={9} className="py-8 text-center text-gray-400">등록된 판번호가 없습니다</td></tr>
                   ) : (
                     heatRows.map((row) => {
                       const st = HEAT_STATUS[row.status];
@@ -1137,9 +1161,38 @@ export default function SteelPlanMain() {
                           <td className="px-2 py-1 text-center">{row.thickness}</td>
                           <td className="px-2 py-1 text-center">{row.width}</td>
                           <td className="px-2 py-1 text-center">{row.length}</td>
-                          <td className="px-2 py-1 text-center font-mono text-blue-700 font-medium">{row.heatNo}</td>
+                          <td className="px-2 py-1 text-center font-mono text-blue-700 font-medium">
+                            {editingHeat?.id === row.id ? (
+                              <input
+                                type="text"
+                                value={editHeatNo}
+                                onChange={e => setEditHeatNo(e.target.value)}
+                                className="border border-blue-400 rounded px-1 py-0.5 text-xs font-mono w-28 focus:outline-none"
+                                autoFocus
+                              />
+                            ) : row.heatNo}
+                          </td>
                           <td className="px-2 py-1 text-center">
                             <span className={`px-1.5 py-0 rounded-full text-[11px] font-medium ${st.cls}`}>{st.label}</span>
+                          </td>
+                          <td className="px-2 py-1 text-center">
+                            {editingHeat?.id === row.id ? (
+                              <div className="flex items-center justify-center gap-1">
+                                <button onClick={saveHeatEdit} className="px-2 py-0.5 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-700">저장</button>
+                                <button onClick={() => setEditingHeat(null)} className="px-2 py-0.5 text-[11px] border border-gray-300 rounded hover:bg-gray-50">취소</button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  onClick={() => { setEditingHeat({ id: row.id, heatNo: row.heatNo }); setEditHeatNo(row.heatNo); }}
+                                  className="px-1.5 py-0.5 text-[11px] border border-gray-300 rounded text-gray-600 hover:bg-gray-50"
+                                >수정</button>
+                                <button
+                                  onClick={() => deleteHeatRow(row.id, row.heatNo)}
+                                  className="px-1.5 py-0.5 text-[11px] border border-red-200 rounded text-red-500 hover:bg-red-50"
+                                >삭제</button>
+                              </div>
+                            )}
                           </td>
                         </tr>
                       );

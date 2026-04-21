@@ -925,15 +925,9 @@ export default function FieldWorklog({
                     </div>
                   )}
 
-                  {/* 직접 입력 */}
-                  {!heatLoading && drawingId && (
-                    <input
-                      type="text"
-                      placeholder={heatOptions.length > 0 ? "목록에서 선택하거나 직접 입력" : "판번호 직접 입력"}
-                      value={heatNo}
-                      onChange={e => setHeatNo(e.target.value)}
-                      className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm font-mono text-white placeholder-gray-600 focus:outline-none focus:border-blue-500"
-                    />
+                  {/* 목록 없을 때 안내 */}
+                  {!heatLoading && drawingId && heatOptions.length === 0 && (
+                    <p className="text-xs text-yellow-400 px-1">등록된 판번호가 없습니다. 강재입고관리에서 판번호를 먼저 등록하세요.</p>
                   )}
                 </div>
               </div>

@@ -101,20 +101,7 @@ export async function PATCH(
           data:  { status: "CUT" },
         });
 
-        // 판번호 목록에 없는 신규 판번호 → 자동 등록(CUT 상태)
-        if (heatResult.count === 0 && project && log.material && log.thickness && log.width && log.length) {
-          await prisma.steelPlanHeat.create({
-            data: {
-              vesselCode: project.projectCode,
-              material:   log.material,
-              thickness:  log.thickness,
-              width:      log.width,
-              length:     log.length,
-              heatNo:     log.heatNo.trim(),
-              status:     "CUT",
-            },
-          });
-        }
+        // 판번호 목록에 없는 경우: 자동 등록 안 함 (강재입고관리에서 사전 등록 필수)
       }
 
       return NextResponse.json({ success: true, data: log });
