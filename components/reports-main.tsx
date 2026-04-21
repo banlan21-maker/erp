@@ -14,7 +14,7 @@
 
 import { useRouter, usePathname } from "next/navigation";
 import { useState } from "react";
-import { Printer, Search, FileDown, Trash2, BarChart2, Zap, ClipboardList } from "lucide-react";
+import { Printer, Search, FileDown, Trash2, BarChart2, Zap, ClipboardList, ChevronRight, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input }  from "@/components/ui/input";
 import * as XLSX  from "xlsx";
@@ -97,8 +97,9 @@ export default function ReportsMain({
 
   const [from,       setFrom]       = useState(fromStr);
   const [to,         setTo]         = useState(toStr);
-  const [workType,   setWorkType]   = useState<WorkTypeFilter>("all");
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [workType,      setWorkType]      = useState<WorkTypeFilter>("all");
+  const [deletingId,    setDeletingId]    = useState<string | null>(null);
+  const [expandedVessel, setExpandedVessel] = useState<Set<string>>(new Set());
 
   // ── 필터링 ────────────────────────────────────────────────────────────────
   const filteredLogs = logs.filter(l =>
@@ -137,17 +138,26 @@ export default function ReportsMain({
     return acc;
   }, {} as Record<string, { count: number; qty: number }>);
 
-  // 호선별 집계 (정규작업만 — 청구서 기반 데이터)
+  // 호선 > 블록 2단계 집계 (정규작업만 — 청구서 기반 데이터)
+  type BlockStat = { count: number; qty: number; steelWeight: number; useWeight: number };
+  type VesselStat = { name: string; count: number; qty: number; steelWeight: number; useWeight: number; blocks: Record<string, BlockStat> };
   const byProject = filteredLogs
     .filter(l => !l.isUrgent && l.project)
     .reduce((acc, l) => {
-      const key = l.project!.projectCode;
-      if (!acc[key]) acc[key] = { name: l.project!.projectName, count: 0, qty: 0, useWeight: 0 };
-      acc[key].count++;
-      acc[key].qty += l.qty ?? 0;
-      acc[key].useWeight += l.useWeight ?? 0;
+      const code  = l.project!.projectCode;
+      const block = l.block ?? "(블록미상)";
+      if (!acc[code]) acc[code] = { name: l.project!.projectName, count: 0, qty: 0, steelWeight: 0, useWeight: 0, blocks: {} };
+      if (!acc[code].blocks[block]) acc[code].blocks[block] = { count: 0, qty: 0, steelWeight: 0, useWeight: 0 };
+      acc[code].count++;
+      acc[code].qty         += l.qty         ?? 0;
+      acc[code].steelWeight += l.steelWeight ?? 0;
+      acc[code].useWeight   += l.useWeight   ?? 0;
+      acc[code].blocks[block].count++;
+      acc[code].blocks[block].qty         += l.qty         ?? 0;
+      acc[code].blocks[block].steelWeight += l.steelWeight ?? 0;
+      acc[code].blocks[block].useWeight   += l.useWeight   ?? 0;
       return acc;
-    }, {} as Record<string, { name: string; count: number; qty: number; useWeight: number }>);
+    }, {} as Record<string, VesselStat>);
 
   // ── 삭제 ─────────────────────────────────────────────────────────────────
   const deleteLog = async (id: string) => {
@@ -361,47 +371,90 @@ export default function ReportsMain({
           </div>
         </div>
 
-        {/* 호선별 사용중량 집계 (정규작업 — 청구서 기반) */}
+        {/* 호선 > 블록 폴더식 집계 (정규작업 — 청구서 기반) */}
         {Object.keys(byProject).length > 0 && (
-          <div className="bg-white border rounded-xl p-4 no-print">
-            <h3 className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
+          <div className="bg-white border rounded-xl overflow-hidden no-print">
+            {/* 헤더 */}
+            <div className="px-4 py-3 border-b bg-gray-50 flex items-center gap-2">
               <ClipboardList size={13} className="text-blue-500" />
-              호선별 사용중량 집계
-              <span className="text-gray-400 font-normal">(정규작업 기준 · 청구서 데이터)</span>
-            </h3>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-gray-400 border-b">
-                  <th className="text-left py-1">호선코드</th>
-                  <th className="text-left py-1">호선명</th>
-                  <th className="text-right py-1">건수</th>
-                  <th className="text-right py-1">수량(매)</th>
-                  <th className="text-right py-1">사용중량(kg)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {Object.entries(byProject).map(([code, v]) => (
-                  <tr key={code}>
-                    <td className="py-1 font-mono text-blue-700">{code}</td>
-                    <td className="py-1 text-gray-700">{v.name}</td>
-                    <td className="py-1 text-right">{v.count}건</td>
-                    <td className="py-1 text-right">{v.qty.toLocaleString()}매</td>
-                    <td className="py-1 text-right font-semibold text-gray-800">
-                      {v.useWeight.toLocaleString(undefined, { maximumFractionDigits: 1 })}kg
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot className="border-t font-semibold bg-blue-50">
-                <tr>
-                  <td colSpan={4} className="py-1 text-gray-600">합계</td>
-                  <td className="py-1 text-right text-blue-800">
-                    {Object.values(byProject).reduce((s, v) => s + v.useWeight, 0)
-                      .toLocaleString(undefined, { maximumFractionDigits: 1 })}kg
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+              <span className="text-xs font-semibold text-gray-600">호선별 집계</span>
+              <span className="text-xs text-gray-400 font-normal">(정규작업 기준 · 청구서 데이터)</span>
+            </div>
+            {/* 컬럼 헤더 */}
+            <div className="grid grid-cols-[1fr_60px_60px_90px_90px] gap-2 px-4 py-1.5 bg-gray-50 border-b text-[11px] text-gray-400 font-semibold">
+              <span>호선 / 블록</span>
+              <span className="text-right">건수</span>
+              <span className="text-right">수량(매)</span>
+              <span className="text-right">강재중량(kg)</span>
+              <span className="text-right">사용중량(kg)</span>
+            </div>
+            {/* 호선 목록 */}
+            <div className="divide-y">
+              {Object.entries(byProject).map(([code, v]) => {
+                const expanded = expandedVessel.has(code);
+                const toggleVessel = () => setExpandedVessel(prev => {
+                  const next = new Set(prev);
+                  expanded ? next.delete(code) : next.add(code);
+                  return next;
+                });
+                return (
+                  <div key={code}>
+                    {/* 호선 행 */}
+                    <button
+                      onClick={toggleVessel}
+                      className="w-full grid grid-cols-[1fr_60px_60px_90px_90px] gap-2 px-4 py-2.5 hover:bg-blue-50 transition-colors text-left"
+                    >
+                      <span className="flex items-center gap-1.5 font-semibold text-blue-700 text-xs">
+                        {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                        <span className="font-mono">{code}</span>
+                        <span className="text-gray-500 font-normal">{v.name}</span>
+                      </span>
+                      <span className="text-right text-xs text-gray-600">{v.count}건</span>
+                      <span className="text-right text-xs text-gray-600">{v.qty.toLocaleString()}매</span>
+                      <span className="text-right text-xs text-gray-700 font-medium">
+                        {v.steelWeight.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+                      </span>
+                      <span className="text-right text-xs text-gray-800 font-bold">
+                        {v.useWeight.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+                      </span>
+                    </button>
+                    {/* 블록 행 (펼쳤을 때) */}
+                    {expanded && (
+                      <div className="bg-blue-50/50 divide-y divide-blue-100">
+                        {Object.entries(v.blocks).map(([block, b]) => (
+                          <div key={block} className="grid grid-cols-[1fr_60px_60px_90px_90px] gap-2 px-4 py-2 text-xs">
+                            <span className="flex items-center gap-1.5 pl-6 text-gray-600">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-300 shrink-0" />
+                              <span className="font-medium text-gray-700">{block}</span>
+                            </span>
+                            <span className="text-right text-gray-500">{b.count}건</span>
+                            <span className="text-right text-gray-500">{b.qty.toLocaleString()}매</span>
+                            <span className="text-right text-gray-600">
+                              {b.steelWeight.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+                            </span>
+                            <span className="text-right text-blue-700 font-semibold">
+                              {b.useWeight.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {/* 전체 합계 */}
+            <div className="grid grid-cols-[1fr_60px_60px_90px_90px] gap-2 px-4 py-2.5 bg-blue-50 border-t text-xs font-bold">
+              <span className="text-gray-600">합계</span>
+              <span className="text-right text-gray-700">{Object.values(byProject).reduce((s,v) => s+v.count, 0)}건</span>
+              <span className="text-right text-gray-700">{Object.values(byProject).reduce((s,v) => s+v.qty, 0).toLocaleString()}매</span>
+              <span className="text-right text-gray-700">
+                {Object.values(byProject).reduce((s,v) => s+v.steelWeight, 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}
+              </span>
+              <span className="text-right text-blue-800">
+                {Object.values(byProject).reduce((s,v) => s+v.useWeight, 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}
+              </span>
+            </div>
           </div>
         )}
 
