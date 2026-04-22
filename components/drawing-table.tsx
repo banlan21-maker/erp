@@ -460,21 +460,7 @@ export default function DrawingTable({
 
       {/* 테이블 */}
       <div className="bg-white rounded-xl border overflow-x-auto">
-        <table className="w-full text-sm min-w-[1624px] table-fixed">
-          <colgroup>
-            <col style={{ width: "110px" }} />  {/* 상태 */}
-            <col style={{ width: "110px" }} />  {/* 블록 */}
-            <col style={{ width: "130px" }} />  {/* 도면번호 */}
-            <col style={{ width: "100px" }} />  {/* 재질 */}
-            <col style={{ width: "80px" }} />   {/* 두께 */}
-            <col style={{ width: "90px" }} />   {/* 폭 */}
-            <col style={{ width: "90px" }} />   {/* 길이 */}
-            <col style={{ width: "100px" }} />  {/* 강재중량 */}
-            <col style={{ width: "100px" }} />  {/* 사용중량 */}
-            <col style={{ width: "130px" }} />  {/* 대체호선 */}
-            <col style={{ width: "130px" }} />  {/* 실사용판번호 */}
-            <col style={{ width: "64px" }} />   {/* 액션 */}
-          </colgroup>
+        <table className="w-full text-sm whitespace-nowrap">
           <thead className="bg-gray-50 border-b">
             <tr>
               <FilterHeader col="status"      label="상태"         align="center" {...filterHeaderProps} />
