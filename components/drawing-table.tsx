@@ -163,8 +163,10 @@ export default function DrawingTable({
     fetch("/api/steel-plan/distinct")
       .then(r => r.json())
       .then(data => {
-        if (data.success) {
-          const codes: string[] = (data.data.vesselCode as { value: string }[]).map(v => v.value);
+        // distinct API는 { vesselCode: [...] } 형식으로 직접 반환 (success 래핑 없음)
+        const vesselList = data.vesselCode ?? data.data?.vesselCode;
+        if (vesselList) {
+          const codes: string[] = (vesselList as { value: string }[]).map(v => v.value);
           setAllVesselCodes(codes);
         }
       })
