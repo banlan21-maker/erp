@@ -75,7 +75,7 @@ export default async function VesselDrawingsPage({
             </Link>
           </div>
           {p.drawingLists.length > 0 ? (
-            <DrawingTable drawings={p.drawingLists} projectId={p.id} />
+            <DrawingTable drawings={p.drawingLists} projectId={p.id} projectCode={vesselCode} />
           ) : (
             <div className="text-xs text-gray-400 bg-gray-50 rounded-lg border px-4 py-3">
               강재리스트가 없습니다.

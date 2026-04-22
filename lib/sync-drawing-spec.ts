@@ -5,28 +5,32 @@
  *       모든 DrawingList 상태를 SteelPlan 확정 수량에 맞게 재계산.
  *
  * ── 상태 규칙 ────────────────────────────────────────────────────────────────
- * SteelPlan.status = RECEIVED & reservedFor = 블록코드  →  해당 DrawingList WAITING
- * 확정 수량 초과분  →  REGISTERED
+ * SteelPlan.reservedFor = "호선/블록" → 해당 DrawingList WAITING
+ * 확정 수량 초과분 → REGISTERED
  * (CAUTION·CUT 상태는 건드리지 않음)
  *
+ * ── reservedFor 형식 ─────────────────────────────────────────────────────────
+ * 신규: "1022/S80PS" (projectCode/block)
+ * 구형(legacy): "S80PS" (block만)
+ *
  * ── 호출 시점 ────────────────────────────────────────────────────────────────
- * - 절단 완료(PATCH action="complete"): SteelPlan COMPLETED 처리 후
- * - 절단 삭제(DELETE): SteelPlan RECEIVED 복원 후
+ * - 절단 완료(PATCH action="complete"): 완료 후
+ * - 절단 삭제(DELETE): 삭제 후
  * - 강재 입고 확정(steel-plan/receive): 입고 처리 후
  */
 
 import { prisma } from "@/lib/prisma";
 
 export async function syncDrawingListBySpec(
-  vesselCode: string,
-  material:   string,
-  thickness:  number,
-  width:      number,
-  length:     number,
+  projectVesselCode: string,  // 사용하는 프로젝트의 호선 코드
+  material:          string,
+  thickness:         number,
+  width:             number,
+  length:            number,
 ) {
-  // ── 해당 호선(vesselCode)의 프로젝트 ID 목록 ──────────────────────────────
+  // ── 해당 호선의 프로젝트 ID 목록 ─────────────────────────────────────────
   const projects = await prisma.project.findMany({
-    where:  { projectCode: vesselCode },
+    where:  { projectCode: projectVesselCode },
     select: { id: true },
   });
   if (projects.length === 0) return;
@@ -50,16 +54,24 @@ export async function syncDrawingListBySpec(
     byBlock.get(blockCode)!.push(row.id);
   }
 
-  // ── 블록별 확정 수량(RECEIVED + reservedFor) 기준으로 WAITING/REGISTERED 결정
+  // ── 블록별 확정 수량 기준으로 WAITING/REGISTERED 결정 ────────────────────
   const toWaiting:    string[] = [];
   const toRegistered: string[] = [];
 
   for (const [blockCode, ids] of byBlock) {
-    // 해당 블록에 확정된 SteelPlan 수량
-    const confirmedCount = await prisma.steelPlan.count({
-      where: { vesselCode, material, thickness, width, length, status: "RECEIVED", reservedFor: blockCode },
+    // 신규 형식: "projectVesselCode/blockCode" (어느 호선 철판이든 상관없이 매칭)
+    const newFmt = `${projectVesselCode}/${blockCode}`;
+    const confirmedNew = await prisma.steelPlan.count({
+      where: { material, thickness, width, length, reservedFor: newFmt },
     });
-    // 확정 수량만큼 WAITING, 나머지 REGISTERED
+    // 구형 형식(legacy): 블록코드만, 같은 vesselCode
+    const confirmedOld = confirmedNew === 0
+      ? await prisma.steelPlan.count({
+          where: { vesselCode: projectVesselCode, material, thickness, width, length, reservedFor: blockCode },
+        })
+      : 0;
+
+    const confirmedCount = confirmedNew + confirmedOld;
     toWaiting.push(...ids.slice(0, confirmedCount));
     toRegistered.push(...ids.slice(confirmedCount));
   }

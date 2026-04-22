@@ -108,15 +108,18 @@ export async function GET(request: NextRequest) {
 
       const result = [];
       for (const row of waitingRows) {
+        const projectCode = project.projectCode;
+        const blockCode   = row.block ?? "UNKNOWN";
+        const newFmt      = `${projectCode}/${blockCode}`;
+        // 신규 형식 또는 구형 형식으로 확정된 판재 확인
         const reserved = await prisma.steelPlan.findFirst({
           where: {
-            vesselCode: project.projectCode,
             material:   row.material,
             thickness:  row.thickness,
             width:      row.width,
             length:     row.length,
             status:     { in: ["RECEIVED", "ISSUED", "COMPLETED"] },
-            reservedFor: row.block ?? "UNKNOWN",
+            reservedFor: { in: [newFmt, blockCode] },
           },
           select: { id: true },
         });

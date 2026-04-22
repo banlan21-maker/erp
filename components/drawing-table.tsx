@@ -13,11 +13,13 @@ import ColumnFilterDropdown from "@/components/column-filter-dropdown";
 interface EditForm {
   block: string; drawingNo: string; material: string;
   thickness: string; width: string; length: string; useWeight: string;
+  alternateVesselCode: string;
 }
 
 const emptyAddForm: EditForm = {
   block: "", drawingNo: "", material: "",
   thickness: "", width: "", length: "", useWeight: "",
+  alternateVesselCode: "",
 };
 
 type DrawingStatusType = "REGISTERED" | "WAITING" | "CUT" | "CAUTION";
@@ -34,12 +36,13 @@ const STATUS_STYLE: Record<DrawingStatusType, string> = {
 
 // ─── 헬퍼 ────────────────────────────────────────────────────────────────────
 
-function toEditForm(d: DrawingList): EditForm {
+function toEditForm(d: DrawingList & { alternateVesselCode?: string | null }): EditForm {
   return {
     block: d.block ?? "", drawingNo: d.drawingNo ?? "",
     material: d.material, thickness: String(d.thickness), width: String(d.width),
     length: String(d.length),
     useWeight: d.useWeight != null ? String(d.useWeight) : "",
+    alternateVesselCode: d.alternateVesselCode ?? "",
   };
 }
 
@@ -141,9 +144,11 @@ function FilterHeader({
 export default function DrawingTable({
   drawings,
   projectId,
+  projectCode,
 }: {
   drawings: DrawingList[];
   projectId: string;
+  projectCode?: string;
 }) {
   const router = useRouter();
 
@@ -151,6 +156,20 @@ export default function DrawingTable({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // 대체호선 드롭다운용 프로젝트 코드 목록
+  const [allVesselCodes, setAllVesselCodes] = useState<string[]>([]);
+  useEffect(() => {
+    fetch("/api/projects")
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          const codes: string[] = [...new Set((data.data as { projectCode: string }[]).map(p => p.projectCode))].sort();
+          setAllVesselCodes(codes.filter(c => c !== projectCode));
+        }
+      })
+      .catch(() => {});
+  }, [projectCode]);
 
   // 삭제 / 전체삭제
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -292,6 +311,7 @@ export default function DrawingTable({
           ...editForm,
           qty: 1,
           steelWeight: calcSteelWeight(editForm.thickness, editForm.width, editForm.length),
+          alternateVesselCode: editForm.alternateVesselCode || null,
         }),
       });
       const data = await res.json();
@@ -440,17 +460,18 @@ export default function DrawingTable({
 
       {/* 테이블 */}
       <div className="bg-white rounded-xl border overflow-x-auto">
-        <table className="w-full text-sm min-w-[1494px] table-fixed">
+        <table className="w-full text-sm min-w-[1624px] table-fixed">
           <colgroup>
-            <col style={{ width: "130px" }} />  {/* 상태 */}
-            <col style={{ width: "130px" }} />  {/* 블록 */}
+            <col style={{ width: "110px" }} />  {/* 상태 */}
+            <col style={{ width: "110px" }} />  {/* 블록 */}
             <col style={{ width: "130px" }} />  {/* 도면번호 */}
-            <col style={{ width: "130px" }} />  {/* 재질 */}
-            <col style={{ width: "130px" }} />  {/* 두께 */}
-            <col style={{ width: "130px" }} />  {/* 폭 */}
-            <col style={{ width: "130px" }} />  {/* 길이 */}
-            <col style={{ width: "130px" }} />  {/* 강재중량 */}
-            <col style={{ width: "130px" }} />  {/* 사용중량 */}
+            <col style={{ width: "100px" }} />  {/* 재질 */}
+            <col style={{ width: "80px" }} />   {/* 두께 */}
+            <col style={{ width: "90px" }} />   {/* 폭 */}
+            <col style={{ width: "90px" }} />   {/* 길이 */}
+            <col style={{ width: "100px" }} />  {/* 강재중량 */}
+            <col style={{ width: "100px" }} />  {/* 사용중량 */}
+            <col style={{ width: "130px" }} />  {/* 대체호선 */}
             <col style={{ width: "130px" }} />  {/* 실사용판번호 */}
             <col style={{ width: "64px" }} />   {/* 액션 */}
           </colgroup>
@@ -465,6 +486,7 @@ export default function DrawingTable({
               <FilterHeader col="length"      label="길이(mm)"     align="right"  {...filterHeaderProps} />
               <FilterHeader col="steelWeight" label="강재중량(kg)" align="right"  {...filterHeaderProps} />
               <FilterHeader col="useWeight"   label="사용중량(kg)" align="right"  {...filterHeaderProps} />
+              <th className="px-2 py-2.5 text-xs font-semibold text-gray-500 text-center whitespace-nowrap">대체호선</th>
               <FilterHeader col="heatNo"      label="실사용판번호" align="center" {...filterHeaderProps} />
               <th className="px-2 py-2.5 w-16"></th>
             </tr>
@@ -472,7 +494,7 @@ export default function DrawingTable({
           <tbody className="divide-y">
             {filteredDrawings.length === 0 ? (
               <tr>
-                <td colSpan={11} className="text-center py-8 text-gray-400 text-xs">
+                <td colSpan={12} className="text-center py-8 text-gray-400 text-xs">
                   필터 조건에 맞는 데이터가 없습니다.
                   <button onClick={() => setFilters({})} className="ml-2 text-blue-500 hover:underline">
                     필터 초기화
@@ -484,7 +506,9 @@ export default function DrawingTable({
                 const isEditing = editingId === d.id;
                 const isDeleting = deletingId === d.id;
                 const status = (d.status ?? "REGISTERED") as DrawingStatusType;
-                const specKey = `${d.material}|${d.thickness}|${d.width}|${d.length}`;
+                const dExt = d as DrawingList & { alternateVesselCode?: string | null };
+                const steelVessel = dExt.alternateVesselCode?.trim() || projectCode || "";
+                const specKey = `${d.material}|${d.thickness}|${d.width}|${d.length}|${steelVessel}`;
                 const available = specAvailability[specKey] ?? 0;
 
                 // 상태 셀: REGISTERED는 남은 입고 수량 표시, WAITING은 확정
@@ -511,6 +535,12 @@ export default function DrawingTable({
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-full text-right" value={editForm.length}     onChange={e => f("length",     e.target.value)} /></td>
                       <td className="px-2 py-1.5 text-right text-xs text-gray-500">{calcSteelWeight(editForm.thickness, editForm.width, editForm.length).toFixed(1)}</td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-full text-right" value={editForm.useWeight}  onChange={e => f("useWeight",  e.target.value)} /></td>
+                      <td className="px-2 py-1.5">
+                        <select className="h-7 text-xs w-full border rounded px-1 bg-white" value={editForm.alternateVesselCode} onChange={e => f("alternateVesselCode", e.target.value)}>
+                          <option value="">자기 호선</option>
+                          {allVesselCodes.map(code => <option key={code} value={code}>{code}</option>)}
+                        </select>
+                      </td>
                       <td className="px-2 py-1.5 text-center text-xs text-blue-600 font-mono">{d.heatNo ?? <span className="text-gray-300">-</span>}</td>
                       <td className="px-2 py-1.5">
                         <div className="flex gap-1">
@@ -535,6 +565,13 @@ export default function DrawingTable({
                     <td className="px-2 py-2 text-right text-xs text-gray-700">{d.length.toLocaleString()}</td>
                     <td className="px-2 py-2 text-right text-xs text-gray-700">{calcSteelWeight(d.thickness, d.width, d.length).toFixed(1)}</td>
                     <td className="px-2 py-2 text-right text-xs text-gray-500">{d.useWeight != null ? d.useWeight.toFixed(1) : "-"}</td>
+                    <td className="px-2 py-2 text-center text-xs">
+                      {dExt.alternateVesselCode ? (
+                        <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-medium">{dExt.alternateVesselCode}</span>
+                      ) : (
+                        <span className="text-gray-300">-</span>
+                      )}
+                    </td>
                     <td className="px-2 py-2 text-center text-xs font-mono text-blue-600 truncate">{d.heatNo ?? <span className="text-gray-300">-</span>}</td>
                     <td className="px-2 py-2">
                       <div className="flex gap-1 justify-end items-center">

@@ -18,19 +18,27 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: false, data: {} });
   }
 
-  // 이 프로젝트의 고유 스펙 목록
-  const specs = await prisma.drawingList.findMany({
+  // 이 프로젝트의 스펙+대체호선 목록
+  const rows = await prisma.drawingList.findMany({
     where: { projectId },
-    select: { material: true, thickness: true, width: true, length: true },
-    distinct: ["material", "thickness", "width", "length"],
+    select: { material: true, thickness: true, width: true, length: true, alternateVesselCode: true },
   });
 
+  // 스펙+대체호선 조합별로 유니크 집합
+  const specMap = new Map<string, { material: string; thickness: number; width: number; length: number; steelVessel: string }>();
+  for (const r of rows) {
+    const steelVessel = r.alternateVesselCode?.trim() || project.projectCode;
+    const key = `${r.material}|${r.thickness}|${r.width}|${r.length}|${steelVessel}`;
+    if (!specMap.has(key)) specMap.set(key, { material: r.material, thickness: r.thickness, width: r.width, length: r.length, steelVessel });
+  }
+
   const result: Record<string, number> = {};
-  for (const s of specs) {
-    const key = `${s.material}|${s.thickness}|${s.width}|${s.length}`;
-    result[key] = await prisma.steelPlan.count({
+  for (const [key, s] of specMap) {
+    // key에서 steelVessel 제거한 스펙키 (UI에서 조회용)
+    const specKey = `${s.material}|${s.thickness}|${s.width}|${s.length}|${s.steelVessel}`;
+    result[specKey] = await prisma.steelPlan.count({
       where: {
-        vesselCode: project.projectCode,
+        vesselCode: s.steelVessel,
         material: s.material,
         thickness: s.thickness,
         width: s.width,

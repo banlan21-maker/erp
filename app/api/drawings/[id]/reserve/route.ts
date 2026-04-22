@@ -26,13 +26,16 @@ export async function POST(
     }
 
     const { material, thickness, width, length } = drawing;
-    const vesselCode = drawing.project.projectCode;
+    const projectCode = drawing.project.projectCode;
     const block = drawing.block ?? "UNKNOWN";
+    // 대체호선이 있으면 해당 호선 재고에서, 없으면 자기 호선 재고에서
+    const steelVesselCode = (drawing as { alternateVesselCode?: string | null }).alternateVesselCode?.trim() || projectCode;
+    const reservedFor = `${projectCode}/${block}`;
 
     // 같은 규격의 RECEIVED SteelPlan 중 미확정(reservedFor가 null) 판 1개 찾기
     const steelPlan = await prisma.steelPlan.findFirst({
       where: {
-        vesselCode,
+        vesselCode: steelVesselCode,
         material,
         thickness,
         width,
@@ -50,10 +53,10 @@ export async function POST(
 
     await prisma.steelPlan.update({
       where: { id: steelPlan.id },
-      data: { reservedFor: block },
+      data: { reservedFor },
     });
 
-    return NextResponse.json({ success: true, reservedSteelPlanId: steelPlan.id, block });
+    return NextResponse.json({ success: true, reservedSteelPlanId: steelPlan.id, block: reservedFor });
   } catch (error) {
     console.error("[POST /api/drawings/[id]/reserve]", error);
     return NextResponse.json({ success: false, error: "확정 처리 중 오류가 발생했습니다." }, { status: 500 });
@@ -76,21 +79,18 @@ export async function DELETE(
     }
 
     const { material, thickness, width, length } = drawing;
-    const vesselCode = drawing.project.projectCode;
+    const projectCode = drawing.project.projectCode;
     const block = drawing.block ?? "UNKNOWN";
+    const steelVesselCode = (drawing as { alternateVesselCode?: string | null }).alternateVesselCode?.trim() || projectCode;
+    const reservedFor = `${projectCode}/${block}`;
 
-    // 이 블록으로 확정된 같은 규격 SteelPlan 1개 찾아서 reservedFor 초기화
+    // 신규 형식으로 확정된 판재 먼저 찾기, 없으면 구형 형식으로 찾기
     const steelPlan = await prisma.steelPlan.findFirst({
-      where: {
-        vesselCode,
-        material,
-        thickness,
-        width,
-        length,
-        status: "RECEIVED",
-        reservedFor: block,
-      },
+      where: { vesselCode: steelVesselCode, material, thickness, width, length, status: "RECEIVED", reservedFor },
+    }) ?? await prisma.steelPlan.findFirst({
+      where: { vesselCode: steelVesselCode, material, thickness, width, length, status: "RECEIVED", reservedFor: block },
     });
+
     if (!steelPlan) {
       return NextResponse.json(
         { success: false, error: "이 블록으로 확정된 판재를 찾을 수 없습니다." },

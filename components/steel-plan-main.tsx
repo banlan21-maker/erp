@@ -259,7 +259,7 @@ export default function SteelPlanMain() {
       cf.status?.length           ? `상태: ${cf.status.map((s) => PLAN_LABEL[s] ?? s).join(", ")}` : "",
       cf.receivedAt?.length       ? `입고일: ${cf.receivedAt.join(", ")}`     : "",
       cf.storageLocation?.length  ? `보관위치: ${cf.storageLocation.join(", ")}` : "",
-      cf.reservedFor?.length      ? `확정블록: ${cf.reservedFor.join(", ")}`  : "",
+      cf.reservedFor?.length      ? `확정호선/블록: ${cf.reservedFor.join(", ")}`  : "",
       search                      ? `검색: ${search}`                         : "",
     ].filter(Boolean).join(" / ");
 
@@ -308,7 +308,7 @@ export default function SteelPlanMain() {
   <thead>
     <tr>
       <th>호선</th><th>재질</th><th>두께</th><th>폭</th><th>길이</th>
-      <th>중량(kg)</th><th>입고일</th><th>보관위치</th><th>상태</th><th>확정블록</th><th>메모</th>
+      <th>중량(kg)</th><th>입고일</th><th>보관위치</th><th>상태</th><th>확정호선/블록</th><th>메모</th>
     </tr>
   </thead>
   <tbody>${rows_html}</tbody>
@@ -894,7 +894,7 @@ export default function SteelPlanMain() {
                     })}
                     <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">중량(kg)</th>
                     {(["receivedAt","storageLocation","status","reservedFor"] as const).map((col, i) => {
-                      const labels = ["입고일","보관위치","상태","확정블록"];
+                      const labels = ["입고일","보관위치","상태","확정호선/블록"];
                       const active = (colFilters[col]?.length ?? 0) > 0;
                       return (
                         <th key={col} className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">
