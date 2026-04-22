@@ -253,7 +253,7 @@ export default function SteelPlanMain() {
     const fmt = (iso: string | null) =>
       iso ? new Date(iso).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" }) : "-";
     const wt  = (t: number, w: number, l: number) =>
-      Math.round(t * w * l * 7.85 / 1_000_000 * 100) / 100;
+      (Math.round(t * w * l * 7.85 / 1_000_000 * 10) / 10).toFixed(1);
 
     const filterDesc = [
       cf.vesselCode?.length       ? `호선: ${cf.vesselCode.join(", ")}`       : "",
@@ -275,7 +275,7 @@ export default function SteelPlanMain() {
         <td class="num">${fmtT(r.thickness)}</td>
         <td class="num">${fmtL(r.width)}</td>
         <td class="num">${fmtL(r.length)}</td>
-        <td class="num">${wt(r.thickness, r.width, r.length).toLocaleString()}</td>
+        <td class="num">${wt(r.thickness, r.width, r.length)}</td>
         <td>${fmt(r.receivedAt)}</td>
         <td>${r.storageLocation ?? "-"}</td>
         <td>${PLAN_LABEL[r.status] ?? r.status}</td>
