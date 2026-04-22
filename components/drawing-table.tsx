@@ -165,11 +165,11 @@ export default function DrawingTable({
       .then(data => {
         if (data.success) {
           const codes: string[] = (data.data.vesselCode as { value: string }[]).map(v => v.value);
-          setAllVesselCodes(codes.filter(c => c !== projectCode));
+          setAllVesselCodes(codes);
         }
       })
       .catch(() => {});
-  }, [projectCode]);
+  }, []);
 
   // 삭제 / 전체삭제
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -523,7 +523,7 @@ export default function DrawingTable({
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-full text-right" value={editForm.useWeight}  onChange={e => f("useWeight",  e.target.value)} /></td>
                       <td className="px-2 py-1.5">
                         <select className="h-7 text-xs w-full border rounded px-1 bg-white" value={editForm.alternateVesselCode} onChange={e => f("alternateVesselCode", e.target.value)}>
-                          <option value="">자기 호선</option>
+                          <option value="">지정없음</option>
                           {allVesselCodes.map(code => <option key={code} value={code}>{code}</option>)}
                         </select>
                       </td>
