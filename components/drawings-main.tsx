@@ -448,7 +448,7 @@ function ListTab({
           </span>
         </div>
 
-        <DrawingTable drawings={drawings} projectId={activeProject.id} />
+        <DrawingTable drawings={drawings} projectId={activeProject.id} projectCode={activeProject.projectCode} />
       </div>
     );
   }
