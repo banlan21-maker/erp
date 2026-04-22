@@ -412,17 +412,6 @@ function ListTab({
   router: ReturnType<typeof useRouter>;
   baseUrl?: string;
 }) {
-  const [steelStorageLocation, setSteelStorageLocation] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!activeProject) { setSteelStorageLocation(null); return; }
-    fetch(`/api/steel-plan?vesselCode=${encodeURIComponent(activeProject.projectCode)}`)
-      .then(r => r.json())
-      .then((rows: Array<{ storageLocation?: string | null }>) => {
-        const loc = rows.find(r => r.storageLocation)?.storageLocation ?? null;
-        setSteelStorageLocation(loc);
-      });
-  }, [activeProject?.projectCode]);
 
   // 프로젝트가 선택된 경우 → 강재리스트 테이블 표시
   if (projectId && activeProject) {
@@ -438,14 +427,6 @@ function ListTab({
           <h3 className="text-base font-semibold text-gray-800">
             [{activeProject.projectCode}] {activeProject.projectName}
           </h3>
-        </div>
-
-        {/* 보관위치 배너 */}
-        <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
-          <MapPin size={15} className="text-amber-600 flex-shrink-0" />
-          <span className="text-sm font-medium text-amber-800 flex-1">
-            보관위치 : {steelStorageLocation ?? <span className="text-amber-500 font-normal">미확정</span>}
-          </span>
         </div>
 
         <DrawingTable drawings={drawings} projectId={activeProject.id} projectCode={activeProject.projectCode} />

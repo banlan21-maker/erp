@@ -402,12 +402,33 @@ export default function DrawingTable({
       {/* 상단 바 */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
-          {/* 상태 카운트 */}
+          {/* 상태 카운트 — 클릭 시 해당 상태 필터 토글 */}
           <div className="flex gap-1.5 text-xs">
-            {(counts.CAUTION ?? 0) > 0 && <span className="px-2 py-1 bg-red-100 text-red-700 rounded-md font-medium">경고 {counts.CAUTION}</span>}
-            <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-md font-medium">미입고 {counts.REGISTERED ?? 0}</span>
-            <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-md font-medium">확정 {counts.WAITING ?? 0}</span>
-            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-md font-medium">절단 {counts.CUT ?? 0}</span>
+            {(["CAUTION","REGISTERED","WAITING","CUT"] as DrawingStatusType[]).map((s) => {
+              const labelMap = { CAUTION:"경고", REGISTERED:"미입고", WAITING:"확정", CUT:"절단" };
+              const styleMap = {
+                CAUTION:    "bg-red-100 text-red-700 hover:bg-red-200",
+                REGISTERED: "bg-orange-100 text-orange-700 hover:bg-orange-200",
+                WAITING:    "bg-purple-100 text-purple-700 hover:bg-purple-200",
+                CUT:        "bg-blue-100 text-blue-700 hover:bg-blue-200",
+              };
+              const cnt = counts[s] ?? 0;
+              if (s === "CAUTION" && cnt === 0) return null;
+              const isActive = (filters.status ?? []).includes(labelMap[s]);
+              return (
+                <button
+                  key={s}
+                  onClick={() => {
+                    const label = labelMap[s];
+                    const cur = filters.status ?? [];
+                    handleFilterChange("status", isActive ? cur.filter(v => v !== label) : [label]);
+                  }}
+                  className={`px-2 py-1 rounded-md font-medium transition-colors cursor-pointer ${styleMap[s]} ${isActive ? "ring-2 ring-offset-1 ring-current" : ""}`}
+                >
+                  {labelMap[s]} {cnt}
+                </button>
+              );
+            })}
           </div>
           {/* 필터 적용 중 표시 */}
           {activeFilterCount > 0 && (
@@ -466,6 +487,7 @@ export default function DrawingTable({
           <thead className="bg-gray-50 border-b">
             <tr>
               <FilterHeader col="status"      label="상태"         align="center" {...filterHeaderProps} />
+              <th className="px-2 py-2.5 text-xs font-semibold text-gray-500 text-center whitespace-nowrap">대체호선</th>
               <FilterHeader col="block"       label="블록"                        {...filterHeaderProps} />
               <FilterHeader col="drawingNo"   label="도면번호"                    {...filterHeaderProps} />
               <FilterHeader col="material"    label="재질"                        {...filterHeaderProps} />
@@ -474,7 +496,6 @@ export default function DrawingTable({
               <FilterHeader col="length"      label="길이(mm)"     align="right"  {...filterHeaderProps} />
               <FilterHeader col="steelWeight" label="강재중량(kg)" align="right"  {...filterHeaderProps} />
               <FilterHeader col="useWeight"   label="사용중량(kg)" align="right"  {...filterHeaderProps} />
-              <th className="px-2 py-2.5 text-xs font-semibold text-gray-500 text-center whitespace-nowrap">대체호선</th>
               <FilterHeader col="heatNo"      label="실사용판번호" align="center" {...filterHeaderProps} />
               <th className="px-2 py-2.5 w-16"></th>
             </tr>
@@ -515,6 +536,12 @@ export default function DrawingTable({
                   return (
                     <tr key={d.id} className="bg-blue-50">
                       <td className="px-2 py-1.5 text-center">{statusCell}</td>
+                      <td className="px-2 py-1.5">
+                        <select className="h-7 text-xs w-full border rounded px-1 bg-white" value={editForm.alternateVesselCode} onChange={e => f("alternateVesselCode", e.target.value)}>
+                          <option value="">지정없음</option>
+                          {allVesselCodes.map(code => <option key={code} value={code}>{code}</option>)}
+                        </select>
+                      </td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-full"   value={editForm.block}       onChange={e => f("block",       e.target.value)} /></td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-full"   value={editForm.drawingNo}   onChange={e => f("drawingNo",   e.target.value)} /></td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-full"   value={editForm.material}    onChange={e => f("material",    e.target.value)} /></td>
@@ -523,12 +550,6 @@ export default function DrawingTable({
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-full text-right" value={editForm.length}     onChange={e => f("length",     e.target.value)} /></td>
                       <td className="px-2 py-1.5 text-right text-xs text-gray-500">{calcSteelWeight(editForm.thickness, editForm.width, editForm.length).toFixed(1)}</td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-full text-right" value={editForm.useWeight}  onChange={e => f("useWeight",  e.target.value)} /></td>
-                      <td className="px-2 py-1.5">
-                        <select className="h-7 text-xs w-full border rounded px-1 bg-white" value={editForm.alternateVesselCode} onChange={e => f("alternateVesselCode", e.target.value)}>
-                          <option value="">지정없음</option>
-                          {allVesselCodes.map(code => <option key={code} value={code}>{code}</option>)}
-                        </select>
-                      </td>
                       <td className="px-2 py-1.5 text-center text-xs text-blue-600 font-mono">{d.heatNo ?? <span className="text-gray-300">-</span>}</td>
                       <td className="px-2 py-1.5">
                         <div className="flex gap-1">
@@ -543,6 +564,13 @@ export default function DrawingTable({
                 return (
                   <tr key={d.id} className={`hover:bg-gray-50 transition-colors ${isDeleting ? "opacity-40" : ""} ${status === "CUT" ? "bg-green-50/30" : ""}`}>
                     <td className="px-2 py-2 text-center">{statusCell}</td>
+                    <td className="px-2 py-2 text-center text-xs">
+                      {dExt.alternateVesselCode ? (
+                        <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-medium">{dExt.alternateVesselCode}</span>
+                      ) : (
+                        <span className="text-gray-300">-</span>
+                      )}
+                    </td>
                     <td className="px-2 py-2 text-gray-700 font-medium text-xs truncate">{d.block ?? "-"}</td>
                     <td className="px-2 py-2 text-gray-700 font-mono text-xs truncate">{d.drawingNo ?? "-"}</td>
                     <td className="px-2 py-2">
@@ -553,13 +581,6 @@ export default function DrawingTable({
                     <td className="px-2 py-2 text-right text-xs text-gray-700">{d.length.toLocaleString()}</td>
                     <td className="px-2 py-2 text-right text-xs text-gray-700">{calcSteelWeight(d.thickness, d.width, d.length).toFixed(1)}</td>
                     <td className="px-2 py-2 text-right text-xs text-gray-500">{d.useWeight != null ? d.useWeight.toFixed(1) : "-"}</td>
-                    <td className="px-2 py-2 text-center text-xs">
-                      {dExt.alternateVesselCode ? (
-                        <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-medium">{dExt.alternateVesselCode}</span>
-                      ) : (
-                        <span className="text-gray-300">-</span>
-                      )}
-                    </td>
                     <td className="px-2 py-2 text-center text-xs font-mono text-blue-600 truncate">{d.heatNo ?? <span className="text-gray-300">-</span>}</td>
                     <td className="px-2 py-2">
                       <div className="flex gap-1 justify-end items-center">
