@@ -157,14 +157,14 @@ export default function DrawingTable({
   const [editForm, setEditForm] = useState<EditForm | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // 대체호선 드롭다운용 프로젝트 코드 목록
+  // 대체호선 드롭다운용 호선 목록 (강재 전체목록 기준)
   const [allVesselCodes, setAllVesselCodes] = useState<string[]>([]);
   useEffect(() => {
-    fetch("/api/projects")
+    fetch("/api/steel-plan/distinct")
       .then(r => r.json())
       .then(data => {
         if (data.success) {
-          const codes: string[] = [...new Set((data.data as { projectCode: string }[]).map(p => p.projectCode))].sort();
+          const codes: string[] = (data.data.vesselCode as { value: string }[]).map(v => v.value);
           setAllVesselCodes(codes.filter(c => c !== projectCode));
         }
       })
