@@ -18,31 +18,26 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: false, data: {} });
   }
 
-  // 이 프로젝트의 스펙+대체호선 목록
+  // 이 프로젝트의 고유 스펙 목록 (행별 대체호선 포함)
   const rows = await prisma.drawingList.findMany({
     where: { projectId },
     select: { material: true, thickness: true, width: true, length: true, alternateVesselCode: true },
   });
 
-  // 스펙+대체호선 조합별로 유니크 집합
-  const specMap = new Map<string, { material: string; thickness: number; width: number; length: number; steelVessel: string }>();
+  // 스펙별로 그룹화 (키: "material|thickness|width|length")
+  // 같은 스펙이라도 대체호선이 다를 수 있으므로 행별로 steelVessel 결정
+  const result: Record<string, number> = {};
   for (const r of rows) {
     const steelVessel = r.alternateVesselCode?.trim() || project.projectCode;
     const key = `${r.material}|${r.thickness}|${r.width}|${r.length}|${steelVessel}`;
-    if (!specMap.has(key)) specMap.set(key, { material: r.material, thickness: r.thickness, width: r.width, length: r.length, steelVessel });
-  }
-
-  const result: Record<string, number> = {};
-  for (const [key, s] of specMap) {
-    // key에서 steelVessel 제거한 스펙키 (UI에서 조회용)
-    const specKey = `${s.material}|${s.thickness}|${s.width}|${s.length}|${s.steelVessel}`;
-    result[specKey] = await prisma.steelPlan.count({
+    if (key in result) continue; // 이미 계산됨
+    result[key] = await prisma.steelPlan.count({
       where: {
-        vesselCode: s.steelVessel,
-        material: s.material,
-        thickness: s.thickness,
-        width: s.width,
-        length: s.length,
+        vesselCode: steelVessel,
+        material: r.material,
+        thickness: r.thickness,
+        width: r.width,
+        length: r.length,
         status: "RECEIVED",
         reservedFor: null,
       },
