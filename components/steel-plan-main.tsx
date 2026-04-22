@@ -8,6 +8,11 @@ import {
 } from "lucide-react";
 import ColumnFilterDropdown, { type FilterValue } from "./column-filter-dropdown";
 
+/* ── 헬퍼 ─────────────────────────────────────────────────────────────────── */
+// 부동소수점 오차 제거: 두께는 소수점 1자리, 폭/길이는 정수
+const fmtT = (v: number) => parseFloat(v.toFixed(1));   // 7.10000000005 → 7.1
+const fmtL = (v: number) => Math.round(v);               // 2140.00000001 → 2140
+
 /* ── 타입 ─────────────────────────────────────────────────────────────────── */
 interface SteelPlanRow {
   id: string;
@@ -267,9 +272,9 @@ export default function SteelPlanMain() {
       <tr class="${i % 2 === 0 ? "even" : ""}">
         <td>${r.vesselCode}</td>
         <td>${r.material}</td>
-        <td class="num">${r.thickness}</td>
-        <td class="num">${r.width}</td>
-        <td class="num">${r.length}</td>
+        <td class="num">${fmtT(r.thickness)}</td>
+        <td class="num">${fmtL(r.width)}</td>
+        <td class="num">${fmtL(r.length)}</td>
         <td class="num">${wt(r.thickness, r.width, r.length).toLocaleString()}</td>
         <td>${fmt(r.receivedAt)}</td>
         <td>${r.storageLocation ?? "-"}</td>
@@ -934,9 +939,9 @@ export default function SteelPlanMain() {
                           </td>
                           <td className="px-2 py-1 text-center font-medium">{row.vesselCode}</td>
                           <td className="px-2 py-1 text-center">{row.material}</td>
-                          <td className="px-2 py-1 text-center">{row.thickness}</td>
-                          <td className="px-2 py-1 text-center">{row.width}</td>
-                          <td className="px-2 py-1 text-center">{row.length}</td>
+                          <td className="px-2 py-1 text-center">{fmtT(row.thickness)}</td>
+                          <td className="px-2 py-1 text-center">{fmtL(row.width)}</td>
+                          <td className="px-2 py-1 text-center">{fmtL(row.length)}</td>
                           <td className="px-2 py-1 text-center font-medium text-gray-700">
                             {calcWeight(row.thickness, row.width, row.length).toFixed(1)}
                           </td>
@@ -1158,9 +1163,9 @@ export default function SteelPlanMain() {
                           </td>
                           <td className="px-2 py-1 text-center font-medium">{row.vesselCode}</td>
                           <td className="px-2 py-1 text-center">{row.material}</td>
-                          <td className="px-2 py-1 text-center">{row.thickness}</td>
-                          <td className="px-2 py-1 text-center">{row.width}</td>
-                          <td className="px-2 py-1 text-center">{row.length}</td>
+                          <td className="px-2 py-1 text-center">{fmtT(row.thickness)}</td>
+                          <td className="px-2 py-1 text-center">{fmtL(row.width)}</td>
+                          <td className="px-2 py-1 text-center">{fmtL(row.length)}</td>
                           <td className="px-2 py-1 text-center font-mono text-blue-700 font-medium">
                             {editingHeat?.id === row.id ? (
                               <input
@@ -1481,9 +1486,9 @@ export default function SteelPlanMain() {
                       <tr key={i} className={r.notFound ? "bg-red-50" : r.matched > 0 ? "bg-green-50" : "bg-gray-50"}>
                         <td className="px-3 py-2 font-mono font-bold">{r.vesselCode}</td>
                         <td className="px-3 py-2">{r.material}</td>
-                        <td className="px-3 py-2">{r.thickness}t</td>
-                        <td className="px-3 py-2">{r.width}</td>
-                        <td className="px-3 py-2">{r.length}</td>
+                        <td className="px-3 py-2">{fmtT(r.thickness)}t</td>
+                        <td className="px-3 py-2">{fmtL(r.width)}</td>
+                        <td className="px-3 py-2">{fmtL(r.length)}</td>
                         <td className="px-3 py-2">{r.qty}장</td>
                         <td className="px-3 py-2 font-semibold">
                           {r.error ? <span className="text-gray-500">{r.error}</span>

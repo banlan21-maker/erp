@@ -40,11 +40,11 @@ export async function GET() {
 
     material: materials.map((m) => ({ value: m.material, label: m.material })),
 
-    thickness: thicknesses.map((t) => ({ value: String(t.thickness), label: String(t.thickness) })),
+    thickness: thicknesses.map((t) => ({ value: String(t.thickness), label: String(parseFloat(t.thickness.toFixed(1))) })),
 
-    width: widths.map((w) => ({ value: String(w.width), label: String(w.width) })),
+    width: widths.map((w) => ({ value: String(w.width), label: String(Math.round(w.width)) })),
 
-    length: lengths.map((l) => ({ value: String(l.length), label: String(l.length) })),
+    length: lengths.map((l) => ({ value: String(l.length), label: String(Math.round(l.length)) })),
 
     status: statuses.map((s) => ({ value: s.status, label: STATUS_LABEL[s.status] ?? s.status })),
 
