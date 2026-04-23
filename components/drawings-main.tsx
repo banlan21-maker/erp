@@ -440,8 +440,16 @@ function UploadTab({
                   <table className="w-full text-xs whitespace-nowrap">
                     <thead className="bg-gray-50 border-b sticky top-0">
                       <tr>
-                        {["블록","도면번호","재질","두께","폭","길이","수량",""].map(h => (
-                          <th key={h} className="px-3 py-2 text-left text-gray-500 font-semibold">{h}</th>
+                        {[
+                          { h: "블록",   align: "left" },
+                          { h: "도면번호", align: "left" },
+                          { h: "재질",   align: "left" },
+                          { h: "두께",   align: "right" },
+                          { h: "폭",     align: "right" },
+                          { h: "길이",   align: "right" },
+                          { h: "",       align: "right" },
+                        ].map(({ h, align }) => (
+                          <th key={h} className={`px-3 py-2 text-${align} text-gray-500 font-semibold`}>{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -458,8 +466,7 @@ function UploadTab({
                               <td className="px-3 py-2 text-right">{row.thickness}t</td>
                               <td className="px-3 py-2 text-right">{row.width.toLocaleString()}</td>
                               <td className="px-3 py-2 text-right">{row.length.toLocaleString()}</td>
-                              <td className="px-3 py-2 text-right">{row.qty}</td>
-                              <td className="px-3 py-2">
+                              <td className="px-3 py-2 text-right">
                                 <button
                                   onClick={() => setRemnantInputs(prev => ({
                                     ...prev,
@@ -475,7 +482,7 @@ function UploadTab({
                             </tr>
                             {rem?.open && (
                               <tr className="bg-orange-50 border-b">
-                                <td colSpan={8} className="px-4 py-3">
+                                <td colSpan={7} className="px-4 py-3">
                                   <div className="flex flex-wrap gap-3 items-end">
                                     <div>
                                       <label className="text-[10px] text-gray-500 font-semibold block mb-1">잔재번호</label>
