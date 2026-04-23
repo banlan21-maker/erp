@@ -64,9 +64,9 @@ enum RemnantShape {
 }
 
 enum RemnantStatus {
-  IN_STOCK   // 재고있음
-  IN_USE     // 사용중
-  EXHAUSTED  // 소진
+  PENDING    // 등록 (초기 등록, 원철판 미절단)
+  IN_STOCK   // 재고 (원철판 절단완료, 판번호 부여됨)
+  EXHAUSTED  // 소진 (다른 곳에 사용됨)
 }
 
 enum EquipmentStatus {
@@ -980,15 +980,23 @@ model Remnant {
   sourceVesselName String?       // 직접 입력 호선명
   sourceBlock      String?       // 직접 입력 블록 번호
 
-  // DrawingList 연결
+  // DrawingList 연결 (원철판 → 등록잔재, cascade 삭제)
   drawingListId    String?
-  drawingList      DrawingList?  @relation(fields: [drawingListId], references: [id], onDelete: SetNull)
+  drawingList      DrawingList?  @relation(fields: [drawingListId], references: [id], onDelete: Cascade)
+
+  // 부모 등록잔재 연결 (등록잔재 → 자식 등록잔재)
+  parentRemnantId  String?
+  parentRemnant    Remnant?      @relation("RemnantTree", fields: [parentRemnantId], references: [id], onDelete: SetNull)
+  childRemnants    Remnant[]     @relation("RemnantTree")
+
+  // 발생 판번호 (원철판 절단완료 시 자동 기입)
+  heatNo       String?
 
   // 보관 및 기타
   location     String?       // 보관 위치
   photoUrl     String?       // 사진
   memo         String?       // 메모사항
-  status       RemnantStatus @default(IN_STOCK)
+  status       RemnantStatus @default(PENDING)
   registeredBy String        // 등록자
 
   // 레거시 필드 (미사용, 데이터 보존용)

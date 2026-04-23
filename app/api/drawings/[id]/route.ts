@@ -25,7 +25,20 @@ export async function PATCH(
           // 입고(WAITING)로 변경 시 입고일 기록, 등록으로 되돌리면 초기화
           receivedAt: status === "WAITING" ? new Date() : status === "REGISTERED" ? null : undefined,
         },
+        include: { remnants: { where: { parentRemnantId: null } } },
       });
+
+      // 절단완료(CUT) 시: 자식 등록잔재에 heatNo 자동부여 + PENDING→IN_STOCK
+      if (status === "CUT" && updated.heatNo) {
+        const childIds = updated.remnants.map((r: { id: string }) => r.id);
+        if (childIds.length > 0) {
+          await prisma.remnant.updateMany({
+            where: { id: { in: childIds }, status: "PENDING" },
+            data: { heatNo: updated.heatNo, status: "IN_STOCK" },
+          });
+        }
+      }
+
       return NextResponse.json({ success: true, data: updated });
     }
 

@@ -195,11 +195,11 @@ export default function ProjectsMain({
 
 // ─── 등록잔재리스트 탭 ────────────────────────────────────────────────────────
 const SHAPE_LABEL: Record<string, string> = { RECTANGLE: "사각형", L_SHAPE: "L자형" };
-const STATUS_LABEL_R: Record<string, string> = { IN_STOCK: "재고", IN_USE: "사용중", EXHAUSTED: "소진" };
+const STATUS_LABEL_R: Record<string, string> = { PENDING: "등록", IN_STOCK: "재고", EXHAUSTED: "소진" };
 const STATUS_COLOR_R: Record<string, string> = {
-  IN_STOCK: "bg-green-100 text-green-700",
-  IN_USE:   "bg-blue-100 text-blue-700",
-  EXHAUSTED:"bg-gray-100 text-gray-500",
+  PENDING:   "bg-yellow-100 text-yellow-700",
+  IN_STOCK:  "bg-green-100 text-green-700",
+  EXHAUSTED: "bg-gray-100 text-gray-500",
 };
 
 type RemnantRow = {
@@ -207,6 +207,7 @@ type RemnantRow = {
   thickness: number; width1: number | null; length1: number | null;
   width2: number | null; length2: number | null; weight: number;
   sourceBlock: string | null; sourceVesselName: string | null; status: string;
+  heatNo: string | null;
   sourceProject: { projectCode: string } | null;
 };
 
@@ -215,6 +216,7 @@ function colVal(r: RemnantRow, col: string): string {
     case "remnantNo":   return r.remnantNo;
     case "vessel":      return r.sourceProject?.projectCode ?? r.sourceVesselName ?? "-";
     case "block":       return r.sourceBlock ?? "-";
+    case "heatNo":      return r.heatNo ?? "-";
     case "shape":       return SHAPE_LABEL[r.shape] ?? r.shape;
     case "material":    return r.material;
     case "thickness":   return String(r.thickness);
@@ -232,6 +234,7 @@ const COLS = [
   { key: "remnantNo", label: "잔재번호",   align: "left"  },
   { key: "vessel",    label: "발생호선",   align: "left"  },
   { key: "block",     label: "발생블록",   align: "left"  },
+  { key: "heatNo",    label: "발생판번호", align: "left"  },
   { key: "shape",     label: "형태",       align: "left"  },
   { key: "material",  label: "재질",       align: "left"  },
   { key: "thickness", label: "두께",       align: "right" },
@@ -314,7 +317,7 @@ function ProjectRemnantTab({ projectOptions: _p }: { projectOptions: ProjectOpti
             </thead>
             <tbody className="divide-y">
               {filtered.length === 0 ? (
-                <tr><td colSpan={12} className="text-center py-8 text-gray-400">
+                <tr><td colSpan={13} className="text-center py-8 text-gray-400">
                   {remnants.length === 0 ? "등록된 잔재가 없습니다." : "필터 조건에 맞는 데이터가 없습니다."}
                   {activeCount > 0 && <button onClick={() => setFilters({})} className="ml-2 text-blue-500 hover:underline">필터 초기화</button>}
                 </td></tr>
@@ -323,6 +326,7 @@ function ProjectRemnantTab({ projectOptions: _p }: { projectOptions: ProjectOpti
                   <td className="px-3 py-2 font-mono text-blue-600 font-medium">{r.remnantNo}</td>
                   <td className="px-3 py-2 text-gray-700">{r.sourceProject?.projectCode ?? r.sourceVesselName ?? "-"}</td>
                   <td className="px-3 py-2 text-gray-700">{r.sourceBlock ?? "-"}</td>
+                  <td className="px-3 py-2 font-mono text-gray-600">{r.heatNo ?? "-"}</td>
                   <td className="px-3 py-2"><span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-[10px] font-medium">{SHAPE_LABEL[r.shape] ?? r.shape}</span></td>
                   <td className="px-3 py-2"><span className="px-1.5 py-0.5 bg-slate-100 rounded font-medium">{r.material}</span></td>
                   <td className="px-3 py-2 text-right">{r.thickness}</td>
@@ -341,7 +345,7 @@ function ProjectRemnantTab({ projectOptions: _p }: { projectOptions: ProjectOpti
             </tbody>
             <tfoot className="bg-gray-50 border-t">
               <tr>
-                <td colSpan={10} className="px-3 py-2 text-gray-500 font-medium">합계 ({filtered.length}건)</td>
+                <td colSpan={11} className="px-3 py-2 text-gray-500 font-medium">합계 ({filtered.length}건)</td>
                 <td className="px-3 py-2 text-right font-bold text-gray-700">{totalWeight.toFixed(1)}kg</td>
                 <td />
               </tr>
