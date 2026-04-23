@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
-import { Anchor, List, Upload, FileSpreadsheet, Plus, ClipboardList, Layers, ArrowLeft } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Anchor, List, Upload, FileSpreadsheet, Plus, ClipboardList, Layers, ArrowLeft, Filter, X } from "lucide-react";
+import ColumnFilterDropdown from "@/components/column-filter-dropdown";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import ProjectTree from "@/components/project-tree";
@@ -194,114 +195,169 @@ export default function ProjectsMain({
 
 // ─── 등록잔재리스트 탭 ────────────────────────────────────────────────────────
 const SHAPE_LABEL: Record<string, string> = { RECTANGLE: "사각형", L_SHAPE: "L자형" };
+const STATUS_LABEL_R: Record<string, string> = { IN_STOCK: "재고", IN_USE: "사용중", EXHAUSTED: "소진" };
+const STATUS_COLOR_R: Record<string, string> = {
+  IN_STOCK: "bg-green-100 text-green-700",
+  IN_USE:   "bg-blue-100 text-blue-700",
+  EXHAUSTED:"bg-gray-100 text-gray-500",
+};
 
-function ProjectRemnantTab({
-  projectOptions, activeProject, projectId,
-}: {
-  projectOptions: ProjectOption[];
-  activeProject: { id: string; projectCode: string; projectName: string } | null;
-  projectId: string | null;
-}) {
-  type RemnantRow = {
-    id: string; remnantNo: string; shape: string; material: string;
-    thickness: number; width1: number | null; length1: number | null;
-    width2: number | null; length2: number | null; weight: number;
-    sourceBlock: string | null;
-  };
+type RemnantRow = {
+  id: string; remnantNo: string; shape: string; material: string;
+  thickness: number; width1: number | null; length1: number | null;
+  width2: number | null; length2: number | null; weight: number;
+  sourceBlock: string | null; sourceVesselName: string | null; status: string;
+  sourceProject: { projectCode: string } | null;
+};
 
-  const router = useRouter();
+function colVal(r: RemnantRow, col: string): string {
+  switch (col) {
+    case "remnantNo":   return r.remnantNo;
+    case "vessel":      return r.sourceProject?.projectCode ?? r.sourceVesselName ?? "-";
+    case "block":       return r.sourceBlock ?? "-";
+    case "shape":       return SHAPE_LABEL[r.shape] ?? r.shape;
+    case "material":    return r.material;
+    case "thickness":   return String(r.thickness);
+    case "width1":      return r.width1 != null ? String(r.width1) : "-";
+    case "width2":      return r.width2 != null ? String(r.width2) : "-";
+    case "length1":     return r.length1 != null ? String(r.length1) : "-";
+    case "length2":     return r.length2 != null ? String(r.length2) : "-";
+    case "weight":      return r.weight.toFixed(1);
+    case "status":      return STATUS_LABEL_R[r.status] ?? r.status;
+    default: return "";
+  }
+}
+
+const COLS = [
+  { key: "remnantNo", label: "잔재번호",   align: "left"  },
+  { key: "vessel",    label: "발생호선",   align: "left"  },
+  { key: "block",     label: "발생블록",   align: "left"  },
+  { key: "shape",     label: "형태",       align: "left"  },
+  { key: "material",  label: "재질",       align: "left"  },
+  { key: "thickness", label: "두께",       align: "right" },
+  { key: "width1",    label: "폭1",        align: "right" },
+  { key: "width2",    label: "폭2",        align: "right" },
+  { key: "length1",   label: "길이1",      align: "right" },
+  { key: "length2",   label: "길이2",      align: "right" },
+  { key: "weight",    label: "중량(kg)",   align: "right" },
+  { key: "status",    label: "상태",       align: "center"},
+] as const;
+
+function ProjectRemnantTab({ projectOptions: _p }: { projectOptions: ProjectOption[]; activeProject: { id: string; projectCode: string; projectName: string } | null; projectId: string | null }) {
   const [remnants, setRemnants] = useState<RemnantRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [filters, setFilters] = useState<Record<string, string[]>>({});
+  const [openCol, setOpenCol] = useState<string | null>(null);
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  const thRefs = useRef<Record<string, HTMLElement | null>>({});
 
   useEffect(() => {
-    if (!projectId) return;
     setLoading(true);
-    fetch(`/api/remnants?projectId=${projectId}&type=REGISTERED`)
+    fetch("/api/remnants?type=REGISTERED")
       .then(r => r.json())
       .then(d => { if (d.success) setRemnants(d.data); })
       .finally(() => setLoading(false));
-  }, [projectId]);
+  }, []);
 
-  if (!projectId || !activeProject) {
-    return (
-      <div className="space-y-2">
-        <p className="text-sm text-gray-500 mb-3">블록(프로젝트)을 선택하세요.</p>
-        <div className="grid gap-2 max-w-lg">
-          {projectOptions.map(p => (
-            <button key={p.id}
-              onClick={() => router.push(`/cutpart/projects?tab=remnants&projectId=${p.id}`)}
-              className="text-left px-4 py-3 bg-white border rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-colors text-sm flex items-center gap-3">
-              <span className="font-semibold text-gray-800">[{p.projectCode}]</span>
-              <span className="text-gray-600">{p.projectName}</span>
-              <span className="ml-auto text-xs text-gray-400">{p.drawingCount}행</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  const filtered = remnants.filter(r =>
+    COLS.every(({ key }) => {
+      const sel = filters[key];
+      return !sel?.length || sel.includes(colVal(r, key));
+    })
+  );
+
+  const activeCount = Object.values(filters).filter(v => v.length > 0).length;
+  const totalWeight = filtered.reduce((s, r) => s + r.weight, 0);
+
+  const openFilter = (col: string, el: HTMLElement) => {
+    if (openCol === col) { setOpenCol(null); setAnchorEl(null); return; }
+    setOpenCol(col); setAnchorEl(el);
+  };
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-3">
-        <button onClick={() => router.push("/cutpart/projects?tab=remnants")}
-          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700">
-          <ArrowLeft size={15} /> 목록으로
-        </button>
-        <h3 className="text-base font-semibold text-gray-800">
-          [{activeProject.projectCode}] {activeProject.projectName} — 등록잔재리스트
-        </h3>
+      <div className="flex items-center gap-3 flex-wrap">
+        <h3 className="text-base font-semibold text-gray-800">등록잔재리스트</h3>
         <span className="text-xs text-gray-400">{remnants.length}건</span>
+        {activeCount > 0 && (
+          <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md">
+            <Filter size={11} fill="currentColor" />
+            필터 {activeCount}개 적용 ({filtered.length}/{remnants.length}건)
+            <button onClick={() => setFilters({})} className="ml-0.5 hover:text-blue-800"><X size={11} /></button>
+          </div>
+        )}
       </div>
 
       {loading ? (
         <div className="text-center py-10 text-gray-400 text-sm">불러오는 중...</div>
-      ) : remnants.length === 0 ? (
-        <div className="text-center py-10 text-gray-400 bg-white rounded-xl border text-sm">
-          등록된 잔재가 없습니다.
-        </div>
       ) : (
         <div className="bg-white border rounded-xl overflow-x-auto">
           <table className="w-full text-xs whitespace-nowrap">
             <thead className="bg-gray-50 border-b">
               <tr>
-                {["잔재번호","발생블록","형태","재질","두께(mm)","폭1","길이1","폭2","길이2","중량(kg)"].map(h => (
-                  <th key={h} className="px-3 py-2.5 text-left text-gray-500 font-semibold">{h}</th>
-                ))}
+                {COLS.map(({ key, label, align }) => {
+                  const active = (filters[key]?.length ?? 0) > 0;
+                  return (
+                    <th key={key} className={`px-3 py-2.5 text-${align} text-gray-500 font-semibold`}>
+                      <button
+                        ref={el => { thRefs.current[key] = el; }}
+                        onClick={e => openFilter(key, e.currentTarget)}
+                        className={`flex items-center gap-1 ${align === "right" ? "ml-auto" : ""} hover:text-gray-700`}
+                      >
+                        {label}
+                        <Filter size={10} className={active ? "text-blue-500 fill-blue-500" : "text-gray-400"} fill={active ? "currentColor" : "none"} />
+                      </button>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody className="divide-y">
-              {remnants.map(r => (
+              {filtered.length === 0 ? (
+                <tr><td colSpan={12} className="text-center py-8 text-gray-400">
+                  {remnants.length === 0 ? "등록된 잔재가 없습니다." : "필터 조건에 맞는 데이터가 없습니다."}
+                  {activeCount > 0 && <button onClick={() => setFilters({})} className="ml-2 text-blue-500 hover:underline">필터 초기화</button>}
+                </td></tr>
+              ) : filtered.map(r => (
                 <tr key={r.id} className="hover:bg-gray-50">
                   <td className="px-3 py-2 font-mono text-blue-600 font-medium">{r.remnantNo}</td>
+                  <td className="px-3 py-2 text-gray-700">{r.sourceProject?.projectCode ?? r.sourceVesselName ?? "-"}</td>
                   <td className="px-3 py-2 text-gray-700">{r.sourceBlock ?? "-"}</td>
-                  <td className="px-3 py-2">
-                    <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-[10px] font-medium">
-                      {SHAPE_LABEL[r.shape] ?? r.shape}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2">
-                    <span className="px-1.5 py-0.5 bg-slate-100 rounded font-medium">{r.material}</span>
-                  </td>
+                  <td className="px-3 py-2"><span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-[10px] font-medium">{SHAPE_LABEL[r.shape] ?? r.shape}</span></td>
+                  <td className="px-3 py-2"><span className="px-1.5 py-0.5 bg-slate-100 rounded font-medium">{r.material}</span></td>
                   <td className="px-3 py-2 text-right">{r.thickness}</td>
                   <td className="px-3 py-2 text-right">{r.width1?.toLocaleString() ?? "-"}</td>
-                  <td className="px-3 py-2 text-right">{r.length1?.toLocaleString() ?? "-"}</td>
                   <td className="px-3 py-2 text-right">{r.width2?.toLocaleString() ?? "-"}</td>
+                  <td className="px-3 py-2 text-right">{r.length1?.toLocaleString() ?? "-"}</td>
                   <td className="px-3 py-2 text-right">{r.length2?.toLocaleString() ?? "-"}</td>
                   <td className="px-3 py-2 text-right font-semibold">{r.weight.toFixed(1)}</td>
+                  <td className="px-3 py-2 text-center">
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${STATUS_COLOR_R[r.status] ?? "bg-gray-100 text-gray-500"}`}>
+                      {STATUS_LABEL_R[r.status] ?? r.status}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
             <tfoot className="bg-gray-50 border-t">
               <tr>
-                <td colSpan={9} className="px-3 py-2 text-gray-500 font-medium">합계 ({remnants.length}건)</td>
-                <td className="px-3 py-2 text-right font-bold text-gray-700">
-                  {remnants.reduce((s, r) => s + r.weight, 0).toFixed(1)}kg
-                </td>
+                <td colSpan={10} className="px-3 py-2 text-gray-500 font-medium">합계 ({filtered.length}건)</td>
+                <td className="px-3 py-2 text-right font-bold text-gray-700">{totalWeight.toFixed(1)}kg</td>
+                <td />
               </tr>
             </tfoot>
           </table>
         </div>
+      )}
+
+      {openCol && anchorEl && (
+        <ColumnFilterDropdown
+          anchorEl={anchorEl}
+          values={[...new Set(remnants.map(r => colVal(r, openCol)))].sort().map(v => ({ value: v, label: v }))}
+          selected={filters[openCol] ?? []}
+          onApply={sel => { setFilters(f => ({ ...f, [openCol]: sel })); setOpenCol(null); setAnchorEl(null); }}
+          onClose={() => { setOpenCol(null); setAnchorEl(null); }}
+        />
       )}
     </div>
   );
