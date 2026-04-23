@@ -47,9 +47,9 @@ export async function POST(request: NextRequest) {
       const { material, thickness, width, length, block: blockCode, steelVessel, needed } = spec;
       const reservedFor = `${vesselCode}/${blockCode}`;
 
-      // 이미 이 호선/블록으로 확정된 수량 (신규+구형 형식 모두)
+      // 이미 이 호선 재고에서 이 블록으로 확정된 수량 (호선별로 구분)
       const alreadyNew = await prisma.steelPlan.count({
-        where: { material, thickness, width, length, status: "RECEIVED", reservedFor },
+        where: { vesselCode: steelVessel, material, thickness, width, length, status: "RECEIVED", reservedFor },
       });
       const alreadyOld = alreadyNew === 0 ? await prisma.steelPlan.count({
         where: { vesselCode: steelVessel, material, thickness, width, length, status: "RECEIVED", reservedFor: blockCode },
