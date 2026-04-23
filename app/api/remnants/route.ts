@@ -24,6 +24,17 @@ export async function GET(request: NextRequest) {
     const shape     = searchParams.get("shape");
     const material  = searchParams.get("material");
     const projectId = searchParams.get("projectId");
+    const idsParam  = searchParams.get("ids");
+
+    // ids 파라미터로 특정 ID 목록 조회 (드로잉테이블 잔재 상세용)
+    if (idsParam) {
+      const ids = idsParam.split(",").filter(Boolean);
+      const remnants = await prisma.remnant.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, remnantNo: true, shape: true, material: true, thickness: true, weight: true, width1: true, length1: true, width2: true, length2: true, status: true },
+      });
+      return NextResponse.json({ success: true, data: remnants });
+    }
 
     const where: any = {};
     if (status)    where.status          = status;

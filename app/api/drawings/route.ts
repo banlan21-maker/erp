@@ -235,6 +235,12 @@ export async function POST(request: NextRequest) {
       length2?: number;
     }> = remnantsJson ? JSON.parse(remnantsJson) : [];
 
+    const assignmentsJson = formData.get("assignments") as string | null;
+    const assignmentsData: Array<{ rowIndex: number; remnantId: string }> =
+      assignmentsJson ? JSON.parse(assignmentsJson) : [];
+    // rowIndex → remnantId 맵
+    const assignmentMap = new Map(assignmentsData.map(a => [a.rowIndex, a.remnantId]));
+
     if (!file || !projectId) {
       return NextResponse.json(
         { success: false, error: "file과 projectId가 필요합니다." },
@@ -317,13 +323,18 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    // 잔재 연결이 필요한 경우 개별 create로 ID 추적, 아닌 경우 createMany로 빠르게 처리
+    // 잔재 연결 또는 잔재 지정이 필요한 경우 개별 create로 ID 추적
     let createdCount = 0;
     const createdRows: Array<{ id: string; thickness: number; material: string; block: string | null }> = [];
 
-    if (remnantsData.length > 0) {
-      for (const row of rowsToInsert) {
-        const dl = await prisma.drawingList.create({ data: row });
+    const needIndividual = remnantsData.length > 0 || assignmentsData.length > 0;
+    if (needIndividual) {
+      for (let rowIdx = 0; rowIdx < rowsToInsert.length; rowIdx++) {
+        const row = rowsToInsert[rowIdx];
+        const assignedRemnantId = assignmentMap.get(rowIdx) ?? null;
+        const dl = await prisma.drawingList.create({
+          data: { ...row, assignedRemnantId },
+        });
         createdRows.push({ id: dl.id, thickness: dl.thickness, material: dl.material, block: dl.block });
         createdCount++;
       }
@@ -369,6 +380,9 @@ export async function POST(request: NextRequest) {
         w = Math.round(t * (totalArea - cutArea) * 7.85 / 1_000_000 * 10) / 10;
       }
 
+      // 잔재사용 행에서 발생한 잔재는 사용된 등록잔재를 부모로 설정
+      const parentRemnantId = assignmentMap.get(rem.rowIndex) ?? null;
+
       await prisma.remnant.create({
         data: {
           remnantNo: autoNo,
@@ -384,6 +398,7 @@ export async function POST(request: NextRequest) {
           sourceProjectId: project.id,
           sourceBlock: dlRow.block,
           drawingListId: dlRow.id,
+          parentRemnantId,
           registeredBy: "system",
         },
       });

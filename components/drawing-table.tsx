@@ -178,6 +178,31 @@ export default function DrawingTable({
   const [clearConfirm, setClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
 
+  // 등록잔재사용 행의 잔재 상세 정보
+  interface RemnantDetail {
+    remnantNo: string; shape: string;
+    width1: number | null; length1: number | null; width2: number | null; length2: number | null; weight: number;
+  }
+  const [assignedRemnantDetails, setAssignedRemnantDetails] = useState<Record<string, RemnantDetail>>({});
+
+  useEffect(() => {
+    const ids = [...new Set(
+      drawings
+        .map(d => (d as DrawingList & { assignedRemnantId?: string | null }).assignedRemnantId)
+        .filter((id): id is string => !!id)
+    )];
+    if (ids.length === 0) { setAssignedRemnantDetails({}); return; }
+    fetch(`/api/remnants?ids=${ids.join(",")}`)
+      .then(r => r.json())
+      .then(data => {
+        if (!data.success) return;
+        const map: Record<string, RemnantDetail> = {};
+        for (const r of data.data) map[r.id] = r;
+        setAssignedRemnantDetails(map);
+      })
+      .catch(() => {});
+  }, [drawings]);
+
   // 스펙별 미선점 입고 수량 (클라이언트 직접 fetch)
   const [specAvailability, setSpecAvailability] = useState<Record<string, number>>({});
 
@@ -287,15 +312,19 @@ export default function DrawingTable({
 
   const activeFilterCount = Object.values(filters).filter(v => v.length > 0).length;
 
-  // 필터 적용
+  // 원재/잔재사용 분리
+  const normalDrawings  = useMemo(() => drawings.filter(d => !(d as DrawingList & { assignedRemnantId?: string | null }).assignedRemnantId), [drawings]);
+  const assignedDrawings = useMemo(() => drawings.filter(d => !!(d as DrawingList & { assignedRemnantId?: string | null }).assignedRemnantId), [drawings]);
+
+  // 필터 적용 (원재사용만)
   const filteredDrawings = useMemo(() => {
-    return drawings.filter(d =>
+    return normalDrawings.filter(d =>
       Object.entries(filters).every(([col, values]) => {
         if (values.length === 0) return true;
         return values.includes(colValue(d, col));
       })
     );
-  }, [drawings, filters]);
+  }, [normalDrawings, filters]);
 
   // 편집 헬퍼
   const startEdit = (d: DrawingList) => { setEditingId(d.id); setEditForm(toEditForm(d)); };
@@ -342,8 +371,8 @@ export default function DrawingTable({
     } catch { alert("서버 오류"); } finally { setClearing(false); }
   };
 
-  // 상태별 카운트 (전체 기준)
-  const counts = drawings.reduce((acc, d) => {
+  // 상태별 카운트 (원재사용 기준)
+  const counts = normalDrawings.reduce((acc, d) => {
     const s = (d.status ?? "REGISTERED") as DrawingStatusType;
     acc[s] = (acc[s] ?? 0) + 1;
     return acc;
@@ -632,6 +661,77 @@ export default function DrawingTable({
           </tfoot>
         </table>
       </div>
+
+      {/* 등록잔재사용 리스트 */}
+      {assignedDrawings.length > 0 && (
+        <div className="space-y-1.5 mt-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-orange-700">등록잔재 사용 리스트</span>
+            <span className="text-xs text-orange-400">{assignedDrawings.length}행</span>
+          </div>
+          <div className="bg-orange-50 border border-orange-200 rounded-xl overflow-x-auto">
+            <table className="w-full text-xs whitespace-nowrap">
+              <thead className="bg-orange-100 border-b border-orange-200">
+                <tr>
+                  <th className="px-2 py-2.5 text-center text-orange-700 font-semibold">상태</th>
+                  <th className="px-2 py-2.5 text-left  text-orange-700 font-semibold">사용잔재번호</th>
+                  <th className="px-2 py-2.5 text-left  text-orange-700 font-semibold">블록</th>
+                  <th className="px-2 py-2.5 text-left  text-orange-700 font-semibold">도면번호</th>
+                  <th className="px-2 py-2.5 text-left  text-orange-700 font-semibold">재질</th>
+                  <th className="px-2 py-2.5 text-right text-orange-700 font-semibold">두께</th>
+                  <th className="px-2 py-2.5 text-right text-orange-700 font-semibold">폭1</th>
+                  <th className="px-2 py-2.5 text-right text-orange-700 font-semibold">폭2</th>
+                  <th className="px-2 py-2.5 text-right text-orange-700 font-semibold">길이1</th>
+                  <th className="px-2 py-2.5 text-right text-orange-700 font-semibold">길이2</th>
+                  <th className="px-2 py-2.5 text-right text-orange-700 font-semibold">강재중량(kg)</th>
+                  <th className="px-2 py-2.5 text-right text-orange-700 font-semibold">사용중량(kg)</th>
+                  <th className="px-2 py-2.5 text-center text-orange-700 font-semibold">실사용판번호</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-orange-100">
+                {assignedDrawings.map(d => {
+                  const dExt = d as DrawingList & { assignedRemnantId?: string | null };
+                  const rem = dExt.assignedRemnantId ? assignedRemnantDetails[dExt.assignedRemnantId] : null;
+                  const status = (d.status ?? "REGISTERED") as DrawingStatusType;
+                  return (
+                    <tr key={d.id} className="hover:bg-orange-100/50">
+                      <td className="px-2 py-2 text-center"><StatusBadge status={status} /></td>
+                      <td className="px-2 py-2 font-mono text-orange-700 font-medium">
+                        {rem ? rem.remnantNo : <span className="text-gray-400">{dExt.assignedRemnantId?.slice(0, 8)}...</span>}
+                      </td>
+                      <td className="px-2 py-2 text-gray-700 font-medium">{d.block ?? "-"}</td>
+                      <td className="px-2 py-2 font-mono text-gray-600">{d.drawingNo ?? "-"}</td>
+                      <td className="px-2 py-2"><span className="px-1.5 py-0.5 bg-slate-100 rounded font-medium">{d.material}</span></td>
+                      <td className="px-2 py-2 text-right text-gray-700">{d.thickness}</td>
+                      <td className="px-2 py-2 text-right text-gray-700">{rem?.width1?.toLocaleString() ?? "-"}</td>
+                      <td className="px-2 py-2 text-right text-gray-700">{rem?.width2?.toLocaleString() ?? "-"}</td>
+                      <td className="px-2 py-2 text-right text-gray-700">{rem?.length1?.toLocaleString() ?? "-"}</td>
+                      <td className="px-2 py-2 text-right text-gray-700">{rem?.length2?.toLocaleString() ?? "-"}</td>
+                      <td className="px-2 py-2 text-right font-semibold text-gray-700">
+                        {calcSteelWeight(d.thickness, d.width, d.length).toFixed(1)}
+                      </td>
+                      <td className="px-2 py-2 text-right text-gray-500">{d.useWeight != null ? d.useWeight.toFixed(1) : "-"}</td>
+                      <td className="px-2 py-2 text-center font-mono text-blue-600">{d.heatNo ?? <span className="text-gray-300">-</span>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot className="bg-orange-100 border-t border-orange-200">
+                <tr>
+                  <td colSpan={10} className="px-2 py-2 text-xs text-orange-700 font-medium">합계 ({assignedDrawings.length}행)</td>
+                  <td className="px-2 py-2 text-right text-xs font-bold text-orange-700">
+                    {assignedDrawings.reduce((s, d) => s + calcSteelWeight(d.thickness, d.width, d.length), 0).toFixed(1)}kg
+                  </td>
+                  <td className="px-2 py-2 text-right text-xs font-bold text-orange-700">
+                    {assignedDrawings.reduce((s, d) => s + (d.useWeight ?? 0), 0).toFixed(1)}kg
+                  </td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* 단건 강재 추가 모달 */}
       {showAddModal && (

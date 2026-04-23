@@ -35,11 +35,15 @@ export interface ParseResult {
 }
 
 // 숫자 변환 (문자열·숫자 모두 처리, 천단위 쉼표·단위 문자 허용)
+// "1800/1000" 형식은 '/' 앞 첫 번째 값만 사용 (등록잔재 복합 치수 표기)
 function toNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "number") return isNaN(value) ? null : value;
-  // 쉼표(천단위) 제거 후 앞뒤 공백 제거
-  const cleaned = String(value).replace(/,/g, "").trim();
+  let str = String(value).trim();
+  // '/' 가 있으면 앞 부분만 사용
+  if (str.includes("/")) str = str.split("/")[0].trim();
+  // 쉼표(천단위) 제거
+  const cleaned = str.replace(/,/g, "").trim();
   if (cleaned === "") return null;
   const n = Number(cleaned);
   return isNaN(n) ? null : n;
