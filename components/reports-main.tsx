@@ -534,7 +534,7 @@ function NormalDetailTable({
           {[
             ["날짜", "left"], ["장비", "left"], ["작업자", "left"], ["호선", "left"], ["블록", "left"],
             ["도면번호", "left"], ["Heat NO", "left"], ["재질", "left"], ["두께", "right"],
-            ["폭×길이", "right"], ["수량", "right"], ["작업시간", "center"],
+            ["폭×길이", "right"], ["작업시간", "center"],
             ["강재중량(kg)", "right"], ["사용중량(kg)", "right"], ["특이사항", "left"],
           ].map(([l, a]) => (
             <th key={l} className={`px-3 py-2 text-gray-500 font-semibold text-${a} whitespace-nowrap`}>{l}</th>
@@ -561,7 +561,6 @@ function NormalDetailTable({
             <td className="px-3 py-2 text-right text-gray-700 whitespace-nowrap">
               {log.width && log.length ? `${log.width.toLocaleString()} × ${log.length.toLocaleString()}` : "-"}
             </td>
-            <td className="px-3 py-2 text-right font-semibold text-gray-800">{log.qty ?? "-"}</td>
             <td className="px-3 py-2 text-center text-gray-500 whitespace-nowrap">
               <div>{formatTime(log.startAt)} ~ {log.endAt ? formatTime(log.endAt) : "-"}</div>
               <div className="text-green-600 font-medium">{formatDuration(log.startAt, log.endAt)}</div>
@@ -667,9 +666,7 @@ function TotalFootNormal({ totalQty, totalSteel, totalUse, totalMs, count }: {
     <tfoot className="bg-gray-50 border-t font-semibold text-xs">
       <tr>
         {/* 날짜·장비·작업자·호선·블록·도면·Heat·재질·두께·폭×길이 = 10칸 */}
-        <td colSpan={10} className="px-3 py-2 text-gray-500">합계 ({count}건)</td>
-        {/* 수량 */}
-        <td className="px-3 py-2 text-right text-gray-800">{totalQty.toLocaleString()}매</td>
+        <td colSpan={10} className="px-3 py-2 text-gray-500">합계 ({count}건 · {totalQty.toLocaleString()}매)</td>
         {/* 작업시간 */}
         <td className="px-3 py-2 text-center text-green-700">{formatDurationMs(totalMs)}</td>
         {/* 강재중량 */}
@@ -680,8 +677,8 @@ function TotalFootNormal({ totalQty, totalSteel, totalUse, totalMs, count }: {
         <td className="px-3 py-2 text-right text-gray-800">
           {totalUse.toLocaleString()}<span className="text-gray-500 font-normal"> kg</span>
         </td>
-        {/* 특이사항 + 액션 */}
-        <td /><td />
+        {/* 특이사항 */}
+        <td />
       </tr>
     </tfoot>
   );
