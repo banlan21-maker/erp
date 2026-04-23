@@ -68,7 +68,15 @@ export default function ColumnFilterDropdown({ anchorEl, values, selected, onApp
   };
 
   const handleApply = () => {
-    onApply([...checked]);
+    if (search.trim()) {
+      // 검색 중: 보이는 항목 중 체크된 것만 필터로 적용
+      const result = filtered.filter((v) => checked.has(v.value)).map((v) => v.value);
+      onApply(result);
+    } else {
+      const result = [...checked];
+      // 전체 선택된 경우 필터 없음(빈 배열)으로 처리
+      onApply(result.length === values.length ? [] : result);
+    }
   };
 
   const handleReset = () => {
