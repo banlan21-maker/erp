@@ -19,16 +19,18 @@ async function generateRemnantNo(): Promise<string> {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const status   = searchParams.get("status");
-    const type     = searchParams.get("type");
-    const shape    = searchParams.get("shape");
-    const material = searchParams.get("material");
+    const status    = searchParams.get("status");
+    const type      = searchParams.get("type");
+    const shape     = searchParams.get("shape");
+    const material  = searchParams.get("material");
+    const projectId = searchParams.get("projectId");
 
     const where: any = {};
-    if (status)   where.status   = status;
-    if (type)     where.type     = type;
-    if (shape)    where.shape    = shape;
-    if (material) where.material = { contains: material, mode: "insensitive" };
+    if (status)    where.status          = status;
+    if (type)      where.type            = type;
+    if (shape)     where.shape           = shape;
+    if (material)  where.material        = { contains: material, mode: "insensitive" };
+    if (projectId) where.sourceProjectId = projectId;
 
     const remnants = await prisma.remnant.findMany({
       where,
