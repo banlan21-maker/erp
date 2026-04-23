@@ -497,13 +497,14 @@ export default function DrawingTable({
               <FilterHeader col="steelWeight" label="강재중량(kg)" align="right"  {...filterHeaderProps} />
               <FilterHeader col="useWeight"   label="사용중량(kg)" align="right"  {...filterHeaderProps} />
               <FilterHeader col="heatNo"      label="실사용판번호" align="center" {...filterHeaderProps} />
+              <th className="px-2 py-2.5 text-xs font-semibold text-gray-500 text-center whitespace-nowrap">등잔</th>
               <th className="px-2 py-2.5 w-16"></th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {filteredDrawings.length === 0 ? (
               <tr>
-                <td colSpan={12} className="text-center py-8 text-gray-400 text-xs">
+                <td colSpan={13} className="text-center py-8 text-gray-400 text-xs">
                   필터 조건에 맞는 데이터가 없습니다.
                   <button onClick={() => setFilters({})} className="ml-2 text-blue-500 hover:underline">
                     필터 초기화
@@ -551,6 +552,7 @@ export default function DrawingTable({
                       <td className="px-2 py-1.5 text-right text-xs text-gray-500">{calcSteelWeight(editForm.thickness, editForm.width, editForm.length).toFixed(1)}</td>
                       <td className="px-2 py-1.5"><Input className="h-7 text-xs w-full text-right" value={editForm.useWeight}  onChange={e => f("useWeight",  e.target.value)} /></td>
                       <td className="px-2 py-1.5 text-center text-xs text-blue-600 font-mono">{d.heatNo ?? <span className="text-gray-300">-</span>}</td>
+                      <td />
                       <td className="px-2 py-1.5">
                         <div className="flex gap-1">
                           <button onClick={() => saveEdit(d.id)} disabled={saving} className="p-1 text-green-600 hover:bg-green-100 rounded" title="저장"><Check size={14} /></button>
@@ -563,12 +565,7 @@ export default function DrawingTable({
 
                 return (
                   <tr key={d.id} className={`hover:bg-gray-50 transition-colors ${isDeleting ? "opacity-40" : ""} ${status === "CUT" ? "bg-green-50/30" : ""}`}>
-                    <td className="px-2 py-2 text-center">
-                      {statusCell}
-                      {(d as DrawingList & { hasRemnant?: boolean }).hasRemnant && (
-                        <span className="ml-1 px-1 py-0.5 bg-orange-100 text-orange-600 text-[9px] rounded font-bold">잔재</span>
-                      )}
-                    </td>
+                    <td className="px-2 py-2 text-center">{statusCell}</td>
                     <td className="px-2 py-2 text-center text-xs">
                       {dExt.alternateVesselCode ? (
                         <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-medium">{dExt.alternateVesselCode}</span>
@@ -587,6 +584,11 @@ export default function DrawingTable({
                     <td className="px-2 py-2 text-right text-xs text-gray-700">{calcSteelWeight(d.thickness, d.width, d.length).toFixed(1)}</td>
                     <td className="px-2 py-2 text-right text-xs text-gray-500">{d.useWeight != null ? d.useWeight.toFixed(1) : "-"}</td>
                     <td className="px-2 py-2 text-center text-xs font-mono text-blue-600 truncate">{d.heatNo ?? <span className="text-gray-300">-</span>}</td>
+                    <td className="px-2 py-2 text-center">
+                      {(d as DrawingList & { hasRemnant?: boolean }).hasRemnant
+                        ? <span className="px-1.5 py-0.5 bg-orange-100 text-orange-600 text-[10px] rounded font-bold">잔재</span>
+                        : <span className="text-gray-200">-</span>}
+                    </td>
                     <td className="px-2 py-2">
                       <div className="flex gap-1 justify-end items-center">
                         <button
