@@ -30,6 +30,23 @@ export default async function VesselDrawingsPage({
   const totalQty = allDrawings.reduce((s, d) => s + d.qty, 0);
   const totalSteel = allDrawings.reduce((s, d) => s + (d.steelWeight ?? 0), 0);
 
+  const remnants = await prisma.remnant.findMany({
+    where: {
+      drawingList: { project: { projectCode: vesselCode } },
+    },
+    include: {
+      drawingList: { select: { block: true, drawingNo: true } },
+      sourceProject: { select: { projectCode: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const SHAPE_LABEL: Record<string, string> = {
+    RECTANGLE: "사각형",
+    L_SHAPE: "L자형",
+    IRREGULAR: "불규칙형",
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
@@ -83,6 +100,61 @@ export default async function VesselDrawingsPage({
           )}
         </div>
       ))}
+
+      {/* 등록잔재 리스트 */}
+      <div className="space-y-2">
+        <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
+          등록잔재 리스트
+          <span className="text-xs font-normal text-gray-400">({remnants.length}건)</span>
+        </h3>
+        {remnants.length === 0 ? (
+          <div className="text-xs text-gray-400 bg-gray-50 rounded-lg border px-4 py-3">
+            등록된 잔재가 없습니다.
+          </div>
+        ) : (
+          <div className="bg-white border rounded-xl overflow-x-auto">
+            <table className="w-full text-xs whitespace-nowrap">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  {["잔재번호","블록","형태","재질","두께(mm)","폭1","길이1","폭2","길이2","중량(kg)"].map(h => (
+                    <th key={h} className="px-3 py-2 text-left text-gray-500 font-semibold">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {remnants.map((r) => (
+                  <tr key={r.id} className="hover:bg-gray-50">
+                    <td className="px-3 py-2 font-mono text-blue-600">{r.remnantNo}</td>
+                    <td className="px-3 py-2 text-gray-700">{r.drawingList?.block ?? "-"}</td>
+                    <td className="px-3 py-2">
+                      <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-[10px] font-medium">
+                        {SHAPE_LABEL[r.shape] ?? r.shape}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className="px-1.5 py-0.5 bg-slate-100 rounded font-medium">{r.material}</span>
+                    </td>
+                    <td className="px-3 py-2 text-right">{r.thickness}</td>
+                    <td className="px-3 py-2 text-right">{r.width1?.toLocaleString() ?? "-"}</td>
+                    <td className="px-3 py-2 text-right">{r.length1?.toLocaleString() ?? "-"}</td>
+                    <td className="px-3 py-2 text-right">{r.width2?.toLocaleString() ?? "-"}</td>
+                    <td className="px-3 py-2 text-right">{r.length2?.toLocaleString() ?? "-"}</td>
+                    <td className="px-3 py-2 text-right font-semibold text-gray-800">{r.weight.toFixed(1)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-gray-50 border-t">
+                <tr>
+                  <td colSpan={9} className="px-3 py-2 text-xs text-gray-500 font-medium">합계 ({remnants.length}건)</td>
+                  <td className="px-3 py-2 text-right text-xs font-bold text-gray-700">
+                    {remnants.reduce((s, r) => s + r.weight, 0).toFixed(1)}kg
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

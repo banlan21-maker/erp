@@ -563,7 +563,12 @@ export default function DrawingTable({
 
                 return (
                   <tr key={d.id} className={`hover:bg-gray-50 transition-colors ${isDeleting ? "opacity-40" : ""} ${status === "CUT" ? "bg-green-50/30" : ""}`}>
-                    <td className="px-2 py-2 text-center">{statusCell}</td>
+                    <td className="px-2 py-2 text-center">
+                      {statusCell}
+                      {(d as DrawingList & { hasRemnant?: boolean }).hasRemnant && (
+                        <span className="ml-1 px-1 py-0.5 bg-orange-100 text-orange-600 text-[9px] rounded font-bold">잔재</span>
+                      )}
+                    </td>
                     <td className="px-2 py-2 text-center text-xs">
                       {dExt.alternateVesselCode ? (
                         <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-medium">{dExt.alternateVesselCode}</span>

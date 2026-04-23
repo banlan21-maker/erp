@@ -224,6 +224,16 @@ export async function POST(request: NextRequest) {
     const projectId = formData.get("projectId") as string | null;
     const presetId = formData.get("presetId") as string | null;
     const storageLocation = formData.get("storageLocation") as string | null;
+    const remnantsJson = formData.get("remnants") as string | null;
+    const remnantsData: Array<{
+      rowIndex: number;
+      remnantNo: string;
+      shape: string;
+      width1: number;
+      length1: number;
+      width2?: number;
+      length2?: number;
+    }> = remnantsJson ? JSON.parse(remnantsJson) : [];
 
     if (!file || !projectId) {
       return NextResponse.json(
@@ -239,6 +249,8 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    const isPreview = new URL(request.url).searchParams.get("preview") === "true";
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
@@ -256,6 +268,11 @@ export async function POST(request: NextRequest) {
         { success: false, error: "Excel 파싱에 실패했습니다.", details: result.errors },
         { status: 422 }
       );
+    }
+
+    // 미리보기 모드: DB 저장 없이 파싱 결과 반환
+    if (isPreview) {
+      return NextResponse.json({ success: true, preview: true, rows: result.rows, errors: result.errors });
     }
 
     if (storageLocation?.trim()) {
@@ -300,7 +317,20 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    const created = await prisma.drawingList.createMany({ data: rowsToInsert });
+    // 잔재 연결이 필요한 경우 개별 create로 ID 추적, 아닌 경우 createMany로 빠르게 처리
+    let createdCount = 0;
+    const createdRows: Array<{ id: string; thickness: number; material: string; block: string | null }> = [];
+
+    if (remnantsData.length > 0) {
+      for (const row of rowsToInsert) {
+        const dl = await prisma.drawingList.create({ data: row });
+        createdRows.push({ id: dl.id, thickness: dl.thickness, material: dl.material, block: dl.block });
+        createdCount++;
+      }
+    } else {
+      const created = await prisma.drawingList.createMany({ data: rowsToInsert });
+      createdCount = created.count;
+    }
 
     // 입고 수량 기준으로 정확히 재조정
     const matchedSpecs = rowsToInsert
@@ -310,8 +340,57 @@ export async function POST(request: NextRequest) {
       await syncSpecsAfterUpload(project.projectCode, matchedSpecs);
     }
 
+    // 잔재 레코드 생성
+    for (const rem of remnantsData) {
+      const dlRow = createdRows[rem.rowIndex];
+      if (!dlRow) continue;
+
+      // hasRemnant 업데이트
+      await prisma.drawingList.update({ where: { id: dlRow.id }, data: { hasRemnant: true } });
+
+      // 잔재번호 자동채번
+      const year = new Date().getFullYear();
+      const prefix = `REM-${year}-`;
+      const last = await prisma.remnant.findFirst({
+        where: { remnantNo: { startsWith: prefix } },
+        orderBy: { remnantNo: "desc" },
+      });
+      const seq = last ? parseInt(last.remnantNo.split("-")[2], 10) + 1 : 1;
+      const autoNo = rem.remnantNo || `${prefix}${String(seq).padStart(3, "0")}`;
+
+      // 중량 계산
+      const t = dlRow.thickness;
+      let w = 0;
+      if (rem.shape === "RECTANGLE") {
+        w = Math.round(t * rem.width1 * rem.length1 * 7.85 / 1_000_000 * 10) / 10;
+      } else {
+        const totalArea = rem.width1 * rem.length1;
+        const cutArea = (rem.width2 ?? 0) * (rem.length2 ?? 0);
+        w = Math.round(t * (totalArea - cutArea) * 7.85 / 1_000_000 * 10) / 10;
+      }
+
+      await prisma.remnant.create({
+        data: {
+          remnantNo: autoNo,
+          type: "REGISTERED",
+          shape: rem.shape as "RECTANGLE" | "L_SHAPE" | "IRREGULAR",
+          material: dlRow.material,
+          thickness: dlRow.thickness,
+          weight: w,
+          width1: rem.width1,
+          length1: rem.length1,
+          width2: rem.width2 ?? null,
+          length2: rem.length2 ?? null,
+          sourceProjectId: project.id,
+          sourceBlock: dlRow.block,
+          drawingListId: dlRow.id,
+          registeredBy: "system",
+        },
+      });
+    }
+
     return NextResponse.json(
-      { success: true, data: { count: created.count, warnings: result.errors } },
+      { success: true, data: { count: createdCount, warnings: result.errors } },
       { status: 201 }
     );
   } catch (error) {

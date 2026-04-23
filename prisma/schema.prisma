@@ -222,12 +222,14 @@ model DrawingList {
   status              DrawingStatus @default(REGISTERED)
   receivedAt          DateTime?     // 입고일 (대기 상태로 변경 시 자동 기록)
   alternateVesselCode String?       // 대체호선: 비어있으면 자기 호선 재고, 있으면 해당 호선 재고에서 매칭
+  hasRemnant          Boolean  @default(false)  // 등록잔재 발생 여부
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   workOrders  WorkOrder[]
   cuttingLogs CuttingLog[]
+  remnants    Remnant[]
 }
 
 // 작업지시 (내부 참조용 유지)
@@ -974,9 +976,13 @@ model Remnant {
 
   // 발생 출처
   sourceProjectId  String?
-  sourceProject    Project?  @relation(fields: [sourceProjectId], references: [id], onDelete: SetNull)
-  sourceVesselName String?   // 직접 입력 호선명
-  sourceBlock      String?   // 직접 입력 블록 번호
+  sourceProject    Project?      @relation(fields: [sourceProjectId], references: [id], onDelete: SetNull)
+  sourceVesselName String?       // 직접 입력 호선명
+  sourceBlock      String?       // 직접 입력 블록 번호
+
+  // DrawingList 연결
+  drawingListId    String?
+  drawingList      DrawingList?  @relation(fields: [drawingListId], references: [id], onDelete: SetNull)
 
   // 보관 및 기타
   location     String?       // 보관 위치
