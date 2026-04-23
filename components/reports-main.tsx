@@ -410,47 +410,41 @@ export default function ReportsMain({
           </div>
         )}
 
-        {/* 상세 내역 테이블 (탭별 컬럼 구성) */}
-        <div className="bg-white border rounded-xl print-table-wrap overflow-x-auto">
-          <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between no-print">
-            <h3 className="text-sm font-semibold text-gray-700">
-              작업 상세 내역
-              <span className="text-gray-400 font-normal ml-1">
-                ({filteredLogs.length}건 · {fromStr} ~ {toStr})
-              </span>
-            </h3>
-          </div>
+        {/* 상세 내역 테이블 — 정규/돌발 탭에서만 표시 */}
+        {workType !== "all" && (
+          <div className="bg-white border rounded-xl print-table-wrap overflow-x-auto">
+            <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between no-print">
+              <h3 className="text-sm font-semibold text-gray-700">
+                작업 상세 내역
+                <span className="text-gray-400 font-normal ml-1">
+                  ({filteredLogs.length}건 · {fromStr} ~ {toStr})
+                </span>
+              </h3>
+            </div>
 
-          {filteredLogs.length === 0 ? (
-            <p className="text-center py-12 text-gray-400 text-sm">
-              해당 기간에 완료된 작업이 없습니다.
-            </p>
-          ) : workType === "normal" ? (
-            <NormalDetailTable
-              logs={filteredLogs}
-              totalQty={totalQty}
-              totalSteel={totalSteel}
-              totalUse={totalUse}
-              totalDurationMs={totalDuration}
-            />
-          ) : workType === "urgent" ? (
-            <UrgentDetailTable
-              logs={filteredLogs}
-              totalQty={totalQty}
-              totalSteel={totalSteel}
-              totalUse={totalUse}
-              totalDurationMs={totalDuration}
-            />
-          ) : (
-            <AllDetailTable
-              logs={filteredLogs}
-              totalQty={totalQty}
-              totalSteel={totalSteel}
-              totalUse={totalUse}
-              totalDurationMs={totalDuration}
-            />
-          )}
-        </div>
+            {filteredLogs.length === 0 ? (
+              <p className="text-center py-12 text-gray-400 text-sm">
+                해당 기간에 완료된 작업이 없습니다.
+              </p>
+            ) : workType === "normal" ? (
+              <NormalDetailTable
+                logs={filteredLogs}
+                totalQty={totalQty}
+                totalSteel={totalSteel}
+                totalUse={totalUse}
+                totalDurationMs={totalDuration}
+              />
+            ) : (
+              <UrgentDetailTable
+                logs={filteredLogs}
+                totalQty={totalQty}
+                totalSteel={totalSteel}
+                totalUse={totalUse}
+                totalDurationMs={totalDuration}
+              />
+            )}
+          </div>
+        )}
       </div>
     </>
   );
