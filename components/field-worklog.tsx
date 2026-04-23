@@ -292,7 +292,6 @@ export default function FieldWorklog({
     setHeatLoading(true);
     try {
       const params = new URLSearchParams({
-        vesselCode: s1.vesselCode,
         material:   row.material,
         thickness:  String(row.thickness),
         width:      String(row.width),

@@ -479,7 +479,6 @@ function LogModal({
   useEffect(() => {
     if (!drawing) return;
     const p = new URLSearchParams({
-      vesselCode: drawing.project?.projectCode ?? "",
       material:   drawing.material,
       thickness:  String(drawing.thickness),
       width:      String(drawing.width),
