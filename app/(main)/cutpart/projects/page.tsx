@@ -66,7 +66,7 @@ export default async function ProjectsPage({
   let drawings: Awaited<ReturnType<typeof prisma.drawingList.findMany>> = [];
   let activeProject: { id: string; projectCode: string; projectName: string; storageLocation: string | null } | null = null;
 
-  if ((tab === "list" || tab === "bom") && projectId) {
+  if ((tab === "list" || tab === "bom" || tab === "remnants") && projectId) {
     const proj = await prisma.project.findUnique({
       where: { id: projectId },
       include: { drawingLists: { orderBy: { createdAt: "asc" } } },
