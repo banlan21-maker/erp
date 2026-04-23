@@ -448,10 +448,11 @@ function UploadTab({
                     <tbody>
                       {previewRows.map((row, idx) => {
                         const rem = remnantInputs[idx];
+                        const blockName = row.block ?? selectedProject?.projectName ?? "-";
                         return (
                           <React.Fragment key={idx}>
                             <tr className={`border-b ${rem?.open ? "bg-orange-50" : "hover:bg-gray-50"}`}>
-                              <td className="px-3 py-2 font-medium text-gray-800">{row.block ?? "-"}</td>
+                              <td className="px-3 py-2 font-medium text-gray-800">{blockName}</td>
                               <td className="px-3 py-2 font-mono text-gray-600">{row.drawingNo ?? "-"}</td>
                               <td className="px-3 py-2"><span className="px-1.5 py-0.5 bg-slate-100 rounded font-medium">{row.material}</span></td>
                               <td className="px-3 py-2 text-right">{row.thickness}t</td>
@@ -513,8 +514,11 @@ function UploadTab({
                                         </div>
                                       </>
                                     )}
-                                    <div className="text-[10px] text-gray-400 self-end pb-1">
-                                      재질: {row.material} / 두께: {row.thickness}t / 발생블록: {row.block ?? "-"}
+                                    <div className="text-[10px] text-gray-500 self-end pb-1 bg-gray-50 border rounded px-2 py-1">
+                                      <span className="font-semibold">발생호선:</span> {selectedProject?.projectCode ?? "-"} &nbsp;·&nbsp;
+                                      <span className="font-semibold">발생블록:</span> {blockName} &nbsp;·&nbsp;
+                                      <span className="font-semibold">재질:</span> {row.material} &nbsp;·&nbsp;
+                                      <span className="font-semibold">두께:</span> {row.thickness}t
                                     </div>
                                   </div>
                                 </td>
