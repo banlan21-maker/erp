@@ -41,7 +41,8 @@ export async function POST(request: NextRequest) {
 
     let confirmed = 0;
     let skipped = 0;
-    const syncedSpecs = new Set<string>();
+    // 동기화할 스펙 수집 (예약 완료 후 일괄 sync)
+    const specsToSync = new Map<string, { material: string; thickness: number; width: number; length: number }>();
 
     for (const spec of grouped.values()) {
       const { material, thickness, width, length, block: blockCode, steelVessel, needed } = spec;
@@ -74,12 +75,16 @@ export async function POST(request: NextRequest) {
       }
       skipped += toConfirm - plans.length;
 
-      // 이 스펙에 대해 한 번만 sync
+      // sync 대상 스펙 수집 (예약이 모두 끝난 후 실행)
       const specKey = `${material}|${thickness}|${width}|${length}`;
-      if (!syncedSpecs.has(specKey)) {
-        syncedSpecs.add(specKey);
-        await syncDrawingListBySpec(vesselCode, material, thickness, width, length);
+      if (!specsToSync.has(specKey)) {
+        specsToSync.set(specKey, { material, thickness, width, length });
       }
+    }
+
+    // 모든 예약 완료 후 스펙별 DrawingList 상태 동기화
+    for (const spec of specsToSync.values()) {
+      await syncDrawingListBySpec(vesselCode, spec.material, spec.thickness, spec.width, spec.length);
     }
 
     return NextResponse.json({ success: true, data: { confirmed, skipped } });
