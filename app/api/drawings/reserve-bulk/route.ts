@@ -19,30 +19,27 @@ export async function POST(request: NextRequest) {
     }
     const vesselCode = project.projectCode;
 
-    // 등록잔재 사용 행: SteelPlan 매칭 없이 바로 WAITING 확정
-    // (assignedRemnantId 필터는 try-catch로 감싸 구버전 Prisma 클라이언트 호환)
-    let assignedRowIds: string[] = [];
-    try {
-      const assignedRows = await prisma.drawingList.findMany({
-        where: { projectId, status: "REGISTERED", assignedRemnantId: { not: null } },
-        select: { id: true },
-      });
-      assignedRowIds = assignedRows.map(r => r.id);
-      if (assignedRowIds.length > 0) {
-        await prisma.drawingList.updateMany({
-          where: { id: { in: assignedRowIds } },
-          data: { status: "WAITING" },
-        });
-      }
-    } catch { /* assignedRemnantId 미지원 시 무시 */ }
+    // REGISTERED 행 전체를 raw SQL로 조회 (assignedRemnantId 포함)
+    // Prisma 클라이언트 버전 무관하게 안정적으로 동작
+    const allRegisteredRaw = await prisma.$queryRaw<{
+      id: string; material: string; thickness: number; width: number; length: number;
+      block: string | null; alternateVesselCode: string | null; assignedRemnantId: string | null;
+    }[]>`
+      SELECT id, material, thickness, width, length, block, "alternateVesselCode", "assignedRemnantId"
+      FROM "DrawingList"
+      WHERE "projectId" = ${projectId} AND status = 'REGISTERED'
+    `;
 
-    // 전체 REGISTERED 행 조회 (원재사용만 SteelPlan 매칭)
-    const allPendingRows = await prisma.drawingList.findMany({
-      where: { projectId, status: "REGISTERED" },
-      select: { id: true, material: true, thickness: true, width: true, length: true, block: true, alternateVesselCode: true },
-    });
-    // assignedRemnantId가 있는 행은 이미 처리됐으므로 제외
-    const pendingRows = allPendingRows.filter(r => !assignedRowIds.includes(r.id));
+    // 등록잔재 사용 행(assignedRemnantId 있음)은 SteelPlan 매칭 없이 바로 WAITING
+    const assignedRowIds = allRegisteredRaw.filter(r => r.assignedRemnantId != null).map(r => r.id);
+    const pendingRows    = allRegisteredRaw.filter(r => r.assignedRemnantId == null);
+
+    if (assignedRowIds.length > 0) {
+      await prisma.drawingList.updateMany({
+        where: { id: { in: assignedRowIds } },
+        data: { status: "WAITING" },
+      });
+    }
 
     // 규격+블록+대체호선별 그룹화
     const grouped = new Map<string, {
@@ -146,13 +143,17 @@ export async function DELETE(request: NextRequest) {
     // 신규 형식: "호선/블록" + 구형 형식: 블록만
     const newFmtCodes = blockCodes.map((b) => `${vesselCode}/${b}`);
 
-    // 등록잔재 사용 행 확정 취소: WAITING → REGISTERED (구버전 Prisma 호환)
-    try {
+    // 등록잔재 사용 행 확정 취소: WAITING → REGISTERED (raw SQL로 Prisma 버전 무관)
+    const assignedWaitingRaw = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "DrawingList"
+      WHERE "projectId" = ${projectId} AND status = 'WAITING' AND "assignedRemnantId" IS NOT NULL
+    `;
+    if (assignedWaitingRaw.length > 0) {
       await prisma.drawingList.updateMany({
-        where: { projectId, status: "WAITING", assignedRemnantId: { not: null } },
+        where: { id: { in: assignedWaitingRaw.map(r => r.id) } },
         data: { status: "REGISTERED" },
       });
-    } catch { /* assignedRemnantId 미지원 시 무시 */ }
+    }
 
     // 출고완료(ISSUED) 항목이 있으면 확정취소 불가 — 입출고장에서 출고취소 먼저 필요
     const issuedCount = await prisma.steelPlan.count({
