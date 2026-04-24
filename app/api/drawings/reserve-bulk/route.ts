@@ -154,13 +154,24 @@ export async function DELETE(request: NextRequest) {
       });
     } catch { /* assignedRemnantId 미지원 시 무시 */ }
 
-    // 원재사용 행: SteelPlan 예약 해제 (RECEIVED + ISSUED 모두 해제)
+    // 출고완료(ISSUED) 항목이 있으면 확정취소 불가 — 입출고장에서 출고취소 먼저 필요
+    const issuedCount = await prisma.steelPlan.count({
+      where: { status: "ISSUED", reservedFor: { in: [...newFmtCodes, ...blockCodes] } },
+    });
+    if (issuedCount > 0) {
+      return NextResponse.json({
+        success: false,
+        error: `출고완료된 철판이 ${issuedCount}장 있습니다. 입출고장에서 출고취소 후 다시 시도하세요.`,
+      }, { status: 409 });
+    }
+
+    // 원재사용 행: SteelPlan 예약 해제 (RECEIVED만)
     const { count: cancelledNew } = await prisma.steelPlan.updateMany({
-      where: { status: { in: ["RECEIVED", "ISSUED"] }, reservedFor: { in: newFmtCodes } },
+      where: { status: "RECEIVED", reservedFor: { in: newFmtCodes } },
       data: { reservedFor: null },
     });
     const { count: cancelledOld } = await prisma.steelPlan.updateMany({
-      where: { vesselCode, status: { in: ["RECEIVED", "ISSUED"] }, reservedFor: { in: blockCodes } },
+      where: { vesselCode, status: "RECEIVED", reservedFor: { in: blockCodes } },
       data: { reservedFor: null },
     });
     const cancelled = cancelledNew + cancelledOld;
