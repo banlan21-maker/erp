@@ -802,15 +802,16 @@ function ListTab({
                     className="flex items-center gap-2 px-4 py-1.5 hover:bg-blue-50 transition-colors group"
                   >
                     <FileSpreadsheet size={13} className="text-gray-400 group-hover:text-blue-500 flex-shrink-0" />
-                    <span className="flex-1 text-xs font-medium text-gray-800">{p.projectName}</span>
-                    {p.storageLocation && (
-                      <span className="flex items-center gap-1 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
-                        <MapPin size={9} />{p.storageLocation}
-                      </span>
-                    )}
+                    <span className="text-xs font-medium text-gray-800">{p.projectName}</span>
                     {p.status && (
                       <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${STATUS_COLOR[p.status] ?? ""}`}>
                         {STATUS_LABEL[p.status]}
+                      </span>
+                    )}
+                    <span className="flex-1" />
+                    {p.storageLocation && (
+                      <span className="flex items-center gap-1 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                        <MapPin size={9} />{p.storageLocation}
                       </span>
                     )}
                     <span className="text-[11px] text-gray-400">{p.drawingCount}행</span>
