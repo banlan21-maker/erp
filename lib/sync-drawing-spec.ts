@@ -35,16 +35,19 @@ export async function syncDrawingListBySpec(
   });
   if (projects.length === 0) return;
 
-  // ── 동기화 대상 DrawingList 조회 (CAUTION·CUT 제외) ──────────────────────
-  const rows = await prisma.drawingList.findMany({
+  // ── 동기화 대상 DrawingList 조회 (CAUTION·CUT·등록잔재사용 제외) ────────
+  // 등록잔재 사용 행(assignedRemnantId IS NOT NULL)은 SteelPlan과 무관하므로
+  // sync 대상에서 제외 — reserve-bulk에서 직접 WAITING 처리
+  const allRows = await prisma.drawingList.findMany({
     where: {
       projectId: { in: projects.map((p) => p.id) },
       material, thickness, width, length,
       NOT: { status: { in: ["CAUTION", "CUT"] } },
     },
     orderBy: { createdAt: "asc" },
-    select:  { id: true, block: true },
+    select:  { id: true, block: true, assignedRemnantId: true },
   });
+  const rows = allRows.filter((r) => r.assignedRemnantId == null);
 
   // ── 블록별 그룹화 ─────────────────────────────────────────────────────────
   const byBlock = new Map<string, string[]>();
