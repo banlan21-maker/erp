@@ -20,22 +20,29 @@ export async function POST(request: NextRequest) {
     const vesselCode = project.projectCode;
 
     // 등록잔재 사용 행: SteelPlan 매칭 없이 바로 WAITING 확정
-    const assignedRows = await prisma.drawingList.findMany({
-      where: { projectId, status: "REGISTERED", assignedRemnantId: { not: null } },
-      select: { id: true },
-    });
-    if (assignedRows.length > 0) {
-      await prisma.drawingList.updateMany({
-        where: { id: { in: assignedRows.map(r => r.id) } },
-        data: { status: "WAITING" },
+    // (assignedRemnantId 필터는 try-catch로 감싸 구버전 Prisma 클라이언트 호환)
+    let assignedRowIds: string[] = [];
+    try {
+      const assignedRows = await prisma.drawingList.findMany({
+        where: { projectId, status: "REGISTERED", assignedRemnantId: { not: null } },
+        select: { id: true },
       });
-    }
+      assignedRowIds = assignedRows.map(r => r.id);
+      if (assignedRowIds.length > 0) {
+        await prisma.drawingList.updateMany({
+          where: { id: { in: assignedRowIds } },
+          data: { status: "WAITING" },
+        });
+      }
+    } catch { /* assignedRemnantId 미지원 시 무시 */ }
 
-    // 원재사용 행만 SteelPlan 매칭 확정
-    const pendingRows = await prisma.drawingList.findMany({
-      where: { projectId, status: "REGISTERED", assignedRemnantId: null },
+    // 전체 REGISTERED 행 조회 (원재사용만 SteelPlan 매칭)
+    const allPendingRows = await prisma.drawingList.findMany({
+      where: { projectId, status: "REGISTERED" },
       select: { id: true, material: true, thickness: true, width: true, length: true, block: true, alternateVesselCode: true },
     });
+    // assignedRemnantId가 있는 행은 이미 처리됐으므로 제외
+    const pendingRows = allPendingRows.filter(r => !assignedRowIds.includes(r.id));
 
     // 규격+블록+대체호선별 그룹화
     const grouped = new Map<string, {
@@ -99,6 +106,14 @@ export async function POST(request: NextRequest) {
       await syncDrawingListBySpec(vesselCode, spec.material, spec.thickness, spec.width, spec.length);
     }
 
+    // sync가 assigned 행을 덮어쓸 수 있으므로 다시 WAITING으로 복원
+    if (assignedRowIds.length > 0) {
+      await prisma.drawingList.updateMany({
+        where: { id: { in: assignedRowIds } },
+        data: { status: "WAITING" },
+      });
+    }
+
     return NextResponse.json({ success: true, data: { confirmed, skipped } });
   } catch (error) {
     console.error("[POST /api/drawings/reserve-bulk]", error);
@@ -131,11 +146,13 @@ export async function DELETE(request: NextRequest) {
     // 신규 형식: "호선/블록" + 구형 형식: 블록만
     const newFmtCodes = blockCodes.map((b) => `${vesselCode}/${b}`);
 
-    // 등록잔재 사용 행 확정 취소: WAITING → REGISTERED (CUT 제외)
-    await prisma.drawingList.updateMany({
-      where: { projectId, status: "WAITING", assignedRemnantId: { not: null } },
-      data: { status: "REGISTERED" },
-    });
+    // 등록잔재 사용 행 확정 취소: WAITING → REGISTERED (구버전 Prisma 호환)
+    try {
+      await prisma.drawingList.updateMany({
+        where: { projectId, status: "WAITING", assignedRemnantId: { not: null } },
+        data: { status: "REGISTERED" },
+      });
+    } catch { /* assignedRemnantId 미지원 시 무시 */ }
 
     // 원재사용 행: SteelPlan 예약 해제
     const { count: cancelledNew } = await prisma.steelPlan.updateMany({
