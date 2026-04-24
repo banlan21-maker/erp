@@ -214,7 +214,7 @@ export default function DrawingTable({
     } catch { /* silent */ }
   }, [projectId]);
 
-  useEffect(() => { loadAvailability(); }, [loadAvailability]);
+  useEffect(() => { loadAvailability(); }, [loadAvailability, drawings]);
 
   // 스케줄 확정 — status === "WAITING" 인 행이 곧 확정된 행
   const [bulkReserving, setBulkReserving] = useState(false);
