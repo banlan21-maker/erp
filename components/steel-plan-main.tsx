@@ -785,12 +785,6 @@ export default function SteelPlanMain() {
           </button>
           <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileChange} />
           <button
-            onClick={() => setShowForm((v) => !v)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700"
-          >
-            <Plus size={14} /> 직접 등록
-          </button>
-          <button
             onClick={() => { setBulkRows([emptyBulkRow()]); setBulkResults(null); setShowBulkReceive(true); }}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600"
           >
