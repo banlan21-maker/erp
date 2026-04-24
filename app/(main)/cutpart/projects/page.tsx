@@ -23,14 +23,19 @@ export default async function ProjectsPage({
   });
   const cutCountMap = new Map(cutCountsRaw.map((r) => [r.projectId, r._count._all]));
 
-  const projectOptions = projects.map((p) => ({
-    id: p.id,
-    projectCode: p.projectCode,
-    projectName: p.projectName,
-    drawingCount: p._count.drawingLists,
-    status: p.status,
-    storageLocation: p.storageLocation ?? null,
-  }));
+  const projectOptions = projects.map((p) => {
+    const total = p._count.drawingLists;
+    const cut   = cutCountMap.get(p.id) ?? 0;
+    const status = total === 0 ? null : total === cut ? "COMPLETED" : "ACTIVE";
+    return {
+      id: p.id,
+      projectCode: p.projectCode,
+      projectName: p.projectName,
+      drawingCount: total,
+      status,
+      storageLocation: p.storageLocation ?? null,
+    };
+  });
 
   // 호선별 그룹핑 (호선리스트 탭용)
   const grouped: Record<string, { code: string; totalDrawings: number; blocks: typeof projects }> = {};

@@ -8,15 +8,23 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ClipboardList, FolderOpen, ArrowLeft, Trash2 } from "lucide-react";
+import { ClipboardList, FolderOpen, ArrowLeft, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
 import { Filter, XCircle } from "lucide-react";
+
+const STATUS_LABEL: Record<string, string> = { ACTIVE: "진행중", COMPLETED: "완료" };
+const STATUS_COLOR: Record<string, string> = {
+  ACTIVE: "bg-green-100 text-green-700",
+  COMPLETED: "bg-blue-100 text-blue-700",
+};
 
 interface ProjectOption {
   id: string;
   projectCode: string;
   projectName: string;
+  drawingCount?: number;
+  status?: string | null;
 }
 
 interface BomItem {
@@ -261,6 +269,9 @@ export default function BomMain({
     if (!grouped[p.projectCode]) grouped[p.projectCode] = [];
     grouped[p.projectCode].push(p);
   }
+  const [expanded, setExpanded] = useState<Record<string, boolean>>(
+    Object.fromEntries(Object.keys(grouped).map((c) => [c, true]))
+  );
 
   if (projectOptions.length === 0) {
     return (
@@ -273,27 +284,42 @@ export default function BomMain({
   }
 
   return (
-    <div className="space-y-3">
-      {Object.entries(grouped).map(([code, blocks]) => (
-        <div key={code} className="bg-white rounded-xl border overflow-hidden">
-          <div className="px-4 py-2.5 bg-gray-50 border-b">
-            <span className="text-xs font-bold text-gray-500">호선 [{code}]</span>
+    <div className="space-y-1.5">
+      {Object.entries(grouped).map(([code, blocks]) => {
+        const isOpen = expanded[code] ?? true;
+        return (
+          <div key={code} className="bg-white rounded-xl border overflow-hidden">
+            <button
+              onClick={() => setExpanded(p => ({ ...p, [code]: !p[code] }))}
+              className="w-full flex items-center gap-2 px-4 py-2 bg-gray-800 text-white hover:bg-gray-700 transition-colors text-left"
+            >
+              {isOpen ? <ChevronDown size={13} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={13} className="text-gray-400 flex-shrink-0" />}
+              <span className="text-xs font-bold">호선 [{code}]</span>
+              <span className="text-[11px] text-gray-400 ml-1">{blocks.length}개 블록</span>
+            </button>
+            {isOpen && (
+              <div className="divide-y">
+                {blocks.map(block => (
+                  <button
+                    key={block.id}
+                    onClick={() => router.push(`/cutpart/projects?tab=bom&projectId=${block.id}`)}
+                    className="w-full flex items-center gap-2 px-4 py-1.5 hover:bg-blue-50 transition-colors text-left"
+                  >
+                    <ClipboardList size={13} className="text-purple-400 flex-shrink-0" />
+                    <span className="text-xs font-medium text-gray-800">{block.projectName}</span>
+                    {block.status && (
+                      <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${STATUS_COLOR[block.status] ?? ""}`}>
+                        {STATUS_LABEL[block.status]}
+                      </span>
+                    )}
+                    <span className="ml-auto text-[11px] text-gray-400">BOM 조회 →</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          <div className="divide-y">
-            {blocks.map(block => (
-              <button
-                key={block.id}
-                onClick={() => router.push(`/cutpart/projects?tab=bom&projectId=${block.id}`)}
-                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-blue-50 transition-colors text-left"
-              >
-                <ClipboardList size={13} className="text-purple-400 flex-shrink-0" />
-                <span className="text-sm font-medium text-gray-800">{block.projectName}</span>
-                <span className="ml-auto text-xs text-gray-400">BOM 조회 →</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
