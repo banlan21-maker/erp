@@ -11,6 +11,7 @@ interface Worker    { id: string; name: string; nationality: string | null }
 interface DrawingRow {
   id: string; drawingNo: string | null; heatNo: string | null;
   material: string; thickness: number; width: number; length: number; qty: number; block: string | null;
+  assignedRemnantId?: string | null;
 }
 interface CuttingLog {
   id: string; equipmentId: string;
@@ -123,7 +124,8 @@ export default function FieldWorklog({
   const blocksForVessel = projects.filter(p => p.projectCode === s1.vesselCode);
   const selBlock  = projects.find(p => p.id === s1.projectId);
   const selWorker = workers.find(w => w.id === s1.operatorId);
-  const selDrawing= drawings.find(d => d.id === drawingId);
+  const selDrawing    = drawings.find(d => d.id === drawingId);
+  const isRemnantDraw = !!selDrawing?.assignedRemnantId;
 
   const refreshLogs = useCallback(async () => {
     const res = await fetch(`/api/cutting-logs?date=${new Date().toISOString().slice(0, 10)}&includeStuck=true`);
@@ -876,7 +878,12 @@ export default function FieldWorklog({
                           : "bg-gray-800 border-gray-700 text-gray-300 active:bg-gray-700"
                       }`}
                     >
-                      <p className="font-mono font-semibold text-sm">{d.drawingNo ?? "(번호없음)"}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-mono font-semibold text-sm">{d.drawingNo ?? "(번호없음)"}</p>
+                        {d.assignedRemnantId && (
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-orange-600 text-white font-medium">등록잔재사용</span>
+                        )}
+                      </div>
                       <p className="text-xs text-gray-400 mt-0.5">
                         {d.material} {d.thickness}t × {d.width} × {d.length}
                         {d.heatNo ? ` · ${d.heatNo}` : ""}
@@ -895,8 +902,13 @@ export default function FieldWorklog({
                 </div>
               )}
 
-              {/* Heat NO — 판번호 리스트 선택 + 직접 입력 */}
-              <div>
+              {/* Heat NO — 등록잔재사용 행은 판번호 불필요 */}
+              {isRemnantDraw && (
+                <div className="bg-orange-950 border border-orange-700 rounded-xl px-3 py-2.5 text-xs text-orange-300">
+                  등록잔재 사용 절단 — 판번호 없이 작업 시작 가능합니다.
+                </div>
+              )}
+              {!isRemnantDraw && <div>
                 <label className="text-xs text-gray-400 font-medium mb-1.5 block">
                   판번호(Heat NO) <span className="text-gray-600">(필수)</span>
                 </label>
@@ -929,7 +941,7 @@ export default function FieldWorklog({
                     <p className="text-xs text-yellow-400 px-1">등록된 판번호가 없습니다. 강재입고관리에서 판번호를 먼저 등록하세요.</p>
                   )}
                 </div>
-              </div>
+              </div>}
 
               {/* 특이사항 */}
               <div>

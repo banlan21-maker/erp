@@ -132,8 +132,11 @@ export async function POST(request: NextRequest) {
     if (!equipmentId) {
       return NextResponse.json({ success: false, error: "장비를 선택하세요." }, { status: 400 });
     }
-    // heatNo: 정규작업은 필수, 돌발작업은 선택
-    if (!isUrgent && !heatNo?.trim()) {
+    // heatNo: 정규작업은 필수, 돌발작업·등록잔재사용은 선택
+    const isRemnantDraw = drawingListId
+      ? !!(await prisma.drawingList.findFirst({ where: { id: drawingListId, NOT: { assignedRemnantId: null } }, select: { id: true } }))
+      : false;
+    if (!isUrgent && !isRemnantDraw && !heatNo?.trim()) {
       return NextResponse.json({ success: false, error: "Heat NO는 필수입니다." }, { status: 400 });
     }
     if (!operator?.trim()) {
