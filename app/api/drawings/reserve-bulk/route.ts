@@ -19,10 +19,11 @@ export async function POST(request: NextRequest) {
     }
     const vesselCode = project.projectCode;
 
-    // 등록잔재 사용 행 (assignedRemnantId IS NOT NULL) — SQL에서 직접 분리
+    // 등록잔재 사용 행 (assignedRemnantId IS NOT NULL) — CUT 제외, 나머지 모두 WAITING 처리
+    // status 조건을 REGISTERED로 한정하지 않음: CAUTION/WAITING 상태여도 잔재 확정 가능
     const assignedRaw = await prisma.$queryRaw<{ id: string }[]>`
       SELECT id FROM "DrawingList"
-      WHERE "projectId" = ${projectId} AND status = 'REGISTERED' AND "assignedRemnantId" IS NOT NULL
+      WHERE "projectId" = ${projectId} AND status != 'CUT' AND "assignedRemnantId" IS NOT NULL
     `;
     const assignedRowIds = assignedRaw.map(r => r.id);
 
