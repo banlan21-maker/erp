@@ -35,7 +35,7 @@ interface ProjectOption {
   projectCode: string;
   projectName: string;
   drawingCount: number;
-  status: string;
+  status: string | null;
   storageLocation?: string | null;
 }
 
