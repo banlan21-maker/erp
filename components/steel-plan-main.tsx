@@ -904,6 +904,9 @@ export default function SteelPlanMain() {
           {selectedIds.size > 0 && (
             <div className="flex items-center gap-2 flex-wrap bg-green-50 border border-green-200 rounded-lg px-4 py-2">
               <span className="text-sm font-medium text-green-700">{selectedIds.size}건 선택됨</span>
+              <span className="text-sm text-green-600">
+                선택중량 {rows.filter((r) => selectedIds.has(r.id)).reduce((sum, r) => sum + (r.thickness * r.width * r.length * 7.85 / 1_000_000), 0).toFixed(1)}kg
+              </span>
               <button onClick={markSelectedReceived} className="flex items-center gap-1.5 px-3 py-1 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700">
                 <PackageCheck size={13} /> 선택 입고
               </button>
