@@ -18,7 +18,7 @@ interface VesselBlock {
   projectName: string;
   type: string;
   client: string;
-  status: string;
+  status: string | null;
   drawingCount: number;
   createdAt: Date;
   storageLocation: string | null;
