@@ -154,13 +154,13 @@ export async function DELETE(request: NextRequest) {
       });
     } catch { /* assignedRemnantId 미지원 시 무시 */ }
 
-    // 원재사용 행: SteelPlan 예약 해제
+    // 원재사용 행: SteelPlan 예약 해제 (RECEIVED + ISSUED 모두 해제)
     const { count: cancelledNew } = await prisma.steelPlan.updateMany({
-      where: { status: "RECEIVED", reservedFor: { in: newFmtCodes } },
+      where: { status: { in: ["RECEIVED", "ISSUED"] }, reservedFor: { in: newFmtCodes } },
       data: { reservedFor: null },
     });
     const { count: cancelledOld } = await prisma.steelPlan.updateMany({
-      where: { vesselCode, status: "RECEIVED", reservedFor: { in: blockCodes } },
+      where: { vesselCode, status: { in: ["RECEIVED", "ISSUED"] }, reservedFor: { in: blockCodes } },
       data: { reservedFor: null },
     });
     const cancelled = cancelledNew + cancelledOld;
