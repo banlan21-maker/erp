@@ -19,20 +19,22 @@ export async function POST(request: NextRequest) {
     }
     const vesselCode = project.projectCode;
 
-    // REGISTERED 행 전체를 raw SQL로 조회 (assignedRemnantId 포함)
-    // Prisma 클라이언트 버전 무관하게 안정적으로 동작
-    const allRegisteredRaw = await prisma.$queryRaw<{
-      id: string; material: string; thickness: number; width: number; length: number;
-      block: string | null; alternateVesselCode: string | null; assignedRemnantId: string | null;
-    }[]>`
-      SELECT id, material, thickness, width, length, block, "alternateVesselCode", "assignedRemnantId"
-      FROM "DrawingList"
-      WHERE "projectId" = ${projectId} AND status = 'REGISTERED'
+    // 등록잔재 사용 행 (assignedRemnantId IS NOT NULL) — SQL에서 직접 분리
+    const assignedRaw = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "DrawingList"
+      WHERE "projectId" = ${projectId} AND status = 'REGISTERED' AND "assignedRemnantId" IS NOT NULL
     `;
+    const assignedRowIds = assignedRaw.map(r => r.id);
 
-    // 등록잔재 사용 행(assignedRemnantId 있음)은 SteelPlan 매칭 없이 바로 WAITING
-    const assignedRowIds = allRegisteredRaw.filter(r => r.assignedRemnantId != null).map(r => r.id);
-    const pendingRows    = allRegisteredRaw.filter(r => r.assignedRemnantId == null);
+    // 원재 사용 행 (assignedRemnantId IS NULL)
+    const pendingRows = await prisma.$queryRaw<{
+      id: string; material: string; thickness: number; width: number; length: number;
+      block: string | null; alternateVesselCode: string | null;
+    }[]>`
+      SELECT id, material, thickness, width, length, block, "alternateVesselCode"
+      FROM "DrawingList"
+      WHERE "projectId" = ${projectId} AND status = 'REGISTERED' AND "assignedRemnantId" IS NULL
+    `;
 
     if (assignedRowIds.length > 0) {
       await prisma.drawingList.updateMany({
