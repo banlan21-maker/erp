@@ -122,9 +122,6 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
                             {block.projectName}
                           </span>
 
-                          <span className={`text-xs px-1.5 py-0.5 rounded font-bold ${TYPE_COLOR[block.type]}`}>
-                            {block.type}
-                          </span>
                           {block.storageLocation && (
                             <span className="flex items-center gap-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
                               <MapPin size={10} />
@@ -134,7 +131,6 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
                           <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLOR[block.status]}`}>
                             {STATUS_LABEL[block.status]}
                           </span>
-                          <span className="text-xs text-gray-400">{block.client}</span>
                         </button>
 
                         {/* 우측: 강재 수 + 등록일 + 삭제 */}

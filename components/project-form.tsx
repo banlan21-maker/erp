@@ -16,7 +16,6 @@ export default function ProjectForm({ defaultCode }: { defaultCode?: string }) {
   const [form, setForm] = useState({
     projectCode: defaultCode ?? "",
     projectName: "",
-    client: "",
     memo: "",
   });
 
@@ -33,7 +32,7 @@ export default function ProjectForm({ defaultCode }: { defaultCode?: string }) {
     e.preventDefault();
     setError(null);
 
-    if (!form.projectCode || !form.projectName || !form.client) {
+    if (!form.projectCode || !form.projectName) {
       setError("필수 항목을 모두 입력하세요.");
       return;
     }
@@ -95,19 +94,6 @@ export default function ProjectForm({ defaultCode }: { defaultCode?: string }) {
           placeholder="예: 301, 302, F52P"
           value={form.projectName}
           onChange={(e) => setForm({ ...form, projectName: e.target.value })}
-        />
-      </div>
-
-      {/* 원청사/발주처 */}
-      <div className="space-y-1.5">
-        <Label htmlFor="client">
-          원청사 / 발주처 <span className="text-red-500">*</span>
-        </Label>
-        <Input
-          id="client"
-          placeholder="예: 현대중공업, 삼성중공업"
-          value={form.client}
-          onChange={(e) => setForm({ ...form, client: e.target.value })}
         />
       </div>
 
