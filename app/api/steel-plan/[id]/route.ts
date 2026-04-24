@@ -17,6 +17,17 @@ export async function PATCH(
   const { id } = await params;
   const body = await req.json();
 
+  // 출고 처리 시 블록 확정 여부 체크
+  if (body.status === "ISSUED") {
+    const plan = await prisma.steelPlan.findUnique({ where: { id }, select: { reservedFor: true } });
+    if (!plan?.reservedFor) {
+      return NextResponse.json(
+        { error: "블록 미확정 철판입니다. 블록강재리스트에서 확정 후 출고하세요." },
+        { status: 409 }
+      );
+    }
+  }
+
   const updated = await prisma.steelPlan.update({
     where: { id },
     data: {

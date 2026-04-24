@@ -22,6 +22,17 @@ export async function POST(req: NextRequest) {
 
     const issuedDate = issuedAt ? new Date(issuedAt) : new Date();
 
+    // 블록 확정(reservedFor)이 없는 철판은 출고 불가
+    const unconfirmed = await prisma.steelPlan.count({
+      where: { id: { in: ids }, status: "RECEIVED", reservedFor: null },
+    });
+    if (unconfirmed > 0) {
+      return NextResponse.json(
+        { error: `블록 미확정 철판이 ${unconfirmed}장 있습니다. 블록강재리스트에서 확정 후 출고하세요.` },
+        { status: 409 }
+      );
+    }
+
     const { count } = await prisma.steelPlan.updateMany({
       where: { id: { in: ids }, status: "RECEIVED" },
       data:  { status: "ISSUED", issuedAt: issuedDate },
