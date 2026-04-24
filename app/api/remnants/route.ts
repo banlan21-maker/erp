@@ -47,6 +47,12 @@ export async function GET(request: NextRequest) {
       where,
       include: {
         sourceProject: { select: { id: true, projectCode: true, projectName: true } },
+        assignedToLists: {
+          select: {
+            block: true,
+            project: { select: { projectCode: true } },
+          },
+        },
       },
       orderBy: { createdAt: "desc" },
     });

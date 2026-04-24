@@ -209,6 +209,7 @@ type RemnantRow = {
   sourceBlock: string | null; sourceVesselName: string | null; status: string;
   heatNo: string | null;
   sourceProject: { projectCode: string } | null;
+  assignedToLists: { block: string | null; project: { projectCode: string } | null }[];
 };
 
 function colVal(r: RemnantRow, col: string): string {
@@ -226,6 +227,11 @@ function colVal(r: RemnantRow, col: string): string {
     case "length2":     return r.length2 != null ? String(r.length2) : "-";
     case "weight":      return r.weight.toFixed(1);
     case "status":      return STATUS_LABEL_R[r.status] ?? r.status;
+    case "usedVessel": {
+      if (r.status !== "EXHAUSTED" || !r.assignedToLists?.length) return "-";
+      const first = r.assignedToLists[0];
+      return `${first.project?.projectCode ?? "-"} / ${first.block ?? "-"}`;
+    }
     default: return "";
   }
 }
@@ -243,7 +249,8 @@ const COLS = [
   { key: "length1",   label: "길이1",      align: "right" },
   { key: "length2",   label: "길이2",      align: "right" },
   { key: "weight",    label: "중량(kg)",   align: "right" },
-  { key: "status",    label: "상태",       align: "center"},
+  { key: "status",    label: "상태",        align: "center"},
+  { key: "usedVessel", label: "사용호선/블록", align: "left"  },
 ] as const;
 
 function ProjectRemnantTab({ projectOptions: _p }: { projectOptions: ProjectOption[]; activeProject: { id: string; projectCode: string; projectName: string } | null; projectId: string | null }) {
@@ -317,7 +324,7 @@ function ProjectRemnantTab({ projectOptions: _p }: { projectOptions: ProjectOpti
             </thead>
             <tbody className="divide-y">
               {filtered.length === 0 ? (
-                <tr><td colSpan={13} className="text-center py-8 text-gray-400">
+                <tr><td colSpan={14} className="text-center py-8 text-gray-400">
                   {remnants.length === 0 ? "등록된 잔재가 없습니다." : "필터 조건에 맞는 데이터가 없습니다."}
                   {activeCount > 0 && <button onClick={() => setFilters({})} className="ml-2 text-blue-500 hover:underline">필터 초기화</button>}
                 </td></tr>
@@ -340,6 +347,11 @@ function ProjectRemnantTab({ projectOptions: _p }: { projectOptions: ProjectOpti
                       {STATUS_LABEL_R[r.status] ?? r.status}
                     </span>
                   </td>
+                  <td className="px-3 py-2 text-gray-700">
+                    {r.status === "EXHAUSTED" && r.assignedToLists?.length > 0
+                      ? `${r.assignedToLists[0].project?.projectCode ?? "-"} / ${r.assignedToLists[0].block ?? "-"}`
+                      : "-"}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -347,7 +359,7 @@ function ProjectRemnantTab({ projectOptions: _p }: { projectOptions: ProjectOpti
               <tr>
                 <td colSpan={11} className="px-3 py-2 text-gray-500 font-medium">합계 ({filtered.length}건)</td>
                 <td className="px-3 py-2 text-right font-bold text-gray-700">{totalWeight.toFixed(1)}kg</td>
-                <td />
+                <td /><td />
               </tr>
             </tfoot>
           </table>

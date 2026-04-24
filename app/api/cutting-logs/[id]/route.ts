@@ -82,6 +82,13 @@ export async function PATCH(
             where: { id },
             data: { drawingListId: target.id },
           });
+          // 등록잔재 사용 절단이면 잔재 상태 → EXHAUSTED
+          if (target.assignedRemnantId) {
+            await prisma.remnant.update({
+              where: { id: target.assignedRemnantId },
+              data:  { status: "EXHAUSTED" },
+            });
+          }
         }
       }
 
@@ -164,6 +171,13 @@ export async function DELETE(
           where: { id: log.drawingListId },
           data: { status: "WAITING", heatNo: null },
         });
+        // 등록잔재 사용 절단이면 잔재 상태 복원 → IN_STOCK
+        if (drawing.assignedRemnantId) {
+          await prisma.remnant.update({
+            where: { id: drawing.assignedRemnantId },
+            data:  { status: "IN_STOCK" },
+          });
+        }
       }
     }
 
