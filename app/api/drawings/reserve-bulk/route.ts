@@ -19,9 +19,21 @@ export async function POST(request: NextRequest) {
     }
     const vesselCode = project.projectCode;
 
-    // 확정 대상: REGISTERED 행 (아직 확정 안 된 것들)
+    // 등록잔재 사용 행: SteelPlan 매칭 없이 바로 WAITING 확정
+    const assignedRows = await prisma.drawingList.findMany({
+      where: { projectId, status: "REGISTERED", assignedRemnantId: { not: null } },
+      select: { id: true },
+    });
+    if (assignedRows.length > 0) {
+      await prisma.drawingList.updateMany({
+        where: { id: { in: assignedRows.map(r => r.id) } },
+        data: { status: "WAITING" },
+      });
+    }
+
+    // 원재사용 행만 SteelPlan 매칭 확정
     const pendingRows = await prisma.drawingList.findMany({
-      where: { projectId, status: "REGISTERED" },
+      where: { projectId, status: "REGISTERED", assignedRemnantId: null },
       select: { id: true, material: true, thickness: true, width: true, length: true, block: true, alternateVesselCode: true },
     });
 
@@ -119,7 +131,13 @@ export async function DELETE(request: NextRequest) {
     // 신규 형식: "호선/블록" + 구형 형식: 블록만
     const newFmtCodes = blockCodes.map((b) => `${vesselCode}/${b}`);
 
-    // 해당 블록코드로 확정된 SteelPlan 전체 해제 (신규+구형 형식 모두)
+    // 등록잔재 사용 행 확정 취소: WAITING → REGISTERED (CUT 제외)
+    await prisma.drawingList.updateMany({
+      where: { projectId, status: "WAITING", assignedRemnantId: { not: null } },
+      data: { status: "REGISTERED" },
+    });
+
+    // 원재사용 행: SteelPlan 예약 해제
     const { count: cancelledNew } = await prisma.steelPlan.updateMany({
       where: { status: "RECEIVED", reservedFor: { in: newFmtCodes } },
       data: { reservedFor: null },
