@@ -854,20 +854,8 @@ export default function SteelPlanMain() {
             </div>
           )}
 
-          {/* 상단 바: 텍스트 검색 + 액션 */}
+          {/* 상단 바: 필터 초기화 + 페이지네이션 + 액션 */}
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="relative">
-              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                value={search}
-                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                placeholder="호선·재질 검색"
-                className="pl-8 pr-7 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 w-40"
-              />
-              {search && (
-                <button onClick={() => { setSearch(""); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={13} /></button>
-              )}
-            </div>
             {Object.values(colFilters).some((v) => v.length > 0) && (
               <button
                 onClick={() => { setColFilters({}); setPage(1); }}
@@ -876,7 +864,30 @@ export default function SteelPlanMain() {
                 <X size={12} /> 필터 전체 초기화
               </button>
             )}
-            <button onClick={syncAndRefresh} title="작업일보 기준으로 강재·판번호 상태 자동 동기화" className="p-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-500"><RefreshCw size={14} /></button>
+            {/* 상단 페이지네이션 */}
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1 mx-auto">
+                <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
+                  className="px-2.5 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">이전</button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+                  .reduce<(number | "...")[]>((acc, p, i, arr) => {
+                    if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push("...");
+                    acc.push(p); return acc;
+                  }, [])
+                  .map((p, i) => p === "..." ? (
+                    <span key={`et-${i}`} className="px-1 text-gray-400">…</span>
+                  ) : (
+                    <button key={p} onClick={() => setPage(p as number)}
+                      className={`px-2.5 py-1 text-sm border rounded-lg ${page === p ? "bg-blue-600 text-white border-blue-600" : "border-gray-300 hover:bg-gray-50"}`}>
+                      {p}
+                    </button>
+                  ))}
+                <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                  className="px-2.5 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">다음</button>
+                <span className="text-xs text-gray-400 ml-1">{page}/{totalPages}</span>
+              </div>
+            )}
             <span className="text-sm text-gray-500 ml-auto">총 {total}건</span>
             <button
               onClick={handlePrint}
