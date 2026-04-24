@@ -855,47 +855,55 @@ export default function SteelPlanMain() {
           )}
 
           {/* 상단 바: 필터 초기화 + 페이지네이션 + 액션 */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {Object.values(colFilters).some((v) => v.length > 0) && (
+          <div className="flex items-center gap-2">
+            {/* 왼쪽 */}
+            <div className="flex items-center min-w-[120px]">
+              {Object.values(colFilters).some((v) => v.length > 0) && (
+                <button
+                  onClick={() => { setColFilters({}); setPage(1); }}
+                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50"
+                >
+                  <X size={12} /> 필터 전체 초기화
+                </button>
+              )}
+            </div>
+            {/* 중앙 페이지네이션 */}
+            <div className="flex-1 flex justify-center">
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
+                    className="px-2.5 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">이전</button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+                    .reduce<(number | "...")[]>((acc, p, i, arr) => {
+                      if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push("...");
+                      acc.push(p); return acc;
+                    }, [])
+                    .map((p, i) => p === "..." ? (
+                      <span key={`et-${i}`} className="px-1 text-gray-400">…</span>
+                    ) : (
+                      <button key={p} onClick={() => setPage(p as number)}
+                        className={`px-2.5 py-1 text-sm border rounded-lg ${page === p ? "bg-blue-600 text-white border-blue-600" : "border-gray-300 hover:bg-gray-50"}`}>
+                        {p}
+                      </button>
+                    ))}
+                  <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                    className="px-2.5 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">다음</button>
+                  <span className="text-xs text-gray-400 ml-1">{page}/{totalPages}</span>
+                </div>
+              )}
+            </div>
+            {/* 오른쪽 */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">총 {total}건</span>
               <button
-                onClick={() => { setColFilters({}); setPage(1); }}
-                className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50"
+                onClick={handlePrint}
+                disabled={printing || total === 0}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-800 text-white rounded-lg hover:bg-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <X size={12} /> 필터 전체 초기화
+                <Printer size={14} /> {printing ? "준비 중..." : "선별지시서 출력"}
               </button>
-            )}
-            {/* 상단 페이지네이션 */}
-            {totalPages > 1 && (
-              <div className="flex items-center gap-1 mx-auto">
-                <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-                  className="px-2.5 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">이전</button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1)
-                  .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
-                  .reduce<(number | "...")[]>((acc, p, i, arr) => {
-                    if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push("...");
-                    acc.push(p); return acc;
-                  }, [])
-                  .map((p, i) => p === "..." ? (
-                    <span key={`et-${i}`} className="px-1 text-gray-400">…</span>
-                  ) : (
-                    <button key={p} onClick={() => setPage(p as number)}
-                      className={`px-2.5 py-1 text-sm border rounded-lg ${page === p ? "bg-blue-600 text-white border-blue-600" : "border-gray-300 hover:bg-gray-50"}`}>
-                      {p}
-                    </button>
-                  ))}
-                <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                  className="px-2.5 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">다음</button>
-                <span className="text-xs text-gray-400 ml-1">{page}/{totalPages}</span>
-              </div>
-            )}
-            <span className="text-sm text-gray-500 ml-auto">총 {total}건</span>
-            <button
-              onClick={handlePrint}
-              disabled={printing || total === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-800 text-white rounded-lg hover:bg-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Printer size={14} /> {printing ? "준비 중..." : "선별지시서 출력"}
-            </button>
+            </div>
           </div>
 
           {/* 선택 액션 바 */}
