@@ -444,6 +444,27 @@ export default function SteelPlanMain() {
     if (results.some((r) => !r.ok)) loadPlan();
   };
 
+  /* ── 다중 선택 입고취소 (RECEIVED → REGISTERED) ── */
+  const markSelectedReceiveCancelled = async () => {
+    const targets = Array.from(selectedIds).filter(
+      (id) => rows.find((r) => r.id === id)?.status === "RECEIVED"
+    );
+    if (targets.length === 0) { alert("입고취소할 수 있는 항목(입고완료 상태)이 없습니다."); return; }
+    const now = new Date().toISOString();
+    updateRowsLocally(targets, { status: "REGISTERED", receivedAt: null });
+    setSelectedIds(new Set());
+    const results = await Promise.all(
+      targets.map((id) =>
+        fetch(`/api/steel-plan/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "REGISTERED" }),
+        })
+      )
+    );
+    if (results.some((r) => !r.ok)) loadPlan();
+  };
+
   /* ── 다중 선택 출고 — 날짜 모달 오픈 ── */
   const markSelectedIssued = () => {
     const targets = Array.from(selectedIds).filter(
@@ -468,6 +489,26 @@ export default function SteelPlanMain() {
       body: JSON.stringify({ ids: targetIds, issuedAt: iso }),
     });
     if (!res.ok) loadPlan();
+  };
+
+  /* ── 다중 선택 출고취소 (ISSUED → RECEIVED) ── */
+  const markSelectedIssueCancelled = async () => {
+    const targets = Array.from(selectedIds).filter(
+      (id) => rows.find((r) => r.id === id)?.status === "ISSUED"
+    );
+    if (targets.length === 0) { alert("출고취소할 수 있는 항목(출고완료 상태)이 없습니다."); return; }
+    updateRowsLocally(targets, { status: "RECEIVED", issuedAt: null });
+    setSelectedIds(new Set());
+    const results = await Promise.all(
+      targets.map((id) =>
+        fetch(`/api/steel-plan/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "RECEIVED", cancelIssue: true }),
+        })
+      )
+    );
+    if (results.some((r) => !r.ok)) loadPlan();
   };
 
   /* ── 호선 단위 삭제 (SteelPlan + SteelPlanHeat 동시) ── */
@@ -848,10 +889,13 @@ export default function SteelPlanMain() {
 
           {/* 선택 액션 바 */}
           {selectedIds.size > 0 && (
-            <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-2">
+            <div className="flex items-center gap-2 flex-wrap bg-green-50 border border-green-200 rounded-lg px-4 py-2">
               <span className="text-sm font-medium text-green-700">{selectedIds.size}건 선택됨</span>
               <button onClick={markSelectedReceived} className="flex items-center gap-1.5 px-3 py-1 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700">
                 <PackageCheck size={13} /> 선택 입고
+              </button>
+              <button onClick={markSelectedReceiveCancelled} className="flex items-center gap-1.5 px-3 py-1 text-sm border border-green-400 text-green-700 rounded-lg hover:bg-green-100">
+                <PackageCheck size={13} /> 선택 입고취소
               </button>
               <button
                 onClick={() => {
@@ -866,6 +910,9 @@ export default function SteelPlanMain() {
               </button>
               <button onClick={markSelectedIssued} className="flex items-center gap-1.5 px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
                 <PackageOpen size={13} /> 선택 출고
+              </button>
+              <button onClick={markSelectedIssueCancelled} className="flex items-center gap-1.5 px-3 py-1 text-sm border border-blue-400 text-blue-700 rounded-lg hover:bg-blue-100">
+                <PackageOpen size={13} /> 선택 출고취소
               </button>
               <button onClick={() => setSelectedIds(new Set())} className="ml-auto text-sm text-green-600 hover:underline">선택 해제</button>
             </div>
