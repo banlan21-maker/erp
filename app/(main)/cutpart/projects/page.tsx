@@ -15,6 +15,14 @@ export default async function ProjectsPage({
     include: { _count: { select: { drawingLists: true } } },
   });
 
+  // 블록별 CUT 수량 집계 (상태 동적 계산용)
+  const cutCountsRaw = await prisma.drawingList.groupBy({
+    by: ["projectId"],
+    where: { status: "CUT" },
+    _count: { _all: true },
+  });
+  const cutCountMap = new Map(cutCountsRaw.map((r) => [r.projectId, r._count._all]));
+
   const projectOptions = projects.map((p) => ({
     id: p.id,
     projectCode: p.projectCode,
@@ -36,17 +44,22 @@ export default async function ProjectsPage({
   const vessels = Object.values(grouped).map((g) => ({
     code: g.code,
     totalDrawings: g.totalDrawings,
-    blocks: g.blocks.map((p) => ({
-      id: p.id,
-      projectCode: p.projectCode,
-      projectName: p.projectName,
-      type: p.type,
-      client: p.client ?? "",
-      status: p.status,
-      drawingCount: p._count.drawingLists,
-      createdAt: p.createdAt,
-      storageLocation: p.storageLocation ?? null,
-    })),
+    blocks: g.blocks.map((p) => {
+      const total = p._count.drawingLists;
+      const cut   = cutCountMap.get(p.id) ?? 0;
+      const status = total === 0 ? null : total === cut ? "COMPLETED" : "ACTIVE";
+      return {
+        id: p.id,
+        projectCode: p.projectCode,
+        projectName: p.projectName,
+        type: p.type,
+        client: p.client ?? "",
+        status,
+        drawingCount: total,
+        createdAt: p.createdAt,
+        storageLocation: p.storageLocation ?? null,
+      };
+    }),
   }));
 
   // 최근 등록 현황 (강재등록 탭용)

@@ -14,7 +14,7 @@ interface Block {
   projectName: string;
   type: string;
   client: string;
-  status: string;
+  status: string | null;
   drawingCount: number;
   createdAt: Date;
   storageLocation?: string | null;
@@ -28,11 +28,10 @@ interface VesselGroup {
 
 const STATUS_COLOR: Record<string, string> = {
   ACTIVE:    "bg-green-100 text-green-700",
-  COMPLETED: "bg-gray-100 text-gray-600",
-  ON_HOLD:   "bg-yellow-100 text-yellow-700",
+  COMPLETED: "bg-blue-100 text-blue-700",
 };
 const STATUS_LABEL: Record<string, string> = {
-  ACTIVE: "진행중", COMPLETED: "완료", ON_HOLD: "보류",
+  ACTIVE: "진행중", COMPLETED: "완료",
 };
 const TYPE_COLOR: Record<string, string> = {
   A: "bg-blue-100 text-blue-700",
@@ -128,9 +127,11 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
                               {block.storageLocation}
                             </span>
                           )}
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLOR[block.status]}`}>
-                            {STATUS_LABEL[block.status]}
-                          </span>
+                          {block.status && (
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLOR[block.status] ?? ""}`}>
+                              {STATUS_LABEL[block.status]}
+                            </span>
+                          )}
                         </button>
 
                         {/* 우측: 강재 수 + 등록일 + 삭제 */}
