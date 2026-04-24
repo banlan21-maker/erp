@@ -108,6 +108,12 @@ export async function GET(request: NextRequest) {
 
       const result = [];
       for (const row of waitingRows) {
+        // 등록잔재 사용 행: SteelPlan 없이 확정 — 바로 포함
+        const rowExt = row as typeof row & { assignedRemnantId?: string | null };
+        if (rowExt.assignedRemnantId) {
+          result.push(row);
+          continue;
+        }
         const projectCode = project.projectCode;
         const blockCode   = row.block ?? "UNKNOWN";
         const newFmt      = `${projectCode}/${blockCode}`;
