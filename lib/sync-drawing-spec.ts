@@ -35,11 +35,12 @@ export async function syncDrawingListBySpec(
   });
   if (projects.length === 0) return;
 
-  // ── 동기화 대상 DrawingList 조회 (CAUTION·CUT 제외) ──────────────────────
+  // ── 동기화 대상 DrawingList 조회 (CAUTION·CUT·등록잔재사용 행 제외) ────────
   const rows = await prisma.drawingList.findMany({
     where: {
       projectId: { in: projects.map((p) => p.id) },
       material, thickness, width, length,
+      assignedRemnantId: null,          // 등록잔재 사용 행은 SteelPlan과 무관하므로 제외
       NOT: { status: { in: ["CAUTION", "CUT"] } },
     },
     orderBy: { createdAt: "asc" },
