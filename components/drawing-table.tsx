@@ -695,7 +695,15 @@ export default function DrawingTable({
                   const status = (d.status ?? "REGISTERED") as DrawingStatusType;
                   return (
                     <tr key={d.id} className="hover:bg-orange-100/50">
-                      <td className="px-2 py-2 text-center"><StatusBadge status={status} /></td>
+                      <td className="px-2 py-2 text-center">
+                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${
+                          status === "CUT"     ? "bg-blue-100 text-blue-700" :
+                          status === "WAITING" ? "bg-purple-100 text-purple-700" :
+                                                 "bg-gray-100 text-gray-600"
+                        }`}>
+                          {status === "CUT" ? "절단" : status === "WAITING" ? "확정" : "대기"}
+                        </span>
+                      </td>
                       <td className="px-2 py-2 font-mono text-orange-700 font-medium">
                         {rem ? rem.remnantNo : <span className="text-gray-400">{dExt.assignedRemnantId?.slice(0, 8)}...</span>}
                       </td>
