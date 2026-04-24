@@ -308,7 +308,7 @@ export default function SteelPlanMain() {
 </head>
 <body>
 <h1>선별지시서</h1>
-<p class="meta">출력일시: ${new Date().toLocaleString("ko-KR")}${filterDesc ? " | 필터: " + filterDesc : ""}</p>
+<p class="meta">출력일시: ${new Date().toLocaleString("ko-KR")} | 총수량: ${data.length}장 | 총중량: ${data.reduce((s, r) => s + r.thickness * r.width * r.length * 7.85 / 1_000_000, 0).toFixed(1)}kg${filterDesc ? " | 필터: " + filterDesc : ""}</p>
 <table>
   <thead>
     <tr>
