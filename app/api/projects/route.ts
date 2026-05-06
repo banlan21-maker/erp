@@ -41,16 +41,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { projectCode, projectName, type, client, memo } = body;
 
-    if (!projectCode || !projectName || !type || !client) {
+    if (!projectCode || !projectName) {
       return NextResponse.json(
-        { success: false, error: "필수 항목(호선코드, 프로젝트명, 유형, 원청사)을 입력하세요." },
-        { status: 400 }
-      );
-    }
-
-    if (!["A", "B"].includes(type)) {
-      return NextResponse.json(
-        { success: false, error: "유형은 A 또는 B여야 합니다." },
+        { success: false, error: "필수 항목(호선코드, 블록명)을 입력하세요." },
         { status: 400 }
       );
     }
@@ -59,8 +52,8 @@ export async function POST(request: NextRequest) {
       data: {
         projectCode: projectCode.trim().toUpperCase(),
         projectName: projectName.trim(),
-        type: type as ProjectType,
-        client: client.trim(),
+        type: (type as ProjectType) ?? "A",
+        client: client?.trim() || null,
         memo: memo?.trim() || null,
       },
     });

@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronDown } from "lucide-react";
 
 export default function ProjectForm({ defaultCode }: { defaultCode?: string }) {
   const router = useRouter();
@@ -62,26 +61,28 @@ export default function ProjectForm({ defaultCode }: { defaultCode?: string }) {
   return (
     <form onSubmit={handleSubmit} className="bg-white rounded-xl border p-6 space-y-4">
 
-      {/* 호선 선택 */}
+      {/* 호선 선택/입력 */}
       <div className="space-y-1.5">
         <Label htmlFor="projectCode">
           호선 <span className="text-red-500">*</span>
         </Label>
-        <div className="relative">
-          <select
-            id="projectCode"
-            value={form.projectCode}
-            onChange={(e) => setForm({ ...form, projectCode: e.target.value })}
-            className="w-full appearance-none border border-gray-200 rounded-md px-3 py-2 pr-8 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">-- 강재 전체목록에서 호선 선택 --</option>
-            {vesselList.map((v) => (
-              <option key={v} value={v}>{v}</option>
-            ))}
-          </select>
-          <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-        </div>
-        <p className="text-xs text-gray-400">강재입고관리에 등록된 호선만 표시됩니다. 같은 호선으로 여러 블록 등록 가능</p>
+        <Input
+          id="projectCode"
+          list="vessel-list"
+          placeholder="호선 코드 입력 (예: RS01, 1022)"
+          value={form.projectCode}
+          onChange={(e) => setForm({ ...form, projectCode: e.target.value.toUpperCase() })}
+          autoCapitalize="characters"
+          disabled={!!defaultCode}
+        />
+        <datalist id="vessel-list">
+          {vesselList.map((v) => (
+            <option key={v} value={v} />
+          ))}
+        </datalist>
+        <p className="text-xs text-gray-400">
+          강재입고관리에 등록된 호선은 자동완성으로 표시됩니다. 같은 호선으로 여러 블록 등록 가능.
+        </p>
       </div>
 
       {/* 블록명 */}
