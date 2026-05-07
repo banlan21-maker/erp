@@ -30,6 +30,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncDrawingListBySpec } from "@/lib/sync-drawing-spec";
+import { syncProjectStatus } from "@/lib/sync-project-status";
 
 // ─── PATCH ─────────────────────────────────────────────────────────────────────
 // action="complete" → 절단 종료 (강재 상태 자동 동기화)
@@ -103,13 +104,15 @@ export async function PATCH(
 
       // ── SteelPlanHeat 상태 → CUT (없으면 신규 등록) ───────────────────────
       if (log.heatNo?.trim()) {
-        const heatResult = await prisma.steelPlanHeat.updateMany({
+        await prisma.steelPlanHeat.updateMany({
           where: { heatNo: log.heatNo.trim(), status: "WAITING" },
           data:  { status: "CUT", cutAt: log.endAt ?? new Date() },
         });
-
         // 판번호 목록에 없는 경우: 자동 등록 안 함 (강재입고관리에서 사전 등록 필수)
       }
+
+      // ── 블록(Project) 완료 상태 자동 동기화 ──────────────────────────────
+      if (log.projectId) await syncProjectStatus(log.projectId);
 
       return NextResponse.json({ success: true, data: log });
     }
@@ -190,6 +193,9 @@ export async function DELETE(
     }
 
     await prisma.cuttingLog.delete({ where: { id } });
+
+    // ── 블록(Project) 완료 상태 자동 동기화 (복원 시 ACTIVE로 되돌림) ──────
+    if (log.projectId) await syncProjectStatus(log.projectId);
 
     return NextResponse.json({ success: true });
   } catch (error) {
