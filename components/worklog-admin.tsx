@@ -72,6 +72,15 @@ function calcSteelWeight(t: number, w1: number, l1: number, w2?: number | null, 
   return Math.round(t * area * 7.85 / 1_000_000 * 10) / 10;
 }
 
+// ── 장비명 간소화 ─────────────────────────────────────────────────────────
+function eqShort(name: string): string {
+  const p = name.match(/플라즈마\s*(\d+)호기/);
+  if (p) return `P${p[1]}`;
+  const g = name.match(/가스절단기\s*(\d+)호기/);
+  if (g) return `G${g[1]}`;
+  return name;
+}
+
 // ── 시간 헬퍼 ─────────────────────────────────────────────────────────────
 function calcPauseMs(pauses?: CuttingPause[]): number {
   if (!pauses?.length) return 0;
@@ -710,7 +719,7 @@ export default function WorklogAdmin({
       case "useWeight":  return d.useWeight != null ? String(d.useWeight) : "";
       case "heatNo":     return d.heatNo ?? "";
       case "operator":   return log?.operator ?? "";
-      case "equipment":  return log?.equipment?.name ?? "";
+      case "equipment":  return log ? eqShort(log.equipment.name) : "";
       case "workDate":   return log?.startAt ? fmtDate(log.startAt) : "";
       case "totalTime": {
         if (!log?.endAt) return log ? "진행중" : "";
@@ -951,7 +960,7 @@ export default function WorklogAdmin({
                         {/* 작업자 */}
                         <td className="px-3 py-1.5 font-semibold text-gray-800">{log?.operator ?? "-"}</td>
                         {/* 장비 */}
-                        <td className="px-3 py-1.5 text-gray-500">{log?.equipment?.name ?? "-"}</td>
+                        <td className="px-3 py-1.5 text-gray-500">{log ? eqShort(log.equipment.name) : "-"}</td>
                         {/* 작업일 */}
                         <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap font-mono text-[11px]">
                           {log ? fmtDate(log.startAt) : "-"}

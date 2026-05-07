@@ -61,6 +61,14 @@ interface CuttingLog {
 type WorkTypeFilter = "all" | "normal" | "urgent";
 
 // ─── 유틸 ──────────────────────────────────────────────────────────────────────
+function eqShort(name: string): string {
+  const p = name.match(/플라즈마\s*(\d+)호기/);
+  if (p) return `P${p[1]}`;
+  const g = name.match(/가스절단기\s*(\d+)호기/);
+  if (g) return `G${g[1]}`;
+  return name;
+}
+
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
 }
@@ -140,7 +148,7 @@ export default function ReportsMain({
     OTHER:             "기타",
   };
   const byEq = filteredLogs.reduce((acc, l) => {
-    const k = l.equipment.name;
+    const k = eqShort(l.equipment.name);
     if (!acc[k]) acc[k] = { qty: 0, steelWeight: 0, pauseByReason: {} };
     acc[k].qty++;
     acc[k].steelWeight += l.steelWeight ?? 0;
@@ -181,7 +189,7 @@ export default function ReportsMain({
     const rows = filteredLogs.map((l) => ({
       "구분":         l.isUrgent ? "돌발" : "정규",
       "날짜":         formatDate(l.startAt),
-      "장비":         l.equipment.name,
+      "장비":         eqShort(l.equipment.name),
       "작업자":       l.operator,
       "호선":         l.project ? `[${l.project.projectCode}] ${l.project.projectName}` : (l.urgentTitle ?? ""),
       "블록":         l.block ?? "",
@@ -510,7 +518,7 @@ function AllDetailTable({
               )}
             </td>
             <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{formatDate(log.startAt)}</td>
-            <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">{log.equipment.name}</td>
+            <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">{eqShort(log.equipment.name)}</td>
             <td className="px-3 py-2 text-gray-700">{log.operator}</td>
             <td className="px-3 py-2 text-gray-600 text-[11px] whitespace-nowrap">
               {log.project
@@ -551,7 +559,7 @@ const NORMAL_COLS = [
   { key: "useWeight",   label: "사용중량(kg)",  align: "right"  as const, getVal: (l: CuttingLog) => l.useWeight != null ? String(l.useWeight) : "" },
   { key: "heatNo",      label: "Heat NO",     align: "left"   as const, getVal: (l: CuttingLog) => l.heatNo ?? "" },
   { key: "operator",    label: "작업자",       align: "left"   as const, getVal: (l: CuttingLog) => l.operator },
-  { key: "equipment",   label: "장비",         align: "left"   as const, getVal: (l: CuttingLog) => l.equipment.name },
+  { key: "equipment",   label: "장비",         align: "left"   as const, getVal: (l: CuttingLog) => eqShort(l.equipment.name) },
   { key: "workDate",    label: "작업일",       align: "left"   as const, getVal: (l: CuttingLog) => formatDate(l.startAt) },
   { key: "totalTime",   label: "총가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(durationMs(l.startAt, l.endAt)) },
   { key: "pauseTime",   label: "중단시간",     align: "center" as const, getVal: (l: CuttingLog) => formatPauseMin(l.pauseMs) },
@@ -699,7 +707,7 @@ function NormalDetailTable({ logs }: { logs: CuttingLog[] }) {
             <td className="px-3 py-2 text-right text-gray-700">{numCell(log.useWeight)}</td>
             <td className="px-3 py-2 font-mono text-blue-700">{log.heatNo || "-"}</td>
             <td className="px-3 py-2 text-gray-700">{log.operator}</td>
-            <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">{log.equipment.name}</td>
+            <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">{eqShort(log.equipment.name)}</td>
             <td className="px-3 py-2 text-gray-500 whitespace-nowrap font-mono text-[11px]">{formatDate(log.startAt)}</td>
             <td className="px-3 py-2 text-center text-gray-500 whitespace-nowrap">{formatDurationMs(totMs)}</td>
             <td className="px-3 py-2 text-center text-orange-500 whitespace-nowrap">{formatPauseMin(log.pauseMs)}</td>
