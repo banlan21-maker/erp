@@ -158,7 +158,7 @@ model Project {
   projectCode     String
   projectName     String
   type            ProjectType
-  client          String
+  client          String?
   status          ProjectStatus @default(ACTIVE)
   memo            String?
   storageLocation String? // 보관 위치 (야드 구역)
