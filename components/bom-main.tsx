@@ -69,6 +69,7 @@ export default function BomMain({
   const [items,   setItems]   = useState<BomItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [deleting,setDeleting]= useState(false);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   // Excel-style filter state
   const [filters,  setFilters]  = useState<Record<string, string[]>>({});
@@ -269,9 +270,6 @@ export default function BomMain({
     if (!grouped[p.projectCode]) grouped[p.projectCode] = [];
     grouped[p.projectCode].push(p);
   }
-  const [expanded, setExpanded] = useState<Record<string, boolean>>(
-    Object.fromEntries(Object.keys(grouped).map((c) => [c, true]))
-  );
 
   if (projectOptions.length === 0) {
     return (
