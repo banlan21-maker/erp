@@ -9,8 +9,11 @@ const STATUS_LABEL: Record<string, string> = {
   COMPLETED:  "절단완료",
 };
 
+const toUniqueDates = (rows: { toISOString: () => string }[]) =>
+  [...new Set(rows.map((d) => d.toISOString().split("T")[0]))].sort();
+
 export async function GET() {
-  const [vessels, materials, thicknesses, widths, lengths, statuses, locations, reservedFors, allDates, heatNos, actualVessels, drawingNos] =
+  const [vessels, materials, thicknesses, widths, lengths, statuses, locations, reservedFors, allDates, heatNos, actualVessels, drawingNos, batchNos, allSelectionDates, allIssuedDates] =
     await Promise.all([
       prisma.steelPlan.findMany({ select: { vesselCode: true },       distinct: ["vesselCode"],       orderBy: { vesselCode: "asc" } }),
       prisma.steelPlan.findMany({ select: { material: true },         distinct: ["material"],         orderBy: { material: "asc" } }),
@@ -28,12 +31,14 @@ export async function GET() {
       prisma.steelPlan.findMany({ select: { actualHeatNo: true },     distinct: ["actualHeatNo"],     where: { actualHeatNo:     { not: null } }, orderBy: { actualHeatNo:     "asc" } }),
       prisma.steelPlan.findMany({ select: { actualVesselCode: true }, distinct: ["actualVesselCode"], where: { actualVesselCode: { not: null } }, orderBy: { actualVesselCode: "asc" } }),
       prisma.steelPlan.findMany({ select: { actualDrawingNo: true },  distinct: ["actualDrawingNo"],  where: { actualDrawingNo:  { not: null } }, orderBy: { actualDrawingNo:  "asc" } }),
+      prisma.steelPlan.findMany({ select: { uploadBatchNo: true },    distinct: ["uploadBatchNo"],    orderBy: { uploadBatchNo: "asc" } }),
+      prisma.steelPlan.findMany({ select: { selectionPrintedAt: true }, where: { selectionPrintedAt: { not: null } }, orderBy: { selectionPrintedAt: "asc" } }),
+      prisma.steelPlan.findMany({ select: { issuedAt: true },           where: { issuedAt:           { not: null } }, orderBy: { issuedAt: "asc" } }),
     ]);
 
-  // receivedAt: group by date (YYYY-MM-DD) and deduplicate
-  const uniqueDates = [
-    ...new Set(allDates.map((d) => d.receivedAt!.toISOString().split("T")[0])),
-  ].sort();
+  const uniqueDates          = toUniqueDates(allDates.map((d)  => d.receivedAt!));
+  const uniqueSelectionDates = toUniqueDates(allSelectionDates.map((d) => d.selectionPrintedAt!));
+  const uniqueIssuedDates    = toUniqueDates(allIssuedDates.map((d) => d.issuedAt!));
 
   return NextResponse.json({
     vesselCode: vessels.map((v) => ({ value: v.vesselCode, label: v.vesselCode })),
@@ -65,6 +70,23 @@ export async function GET() {
     receivedAt: [
       { value: "__NULL__", label: "미입고" },
       ...uniqueDates.map((d) => ({ value: d, label: d })),
+    ],
+
+    uploadBatchNo: [
+      { value: "__NULL__", label: "(없음)" },
+      ...batchNos
+        .filter((b) => b.uploadBatchNo !== null)
+        .map((b) => ({ value: b.uploadBatchNo!, label: b.uploadBatchNo! })),
+    ],
+
+    selectionPrintedAt: [
+      { value: "__NULL__", label: "미출력" },
+      ...uniqueSelectionDates.map((d) => ({ value: d, label: d })),
+    ],
+
+    issuedAt: [
+      { value: "__NULL__", label: "미출고" },
+      ...uniqueIssuedDates.map((d) => ({ value: d, label: d })),
     ],
 
     actualHeatNo: [

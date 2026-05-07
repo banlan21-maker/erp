@@ -13,13 +13,23 @@ export async function GET(req: NextRequest) {
   const search    = sp.get("search") || undefined;
   const page      = Math.max(1, parseInt(sp.get("page") || "1"));
 
-  const vesselCodes  = parseList(sp.get("vesselCodes"));
-  const materials    = parseList(sp.get("materials"));
-  const thicknesses  = parseList(sp.get("thicknesses")).map(Number).filter((n) => !isNaN(n));
-  const widths       = parseList(sp.get("widths")).map(Number).filter((n) => !isNaN(n));
-  const lengths      = parseList(sp.get("lengths")).map(Number).filter((n) => !isNaN(n));
-  const heatNos      = parseList(sp.get("heatNos"));
-  const statuses     = parseList(sp.get("statuses")) as ("WAITING" | "CUT")[];
+  const vesselCodes    = parseList(sp.get("vesselCodes"));
+  const materials      = parseList(sp.get("materials"));
+  const thicknesses    = parseList(sp.get("thicknesses")).map(Number).filter((n) => !isNaN(n));
+  const widths         = parseList(sp.get("widths")).map(Number).filter((n) => !isNaN(n));
+  const lengths        = parseList(sp.get("lengths")).map(Number).filter((n) => !isNaN(n));
+  const heatNos        = parseList(sp.get("heatNos"));
+  const statuses       = parseList(sp.get("statuses")) as ("WAITING" | "CUT")[];
+  const uploadBatchNos = parseList(sp.get("uploadBatchNos"));
+
+  const nullableIn = (values: string[], field: string) => {
+    if (!values.length) return {};
+    const hasNull = values.includes("__NULL__");
+    const nonNull = values.filter((v) => v !== "__NULL__");
+    if (hasNull && nonNull.length) return { OR: [{ [field]: null }, { [field]: { in: nonNull } }] };
+    if (hasNull) return { [field]: null };
+    return { [field]: { in: nonNull } };
+  };
 
   const where = {
     ...(search
@@ -36,6 +46,7 @@ export async function GET(req: NextRequest) {
     ...(lengths.length     ? { length:     { in: lengths } }     : {}),
     ...(heatNos.length     ? { heatNo:     { in: heatNos } }     : {}),
     ...(statuses.length    ? { status:     { in: statuses } }    : {}),
+    ...nullableIn(uploadBatchNos, "uploadBatchNo"),
   };
 
   const [total, rows, allVessels] = await Promise.all([

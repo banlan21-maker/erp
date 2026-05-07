@@ -170,18 +170,21 @@ export default function SteelPlanMain() {
     if (search) p.set("search", search);
     p.set("page", String(page));
     const cf = colFilters;
-    if (cf.vesselCode?.length)       p.set("vesselCodes",      cf.vesselCode.join(","));
-    if (cf.material?.length)         p.set("materials",         cf.material.join(","));
-    if (cf.thickness?.length)        p.set("thicknesses",       cf.thickness.join(","));
-    if (cf.width?.length)            p.set("widths",            cf.width.join(","));
-    if (cf.length?.length)           p.set("lengths",           cf.length.join(","));
-    if (cf.status?.length)           p.set("statuses",          cf.status.join(","));
-    if (cf.receivedAt?.length)       p.set("receivedDates",     cf.receivedAt.join(","));
-    if (cf.storageLocation?.length)  p.set("storageLocations",  cf.storageLocation.join(","));
-    if (cf.reservedFor?.length)      p.set("reservedFors",      cf.reservedFor.join(","));
-    if (cf.actualHeatNo?.length)     p.set("actualHeatNos",     cf.actualHeatNo.join(","));
-    if (cf.actualVesselCode?.length) p.set("actualVesselCodes", cf.actualVesselCode.join(","));
-    if (cf.actualDrawingNo?.length)  p.set("actualDrawingNos",  cf.actualDrawingNo.join(","));
+    if (cf.vesselCode?.length)          p.set("vesselCodes",          cf.vesselCode.join(","));
+    if (cf.material?.length)            p.set("materials",             cf.material.join(","));
+    if (cf.thickness?.length)           p.set("thicknesses",           cf.thickness.join(","));
+    if (cf.width?.length)               p.set("widths",                cf.width.join(","));
+    if (cf.length?.length)              p.set("lengths",               cf.length.join(","));
+    if (cf.status?.length)              p.set("statuses",              cf.status.join(","));
+    if (cf.receivedAt?.length)          p.set("receivedDates",         cf.receivedAt.join(","));
+    if (cf.storageLocation?.length)     p.set("storageLocations",      cf.storageLocation.join(","));
+    if (cf.reservedFor?.length)         p.set("reservedFors",          cf.reservedFor.join(","));
+    if (cf.actualHeatNo?.length)        p.set("actualHeatNos",         cf.actualHeatNo.join(","));
+    if (cf.actualVesselCode?.length)    p.set("actualVesselCodes",     cf.actualVesselCode.join(","));
+    if (cf.actualDrawingNo?.length)     p.set("actualDrawingNos",      cf.actualDrawingNo.join(","));
+    if (cf.uploadBatchNo?.length)       p.set("uploadBatchNos",        cf.uploadBatchNo.join(","));
+    if (cf.selectionPrintedAt?.length)  p.set("selectionPrintedDates", cf.selectionPrintedAt.join(","));
+    if (cf.issuedAt?.length)            p.set("issuedDates",           cf.issuedAt.join(","));
     const res = await fetch(`/api/steel-plan?${p}`);
     if (res.ok) {
       const json = await res.json();
@@ -203,13 +206,14 @@ export default function SteelPlanMain() {
     if (heatSearch) p.set("search", heatSearch);
     p.set("page", String(heatPage));
     const cf = heatColFilters;
-    if (cf.vesselCode?.length) p.set("vesselCodes", cf.vesselCode.join(","));
-    if (cf.material?.length)   p.set("materials",   cf.material.join(","));
-    if (cf.thickness?.length)  p.set("thicknesses", cf.thickness.join(","));
-    if (cf.width?.length)      p.set("widths",      cf.width.join(","));
-    if (cf.length?.length)     p.set("lengths",     cf.length.join(","));
-    if (cf.heatNo?.length)     p.set("heatNos",     cf.heatNo.join(","));
-    if (cf.status?.length)     p.set("statuses",    cf.status.join(","));
+    if (cf.vesselCode?.length)    p.set("vesselCodes",    cf.vesselCode.join(","));
+    if (cf.material?.length)      p.set("materials",      cf.material.join(","));
+    if (cf.thickness?.length)     p.set("thicknesses",    cf.thickness.join(","));
+    if (cf.width?.length)         p.set("widths",         cf.width.join(","));
+    if (cf.length?.length)        p.set("lengths",        cf.length.join(","));
+    if (cf.heatNo?.length)        p.set("heatNos",        cf.heatNo.join(","));
+    if (cf.status?.length)        p.set("statuses",       cf.status.join(","));
+    if (cf.uploadBatchNo?.length) p.set("uploadBatchNos", cf.uploadBatchNo.join(","));
     const res = await fetch(`/api/steel-plan/heat?${p}`);
     if (res.ok) {
       const json = await res.json();
@@ -231,15 +235,18 @@ export default function SteelPlanMain() {
     const p = new URLSearchParams();
     if (search) p.set("search", search);
     const cf = colFilters;
-    if (cf.vesselCode?.length)       p.set("vesselCodes",      cf.vesselCode.join(","));
-    if (cf.material?.length)         p.set("materials",         cf.material.join(","));
-    if (cf.thickness?.length)        p.set("thicknesses",       cf.thickness.join(","));
-    if (cf.width?.length)            p.set("widths",            cf.width.join(","));
-    if (cf.length?.length)           p.set("lengths",           cf.length.join(","));
-    if (cf.status?.length)           p.set("statuses",          cf.status.join(","));
-    if (cf.receivedAt?.length)       p.set("receivedDates",     cf.receivedAt.join(","));
-    if (cf.storageLocation?.length)  p.set("storageLocations",  cf.storageLocation.join(","));
-    if (cf.reservedFor?.length)      p.set("reservedFors",      cf.reservedFor.join(","));
+    if (cf.vesselCode?.length)          p.set("vesselCodes",          cf.vesselCode.join(","));
+    if (cf.material?.length)            p.set("materials",             cf.material.join(","));
+    if (cf.thickness?.length)           p.set("thicknesses",           cf.thickness.join(","));
+    if (cf.width?.length)               p.set("widths",                cf.width.join(","));
+    if (cf.length?.length)              p.set("lengths",               cf.length.join(","));
+    if (cf.status?.length)              p.set("statuses",              cf.status.join(","));
+    if (cf.receivedAt?.length)          p.set("receivedDates",         cf.receivedAt.join(","));
+    if (cf.storageLocation?.length)     p.set("storageLocations",      cf.storageLocation.join(","));
+    if (cf.reservedFor?.length)         p.set("reservedFors",          cf.reservedFor.join(","));
+    if (cf.uploadBatchNo?.length)       p.set("uploadBatchNos",        cf.uploadBatchNo.join(","));
+    if (cf.selectionPrintedAt?.length)  p.set("selectionPrintedDates", cf.selectionPrintedAt.join(","));
+    if (cf.issuedAt?.length)            p.set("issuedDates",           cf.issuedAt.join(","));
     p.set("all", "true");
 
     const res  = await fetch(`/api/steel-plan?${p}`);
@@ -945,7 +952,19 @@ export default function SteelPlanMain() {
                         {allChecked ? <CheckSquare size={13} className="text-blue-600" /> : <Square size={13} className="text-gray-400" />}
                       </button>
                     </th>
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">업로드번호</th>
+                    {(["uploadBatchNo"] as const).map((col) => {
+                      const active = (colFilters[col]?.length ?? 0) > 0;
+                      return (
+                        <th key={col} className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <span>업로드번호</span>
+                            <button onClick={(e) => { setOpenFilter(col); setFilterAnchorEl(e.currentTarget); }} className={`rounded hover:bg-gray-200 p-0.5 ${active ? "text-blue-500" : "text-gray-400"}`}>
+                              <Filter size={10} fill={active ? "currentColor" : "none"} />
+                            </button>
+                          </div>
+                        </th>
+                      );
+                    })}
                     {(["vesselCode","material","thickness","width","length"] as const).map((col, i) => {
                       const labels = ["호선","재질","두께","폭","길이"];
                       const active = (colFilters[col]?.length ?? 0) > 0;
@@ -975,8 +994,20 @@ export default function SteelPlanMain() {
                         </th>
                       );
                     })}
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">선별지시일</th>
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">출고일</th>
+                    {(["selectionPrintedAt", "issuedAt"] as const).map((col, i) => {
+                      const labels = ["선별지시일", "출고일"];
+                      const active = (colFilters[col]?.length ?? 0) > 0;
+                      return (
+                        <th key={col} className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <span>{labels[i]}</span>
+                            <button onClick={(e) => { setOpenFilter(col); setFilterAnchorEl(e.currentTarget); }} className={`rounded hover:bg-gray-200 p-0.5 ${active ? "text-blue-500" : "text-gray-400"}`}>
+                              <Filter size={10} fill={active ? "currentColor" : "none"} />
+                            </button>
+                          </div>
+                        </th>
+                      );
+                    })}
                     <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">메모</th>
                     <th className="w-16 px-2 py-1 text-center font-medium text-gray-600 text-[11px]">입고</th>
                     <th className="w-16 px-2 py-1 text-center font-medium text-gray-600 text-[11px]">출고</th>
@@ -1193,7 +1224,19 @@ export default function SteelPlanMain() {
               <table className="w-full" style={{ fontSize: "12px" }}>
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">업로드번호</th>
+                    {(["uploadBatchNo"] as const).map((col) => {
+                      const active = (heatColFilters[col]?.length ?? 0) > 0;
+                      return (
+                        <th key={col} className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <span>업로드번호</span>
+                            <button onClick={(e) => { setHeatOpenFilter(col); setHeatFilterAnchorEl(e.currentTarget); }} className={`rounded hover:bg-gray-200 p-0.5 ${active ? "text-blue-500" : "text-gray-400"}`}>
+                              <Filter size={10} fill={active ? "currentColor" : "none"} />
+                            </button>
+                          </div>
+                        </th>
+                      );
+                    })}
                     {(["vesselCode","material","thickness","width","length","heatNo","status"] as const).map((col, i) => {
                       const labels = ["호선","재질","두께","폭","길이","판번호","상태"];
                       const active = (heatColFilters[col]?.length ?? 0) > 0;

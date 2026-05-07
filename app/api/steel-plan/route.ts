@@ -17,19 +17,19 @@ function nullableIn(values: string[], field: string) {
   return { [field]: { in: nonNull } };
 }
 
-/** 날짜 배열 → receivedAt OR 조건 */
-function buildDateFilter(dates: string[]) {
+/** 날짜 배열 → 지정 필드 OR 조건 */
+function buildDateFilter(dates: string[], field: string) {
   if (!dates.length) return {};
   const hasNull   = dates.includes("__NULL__");
   const dateParts = dates.filter((d) => d !== "__NULL__");
   const ranges = dateParts.map((d) => ({
-    receivedAt: {
+    [field]: {
       gte: new Date(`${d}T00:00:00.000Z`),
       lt:  new Date(new Date(`${d}T00:00:00.000Z`).getTime() + 86_400_000),
     },
   }));
   const conditions: object[] = [
-    ...(hasNull ? [{ receivedAt: null }] : []),
+    ...(hasNull ? [{ [field]: null }] : []),
     ...ranges,
   ];
   if (!conditions.length) return {};
@@ -52,12 +52,15 @@ export async function GET(req: NextRequest) {
   const widths          = parseList(sp.get("widths")).map(Number).filter((n) => !isNaN(n));
   const lengths         = parseList(sp.get("lengths")).map(Number).filter((n) => !isNaN(n));
   const statuses        = parseList(sp.get("statuses")) as ("REGISTERED" | "RECEIVED" | "COMPLETED")[];
-  const receivedDates   = parseList(sp.get("receivedDates"));
-  const storageLocations  = parseList(sp.get("storageLocations"));
-  const reservedFors      = parseList(sp.get("reservedFors"));
-  const actualHeatNos     = parseList(sp.get("actualHeatNos"));
-  const actualVesselCodes = parseList(sp.get("actualVesselCodes"));
-  const actualDrawingNos  = parseList(sp.get("actualDrawingNos"));
+  const receivedDates      = parseList(sp.get("receivedDates"));
+  const storageLocations   = parseList(sp.get("storageLocations"));
+  const reservedFors       = parseList(sp.get("reservedFors"));
+  const actualHeatNos      = parseList(sp.get("actualHeatNos"));
+  const actualVesselCodes  = parseList(sp.get("actualVesselCodes"));
+  const actualDrawingNos   = parseList(sp.get("actualDrawingNos"));
+  const uploadBatchNos        = parseList(sp.get("uploadBatchNos"));
+  const selectionPrintedDates = parseList(sp.get("selectionPrintedDates"));
+  const issuedDates           = parseList(sp.get("issuedDates"));
 
   const where = {
     ...(search
@@ -72,12 +75,15 @@ export async function GET(req: NextRequest) {
     ...(widths.length       ? { width:      { in: widths } }       : {}),
     ...(lengths.length      ? { length:     { in: lengths } }      : {}),
     ...(statuses.length     ? { status:     { in: statuses } }     : {}),
-    ...buildDateFilter(receivedDates),
+    ...buildDateFilter(receivedDates, "receivedAt"),
+    ...buildDateFilter(selectionPrintedDates, "selectionPrintedAt"),
+    ...buildDateFilter(issuedDates, "issuedAt"),
     ...nullableIn(storageLocations,  "storageLocation"),
     ...nullableIn(reservedFors,      "reservedFor"),
     ...nullableIn(actualHeatNos,     "actualHeatNo"),
     ...nullableIn(actualVesselCodes, "actualVesselCode"),
     ...nullableIn(actualDrawingNos,  "actualDrawingNo"),
+    ...nullableIn(uploadBatchNos,    "uploadBatchNo"),
   };
 
   const [total, rows, allVessels] = await Promise.all([
