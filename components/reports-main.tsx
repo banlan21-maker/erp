@@ -70,7 +70,7 @@ function eqShort(name: string): string {
 }
 
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
+  return new Date(iso).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
 }
 function formatTime(iso: string) {
   const d = new Date(iso);
@@ -698,7 +698,7 @@ function NormalDetailTable({ logs }: { logs: CuttingLog[] }) {
             <td className="px-3 py-2">
               {log.material ? <span className="px-1.5 py-0.5 bg-slate-100 rounded font-medium">{log.material}</span> : <span className="text-gray-400">-</span>}
             </td>
-            <td className="px-3 py-2 text-right text-gray-700">{log.thickness ? `${log.thickness}t` : "-"}</td>
+            <td className="px-3 py-2 text-right text-gray-700">{log.thickness ?? "-"}</td>
             <td className="px-3 py-2 text-right tabular-nums text-gray-700">{log.dimW1?.toLocaleString() ?? "-"}</td>
             <td className="px-3 py-2 text-right tabular-nums text-gray-400">{log.dimW2?.toLocaleString() ?? "-"}</td>
             <td className="px-3 py-2 text-right tabular-nums text-gray-700">{log.dimL1?.toLocaleString() ?? "-"}</td>
@@ -801,7 +801,7 @@ function UrgentDetailTable({ logs }: { logs: CuttingLog[] }) {
                   ? <span className="px-1.5 py-0.5 bg-slate-100 rounded font-medium">{log.material}</span>
                   : <span className="text-gray-400">-</span>}
               </td>
-              <td className="px-3 py-2 text-right text-gray-700">{log.thickness ? `${log.thickness}t` : "-"}</td>
+              <td className="px-3 py-2 text-right text-gray-700">{log.thickness ?? "-"}</td>
               <td className="px-3 py-2 text-right tabular-nums text-gray-700">{log.dimW1?.toLocaleString() ?? "-"}</td>
               <td className="px-3 py-2 text-right tabular-nums text-gray-400">{log.dimW2?.toLocaleString() ?? "-"}</td>
               <td className="px-3 py-2 text-right tabular-nums text-gray-700">{log.dimL1?.toLocaleString() ?? "-"}</td>
