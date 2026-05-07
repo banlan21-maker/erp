@@ -54,6 +54,7 @@ interface CuttingLog {
   dimL2:       number | null;
   // 중단 시간
   pauseMs:     number;
+  pauses:      { reason: string; pausedAt: string; resumedAt: string | null }[];
 }
 
 type WorkTypeFilter = "all" | "normal" | "urgent";
