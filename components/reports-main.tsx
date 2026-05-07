@@ -544,7 +544,7 @@ function NormalDetailTable({
             ["호선", "left"], ["블록", "left"], ["도면번호", "left"], ["재질", "left"], ["두께", "right"],
             ["폭1", "right"], ["폭2", "right"], ["길이1", "right"], ["길이2", "right"],
             ["철판중량(kg)", "right"], ["사용중량(kg)", "right"],
-            ["Heat NO", "left"], ["강재상태", "center"],
+            ["Heat NO", "left"],
             ["작업자", "left"], ["장비", "left"],
             ["작업일", "left"], ["총가동시간", "center"], ["중단시간", "center"], ["실가동시간", "center"],
             ["비고", "left"],
@@ -575,9 +575,6 @@ function NormalDetailTable({
             <td className="px-3 py-2 text-right text-gray-700">{numCell(log.steelWeight)}</td>
             <td className="px-3 py-2 text-right text-gray-700">{numCell(log.useWeight)}</td>
             <td className="px-3 py-2 font-mono text-blue-700">{log.heatNo || "-"}</td>
-            <td className="px-3 py-2 text-center">
-              <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">절단완료</span>
-            </td>
             <td className="px-3 py-2 text-gray-700">{log.operator}</td>
             <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">{log.equipment.name}</td>
             <td className="px-3 py-2 text-gray-500 whitespace-nowrap font-mono text-[11px]">{formatDate(log.startAt)}</td>
@@ -706,8 +703,8 @@ function TotalFootNormal({ totalQty, totalSteel, totalUse, totalMs, count }: {
   return (
     <tfoot className="bg-gray-50 border-t font-semibold text-xs">
       <tr>
-        {/* 날짜·장비·작업자·호선·블록·도면·Heat·재질·두께·폭×길이 = 10칸 */}
-        <td colSpan={10} className="px-3 py-2 text-gray-500">합계 ({count}건 · {totalQty.toLocaleString()}매)</td>
+        {/* 호선·블록·도면·재질·두께·폭1·폭2·길이1·길이2 = 9칸 */}
+        <td colSpan={9} className="px-3 py-2 text-gray-500">합계 ({count}건 · {totalQty.toLocaleString()}매)</td>
         {/* 작업시간 */}
         <td className="px-3 py-2 text-center text-green-700">{formatDurationMs(totalMs)}</td>
         {/* 강재중량 */}

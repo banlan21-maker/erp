@@ -110,7 +110,6 @@ const COLUMNS = [
   { key: "steelWeight",label: "철판중량",  align: "right" as const, filterable: false },
   { key: "useWeight",  label: "사용중량",  align: "right" as const, filterable: false },
   { key: "heatNo",     label: "Heat NO", align: "left"  as const, filterable: true  },
-  { key: "status",     label: "강재상태",  align: "left"  as const, filterable: true  },
   { key: "operator",   label: "작업자",   align: "left"  as const, filterable: true  },
   { key: "equipment",  label: "장비",     align: "left"  as const, filterable: true  },
   { key: "workDate",   label: "작업일",   align: "left"  as const, filterable: false },
@@ -126,14 +125,6 @@ type FCKey = (typeof FILTER_COLS)[number]["key"];
 // ─── 헬퍼 ──────────────────────────────────────────────────────────────────
 
 const TYPE_LABEL:   Record<string, string> = { PLASMA: "플라즈마", GAS: "가스" };
-const STATUS_LABEL: Record<string, string> = {
-  STARTED:   "진행중",
-  COMPLETED: "완료",
-};
-const STATUS_COLOR: Record<string, string> = {
-  STARTED:   "bg-yellow-100 text-yellow-700",
-  COMPLETED: "bg-green-100 text-green-700",
-};
 
 function fmtDt(iso: string) {
   const d = new Date(iso);
@@ -691,7 +682,6 @@ export default function WorklogAdmin({
       case "width1":    return String(getW1(d));
       case "length1":   return String(getL1(d));
       case "heatNo":    return d.heatNo ?? "";
-      case "status":    return log?.status ?? "";
       case "operator":  return log?.operator ?? "";
       case "equipment": return log?.equipment?.name ?? "";
     }
@@ -919,16 +909,6 @@ export default function WorklogAdmin({
                         <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.useWeight?.toFixed(1) ?? "-"}</td>
                         {/* Heat NO */}
                         <td className="px-3 py-1.5 font-mono text-[11px] text-blue-700">{d.heatNo ?? "-"}</td>
-                        {/* 강재상태 */}
-                        <td className="px-3 py-1.5">
-                          {log ? (
-                            <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${STATUS_COLOR[log.status] ?? "bg-gray-100 text-gray-600"}`}>
-                              {STATUS_LABEL[log.status] ?? log.status}
-                            </span>
-                          ) : (
-                            <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold bg-gray-100 text-gray-400">미등록</span>
-                          )}
-                        </td>
                         {/* 작업자 */}
                         <td className="px-3 py-1.5 font-semibold text-gray-800">{log?.operator ?? "-"}</td>
                         {/* 장비 */}
@@ -984,7 +964,7 @@ export default function WorklogAdmin({
                   })}
                   {filteredDrawings.length === 0 && (
                     <tr>
-                      <td colSpan={22} className="px-4 py-10 text-center text-gray-400">
+                      <td colSpan={21} className="px-4 py-10 text-center text-gray-400">
                         {drawings.length === 0 ? "확정된 강재리스트가 없습니다." : "필터 결과가 없습니다."}
                       </td>
                     </tr>
