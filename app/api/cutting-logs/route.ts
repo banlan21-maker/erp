@@ -103,6 +103,15 @@ export async function GET(request: NextRequest) {
         project:     { select: { projectCode: true, projectName: true } },
         drawingList: { select: { drawingNo: true, block: true, useWeight: true } },
         pauses:      { select: { reason: true, reasonText: true, pausedAt: true, resumedAt: true }, orderBy: { pausedAt: "asc" } },
+        urgentWork:  {
+          select: {
+            urgentNo:   true,
+            title:      true,
+            requester:  true,
+            department: true,
+            remnant:    { select: { remnantNo: true, width1: true, length1: true, width2: true, length2: true } },
+          },
+        },
       },
       orderBy: { startAt: "desc" },
     });

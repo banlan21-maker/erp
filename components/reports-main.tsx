@@ -42,8 +42,9 @@ interface CuttingLog {
   urgentNo:    string | null;
   urgentTitle: string | null;
   // 돌발작업 요청 정보
-  requester:   string | null;
-  department:  string | null;
+  requester:        string | null;
+  department:       string | null;
+  urgentRemnantNo:  string | null;
   // 블록
   block:       string | null;
   // 통합 치수 (정규: 강재의 폭/길이, 돌발: 잔재의 W1/L1/W2/L2)
@@ -593,7 +594,7 @@ function NormalDetailTable({
   );
 }
 
-// ─── 돌발작업 탭: W1/L1/W2/L2 + 요청자/부서 ────────────────────────────────────
+// ─── 돌발작업 탭: 작업명/요청자/부서/호선블록/잔재번호/치수/중량/시간 ─────────────
 function UrgentDetailTable({
   logs, totalQty, totalSteel, totalUse, totalDurationMs: totalMs,
 }: {
@@ -601,47 +602,70 @@ function UrgentDetailTable({
   totalQty: number; totalSteel: number; totalUse: number; totalDurationMs: number;
 }) {
   return (
-    <table className="w-full text-xs min-w-[1100px]">
-      <thead className="bg-gray-50 border-b">
+    <table className="w-full text-xs min-w-[1400px]">
+      <thead className="bg-orange-50 border-b">
         <tr>
           {[
-            ["날짜", "left"], ["장비", "left"], ["작업자", "left"], ["호선/블록", "left"],
-            ["도면번호", "left"], ["재질", "left"], ["두께", "right"],
-            ["W1", "right"], ["L1", "right"], ["W2", "right"], ["L2", "right"],
-            ["강재중량(kg)", "right"], ["사용중량(kg)", "right"],
-            ["요청자", "left"], ["부서", "left"],
+            ["작업명",       "left"],
+            ["요청자",       "left"],
+            ["요청부서",     "left"],
+            ["연관호선/블록", "left"],
+            ["사용잔재번호",  "left"],
+            ["재질",         "left"],
+            ["두께",         "right"],
+            ["폭1",          "right"],
+            ["폭2",          "right"],
+            ["길이1",        "right"],
+            ["길이2",        "right"],
+            ["중량(kg)",     "right"],
+            ["사용중량(kg)", "right"],
+            ["작업일",       "left"],
+            ["총가동시간",   "center"],
+            ["중단시간",     "center"],
+            ["실가동시간",   "center"],
           ].map(([l, a]) => (
             <th key={l} className={`px-3 py-2 text-gray-500 font-semibold text-${a} whitespace-nowrap`}>{l}</th>
           ))}
-
         </tr>
       </thead>
       <tbody className="divide-y">
-        {logs.map((log) => (
-          <tr key={log.id} className="hover:bg-orange-50/30">
-            <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{formatDate(log.startAt)}</td>
-            <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">{log.equipment.name}</td>
-            <td className="px-3 py-2 text-gray-700">{log.operator}</td>
-            <td className="px-3 py-2 text-gray-600 text-[11px] whitespace-nowrap">
-              {log.project
-                ? `[${log.project.projectCode}] ${log.project.projectName}`
-                : log.urgentTitle ?? <span className="text-gray-400">-</span>}
-            </td>
-            <td className="px-3 py-2 font-mono text-gray-800">{log.drawingNo ?? "-"}</td>
-            <td className="px-3 py-2">
-              {log.material ? <span className="px-1.5 py-0.5 bg-slate-100 rounded font-medium">{log.material}</span> : <span className="text-gray-400">-</span>}
-            </td>
-            <td className="px-3 py-2 text-right text-gray-700">{log.thickness ?? "-"}</td>
-            <td className="px-3 py-2 text-right text-gray-700 font-mono"><DashIfNull v={log.dimW1} /></td>
-            <td className="px-3 py-2 text-right text-gray-700 font-mono"><DashIfNull v={log.dimL1} /></td>
-            <td className="px-3 py-2 text-right text-gray-700 font-mono"><DashIfNull v={log.dimW2} /></td>
-            <td className="px-3 py-2 text-right text-gray-700 font-mono"><DashIfNull v={log.dimL2} /></td>
-            <td className="px-3 py-2 text-right text-gray-700">{numCell(log.steelWeight)}</td>
-            <td className="px-3 py-2 text-right text-gray-700">{numCell(log.useWeight)}</td>
-            <td className="px-3 py-2 text-gray-700">{log.requester ?? "-"}</td>
-            <td className="px-3 py-2 text-gray-500">{log.department ?? "-"}</td>
-          </tr>
-        ))}
+        {logs.map((log) => {
+          const totMs  = durationMs(log.startAt, log.endAt);
+          const actMs  = durationMs(log.startAt, log.endAt, log.pauseMs);
+          return (
+            <tr key={log.id} className="hover:bg-orange-50/40">
+              <td className="px-3 py-2 font-semibold text-gray-900 max-w-[180px] truncate">
+                {log.urgentTitle ?? <span className="text-gray-400">-</span>}
+              </td>
+              <td className="px-3 py-2 text-gray-700">{log.requester ?? "-"}</td>
+              <td className="px-3 py-2 text-gray-500">{log.department ?? "-"}</td>
+              <td className="px-3 py-2 text-gray-600 text-[11px] whitespace-nowrap">
+                {log.project
+                  ? `[${log.project.projectCode}] ${log.project.projectName}`
+                  : <span className="text-gray-400">-</span>}
+              </td>
+              <td className="px-3 py-2 font-mono text-orange-700">
+                {log.urgentRemnantNo ?? <span className="text-gray-400">-</span>}
+              </td>
+              <td className="px-3 py-2">
+                {log.material
+                  ? <span className="px-1.5 py-0.5 bg-slate-100 rounded font-medium">{log.material}</span>
+                  : <span className="text-gray-400">-</span>}
+              </td>
+              <td className="px-3 py-2 text-right text-gray-700">{log.thickness ? `${log.thickness}t` : "-"}</td>
+              <td className="px-3 py-2 text-right tabular-nums text-gray-700">{log.dimW1?.toLocaleString() ?? "-"}</td>
+              <td className="px-3 py-2 text-right tabular-nums text-gray-400">{log.dimW2?.toLocaleString() ?? "-"}</td>
+              <td className="px-3 py-2 text-right tabular-nums text-gray-700">{log.dimL1?.toLocaleString() ?? "-"}</td>
+              <td className="px-3 py-2 text-right tabular-nums text-gray-400">{log.dimL2?.toLocaleString() ?? "-"}</td>
+              <td className="px-3 py-2 text-right text-gray-700">{numCell(log.steelWeight)}</td>
+              <td className="px-3 py-2 text-right text-gray-700">{numCell(log.useWeight)}</td>
+              <td className="px-3 py-2 text-gray-500 whitespace-nowrap font-mono text-[11px]">{formatDate(log.startAt)}</td>
+              <td className="px-3 py-2 text-center text-gray-500 whitespace-nowrap">{formatDurationMs(totMs)}</td>
+              <td className="px-3 py-2 text-center text-orange-500 whitespace-nowrap">{formatPauseMin(log.pauseMs)}</td>
+              <td className="px-3 py-2 text-center text-green-700 font-semibold whitespace-nowrap">{formatDurationMs(actMs)}</td>
+            </tr>
+          );
+        })}
       </tbody>
       <TotalFootUrgent totalQty={totalQty} totalSteel={totalSteel} totalUse={totalUse} totalMs={totalMs} count={logs.length} />
     </table>
@@ -705,14 +729,13 @@ function TotalFootUrgent({ totalQty, totalSteel, totalUse, totalMs, count }: {
   totalQty: number; totalSteel: number; totalUse: number; totalMs: number; count: number;
 }) {
   return (
-    <tfoot className="bg-gray-50 border-t font-semibold text-xs">
+    <tfoot className="bg-orange-50 border-t font-semibold text-xs">
       <tr>
-        {/* 날짜·장비·작업자·호선·도면·재질·두께·W1·L1·W2·L2 = 11칸 */}
+        {/* 작업명·요청자·부서·호선블록·잔재번호·재질·두께·폭1·폭2·길이1·길이2 = 11칸 */}
         <td colSpan={11} className="px-3 py-2 text-gray-500">
           합계 ({count}건)
           <span className="ml-4 text-gray-400 font-normal">
-            수량 <strong className="text-gray-800">{totalQty.toLocaleString()}매</strong> ·
-            작업시간 <strong className="text-green-700">{formatDurationMs(totalMs)}</strong>
+            실가동 <strong className="text-green-700">{formatDurationMs(totalMs)}</strong>
           </span>
         </td>
         <td className="px-3 py-2 text-right text-gray-800">
@@ -721,8 +744,8 @@ function TotalFootUrgent({ totalQty, totalSteel, totalUse, totalMs, count }: {
         <td className="px-3 py-2 text-right text-gray-800">
           {totalUse.toLocaleString()}<span className="text-gray-500 font-normal"> kg</span>
         </td>
-        {/* 요청자 · 부서 · 액션 */}
-        <td /><td /><td />
+        {/* 작업일·총가동·중단·실가동 */}
+        <td /><td /><td /><td />
       </tr>
     </tfoot>
   );

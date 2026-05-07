@@ -51,7 +51,7 @@ export default async function ReportsPage({
           department: true,
           // 돌발작업 연결 잔재의 W1/L1/W2/L2 (L자형이면 W2/L2 존재)
           remnant: {
-            select: { width1: true, length1: true, width2: true, length2: true },
+            select: { remnantNo: true, width1: true, length1: true, width2: true, length2: true },
           },
         },
       },
@@ -72,11 +72,12 @@ export default async function ReportsPage({
     qty:           l.qty           ?? null,
     drawingNo:     l.drawingNo     ?? null,
     drawingListId: l.drawingListId ?? null,
-    isUrgent:      l.isUrgent,
-    urgentNo:      l.urgentWork?.urgentNo  ?? null,
-    urgentTitle:   l.urgentWork?.title     ?? null,
-    requester:     l.urgentWork?.requester  ?? null,
-    department:    l.urgentWork?.department ?? null,
+    isUrgent:          l.isUrgent,
+    urgentNo:          l.urgentWork?.urgentNo   ?? null,
+    urgentTitle:       l.urgentWork?.title      ?? null,
+    requester:         l.urgentWork?.requester  ?? null,
+    department:        l.urgentWork?.department ?? null,
+    urgentRemnantNo:   l.urgentWork?.remnant?.remnantNo ?? null,
     // 통합 치수: 돌발→urgentWork.remnant, 등록잔재정규→drawingList.assignedRemnant, 일반→CuttingLog.width/length
     dimW1: l.urgentWork?.remnant?.width1  ?? l.drawingList?.assignedRemnant?.width1  ?? l.width  ?? null,
     dimL1: l.urgentWork?.remnant?.length1 ?? l.drawingList?.assignedRemnant?.length1 ?? l.length ?? null,
@@ -86,10 +87,11 @@ export default async function ReportsPage({
     steelWeight: (() => {
       const sw = l.drawingList?.steelWeight;
       if (sw != null) return sw;
-      const w1 = l.drawingList?.assignedRemnant?.width1  ?? l.width;
-      const l1 = l.drawingList?.assignedRemnant?.length1 ?? l.length;
-      const w2 = l.drawingList?.assignedRemnant?.width2  ?? null;
-      const l2 = l.drawingList?.assignedRemnant?.length2 ?? null;
+      // 돌발: urgentWork.remnant 치수, 정규잔재: drawingList.assignedRemnant, 일반: width/length
+      const w1 = l.urgentWork?.remnant?.width1  ?? l.drawingList?.assignedRemnant?.width1  ?? l.width;
+      const l1 = l.urgentWork?.remnant?.length1 ?? l.drawingList?.assignedRemnant?.length1 ?? l.length;
+      const w2 = l.urgentWork?.remnant?.width2  ?? l.drawingList?.assignedRemnant?.width2  ?? null;
+      const l2 = l.urgentWork?.remnant?.length2 ?? l.drawingList?.assignedRemnant?.length2 ?? null;
       if (l.thickness && w1 && l1) {
         const area = w1 * l1 - (w2 ?? 0) * (l2 ?? 0);
         return Math.round(l.thickness * area * 7.85 / 1_000_000 * 100) / 100;

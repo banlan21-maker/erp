@@ -472,7 +472,7 @@ export default function FieldWorklog({
   // ── 메인 작업 화면 ────────────────────────────────────────────────────────
 
   const urgentPendingCount = urgentWorks.filter(w => w.status !== "COMPLETED").length;
-  const urgentOngoing = eqLogs.find(l => l.status === "STARTED" && l.isUrgent);
+  const urgentOngoing = eqLogs.find(l => (l.status === "STARTED" || l.status === "PAUSED") && l.isUrgent);
 
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col max-w-lg mx-auto">
@@ -521,13 +521,15 @@ export default function FieldWorklog({
 
           {/* 돌발 진행중 */}
           {urgentOngoing && (
-            <div className="bg-orange-950 border-2 border-orange-500 rounded-2xl p-5 space-y-4">
+            <div className={`border-2 rounded-2xl p-5 space-y-4 ${urgentOngoing.status === "PAUSED" ? "bg-yellow-950 border-yellow-500" : "bg-orange-950 border-orange-500"}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="w-3 h-3 bg-orange-500 rounded-full animate-pulse" />
-                  <span className="font-bold text-orange-300 text-base">돌발 진행중</span>
+                  <span className={`w-3 h-3 rounded-full ${urgentOngoing.status === "PAUSED" ? "bg-yellow-400" : "bg-orange-500 animate-pulse"}`} />
+                  <span className={`font-bold text-base ${urgentOngoing.status === "PAUSED" ? "text-yellow-300" : "text-orange-300"}`}>
+                    {urgentOngoing.status === "PAUSED" ? "⚡ 돌발 중단됨" : "⚡ 돌발 진행중"}
+                  </span>
                 </div>
-                <span className="text-orange-300 font-mono text-lg font-bold">
+                <span className={`font-mono text-lg font-bold ${urgentOngoing.status === "PAUSED" ? "text-yellow-300" : "text-orange-300"}`}>
                   <LiveTimer startAt={urgentOngoing.startAt} />
                 </span>
               </div>
@@ -542,15 +544,79 @@ export default function FieldWorklog({
                     <span className="font-mono text-blue-300">{urgentOngoing.heatNo}</span>
                   </div>
                 )}
+                {/* 중단 이력 */}
+                {urgentOngoing.pauses && urgentOngoing.pauses.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-gray-700 space-y-1">
+                    {urgentOngoing.pauses.map((p, idx) => (
+                      <div key={idx} className="text-xs text-yellow-600 flex items-center gap-1.5">
+                        <span>{PAUSE_REASON_LABEL[p.reason] ?? p.reason}</span>
+                        {p.reasonText && <span className="text-yellow-700">({p.reasonText})</span>}
+                        {p.resumedAt && (
+                          <span className="text-gray-500 ml-auto">
+                            {Math.round((new Date(p.resumedAt).getTime() - new Date(p.pausedAt).getTime()) / 60000)}분
+                          </span>
+                        )}
+                        {!p.resumedAt && <span className="text-yellow-400 ml-auto font-bold">중단중</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              <button
-                onClick={() => urgentOngoing.urgentWorkId && handleUrgentComplete(urgentOngoing.id, urgentOngoing.urgentWorkId)}
-                disabled={loading}
-                className="w-full bg-orange-600 active:bg-orange-700 rounded-xl py-4 flex items-center justify-center gap-3 text-white font-bold text-lg transition-colors disabled:opacity-60"
-              >
-                <Square size={20} fill="currentColor" />
-                작업 종료
-              </button>
+
+              {/* STARTED 상태: 중단 사유 선택 + [중단][종료] */}
+              {urgentOngoing.status === "STARTED" && (
+                <div className="space-y-3">
+                  <select
+                    value={pauseReason}
+                    onChange={e => { setPauseReason(e.target.value); setPauseReasonText(""); }}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white"
+                  >
+                    <option value="">-- 중단 사유 선택 (중단 시) --</option>
+                    {PAUSE_REASON_OPTIONS.map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  {pauseReason === "OTHER" && (
+                    <input
+                      type="text"
+                      placeholder="직접 입력"
+                      value={pauseReasonText}
+                      onChange={e => setPauseReasonText(e.target.value)}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white placeholder-gray-500"
+                    />
+                  )}
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => handlePause(urgentOngoing.id)}
+                      disabled={loading || !pauseReason || (pauseReason === "OTHER" && !pauseReasonText.trim())}
+                      className="bg-yellow-600 active:bg-yellow-700 disabled:opacity-40 rounded-xl py-4 flex items-center justify-center gap-2 text-white font-bold text-base"
+                    >
+                      <Pause size={18} fill="currentColor" />
+                      절단중단
+                    </button>
+                    <button
+                      onClick={() => urgentOngoing.urgentWorkId && handleUrgentComplete(urgentOngoing.id, urgentOngoing.urgentWorkId)}
+                      disabled={loading}
+                      className="bg-orange-600 active:bg-orange-700 disabled:opacity-50 rounded-xl py-4 flex items-center justify-center gap-2 text-white font-bold text-base"
+                    >
+                      <Square size={18} fill="currentColor" />
+                      작업종료
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* PAUSED 상태: 재개 버튼 */}
+              {urgentOngoing.status === "PAUSED" && (
+                <button
+                  onClick={() => handleResume(urgentOngoing.id)}
+                  disabled={loading}
+                  className="w-full bg-green-600 active:bg-green-700 disabled:opacity-50 rounded-xl py-4 flex items-center justify-center gap-3 text-white font-bold text-lg"
+                >
+                  <RotateCcw size={20} />
+                  절단재개
+                </button>
+              )}
             </div>
           )}
 
