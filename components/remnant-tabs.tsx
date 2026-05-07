@@ -804,97 +804,59 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
   const [colFilters,     setColFilters]     = useState<Record<string, string[]>>({ status: ["IN_STOCK"] });
   const [openFilter,     setOpenFilter]     = useState<string | null>(null);
   const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
+  const [distinctValues, setDistinctValues] = useState<Record<string, FilterValue[]>>({});
   const [page,           setPage]           = useState(1);
+  const [total,          setTotal]          = useState(0);
+  const [totalPages,     setTotalPages]     = useState(1);
   const PAGE_SIZE = 50;
 
+  // ─── distinct 값 로드 ────────────────────────────────────────────────────
+  const loadDistinct = useCallback(async () => {
+    const res = await fetch("/api/remnants/distinct");
+    if (res.ok) setDistinctValues(await res.json());
+  }, []);
+
+  useEffect(() => { loadDistinct(); }, [loadDistinct]);
+
+  // ─── 서버사이드 필터 + 페이지네이션 데이터 로드 ──────────────────────────
   const fetchRemnants = useCallback(async () => {
     setLoading(true);
     try {
-      // 전체 로드 (필터링은 클라이언트에서 처리 - 컬럼 필터 distinct 계산 일관성)
-      const res  = await fetch(`/api/remnants`);
+      const p = new URLSearchParams();
+      p.set("page", String(page));
+      if (search) p.set("search", search);
+      const cf = colFilters;
+      if (cf.type?.length)        p.set("types",        cf.type.join(","));
+      if (cf.shape?.length)       p.set("shapes",       cf.shape.join(","));
+      if (cf.material?.length)    p.set("materials",    cf.material.join(","));
+      if (cf.thickness?.length)   p.set("thicknesses",  cf.thickness.join(","));
+      if (cf.width1?.length)      p.set("widths1",      cf.width1.join(","));
+      if (cf.length1?.length)     p.set("lengths1",     cf.length1.join(","));
+      if (cf.width2?.length)      p.set("widths2",      cf.width2.join(","));
+      if (cf.length2?.length)     p.set("lengths2",     cf.length2.join(","));
+      if (cf.weight?.length)      p.set("weights",      cf.weight.join(","));
+      if (cf.status?.length)      p.set("statuses",     cf.status.join(","));
+      if (cf.location?.length)    p.set("locations",    cf.location.join(","));
+      if (cf.source?.length)      p.set("sources",      cf.source.join(","));
+
+      const res  = await fetch(`/api/remnants?${p}`);
       const data = await res.json();
-      if (data.success) setRemnants(data.data);
+      if (data.data) {
+        setRemnants(data.data);
+        setTotal(data.total ?? data.data.length);
+        setTotalPages(data.totalPages ?? 1);
+      }
     } catch { /* ignore */ }
     finally { setLoading(false); }
-  }, []);
+  }, [page, search, colFilters]);
 
   useEffect(() => { fetchRemnants(); }, [fetchRemnants]);
 
-  // ─── 컬럼별 고유값 (필터 드롭다운 소스) ──────────────────────────────────
-  // 현재 필터 결과에 관계없이 전체 잔재 기준 distinct 값을 항상 노출
-  const distinctValues = useMemo((): Record<string, FilterValue[]> => {
-    const uniq = <T extends string | number>(xs: (T | null | undefined)[]) =>
-      Array.from(new Set(xs.filter((v): v is T => v != null && v !== "")));
-
-    const numLabel = (v: number | null) => (v == null ? "" : String(v));
-
-    const toFV = (xs: (string | number)[], labelMap?: Record<string, string>): FilterValue[] =>
-      xs
-        .map(v => ({ value: String(v), label: labelMap?.[String(v)] ?? String(v) }))
-        .sort((a, b) => a.label.localeCompare(b.label, "ko", { numeric: true }));
-
-    return {
-      remnantNo: toFV(uniq(remnants.map(r => r.remnantNo))),
-      type:      toFV(uniq(remnants.map(r => r.type)),     TYPE_LABEL),
-      shape:     toFV(uniq(remnants.map(r => r.shape)),    SHAPE_LABEL),
-      material:  toFV(uniq(remnants.map(r => r.material))),
-      thickness: toFV(uniq(remnants.map(r => r.thickness))),
-      width1:    [...toFV(uniq(remnants.map(r => numLabel(r.width1)).filter(Boolean))),  ...(remnants.some(r => r.width1  == null) ? [{ value: "__EMPTY__", label: "항목없음" }] : [])],
-      length1:   [...toFV(uniq(remnants.map(r => numLabel(r.length1)).filter(Boolean))), ...(remnants.some(r => r.length1 == null) ? [{ value: "__EMPTY__", label: "항목없음" }] : [])],
-      width2:    [...toFV(uniq(remnants.map(r => numLabel(r.width2)).filter(Boolean))),  ...(remnants.some(r => r.width2  == null) ? [{ value: "__EMPTY__", label: "항목없음" }] : [])],
-      length2:   [...toFV(uniq(remnants.map(r => numLabel(r.length2)).filter(Boolean))), ...(remnants.some(r => r.length2 == null) ? [{ value: "__EMPTY__", label: "항목없음" }] : [])],
-      weight:    toFV(uniq(remnants.map(r => String(r.weight)))),
-      source:    [...toFV(uniq(remnants.map(r => sourceInfo(r).vessel).filter(v => v !== "-"))), ...(remnants.some(r => sourceInfo(r).vessel === "-") ? [{ value: "-", label: "항목없음" }] : [])],
-      location:  [...toFV(uniq(remnants.map(r => r.location).filter((v): v is string => !!v))),  ...(remnants.some(r => !r.location) ? [{ value: "__EMPTY__", label: "항목없음" }] : [])],
-      status:    toFV(uniq(remnants.map(r => r.status)),   STATUS_LABEL),
-    };
-  }, [remnants]);
-
-  // ─── 필터링: 컬럼 필터 + 텍스트 검색 ─────────────────────────────────────
-  const filtered = useMemo(() => {
-    const cf = colFilters;
-    const passCol = (key: string, val: string | number | null | undefined) => {
-      const sel = cf[key];
-      if (!sel || sel.length === 0) return true;
-      const str = (val == null || val === "") ? "__EMPTY__" : String(val);
-      return sel.includes(str);
-    };
-    const q = search.trim().toLowerCase();
-    return remnants.filter(r => {
-      if (!passCol("remnantNo", r.remnantNo))              return false;
-      if (!passCol("type",      r.type))                   return false;
-      if (!passCol("shape",     r.shape))                  return false;
-      if (!passCol("material",  r.material))               return false;
-      if (!passCol("thickness", r.thickness))              return false;
-      if (!passCol("width1",    r.width1))                 return false;
-      if (!passCol("length1",   r.length1))                return false;
-      if (!passCol("width2",    r.width2))                 return false;
-      if (!passCol("length2",   r.length2))                return false;
-      if (!passCol("weight",    r.weight))                 return false;
-      if (!passCol("source",    sourceInfo(r).vessel))     return false;
-      if (!passCol("location",  r.location))               return false;
-      if (!passCol("status",    r.status))                 return false;
-      if (!q) return true;
-      return (
-        r.remnantNo.toLowerCase().includes(q) ||
-        r.material.toLowerCase().includes(q) ||
-        (r.sourceVesselName  ?? "").toLowerCase().includes(q) ||
-        (r.sourceProject?.projectName ?? "").toLowerCase().includes(q) ||
-        (r.sourceBlock ?? "").toLowerCase().includes(q) ||
-        (r.location    ?? "").toLowerCase().includes(q) ||
-        (r.registeredBy ?? "").toLowerCase().includes(q) ||
-        (r.memo ?? "").toLowerCase().includes(q)
-      );
-    });
-  }, [remnants, colFilters, search]);
-
-  const hasAnyColFilter = Object.values(colFilters).some(v => v && v.length > 0);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
   // 필터/검색 변경 시 첫 페이지로
   useEffect(() => { setPage(1); }, [colFilters, search]);
+
+  const hasAnyColFilter = Object.values(colFilters).some(v => v && v.length > 0);
+  const paginated = remnants; // 서버에서 이미 페이지네이션 처리됨
 
   const handleExhaust = async (id: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -934,7 +896,7 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
         <div className="px-4 py-3 border-b bg-gray-50 flex items-center gap-3 flex-wrap">
           <Package size={14} className="text-blue-500 shrink-0" />
           <span className="text-sm font-semibold text-gray-700 shrink-0">
-            잔재 목록 ({filtered.length}/{remnants.length}건)
+            잔재 목록 ({total}건)
           </span>
           <div className="relative flex-1 max-w-xs">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -962,7 +924,7 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
           <div className="flex justify-center py-12 text-gray-400 gap-2">
             <RefreshCw className="animate-spin" size={18} /> 불러오는 중...
           </div>
-        ) : filtered.length === 0 ? (
+        ) : remnants.length === 0 ? (
           <div className="text-center py-12 text-gray-400">
             <Package size={32} className="mx-auto mb-2 opacity-30" />
             <p className="text-sm">{search || hasAnyColFilter ? "검색 결과가 없습니다." : "해당하는 잔재가 없습니다."}</p>
@@ -973,7 +935,7 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
             <table className="w-full text-sm text-left whitespace-nowrap">
               <thead className="bg-gray-50 border-b text-[11px] text-gray-500 uppercase tracking-wide">
                 <tr>
-                  <ColHeader col="remnantNo" label="잔재번호" />
+                  <th className="px-3 py-2 font-medium text-gray-600 text-[11px] text-left">잔재번호</th>
                   <ColHeader col="type"      label="종류"  />
                   <ColHeader col="shape"     label="형태"  />
                   <ColHeader col="material"  label="재질"  />
@@ -1087,7 +1049,7 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
 
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-2.5 border-t bg-gray-50 text-xs text-gray-500">
-              <span>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} / {filtered.length}건</span>
+              <span>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} / {total}건</span>
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => setPage(1)}

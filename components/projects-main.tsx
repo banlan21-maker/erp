@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Anchor, List, Upload, FileSpreadsheet, Plus, ClipboardList, Layers, ArrowLeft, Filter, X } from "lucide-react";
 import ColumnFilterDropdown from "@/components/column-filter-dropdown";
 import Link from "next/link";
@@ -254,30 +254,71 @@ const COLS = [
 ] as const;
 
 function ProjectRemnantTab({ projectOptions: _p }: { projectOptions: ProjectOption[]; activeProject: { id: string; projectCode: string; projectName: string } | null; projectId: string | null }) {
-  const [remnants, setRemnants] = useState<RemnantRow[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState<Record<string, string[]>>({});
-  const [openCol, setOpenCol] = useState<string | null>(null);
-  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-  const thRefs = useRef<Record<string, HTMLElement | null>>({});
+  const [remnants,       setRemnants]       = useState<RemnantRow[]>([]);
+  const [loading,        setLoading]        = useState(false);
+  const [filters,        setFilters]        = useState<Record<string, string[]>>({});
+  const [distinctValues, setDistinctValues] = useState<Record<string, { value: string; label: string }[]>>({});
+  const [openCol,        setOpenCol]        = useState<string | null>(null);
+  const [anchorEl,       setAnchorEl]       = useState<HTMLElement | null>(null);
+  const [page,           setPage]           = useState(1);
+  const [total,          setTotal]          = useState(0);
+  const [totalPages,     setTotalPages]     = useState(1);
 
+  // distinct 값 로드 (REGISTERED 타입만)
   useEffect(() => {
-    setLoading(true);
-    fetch("/api/remnants?type=REGISTERED")
-      .then(r => r.json())
-      .then(d => { if (d.success) setRemnants(d.data); })
-      .finally(() => setLoading(false));
+    fetch("/api/remnants/distinct?type=REGISTERED")
+      .then(r => r.ok ? r.json() : {})
+      .then(d => setDistinctValues(d));
   }, []);
 
-  const filtered = remnants.filter(r =>
-    COLS.every(({ key }) => {
-      const sel = filters[key];
-      return !sel?.length || sel.includes(colVal(r, key));
-    })
-  );
+  // 서버사이드 필터 + 페이지네이션 데이터 로드
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    const p = new URLSearchParams();
+    p.set("type", "REGISTERED");
+    p.set("page", String(page));
+    const cf = filters;
+    if (cf.shape?.length)       p.set("shapes",      cf.shape.join(","));
+    if (cf.material?.length)    p.set("materials",   cf.material.join(","));
+    if (cf.thickness?.length)   p.set("thicknesses", cf.thickness.join(","));
+    if (cf.width1?.length)      p.set("widths1",     cf.width1.join(","));
+    if (cf.length1?.length)     p.set("lengths1",    cf.length1.join(","));
+    if (cf.width2?.length)      p.set("widths2",     cf.width2.join(","));
+    if (cf.length2?.length)     p.set("lengths2",    cf.length2.join(","));
+    if (cf.weight?.length)      p.set("weights",     cf.weight.join(","));
+    if (cf.heatNo?.length)      p.set("heatNos",     cf.heatNo.join(","));
+    if (cf.status?.length)      p.set("statuses",    cf.status.join(","));
+    if (cf.vessel?.length)      p.set("sources",     cf.vessel.join(","));
+    if (cf.block?.length)       p.set("sourceBlocks",cf.block.join(","));
+
+    fetch(`/api/remnants?${p}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.data) {
+          setRemnants(d.data);
+          setTotal(d.total ?? d.data.length);
+          setTotalPages(d.totalPages ?? 1);
+        }
+      })
+      .finally(() => setLoading(false));
+  }, [page, filters]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { setPage(1); }, [filters]);
+
+  // 컬럼별 distinct 값 매핑 (API 키 → 드롭다운 소스)
+  const getDistinctForCol = (col: string) => {
+    const map: Record<string, string> = {
+      vessel: "source", block: "sourceBlock", heatNo: "heatNo",
+      shape: "shape", material: "material", thickness: "thickness",
+      width1: "width1", length1: "length1", width2: "width2", length2: "length2",
+      weight: "weight", status: "status",
+    };
+    return distinctValues[map[col] ?? col] ?? [];
+  };
 
   const activeCount = Object.values(filters).filter(v => v.length > 0).length;
-  const totalWeight = filtered.reduce((s, r) => s + r.weight, 0);
+  const totalWeight = remnants.reduce((s, r) => s + r.weight, 0);
 
   const openFilter = (col: string, el: HTMLElement) => {
     if (openCol === col) { setOpenCol(null); setAnchorEl(null); return; }
@@ -288,11 +329,11 @@ function ProjectRemnantTab({ projectOptions: _p }: { projectOptions: ProjectOpti
     <div className="space-y-3">
       <div className="flex items-center gap-3 flex-wrap">
         <h3 className="text-base font-semibold text-gray-800">등록잔재리스트</h3>
-        <span className="text-xs text-gray-400">{remnants.length}건</span>
+        <span className="text-xs text-gray-400">{total}건</span>
         {activeCount > 0 && (
           <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md">
             <Filter size={11} fill="currentColor" />
-            필터 {activeCount}개 적용 ({filtered.length}/{remnants.length}건)
+            필터 {activeCount}개 적용
             <button onClick={() => setFilters({})} className="ml-0.5 hover:text-blue-800"><X size={11} /></button>
           </div>
         )}
@@ -310,7 +351,6 @@ function ProjectRemnantTab({ projectOptions: _p }: { projectOptions: ProjectOpti
                   return (
                     <th key={key} className={`px-3 py-2.5 text-${align} text-gray-500 font-semibold`}>
                       <button
-                        ref={el => { thRefs.current[key] = el; }}
                         onClick={e => openFilter(key, e.currentTarget)}
                         className={`flex items-center gap-1 ${align === "right" ? "ml-auto" : ""} hover:text-gray-700`}
                       >
@@ -323,12 +363,12 @@ function ProjectRemnantTab({ projectOptions: _p }: { projectOptions: ProjectOpti
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filtered.length === 0 ? (
+              {remnants.length === 0 ? (
                 <tr><td colSpan={14} className="text-center py-8 text-gray-400">
-                  {remnants.length === 0 ? "등록된 잔재가 없습니다." : "필터 조건에 맞는 데이터가 없습니다."}
+                  {activeCount > 0 ? "필터 조건에 맞는 데이터가 없습니다." : "등록된 잔재가 없습니다."}
                   {activeCount > 0 && <button onClick={() => setFilters({})} className="ml-2 text-blue-500 hover:underline">필터 초기화</button>}
                 </td></tr>
-              ) : filtered.map(r => (
+              ) : remnants.map(r => (
                 <tr key={r.id} className="hover:bg-gray-50">
                   <td className="px-3 py-2 font-mono text-blue-600 font-medium">{r.remnantNo}</td>
                   <td className="px-3 py-2 text-gray-700">{r.sourceProject?.projectCode ?? r.sourceVesselName ?? "-"}</td>
@@ -357,7 +397,7 @@ function ProjectRemnantTab({ projectOptions: _p }: { projectOptions: ProjectOpti
             </tbody>
             <tfoot className="bg-gray-50 border-t">
               <tr>
-                <td colSpan={11} className="px-3 py-2 text-gray-500 font-medium">합계 ({filtered.length}건)</td>
+                <td colSpan={11} className="px-3 py-2 text-gray-500 font-medium">합계 ({remnants.length}건 / 전체 {total}건)</td>
                 <td className="px-3 py-2 text-right font-bold text-gray-700">{totalWeight.toFixed(1)}kg</td>
                 <td /><td />
               </tr>
@@ -366,10 +406,32 @@ function ProjectRemnantTab({ projectOptions: _p }: { projectOptions: ProjectOpti
         </div>
       )}
 
+      {/* 페이지네이션 */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between text-xs text-gray-500">
+          <span>{(page - 1) * 50 + 1}–{Math.min(page * 50, total)} / {total}건</span>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setPage(1)} disabled={page === 1} className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-30">«</button>
+            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-30">‹</button>
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              const start = Math.max(1, Math.min(page - 2, totalPages - 4));
+              const pg = start + i;
+              return (
+                <button key={pg} onClick={() => setPage(pg)}
+                  className={`px-2.5 py-1 rounded border text-xs ${pg === page ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 hover:bg-gray-100"}`}
+                >{pg}</button>
+              );
+            })}
+            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-30">›</button>
+            <button onClick={() => setPage(totalPages)} disabled={page === totalPages} className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-30">»</button>
+          </div>
+        </div>
+      )}
+
       {openCol && anchorEl && (
         <ColumnFilterDropdown
           anchorEl={anchorEl}
-          values={[...new Set(remnants.map(r => colVal(r, openCol)))].sort().map(v => ({ value: v, label: v }))}
+          values={getDistinctForCol(openCol)}
           selected={filters[openCol] ?? []}
           onApply={sel => { setFilters(f => ({ ...f, [openCol]: sel })); setOpenCol(null); setAnchorEl(null); }}
           onClose={() => { setOpenCol(null); setAnchorEl(null); }}

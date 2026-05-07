@@ -15,18 +15,51 @@ async function generateRemnantNo(): Promise<string> {
   return `${prefix}${String(seq).padStart(3, "0")}`;
 }
 
+const PAGE_SIZE = 50;
+const parseList = (v: string | null) => v?.split(",").filter(Boolean) ?? [];
+
+function nullableIn(values: string[], field: string) {
+  if (!values.length) return {};
+  const hasNull = values.includes("__NULL__");
+  const nonNull = values.filter(v => v !== "__NULL__");
+  if (hasNull && nonNull.length) return { OR: [{ [field]: null }, { [field]: { in: nonNull } }] };
+  if (hasNull) return { [field]: null };
+  return { [field]: { in: nonNull } };
+}
+
+// source 필터: "P:코드" → 프로젝트 매칭, "V:이름" → vesselName 매칭, "__NULL__" → 둘 다 null
+function buildSourceFilter(sources: string[]) {
+  if (!sources.length) return {};
+  const hasNull   = sources.includes("__NULL__");
+  const projectCodes = sources.filter(s => s.startsWith("P:")).map(s => s.slice(2));
+  const vesselNames  = sources.filter(s => s.startsWith("V:")).map(s => s.slice(2));
+  const conditions: object[] = [
+    ...(hasNull ? [{ sourceProjectId: null, sourceVesselName: null }] : []),
+    ...(projectCodes.length ? [{ sourceProject: { projectCode: { in: projectCodes } } }] : []),
+    ...(vesselNames.length  ? [{ sourceVesselName: { in: vesselNames } }] : []),
+  ];
+  if (!conditions.length) return {};
+  if (conditions.length === 1) return conditions[0];
+  return { OR: conditions };
+}
+
 // GET /api/remnants
+// page 파라미터 있음 → 페이지네이션 응답 { data, total, totalPages }
+// page 파라미터 없음 → 전체 목록 응답 { success, data } (하위 호환)
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const status    = searchParams.get("status");
-    const type      = searchParams.get("type");
-    const shape     = searchParams.get("shape");
-    const material  = searchParams.get("material");
-    const projectId = searchParams.get("projectId");
-    const idsParam  = searchParams.get("ids");
+    const sp = new URL(request.url).searchParams;
 
-    // ids 파라미터로 특정 ID 목록 조회 (드로잉테이블 잔재 상세용)
+    const status    = sp.get("status");
+    const type      = sp.get("type");
+    const shape     = sp.get("shape");
+    const material  = sp.get("material");
+    const projectId = sp.get("projectId");
+    const idsParam  = sp.get("ids");
+    const search    = sp.get("search") || undefined;
+    const pageParam = sp.get("page");
+
+    // ── ids 파라미터: 특정 ID 목록 조회 (드로잉테이블 잔재 상세용) ──────────
     if (idsParam) {
       const ids = idsParam.split(",").filter(Boolean);
       const remnants = await prisma.remnant.findMany({
@@ -36,27 +69,84 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, data: remnants });
     }
 
-    const where: any = {};
-    if (status)    where.status          = status;
-    if (type)      where.type            = type;
-    if (shape)     where.shape           = shape;
-    if (material)  where.material        = { contains: material, mode: "insensitive" };
-    if (projectId) where.sourceProjectId = projectId;
+    // ── 컬럼 필터 파라미터 (page 있을 때만 서버사이드 필터링) ────────────────
+    const types      = parseList(sp.get("types"));
+    const shapes     = parseList(sp.get("shapes"));
+    const materials  = parseList(sp.get("materials"));
+    const thicknesses = parseList(sp.get("thicknesses")).map(Number).filter(n => !isNaN(n));
+    const widths1    = parseList(sp.get("widths1")).map(Number).filter(n => !isNaN(n));
+    const lengths1   = parseList(sp.get("lengths1")).map(Number).filter(n => !isNaN(n));
+    const widths2    = parseList(sp.get("widths2")).map(Number).filter(n => !isNaN(n));
+    const lengths2   = parseList(sp.get("lengths2")).map(Number).filter(n => !isNaN(n));
+    const weights    = parseList(sp.get("weights")).map(Number).filter(n => !isNaN(n));
+    const statuses   = parseList(sp.get("statuses"));
+    const locations  = parseList(sp.get("locations"));
+    const heatNos    = parseList(sp.get("heatNos"));
+    const sources    = parseList(sp.get("sources"));
+    const sourceBlocks = parseList(sp.get("sourceBlocks"));
 
+    const where: Record<string, unknown> = {
+      // 단일값 파라미터 (하위 호환)
+      ...(status    ? { status }                                              : {}),
+      ...(type      ? { type }                                                : {}),
+      ...(shape     ? { shape }                                               : {}),
+      ...(material  ? { material: { contains: material, mode: "insensitive" } } : {}),
+      ...(projectId ? { sourceProjectId: projectId }                         : {}),
+      // 검색
+      ...(search ? { OR: [
+        { remnantNo:        { contains: search, mode: "insensitive" } },
+        { material:         { contains: search, mode: "insensitive" } },
+        { sourceVesselName: { contains: search, mode: "insensitive" } },
+        { sourceBlock:      { contains: search, mode: "insensitive" } },
+        { location:         { contains: search, mode: "insensitive" } },
+        { registeredBy:     { contains: search, mode: "insensitive" } },
+      ]} : {}),
+      // 컬럼 IN 필터
+      ...(types.length       ? { type:      { in: types } }      : {}),
+      ...(shapes.length      ? { shape:     { in: shapes } }     : {}),
+      ...(materials.length   ? { material:  { in: materials } }  : {}),
+      ...(thicknesses.length ? { thickness: { in: thicknesses } } : {}),
+      ...(widths1.length     ? { width1:    { in: widths1 } }    : {}),
+      ...(lengths1.length    ? { length1:   { in: lengths1 } }   : {}),
+      ...(widths2.length     ? { width2:    { in: widths2 } }    : {}),
+      ...(lengths2.length    ? { length2:   { in: lengths2 } }   : {}),
+      ...(weights.length     ? { weight:    { in: weights } }    : {}),
+      ...(statuses.length    ? { status:    { in: statuses } }   : {}),
+      ...nullableIn(locations,    "location"),
+      ...nullableIn(heatNos,      "heatNo"),
+      ...nullableIn(sourceBlocks, "sourceBlock"),
+      ...buildSourceFilter(sources),
+    };
+
+    const include = {
+      sourceProject: { select: { id: true, projectCode: true, projectName: true } },
+      assignedToLists: {
+        select: { block: true, project: { select: { projectCode: true } } },
+      },
+    };
+
+    // ── page 파라미터 있음 → 페이지네이션 ──────────────────────────────────
+    if (pageParam !== null) {
+      const page = Math.max(1, parseInt(pageParam || "1"));
+      const [total, data] = await Promise.all([
+        prisma.remnant.count({ where }),
+        prisma.remnant.findMany({
+          where,
+          include,
+          orderBy: { createdAt: "desc" },
+          skip: (page - 1) * PAGE_SIZE,
+          take: PAGE_SIZE,
+        }),
+      ]);
+      return NextResponse.json({ data, total, page, totalPages: Math.ceil(total / PAGE_SIZE) });
+    }
+
+    // ── page 없음 → 전체 반환 (하위 호환) ───────────────────────────────────
     const remnants = await prisma.remnant.findMany({
       where,
-      include: {
-        sourceProject: { select: { id: true, projectCode: true, projectName: true } },
-        assignedToLists: {
-          select: {
-            block: true,
-            project: { select: { projectCode: true } },
-          },
-        },
-      },
+      include,
       orderBy: { createdAt: "desc" },
     });
-
     return NextResponse.json({ success: true, data: remnants });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
