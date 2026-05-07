@@ -146,11 +146,12 @@ function toLocalDatetimeValue(iso: string | null) {
 
 // ─── 돌발 작업일보 탭 ────────────────────────────────────────────────────────
 
-function UrgentWorkTab() {
+function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers: Worker[] }) {
   const [logs,     setLogs]     = useState<CuttingLog[]>([]);
   const [loading,  setLoading]  = useState(false);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo,   setDateTo]   = useState("");
+  const [editLog,  setEditLog]  = useState<CuttingLog | null>(null);
 
   const fetchLogs = async () => {
     setLoading(true);
@@ -306,13 +307,22 @@ function UrgentWorkTab() {
                       </td>
                       {/* 액션 */}
                       <td className="px-3 py-1.5 text-center">
-                        <button
-                          onClick={() => handleDelete(log.id)}
-                          className="p-1.5 text-red-400 hover:bg-red-50 rounded-md transition-colors"
-                          title="삭제"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => setEditLog(log)}
+                            className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md transition-colors"
+                            title="수정"
+                          >
+                            <Edit2 size={13} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(log.id)}
+                            className="p-1.5 text-red-400 hover:bg-red-50 rounded-md transition-colors"
+                            title="삭제"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -321,6 +331,19 @@ function UrgentWorkTab() {
             </table>
           </div>
         </div>
+      )}
+
+      {editLog && (
+        <LogModal
+          mode="edit"
+          drawing={null}
+          log={editLog}
+          equipment={equipment}
+          workers={workers}
+          projectId={editLog.project ? "" : ""}
+          onClose={() => setEditLog(null)}
+          onSaved={() => { setEditLog(null); fetchLogs(); }}
+        />
       )}
     </div>
   );
@@ -775,7 +798,7 @@ export default function WorklogAdmin({
         </button>
       </div>
 
-      {mainTab === "urgent" && <UrgentWorkTab />}
+      {mainTab === "urgent" && <UrgentWorkTab equipment={equipment} workers={workers} />}
 
       {mainTab === "normal" && (<>
 
