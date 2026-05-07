@@ -104,19 +104,19 @@ const COLUMNS = [
   { key: "material",   label: "재질",     align: "left"  as const, filterable: true  },
   { key: "thickness",  label: "두께",     align: "right" as const, filterable: true  },
   { key: "width1",     label: "폭1",      align: "right" as const, filterable: true  },
-  { key: "width2",     label: "폭2",      align: "right" as const, filterable: false },
+  { key: "width2",     label: "폭2",      align: "right" as const, filterable: true  },
   { key: "length1",    label: "길이1",    align: "right" as const, filterable: true  },
-  { key: "length2",    label: "길이2",    align: "right" as const, filterable: false },
-  { key: "steelWeight",label: "철판중량",  align: "right" as const, filterable: false },
-  { key: "useWeight",  label: "사용중량",  align: "right" as const, filterable: false },
+  { key: "length2",    label: "길이2",    align: "right" as const, filterable: true  },
+  { key: "steelWeight",label: "철판중량",  align: "right" as const, filterable: true  },
+  { key: "useWeight",  label: "사용중량",  align: "right" as const, filterable: true  },
   { key: "heatNo",     label: "Heat NO", align: "left"  as const, filterable: true  },
   { key: "operator",   label: "작업자",   align: "left"  as const, filterable: true  },
   { key: "equipment",  label: "장비",     align: "left"  as const, filterable: true  },
-  { key: "workDate",   label: "작업일",   align: "left"  as const, filterable: false },
-  { key: "totalTime",  label: "총가동시간", align: "left"  as const, filterable: false },
-  { key: "pauseTime",  label: "중단시간",  align: "left"  as const, filterable: false },
-  { key: "activeTime", label: "실가동시간", align: "left"  as const, filterable: false },
-  { key: "memo",       label: "비고",     align: "left"  as const, filterable: false },
+  { key: "workDate",   label: "작업일",   align: "left"  as const, filterable: true  },
+  { key: "totalTime",  label: "총가동시간", align: "left"  as const, filterable: true  },
+  { key: "pauseTime",  label: "중단시간",  align: "left"  as const, filterable: true  },
+  { key: "activeTime", label: "실가동시간", align: "left"  as const, filterable: true  },
+  { key: "memo",       label: "비고",     align: "left"  as const, filterable: true  },
 ] as const;
 type ColKey = (typeof COLUMNS)[number]["key"];
 const FILTER_COLS = COLUMNS.filter(c => c.filterable);
@@ -697,16 +697,34 @@ export default function WorklogAdmin({
 
   const getVal = (d: Drawing, log: CuttingLog | null, col: FCKey): string => {
     switch (col) {
-      case "hosin":     return d.project?.projectCode ?? "";
-      case "block":     return d.block ?? "";
-      case "drawingNo": return d.drawingNo ?? "";
-      case "material":  return d.material;
-      case "thickness": return String(d.thickness);
-      case "width1":    return String(getW1(d));
-      case "length1":   return String(getL1(d));
-      case "heatNo":    return d.heatNo ?? "";
-      case "operator":  return log?.operator ?? "";
-      case "equipment": return log?.equipment?.name ?? "";
+      case "hosin":      return d.project?.projectCode ?? "";
+      case "block":      return d.block ?? "";
+      case "drawingNo":  return d.drawingNo ?? "";
+      case "material":   return d.material;
+      case "thickness":  return String(d.thickness);
+      case "width1":     return String(getW1(d));
+      case "width2":     return d.assignedRemnant?.width2  != null ? String(d.assignedRemnant.width2)  : "";
+      case "length1":    return String(getL1(d));
+      case "length2":    return d.assignedRemnant?.length2 != null ? String(d.assignedRemnant.length2) : "";
+      case "steelWeight":return String(calcSteelWeight(d.thickness, getW1(d), getL1(d), d.assignedRemnant?.width2, d.assignedRemnant?.length2));
+      case "useWeight":  return d.useWeight != null ? String(d.useWeight) : "";
+      case "heatNo":     return d.heatNo ?? "";
+      case "operator":   return log?.operator ?? "";
+      case "equipment":  return log?.equipment?.name ?? "";
+      case "workDate":   return log?.startAt ? fmtDate(log.startAt) : "";
+      case "totalTime": {
+        if (!log?.endAt) return log ? "진행중" : "";
+        return fmtHM(new Date(log.endAt).getTime() - new Date(log.startAt).getTime());
+      }
+      case "pauseTime":  return log ? fmtPauseMin(calcPauseMs(log.pauses)) : "";
+      case "activeTime": {
+        if (!log?.endAt) return log ? "진행중" : "";
+        const totMs  = new Date(log.endAt).getTime() - new Date(log.startAt).getTime();
+        const pauMs  = calcPauseMs(log.pauses);
+        return fmtHM(Math.max(0, totMs - pauMs));
+      }
+      case "memo":       return log?.memo ?? "";
+      default:           return "";
     }
   };
 

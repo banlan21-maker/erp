@@ -13,11 +13,12 @@
  */
 
 import { useRouter, usePathname } from "next/navigation";
-import { useState } from "react";
-import { Printer, Search, FileDown, BarChart2, Zap, ClipboardList, ChevronRight, ChevronDown } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Printer, Search, FileDown, BarChart2, Zap, ClipboardList, ChevronRight, ChevronDown, Filter, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input }  from "@/components/ui/input";
 import * as XLSX  from "xlsx";
+import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 interface CuttingLog {
@@ -454,21 +455,9 @@ export default function ReportsMain({
                 해당 기간에 완료된 작업이 없습니다.
               </p>
             ) : workType === "normal" ? (
-              <NormalDetailTable
-                logs={filteredLogs}
-                totalQty={totalQty}
-                totalSteel={totalSteel}
-                totalUse={totalUse}
-                totalDurationMs={totalDuration}
-              />
+              <NormalDetailTable logs={filteredLogs} />
             ) : (
-              <UrgentDetailTable
-                logs={filteredLogs}
-                totalQty={totalQty}
-                totalSteel={totalSteel}
-                totalUse={totalUse}
-                totalDurationMs={totalDuration}
-              />
+              <UrgentDetailTable logs={filteredLogs} />
             )}
           </div>
         )}
@@ -547,34 +536,150 @@ function AllDetailTable({
   );
 }
 
+// ─── 정규작업 컬럼 설정 ────────────────────────────────────────────────────────
+const NORMAL_COLS = [
+  { key: "hosin",       label: "호선",         align: "left"   as const, getVal: (l: CuttingLog) => l.project?.projectCode ?? "" },
+  { key: "block",       label: "블록",         align: "left"   as const, getVal: (l: CuttingLog) => l.block ?? "" },
+  { key: "drawingNo",   label: "도면번호",      align: "left"   as const, getVal: (l: CuttingLog) => l.drawingNo ?? "" },
+  { key: "material",    label: "재질",         align: "left"   as const, getVal: (l: CuttingLog) => l.material ?? "" },
+  { key: "thickness",   label: "두께",         align: "right"  as const, getVal: (l: CuttingLog) => l.thickness != null ? String(l.thickness) : "" },
+  { key: "dimW1",       label: "폭1",          align: "right"  as const, getVal: (l: CuttingLog) => l.dimW1 != null ? String(l.dimW1) : "" },
+  { key: "dimW2",       label: "폭2",          align: "right"  as const, getVal: (l: CuttingLog) => l.dimW2 != null ? String(l.dimW2) : "" },
+  { key: "dimL1",       label: "길이1",        align: "right"  as const, getVal: (l: CuttingLog) => l.dimL1 != null ? String(l.dimL1) : "" },
+  { key: "dimL2",       label: "길이2",        align: "right"  as const, getVal: (l: CuttingLog) => l.dimL2 != null ? String(l.dimL2) : "" },
+  { key: "steelWeight", label: "철판중량(kg)",  align: "right"  as const, getVal: (l: CuttingLog) => l.steelWeight != null ? String(l.steelWeight) : "" },
+  { key: "useWeight",   label: "사용중량(kg)",  align: "right"  as const, getVal: (l: CuttingLog) => l.useWeight != null ? String(l.useWeight) : "" },
+  { key: "heatNo",      label: "Heat NO",     align: "left"   as const, getVal: (l: CuttingLog) => l.heatNo ?? "" },
+  { key: "operator",    label: "작업자",       align: "left"   as const, getVal: (l: CuttingLog) => l.operator },
+  { key: "equipment",   label: "장비",         align: "left"   as const, getVal: (l: CuttingLog) => l.equipment.name },
+  { key: "workDate",    label: "작업일",       align: "left"   as const, getVal: (l: CuttingLog) => formatDate(l.startAt) },
+  { key: "totalTime",   label: "총가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(durationMs(l.startAt, l.endAt)) },
+  { key: "pauseTime",   label: "중단시간",     align: "center" as const, getVal: (l: CuttingLog) => formatPauseMin(l.pauseMs) },
+  { key: "activeTime",  label: "실가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(durationMs(l.startAt, l.endAt, l.pauseMs)) },
+  { key: "memo",        label: "비고",         align: "left"   as const, getVal: (l: CuttingLog) => l.memo ?? "" },
+];
+
+// ─── 돌발작업 컬럼 설정 ────────────────────────────────────────────────────────
+const URGENT_COLS = [
+  { key: "urgentTitle",   label: "작업명",       align: "left"   as const, getVal: (l: CuttingLog) => l.urgentTitle ?? "" },
+  { key: "requester",     label: "요청자",       align: "left"   as const, getVal: (l: CuttingLog) => l.requester ?? "" },
+  { key: "department",    label: "요청부서",     align: "left"   as const, getVal: (l: CuttingLog) => l.department ?? "" },
+  { key: "project",       label: "연관호선/블록", align: "left"   as const, getVal: (l: CuttingLog) => l.project ? `[${l.project.projectCode}] ${l.project.projectName}` : "" },
+  { key: "remnantNo",     label: "사용잔재번호",  align: "left"   as const, getVal: (l: CuttingLog) => l.urgentRemnantNo ?? "" },
+  { key: "material",      label: "재질",         align: "left"   as const, getVal: (l: CuttingLog) => l.material ?? "" },
+  { key: "thickness",     label: "두께",         align: "right"  as const, getVal: (l: CuttingLog) => l.thickness != null ? String(l.thickness) : "" },
+  { key: "dimW1",         label: "폭1",          align: "right"  as const, getVal: (l: CuttingLog) => l.dimW1 != null ? String(l.dimW1) : "" },
+  { key: "dimW2",         label: "폭2",          align: "right"  as const, getVal: (l: CuttingLog) => l.dimW2 != null ? String(l.dimW2) : "" },
+  { key: "dimL1",         label: "길이1",        align: "right"  as const, getVal: (l: CuttingLog) => l.dimL1 != null ? String(l.dimL1) : "" },
+  { key: "dimL2",         label: "길이2",        align: "right"  as const, getVal: (l: CuttingLog) => l.dimL2 != null ? String(l.dimL2) : "" },
+  { key: "steelWeight",   label: "중량(kg)",     align: "right"  as const, getVal: (l: CuttingLog) => l.steelWeight != null ? String(l.steelWeight) : "" },
+  { key: "useWeight",     label: "사용중량(kg)", align: "right"  as const, getVal: (l: CuttingLog) => l.useWeight != null ? String(l.useWeight) : "" },
+  { key: "workDate",      label: "작업일",       align: "left"   as const, getVal: (l: CuttingLog) => formatDate(l.startAt) },
+  { key: "totalTime",     label: "총가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(durationMs(l.startAt, l.endAt)) },
+  { key: "pauseTime",     label: "중단시간",     align: "center" as const, getVal: (l: CuttingLog) => formatPauseMin(l.pauseMs) },
+  { key: "activeTime",    label: "실가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(durationMs(l.startAt, l.endAt, l.pauseMs)) },
+];
+
+// ─── 공통 필터 훅 ──────────────────────────────────────────────────────────────
+function useTableFilter(logs: CuttingLog[], cols: { key: string; getVal: (l: CuttingLog) => string }[]) {
+  const [filters,  setFilters]  = useState<Record<string, string[]>>({});
+  const [openCol,  setOpenCol]  = useState<string | null>(null);
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+
+  const allValues = (key: string): FilterValue[] => {
+    const col = cols.find(c => c.key === key)!;
+    const set = new Set<string>();
+    let hasEmpty = false;
+    for (const l of logs) {
+      const v = col.getVal(l);
+      if (v) set.add(v);
+      else hasEmpty = true;
+    }
+    const result: FilterValue[] = Array.from(set).sort().map(v => ({ value: v, label: v }));
+    if (hasEmpty) result.push({ value: "__EMPTY__", label: "항목없음" });
+    return result;
+  };
+
+  const filteredLogs = useMemo(() => logs.filter(l =>
+    cols.every(col => {
+      const sel = filters[col.key];
+      if (!sel || sel.length === 0) return true;
+      const v = col.getVal(l);
+      return sel.includes(v || "__EMPTY__");
+    })
+  ), [logs, filters]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const filterCount = Object.keys(filters).length;
+
+  const handleFilterChange = (col: string, values: string[]) =>
+    setFilters(p => values.length === 0
+      ? Object.fromEntries(Object.entries(p).filter(([k]) => k !== col))
+      : { ...p, [col]: values });
+  const handleFilterOpen   = (col: string, el: HTMLElement) => { setOpenCol(col); setAnchorEl(el); };
+  const handleFilterClose  = () => { setOpenCol(null); setAnchorEl(null); };
+  const resetAllFilters    = () => setFilters({});
+
+  return { filters, openCol, anchorEl, filteredLogs, filterCount, allValues, handleFilterChange, handleFilterOpen, handleFilterClose, resetAllFilters };
+}
+
 // ─── 정규작업 탭: Heat NO + 폭×길이 + 수량 + 작업시간 + 특이사항 ──────────────
-function NormalDetailTable({
-  logs, totalQty, totalSteel, totalUse, totalDurationMs: totalMs,
-}: {
-  logs: CuttingLog[];
-  totalQty: number; totalSteel: number; totalUse: number; totalDurationMs: number;
-}) {
+function NormalDetailTable({ logs }: { logs: CuttingLog[] }) {
+  const {
+    filters, openCol, anchorEl, filteredLogs, filterCount,
+    allValues, handleFilterChange, handleFilterOpen, handleFilterClose, resetAllFilters,
+  } = useTableFilter(logs, NORMAL_COLS);
+
+  const totalQty   = filteredLogs.length;
+  const totalSteel = filteredLogs.reduce((s, l) => s + (l.steelWeight ?? 0), 0);
+  const totalUse   = filteredLogs.reduce((s, l) => s + (l.useWeight   ?? 0), 0);
+  const totalMs    = filteredLogs.reduce((s, l) => s + durationMs(l.startAt, l.endAt, l.pauseMs), 0);
+
   return (
+    <div>
+      {filterCount > 0 && (
+        <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-4 py-2 border-b">
+          <Filter size={11} fill="currentColor" />
+          <span>필터 {filterCount}개 적용 ({filteredLogs.length}/{logs.length}건)</span>
+          <button onClick={resetAllFilters} className="ml-0.5 hover:text-blue-800" title="모든 필터 초기화">
+            <XCircle size={12} />
+          </button>
+        </div>
+      )}
     <table className="w-full text-xs min-w-[1100px]">
       <thead className="bg-gray-50 border-b">
         <tr>
-          {[
-            ["호선", "left"], ["블록", "left"], ["도면번호", "left"], ["재질", "left"], ["두께", "right"],
-            ["폭1", "right"], ["폭2", "right"], ["길이1", "right"], ["길이2", "right"],
-            ["철판중량(kg)", "right"], ["사용중량(kg)", "right"],
-            ["Heat NO", "left"],
-            ["작업자", "left"], ["장비", "left"],
-            ["작업일", "left"], ["총가동시간", "center"], ["중단시간", "center"], ["실가동시간", "center"],
-            ["비고", "left"],
-          ].map(([l, a]) => (
-            <th key={l} className={`px-3 py-2 text-gray-500 font-semibold text-${a} whitespace-nowrap`}>{l}</th>
-          ))}
+          {NORMAL_COLS.map(col => {
+            const isActive = (filters[col.key]?.length ?? 0) > 0;
+            return (
+              <th key={col.key} className={`px-3 py-2 text-gray-500 font-semibold whitespace-nowrap text-${col.align}`}>
+                <div className={`flex items-center gap-1 ${col.align === "right" ? "justify-end" : col.align === "center" ? "justify-center" : ""}`}>
+                  <span>{col.label}</span>
+                  <button
+                    onClick={e => { e.stopPropagation(); openCol === col.key ? handleFilterClose() : handleFilterOpen(col.key, e.currentTarget); }}
+                    className={`p-0.5 rounded hover:bg-gray-200 transition-colors ${isActive ? "text-blue-600" : "text-gray-400"}`}
+                    title={isActive ? `필터 적용 중 (${filters[col.key]?.length}개)` : "필터"}
+                  >
+                    <Filter size={11} fill={isActive ? "currentColor" : "none"} />
+                  </button>
+                  {openCol === col.key && anchorEl && (
+                    <ColumnFilterDropdown
+                      anchorEl={anchorEl}
+                      values={allValues(col.key)}
+                      selected={filters[col.key] ?? []}
+                      onApply={values => { handleFilterChange(col.key, values); handleFilterClose(); }}
+                      onClose={handleFilterClose}
+                    />
+                  )}
+                </div>
+              </th>
+            );
+          })}
         </tr>
       </thead>
       <tbody className="divide-y">
-        {logs.map((log) => {
-          const totalMs  = durationMs(log.startAt, log.endAt);
-          const activeMs = durationMs(log.startAt, log.endAt, log.pauseMs);
+        {filteredLogs.map((log) => {
+          const totMs  = durationMs(log.startAt, log.endAt);
+          const actMs  = durationMs(log.startAt, log.endAt, log.pauseMs);
           return (
           <tr key={log.id} className="hover:bg-gray-50">
             <td className="px-3 py-2 text-gray-600 text-[11px] whitespace-nowrap">
@@ -596,55 +701,76 @@ function NormalDetailTable({
             <td className="px-3 py-2 text-gray-700">{log.operator}</td>
             <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">{log.equipment.name}</td>
             <td className="px-3 py-2 text-gray-500 whitespace-nowrap font-mono text-[11px]">{formatDate(log.startAt)}</td>
-            <td className="px-3 py-2 text-center text-gray-500 whitespace-nowrap">{formatDurationMs(totalMs)}</td>
+            <td className="px-3 py-2 text-center text-gray-500 whitespace-nowrap">{formatDurationMs(totMs)}</td>
             <td className="px-3 py-2 text-center text-orange-500 whitespace-nowrap">{formatPauseMin(log.pauseMs)}</td>
-            <td className="px-3 py-2 text-center text-green-700 font-semibold whitespace-nowrap">{formatDurationMs(activeMs)}</td>
+            <td className="px-3 py-2 text-center text-green-700 font-semibold whitespace-nowrap">{formatDurationMs(actMs)}</td>
             <td className="px-3 py-2 text-gray-400 max-w-[120px] truncate">{log.memo ?? "-"}</td>
           </tr>
           );
         })}
       </tbody>
-      <TotalFootNormal totalQty={totalQty} totalSteel={totalSteel} totalUse={totalUse} totalMs={totalMs} count={logs.length} />
+      <TotalFootNormal totalQty={totalQty} totalSteel={totalSteel} totalUse={totalUse} totalMs={totalMs} count={filteredLogs.length} />
     </table>
+    </div>
   );
 }
 
 // ─── 돌발작업 탭: 작업명/요청자/부서/호선블록/잔재번호/치수/중량/시간 ─────────────
-function UrgentDetailTable({
-  logs, totalQty, totalSteel, totalUse, totalDurationMs: totalMs,
-}: {
-  logs: CuttingLog[];
-  totalQty: number; totalSteel: number; totalUse: number; totalDurationMs: number;
-}) {
+function UrgentDetailTable({ logs }: { logs: CuttingLog[] }) {
+  const {
+    filters, openCol, anchorEl, filteredLogs, filterCount,
+    allValues, handleFilterChange, handleFilterOpen, handleFilterClose, resetAllFilters,
+  } = useTableFilter(logs, URGENT_COLS);
+
+  const totalQty   = filteredLogs.length;
+  const totalSteel = filteredLogs.reduce((s, l) => s + (l.steelWeight ?? 0), 0);
+  const totalUse   = filteredLogs.reduce((s, l) => s + (l.useWeight   ?? 0), 0);
+  const totalMs    = filteredLogs.reduce((s, l) => s + durationMs(l.startAt, l.endAt, l.pauseMs), 0);
+
   return (
+    <div>
+      {filterCount > 0 && (
+        <div className="flex items-center gap-1.5 text-xs text-orange-600 bg-orange-50 px-4 py-2 border-b">
+          <Filter size={11} fill="currentColor" />
+          <span>필터 {filterCount}개 적용 ({filteredLogs.length}/{logs.length}건)</span>
+          <button onClick={resetAllFilters} className="ml-0.5 hover:text-orange-800" title="모든 필터 초기화">
+            <XCircle size={12} />
+          </button>
+        </div>
+      )}
     <table className="w-full text-xs min-w-[1400px]">
       <thead className="bg-orange-50 border-b">
         <tr>
-          {[
-            ["작업명",       "left"],
-            ["요청자",       "left"],
-            ["요청부서",     "left"],
-            ["연관호선/블록", "left"],
-            ["사용잔재번호",  "left"],
-            ["재질",         "left"],
-            ["두께",         "right"],
-            ["폭1",          "right"],
-            ["폭2",          "right"],
-            ["길이1",        "right"],
-            ["길이2",        "right"],
-            ["중량(kg)",     "right"],
-            ["사용중량(kg)", "right"],
-            ["작업일",       "left"],
-            ["총가동시간",   "center"],
-            ["중단시간",     "center"],
-            ["실가동시간",   "center"],
-          ].map(([l, a]) => (
-            <th key={l} className={`px-3 py-2 text-gray-500 font-semibold text-${a} whitespace-nowrap`}>{l}</th>
-          ))}
+          {URGENT_COLS.map(col => {
+            const isActive = (filters[col.key]?.length ?? 0) > 0;
+            return (
+              <th key={col.key} className={`px-3 py-2 text-gray-500 font-semibold whitespace-nowrap text-${col.align}`}>
+                <div className={`flex items-center gap-1 ${col.align === "right" ? "justify-end" : col.align === "center" ? "justify-center" : ""}`}>
+                  <span>{col.label}</span>
+                  <button
+                    onClick={e => { e.stopPropagation(); openCol === col.key ? handleFilterClose() : handleFilterOpen(col.key, e.currentTarget); }}
+                    className={`p-0.5 rounded hover:bg-orange-100 transition-colors ${isActive ? "text-orange-600" : "text-gray-400"}`}
+                    title={isActive ? `필터 적용 중 (${filters[col.key]?.length}개)` : "필터"}
+                  >
+                    <Filter size={11} fill={isActive ? "currentColor" : "none"} />
+                  </button>
+                  {openCol === col.key && anchorEl && (
+                    <ColumnFilterDropdown
+                      anchorEl={anchorEl}
+                      values={allValues(col.key)}
+                      selected={filters[col.key] ?? []}
+                      onApply={values => { handleFilterChange(col.key, values); handleFilterClose(); }}
+                      onClose={handleFilterClose}
+                    />
+                  )}
+                </div>
+              </th>
+            );
+          })}
         </tr>
       </thead>
       <tbody className="divide-y">
-        {logs.map((log) => {
+        {filteredLogs.map((log) => {
           const totMs  = durationMs(log.startAt, log.endAt);
           const actMs  = durationMs(log.startAt, log.endAt, log.pauseMs);
           return (
@@ -682,8 +808,9 @@ function UrgentDetailTable({
           );
         })}
       </tbody>
-      <TotalFootUrgent totalQty={totalQty} totalSteel={totalSteel} totalUse={totalUse} totalMs={totalMs} count={logs.length} />
+      <TotalFootUrgent totalQty={totalQty} totalSteel={totalSteel} totalUse={totalUse} totalMs={totalMs} count={filteredLogs.length} />
     </table>
+    </div>
   );
 }
 
