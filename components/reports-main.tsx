@@ -129,19 +129,28 @@ export default function ReportsMain({
   const totalUse      = sumNum(filteredLogs, "useWeight");
   const totalDuration = sumDurationMs(filteredLogs);
 
-  // ── 장비별 / 작업자별 집계 ────────────────────────────────────────────────
+  // ── 장비별 집계 ──────────────────────────────────────────────────────────
+  const PAUSE_REASON_LABEL: Record<string, string> = {
+    EQUIPMENT_FAILURE: "장비고장",
+    DRAWING_CHANGE:    "도면변경",
+    CONSUMABLE:        "소모품교체",
+    WORK_EXTENSION:    "작업연장",
+    OTHER:             "기타",
+  };
   const byEq = filteredLogs.reduce((acc, l) => {
     const k = l.equipment.name;
-    if (!acc[k]) acc[k] = { qty: 0 };
+    if (!acc[k]) acc[k] = { qty: 0, steelWeight: 0, pauseByReason: {} };
     acc[k].qty++;
+    acc[k].steelWeight += l.steelWeight ?? 0;
+    if (l.pauses) {
+      for (const p of l.pauses) {
+        if (!p.resumedAt) continue;
+        const ms = new Date(p.resumedAt).getTime() - new Date(p.pausedAt).getTime();
+        acc[k].pauseByReason[p.reason] = (acc[k].pauseByReason[p.reason] ?? 0) + ms;
+      }
+    }
     return acc;
-  }, {} as Record<string, { qty: number }>);
-
-  const byOp = filteredLogs.reduce((acc, l) => {
-    if (!acc[l.operator]) acc[l.operator] = { qty: 0 };
-    acc[l.operator].qty++;
-    return acc;
-  }, {} as Record<string, { qty: number }>);
+  }, {} as Record<string, { qty: number; steelWeight: number; pauseByReason: Record<string, number> }>);
 
   // 호선 > 블록 2단계 집계 (정규작업만 — 청구서 기반 데이터)
   type BlockStat = { qty: number; steelWeight: number; useWeight: number };
@@ -294,43 +303,51 @@ export default function ReportsMain({
           ))}
         </div>
 
-        {/* 장비 / 작업자 소계 */}
-        <div className="grid grid-cols-2 gap-3 no-print">
-          <div className="bg-white border rounded-xl p-4">
-            <h3 className="text-xs font-semibold text-gray-500 mb-2">장비별 집계</h3>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-gray-400 border-b">
-                  <th className="text-left py-1">장비</th>
-                  <th className="text-right py-1">수량(매)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {Object.entries(byEq).map(([name, v]) => (
-                  <tr key={name}>
-                    <td className="py-1 font-medium">{name}</td>
-                    <td className="py-1 text-right">{v.qty}매</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {/* 장비별 집계 */}
+        <div className="bg-white border rounded-xl overflow-hidden no-print">
+          <div className="px-4 py-3 border-b bg-gray-50">
+            <h3 className="text-xs font-semibold text-gray-600">장비별 집계</h3>
           </div>
-          <div className="bg-white border rounded-xl p-4">
-            <h3 className="text-xs font-semibold text-gray-500 mb-2">작업자별 집계</h3>
+          <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-gray-400 border-b">
-                  <th className="text-left py-1">작업자</th>
-                  <th className="text-right py-1">수량(매)</th>
+                <tr className="text-gray-400 border-b bg-gray-50">
+                  <th className="text-left px-4 py-2">장비</th>
+                  <th className="text-right px-4 py-2">수량(매)</th>
+                  <th className="text-right px-4 py-2">중량(kg)</th>
+                  <th className="text-left px-4 py-2 text-orange-400">미가동 사유별</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {Object.entries(byOp).map(([name, v]) => (
-                  <tr key={name}>
-                    <td className="py-1 font-medium">{name}</td>
-                    <td className="py-1 text-right">{v.qty}매</td>
-                  </tr>
-                ))}
+                {Object.entries(byEq).map(([name, v]) => {
+                  const totalPauseMs = Object.values(v.pauseByReason).reduce((s, ms) => s + ms, 0);
+                  return (
+                    <tr key={name} className="hover:bg-gray-50">
+                      <td className="px-4 py-2.5 font-semibold text-gray-800">{name}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{v.qty.toLocaleString()}매</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">
+                        {v.steelWeight.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {totalPauseMs === 0 ? (
+                          <span className="text-gray-300">-</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                            {Object.entries(v.pauseByReason).map(([reason, ms]) => (
+                              <span key={reason} className="text-orange-600">
+                                {PAUSE_REASON_LABEL[reason] ?? reason}
+                                <span className="text-orange-400 ml-1">{Math.round(ms / 60000)}분</span>
+                              </span>
+                            ))}
+                            <span className="text-gray-400 ml-1">
+                              (합계 {Math.round(totalPauseMs / 60000)}분)
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
