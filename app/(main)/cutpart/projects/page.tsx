@@ -8,7 +8,9 @@ export default async function ProjectsPage({
 }: {
   searchParams: Promise<{ tab?: string; projectId?: string }>;
 }) {
-  const { tab = "vessels", projectId } = await searchParams;
+  const { tab: rawTab = "vessels", projectId } = await searchParams;
+  // upload 탭은 제거됨 — vessels로 폴백
+  const tab = rawTab === "upload" ? "vessels" : rawTab;
 
   const projects = await prisma.project.findMany({
     orderBy: [{ projectCode: "asc" }, { projectName: "asc" }],

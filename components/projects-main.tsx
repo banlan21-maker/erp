@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Anchor, List, Upload, FileSpreadsheet, Plus, ClipboardList, Layers, ArrowLeft, Filter, X } from "lucide-react";
+import { Anchor, List, FileSpreadsheet, Plus, ClipboardList, Layers, ArrowLeft, Filter, X } from "lucide-react";
 import ColumnFilterDropdown from "@/components/column-filter-dropdown";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -66,12 +66,11 @@ export default function ProjectsMain({
   const router = useRouter();
   const goTab = (t: string) => router.push(`/cutpart/projects?tab=${t}`);
 
-  // 강재/BOM 등록 탭 내 서브탭
-  const [uploadSubTab, setUploadSubTab] = useState<"steel" | "bom">("steel");
+  // 강재/BOM 등록 모달
+  const [uploadModal, setUploadModal] = useState<"steel" | "bom" | null>(null);
 
   const tabs = [
     { key: "vessels",  icon: <List size={14} />,           label: "호선/블록" },
-    { key: "upload",   icon: <Upload size={14} />,          label: "블록 강재/BOM 등록" },
     { key: "list",     icon: <FileSpreadsheet size={14} />, label: "블록강재리스트" },
     { key: "remnants", icon: <Layers size={14} />,          label: "블록등록잔재리스트" },
     { key: "bom",      icon: <ClipboardList size={14} />,   label: "블록BOM리스트" },
@@ -92,6 +91,12 @@ export default function ProjectsMain({
         </div>
         {tab === "vessels" && (
           <div className="flex items-center gap-2">
+            <Button variant="outline" className="flex items-center gap-2" onClick={() => setUploadModal("steel")}>
+              <Plus size={16} /> 블록강재등록
+            </Button>
+            <Button variant="outline" className="flex items-center gap-2" onClick={() => setUploadModal("bom")}>
+              <Plus size={16} /> 블록BOM등록
+            </Button>
             <Link href="/cutpart/projects/new">
               <Button className="flex items-center gap-2">
                 <Plus size={16} /> 호선 등록
@@ -124,45 +129,37 @@ export default function ProjectsMain({
       {/* BOM리스트 탭 */}
       {tab === "bom" && <BomMain projectOptions={projectOptions} projectId={projectId} />}
 
-      {/* 강재/BOM 등록 탭 — 서브탭 */}
-      {tab === "upload" && (
-        <div className="space-y-4">
-          <div className="flex gap-0 border-b border-gray-200">
-            {([
-              { key: "steel", icon: <FileSpreadsheet size={13} />, label: "강재 등록" },
-              { key: "bom",   icon: <ClipboardList size={13} />,   label: "BOM 등록" },
-            ] as const).map(({ key, icon, label }) => (
-              <button
-                key={key}
-                onClick={() => setUploadSubTab(key)}
-                className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                  uploadSubTab === key
-                    ? "border-blue-600 text-blue-600"
-                    : "border-transparent text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {icon} {label}
+      {/* 강재/BOM 등록 모달 */}
+      {uploadModal && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-10 pb-6 px-4 overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+              <h3 className="text-base font-semibold text-gray-800">
+                {uploadModal === "steel" ? "블록 강재 등록" : "블록 BOM 등록"}
+              </h3>
+              <button onClick={() => setUploadModal(null)} className="text-gray-400 hover:text-gray-600 rounded p-1 hover:bg-gray-100">
+                <X size={18} />
               </button>
-            ))}
+            </div>
+            <div className="p-5">
+              {uploadModal === "steel" && (
+                <DrawingsMain
+                  tab="upload"
+                  projectId={projectId}
+                  projectOptions={projectOptions}
+                  recentUploads={recentUploads}
+                  drawings={drawings}
+                  activeProject={activeProject}
+                  baseUrl="/cutpart/projects"
+                  hideHeader={true}
+                  hideTabs={true}
+                />
+              )}
+              {uploadModal === "bom" && (
+                <BomUpload projectOptions={projectOptions} />
+              )}
+            </div>
           </div>
-
-          {uploadSubTab === "steel" && (
-            <DrawingsMain
-              tab="upload"
-              projectId={projectId}
-              projectOptions={projectOptions}
-              recentUploads={recentUploads}
-              drawings={drawings}
-              activeProject={activeProject}
-              baseUrl="/cutpart/projects"
-              hideHeader={true}
-              hideTabs={true}
-            />
-          )}
-
-          {uploadSubTab === "bom" && (
-            <BomUpload projectOptions={projectOptions} />
-          )}
         </div>
       )}
 
