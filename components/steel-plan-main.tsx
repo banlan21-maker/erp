@@ -265,6 +265,7 @@ export default function SteelPlanMain() {
     if (cf.uploadBatchNo?.length)       p.set("uploadBatchNos",        cf.uploadBatchNo.join(","));
     if (cf.selectionPrintedAt?.length)  p.set("selectionPrintedDates", cf.selectionPrintedAt.join(","));
     if (cf.issuedAt?.length)            p.set("issuedDates",           cf.issuedAt.join(","));
+    if (sortCol) { p.set("sortBy", sortCol); p.set("sortDir", sortDir); }
     p.set("all", "true");
 
     const res  = await fetch(`/api/steel-plan?${p}`);
