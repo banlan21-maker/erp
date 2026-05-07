@@ -64,7 +64,7 @@ type WorkTypeFilter = "all" | "normal" | "urgent";
 function eqShort(name: string): string {
   const p = name.match(/플라즈마\s*(\d+)호기/);
   if (p) return `P${p[1]}`;
-  const g = name.match(/가스절단기\s*(\d+)호기/);
+  const g = name.match(/가스\s*절단기\s*(\d+)호기/);
   if (g) return `G${g[1]}`;
   return name;
 }
