@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Play, Square, RotateCcw, ChevronDown, ChevronUp, Loader2, Check, Zap, AlertTriangle, X, Save } from "lucide-react";
+import { Play, Square, Pause, RotateCcw, ChevronDown, ChevronUp, Loader2, Check, Zap, AlertTriangle, X, Save } from "lucide-react";
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -13,15 +13,20 @@ interface DrawingRow {
   material: string; thickness: number; width: number; length: number; qty: number; block: string | null;
   assignedRemnantId?: string | null;
 }
+interface CuttingPause {
+  reason: string; reasonText: string | null;
+  pausedAt: string; resumedAt: string | null;
+}
 interface CuttingLog {
   id: string; equipmentId: string;
   equipment: { id: string; name: string; type: string };
   project: { projectCode: string; projectName: string } | null;
   heatNo: string; material: string | null; thickness: number | null;
   drawingNo: string | null; operator: string;
-  status: "STARTED" | "COMPLETED";
+  status: "STARTED" | "PAUSED" | "COMPLETED";
   startAt: string; endAt: string | null; memo: string | null;
   isUrgent?: boolean; urgentWorkId?: string | null;
+  pauses?: CuttingPause[];
 }
 
 interface UrgentWork {
@@ -40,6 +45,21 @@ interface UrgentWork {
 interface Remnant {
   id: string; remnantNo: string; material: string; thickness: number; weight: number; needsConsult: boolean;
 }
+
+const PAUSE_REASON_OPTIONS = [
+  { value: "EQUIPMENT_FAILURE", label: "장비고장" },
+  { value: "DRAWING_CHANGE",    label: "도면변경" },
+  { value: "CONSUMABLE",        label: "소모품교체" },
+  { value: "WORK_EXTENSION",    label: "작업연장" },
+  { value: "OTHER",             label: "기타 (직접입력)" },
+];
+const PAUSE_REASON_LABEL: Record<string, string> = {
+  EQUIPMENT_FAILURE: "장비고장",
+  DRAWING_CHANGE:    "도면변경",
+  CONSUMABLE:        "소모품교체",
+  WORK_EXTENSION:    "작업연장",
+  OTHER:             "기타",
+};
 
 const URGENCY_COLOR_DARK: Record<string, string> = {
   URGENT:   "border-red-500 bg-red-950",
@@ -117,8 +137,12 @@ export default function FieldWorklog({
   const [search,       setSearch]       = useState("");
 
   const eqLogs    = logs.filter(l => l.equipmentId === selectedEq);
-  const ongoing   = eqLogs.find(l => l.status === "STARTED");
+  const ongoing   = eqLogs.find(l => l.status === "STARTED" || l.status === "PAUSED");
   const doneLogs  = eqLogs.filter(l => l.status === "COMPLETED");
+
+  // 절단 중단 관련 상태
+  const [pauseReason,     setPauseReason]     = useState<string>("");
+  const [pauseReasonText, setPauseReasonText] = useState<string>("");
 
   const vesselCodes     = [...new Set(projects.map(p => p.projectCode))].sort();
   const blocksForVessel = projects.filter(p => p.projectCode === s1.vesselCode);
@@ -335,6 +359,37 @@ export default function FieldWorklog({
       const d = await res.json();
       if (!d.success) { setError(d.error); return; }
       resetStep2();
+      await refreshLogs();
+    } catch { setError("서버 오류"); } finally { setLoading(false); }
+  };
+
+  const handlePause = async (logId: string) => {
+    if (!pauseReason) { setError("중단 사유를 선택하세요."); return; }
+    if (pauseReason === "OTHER" && !pauseReasonText.trim()) { setError("직접 입력 사유를 입력하세요."); return; }
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/cutting-logs/${logId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "pause", reason: pauseReason, reasonText: pauseReasonText }),
+      });
+      const d = await res.json();
+      if (!d.success) { setError(d.error); return; }
+      setPauseReason(""); setPauseReasonText("");
+      await refreshLogs();
+    } catch { setError("서버 오류"); } finally { setLoading(false); }
+  };
+
+  const handleResume = async (logId: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/cutting-logs/${logId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resume" }),
+      });
+      const d = await res.json();
+      if (!d.success) { setError(d.error); return; }
       await refreshLogs();
     } catch { setError("서버 오류"); } finally { setLoading(false); }
   };
@@ -682,15 +737,16 @@ export default function FieldWorklog({
       {mainTab === "normal" && (
       <div className="flex-1 p-4 space-y-3 pb-8">
 
-        {/* ══ 진행중 작업 ══ */}
+        {/* ══ 진행중 / 중단 작업 ══ */}
         {ongoing && (
-          <div className="bg-red-950 border-2 border-red-500 rounded-2xl p-5 space-y-4">
+          <div className={`border-2 rounded-2xl p-5 space-y-4 ${ongoing.status === "PAUSED" ? "bg-yellow-950 border-yellow-500" : "bg-red-950 border-red-500"}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
-                <span className="font-bold text-red-300 text-base">절단 진행중</span>
+                {ongoing.status === "PAUSED"
+                  ? <><span className="w-3 h-3 bg-yellow-400 rounded-full" /><span className="font-bold text-yellow-300 text-base">절단 중단중</span></>
+                  : <><span className="w-3 h-3 bg-red-500 rounded-full animate-pulse" /><span className="font-bold text-red-300 text-base">절단 진행중</span></>}
               </div>
-              <span className="text-red-300 font-mono text-lg font-bold">
+              <span className={`font-mono text-lg font-bold ${ongoing.status === "PAUSED" ? "text-yellow-300" : "text-red-300"}`}>
                 <LiveTimer startAt={ongoing.startAt} />
               </span>
             </div>
@@ -727,15 +783,95 @@ export default function FieldWorklog({
                   <span className="text-gray-400">{ongoing.memo}</span>
                 </div>
               )}
+              {/* 중단 이력 표시 */}
+              {(ongoing.pauses?.length ?? 0) > 0 && (
+                <div className="flex gap-3">
+                  <span className="text-gray-500 w-16">중단이력</span>
+                  <div className="space-y-0.5">
+                    {ongoing.pauses!.map((p, i) => (
+                      <div key={i} className="text-[11px] text-gray-400">
+                        {PAUSE_REASON_LABEL[p.reason]}{p.reasonText ? ` (${p.reasonText})` : ""}
+                        {" · "}{fmtTime(p.pausedAt)}{p.resumedAt ? ` ~ ${fmtTime(p.resumedAt)}` : " ~ 재개 대기중"}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-            <button
-              onClick={() => handleComplete(ongoing.id)}
-              disabled={loading}
-              className="w-full bg-red-600 active:bg-red-700 rounded-xl py-4 flex items-center justify-center gap-3 text-white font-bold text-lg transition-colors disabled:opacity-60"
-            >
-              <Square size={20} fill="currentColor" />
-              절단 종료
-            </button>
+
+            {/* 절단 중단 중 → 사유 입력 + 재개 버튼 */}
+            {ongoing.status === "PAUSED" && (
+              <div className="space-y-2">
+                <p className="text-xs text-yellow-400 font-medium">중단 사유를 입력하고 재개하세요</p>
+                <select
+                  value={pauseReason}
+                  onChange={e => { setPauseReason(e.target.value); setPauseReasonText(""); }}
+                  className="w-full bg-gray-900 border border-yellow-700 rounded-lg px-3 py-2 text-sm text-white"
+                >
+                  <option value="">-- 중단 사유 선택 --</option>
+                  {PAUSE_REASON_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+                {pauseReason === "OTHER" && (
+                  <input
+                    type="text"
+                    placeholder="사유 직접 입력"
+                    value={pauseReasonText}
+                    onChange={e => setPauseReasonText(e.target.value)}
+                    className="w-full bg-gray-900 border border-yellow-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500"
+                  />
+                )}
+                <button
+                  onClick={() => handleResume(ongoing.id)}
+                  disabled={loading || !pauseReason || (pauseReason === "OTHER" && !pauseReasonText.trim())}
+                  className="w-full bg-yellow-500 active:bg-yellow-600 rounded-xl py-3.5 flex items-center justify-center gap-3 text-black font-bold text-base transition-colors disabled:opacity-40"
+                >
+                  <Play size={18} fill="currentColor" />
+                  절단 재개
+                </button>
+              </div>
+            )}
+
+            {/* 절단 진행중 → 중단 / 완료 버튼 */}
+            {ongoing.status === "STARTED" && (
+              <div className="space-y-2">
+                <p className="text-xs text-gray-400">중단 사유 선택 후 중단, 또는 바로 종료할 수 있습니다</p>
+                <select
+                  value={pauseReason}
+                  onChange={e => { setPauseReason(e.target.value); setPauseReasonText(""); }}
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                >
+                  <option value="">-- 중단 사유 (선택시 중단 가능) --</option>
+                  {PAUSE_REASON_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+                {pauseReason === "OTHER" && (
+                  <input
+                    type="text"
+                    placeholder="사유 직접 입력"
+                    value={pauseReasonText}
+                    onChange={e => setPauseReasonText(e.target.value)}
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500"
+                  />
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handlePause(ongoing.id)}
+                    disabled={loading || !pauseReason || (pauseReason === "OTHER" && !pauseReasonText.trim())}
+                    className="flex-1 bg-yellow-600 active:bg-yellow-700 rounded-xl py-3.5 flex items-center justify-center gap-2 text-white font-bold text-base transition-colors disabled:opacity-40"
+                  >
+                    <Pause size={18} fill="currentColor" />
+                    절단 중단
+                  </button>
+                  <button
+                    onClick={() => handleComplete(ongoing.id)}
+                    disabled={loading}
+                    className="flex-1 bg-red-600 active:bg-red-700 rounded-xl py-3.5 flex items-center justify-center gap-2 text-white font-bold text-base transition-colors disabled:opacity-60"
+                  >
+                    <Square size={18} fill="currentColor" />
+                    절단 완료
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

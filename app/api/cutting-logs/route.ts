@@ -102,6 +102,7 @@ export async function GET(request: NextRequest) {
         equipment:   { select: { id: true, name: true, type: true } },
         project:     { select: { projectCode: true, projectName: true } },
         drawingList: { select: { drawingNo: true, block: true, useWeight: true } },
+        pauses:      { select: { reason: true, reasonText: true, pausedAt: true, resumedAt: true }, orderBy: { pausedAt: "asc" } },
       },
       orderBy: { startAt: "desc" },
     });

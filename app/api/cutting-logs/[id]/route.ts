@@ -11,19 +11,25 @@
  *                  → COMPLETED, actualHeatNo·vesselCode·drawingNo 기록
  *   4) SteelPlanHeat: heatNo 기준 WAITING → CUT (없으면 신규 자동 생성)
  *   5) syncDrawingListBySpec(): 동일 스펙 DrawingList 전체 WAITING/REGISTERED 재계산
+ *   6) syncProjectStatus(): 블록 완료 여부 동기화
+ *
+ * ── PATCH action="pause" (절단 중단) ──────────────────────────────────────
+ *   CuttingLog.status → PAUSED, CuttingPause 레코드 생성 (pausedAt=now)
+ *   body: { reason: PauseReason, reasonText?: string }
+ *
+ * ── PATCH action="resume" (절단 재개) ─────────────────────────────────────
+ *   CuttingLog.status → STARTED, 최신 CuttingPause.resumedAt = now
  *
  * 돌발작업(isUrgent=true)은 DrawingList·SteelPlan 동기화 없음.
- * (heatNo가 있어도 projectId가 없으면 SteelPlan 매칭 불가)
  *
  * ── PATCH (일반 수정) ──────────────────────────────────────────────────────
- * action 없음: 관리자 직접 필드 수정 (status·날짜·수량 등).
- * 강재 상태는 자동으로 반영되지 않으므로 관리자가 직접 확인 필요.
+ * action 없음: 관리자 직접 필드 수정.
  *
  * ── DELETE (삭제 + 강재 상태 복원) ────────────────────────────────────────
  *   1) DrawingList: CUT → WAITING, heatNo 초기화
  *   2) SteelPlan:   COMPLETED → RECEIVED, actual* 필드 초기화
  *   3) SteelPlanHeat: CUT → WAITING
- *   4) CuttingLog 삭제
+ *   4) CuttingLog 삭제 (CuttingPause는 CASCADE)
  *   5) syncDrawingListBySpec(): DrawingList 재계산
  */
 
@@ -44,7 +50,43 @@ export async function PATCH(
     const body = await request.json();
     const { action, memo, heatNo, material, thickness, operator } = body;
 
+    // ── 절단 중단 ────────────────────────────────────────────────────────────
+    if (action === "pause") {
+      const { reason, reasonText } = body;
+      if (!reason) {
+        return NextResponse.json({ success: false, error: "중단 사유를 선택하세요." }, { status: 400 });
+      }
+      await prisma.cuttingLog.update({ where: { id }, data: { status: "PAUSED" } });
+      await prisma.cuttingPause.create({
+        data: { cuttingLogId: id, reason, reasonText: reasonText?.trim() || null },
+      });
+      return NextResponse.json({ success: true });
+    }
+
+    // ── 절단 재개 ────────────────────────────────────────────────────────────
+    if (action === "resume") {
+      // 열려있는(resumedAt=null) 가장 최근 중단 기록에 재개 시각 기록
+      const openPause = await prisma.cuttingPause.findFirst({
+        where:   { cuttingLogId: id, resumedAt: null },
+        orderBy: { pausedAt: "desc" },
+      });
+      if (openPause) {
+        await prisma.cuttingPause.update({
+          where: { id: openPause.id },
+          data:  { resumedAt: new Date() },
+        });
+      }
+      await prisma.cuttingLog.update({ where: { id }, data: { status: "STARTED" } });
+      return NextResponse.json({ success: true });
+    }
+
     if (action === "complete") {
+      // 혹시 PAUSED 상태에서 완료 누른 경우 열린 pause 자동 닫기
+      await prisma.cuttingPause.updateMany({
+        where: { cuttingLogId: id, resumedAt: null },
+        data:  { resumedAt: new Date() },
+      });
+
       // 절단 종료 처리 (endAt/startAt 명시 시 관리자 지정값 사용)
       const { endAt: completeEndAt, startAt: completeStartAt } = body;
       const log = await prisma.cuttingLog.update({

@@ -31,13 +31,14 @@ export default async function FieldWorklogPage() {
     include: {
       equipment: { select: { id: true, name: true, type: true } },
       project:   { select: { projectCode: true, projectName: true } },
+      pauses:    { select: { reason: true, reasonText: true, pausedAt: true, resumedAt: true }, orderBy: { pausedAt: "asc" } },
     },
     orderBy: { startAt: "desc" },
   });
 
   const todayLogs = rawLogs.map((l) => ({
     ...l,
-    status:    l.status as "STARTED" | "COMPLETED",
+    status:    l.status as "STARTED" | "PAUSED" | "COMPLETED",
     equipment: { ...l.equipment, type: l.equipment.type as string },
     startAt:   l.startAt.toISOString(),
     endAt:     l.endAt?.toISOString() ?? null,
@@ -46,6 +47,11 @@ export default async function FieldWorklogPage() {
     width:     l.width ?? null, length: l.length ?? null,
     qty:       l.qty   ?? null, drawingNo: l.drawingNo ?? null,
     drawingListId: l.drawingListId ?? null,
+    pauses: l.pauses.map((p) => ({
+      ...p,
+      pausedAt:  p.pausedAt.toISOString(),
+      resumedAt: p.resumedAt?.toISOString() ?? null,
+    })),
   }));
 
   return (

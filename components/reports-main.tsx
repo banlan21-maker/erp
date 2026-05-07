@@ -51,6 +51,8 @@ interface CuttingLog {
   dimL1:       number | null;
   dimW2:       number | null;
   dimL2:       number | null;
+  // 중단 시간
+  pauseMs:     number;
 }
 
 type WorkTypeFilter = "all" | "normal" | "urgent";
@@ -63,9 +65,9 @@ function formatTime(iso: string) {
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
-function durationMs(start: string, end: string | null) {
+function durationMs(start: string, end: string | null, pauseMs = 0) {
   if (!end) return 0;
-  return new Date(end).getTime() - new Date(start).getTime();
+  return Math.max(0, new Date(end).getTime() - new Date(start).getTime() - pauseMs);
 }
 function formatDurationMs(ms: number) {
   if (ms <= 0) return "-";
@@ -73,8 +75,13 @@ function formatDurationMs(ms: number) {
   const m = Math.floor((ms % 3600000) / 60000);
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
-function formatDuration(start: string, end: string | null) {
-  return formatDurationMs(durationMs(start, end));
+function formatDuration(log: CuttingLog) {
+  return formatDurationMs(durationMs(log.startAt, log.endAt, log.pauseMs));
+}
+function formatPauseMin(ms: number) {
+  if (ms <= 0) return "-";
+  const m = Math.round(ms / 60000);
+  return `${m}분`;
 }
 function locationLabel(log: CuttingLog) {
   if (log.project) return `[${log.project.projectCode}] ${log.project.projectName}`;
@@ -114,7 +121,7 @@ export default function ReportsMain({
   const sumNum = (arr: CuttingLog[], key: "qty" | "steelWeight" | "useWeight") =>
     arr.reduce((s, l) => s + (l[key] ?? 0), 0);
   const sumDurationMs = (arr: CuttingLog[]) =>
-    arr.reduce((s, l) => s + durationMs(l.startAt, l.endAt), 0);
+    arr.reduce((s, l) => s + durationMs(l.startAt, l.endAt, l.pauseMs), 0);
 
   const totalQty      = filteredLogs.length;  // 1작업=1매이므로 건수=수량
   const totalSteel    = sumNum(filteredLogs, "steelWeight");
@@ -176,7 +183,8 @@ export default function ReportsMain({
       "W2(mm)":       l.dimW2 ?? "",
       "L2(mm)":       l.dimL2 ?? "",
       "수량(매)":     l.qty ?? "",
-      "작업시간":     formatDuration(l.startAt, l.endAt),
+      "작업시간":     formatDuration(l),
+      "미가동시간(분)": l.pauseMs > 0 ? Math.round(l.pauseMs / 60000) : "",
       "강재중량(kg)": l.steelWeight != null ? l.steelWeight : "",
       "사용중량(kg)": l.useWeight   != null ? l.useWeight   : "",
       "요청자":       l.requester  ?? "",
@@ -534,12 +542,11 @@ function NormalDetailTable({
           {[
             ["날짜", "left"], ["장비", "left"], ["작업자", "left"], ["호선", "left"], ["블록", "left"],
             ["도면번호", "left"], ["Heat NO", "left"], ["재질", "left"], ["두께", "right"],
-            ["폭×길이", "right"], ["작업시간", "center"],
+            ["폭×길이", "right"], ["작업시간", "center"], ["미가동(분)", "center"],
             ["강재중량(kg)", "right"], ["사용중량(kg)", "right"], ["특이사항", "left"],
           ].map(([l, a]) => (
             <th key={l} className={`px-3 py-2 text-gray-500 font-semibold text-${a} whitespace-nowrap`}>{l}</th>
           ))}
-
         </tr>
       </thead>
       <tbody className="divide-y">
@@ -563,7 +570,10 @@ function NormalDetailTable({
             </td>
             <td className="px-3 py-2 text-center text-gray-500 whitespace-nowrap">
               <div>{formatTime(log.startAt)} ~ {log.endAt ? formatTime(log.endAt) : "-"}</div>
-              <div className="text-green-600 font-medium">{formatDuration(log.startAt, log.endAt)}</div>
+              <div className="text-green-600 font-medium">{formatDuration(log)}</div>
+            </td>
+            <td className="px-3 py-2 text-center text-orange-500 font-medium whitespace-nowrap">
+              {formatPauseMin(log.pauseMs)}
             </td>
             <td className="px-3 py-2 text-right text-gray-700">{numCell(log.steelWeight)}</td>
             <td className="px-3 py-2 text-right text-gray-700">{numCell(log.useWeight)}</td>

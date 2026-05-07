@@ -101,8 +101,17 @@ enum Priority {
 }
 
 enum CuttingStatus {
-  STARTED // 절단 진행중
+  STARTED   // 절단 진행중
+  PAUSED    // 절단 중단
   COMPLETED // 절단 완료
+}
+
+enum PauseReason {
+  EQUIPMENT_FAILURE    // 장비고장
+  DRAWING_CHANGE       // 도면변경
+  CONSUMABLE           // 소모품교체
+  WORK_EXTENSION       // 작업연장
+  OTHER                // 기타(직접입력)
 }
 
 enum DrawingStatus {
@@ -285,8 +294,21 @@ model CuttingLog {
   urgentWorkId String?
   urgentWork   UrgentWork? @relation(fields: [urgentWorkId], references: [id], onDelete: SetNull)
 
+  pauses    CuttingPause[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// 절단 중단 기록
+model CuttingPause {
+  id           String       @id @default(cuid())
+  cuttingLogId String
+  cuttingLog   CuttingLog   @relation(fields: [cuttingLogId], references: [id], onDelete: Cascade)
+  reason       PauseReason
+  reasonText   String?      // OTHER 선택 시 직접 입력 내용
+  pausedAt     DateTime     @default(now())
+  resumedAt    DateTime?    // 재개 시각 (null = 아직 중단 중)
+  createdAt    DateTime     @default(now())
 }
 
 // 근무지 옵션

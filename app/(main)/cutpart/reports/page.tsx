@@ -37,6 +37,7 @@ export default async function ReportsPage({
       equipment:   { select: { id: true, name: true, type: true } },
       project:     { select: { projectCode: true, projectName: true } },
       drawingList: { select: { steelWeight: true, useWeight: true, block: true } },
+      pauses:      { select: { reason: true, reasonText: true, pausedAt: true, resumedAt: true }, orderBy: { pausedAt: "asc" } },
       urgentWork:  {
         select: {
           urgentNo:   true,
@@ -87,6 +88,16 @@ export default async function ReportsPage({
     })(),
     useWeight: l.drawingList?.useWeight ?? null,
     block: l.drawingList?.block ?? null,
+    pauses: l.pauses.map((p) => ({
+      ...p,
+      pausedAt:  p.pausedAt.toISOString(),
+      resumedAt: p.resumedAt?.toISOString() ?? null,
+    })),
+    // 미가동시간(ms): 완료된 pause들의 합산
+    pauseMs: l.pauses.reduce((sum, p) => {
+      if (!p.resumedAt) return sum;
+      return sum + (p.resumedAt.getTime() - p.pausedAt.getTime());
+    }, 0),
   }));
 
   return <ReportsMain logs={logs} fromStr={fromStr} toStr={toStr} />;
