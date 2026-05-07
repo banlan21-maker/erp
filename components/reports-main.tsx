@@ -140,27 +140,17 @@ export default function ReportsMain({
   const totalDuration = sumDurationMs(filteredLogs);
 
   // ── 장비별 집계 ──────────────────────────────────────────────────────────
-  const PAUSE_REASON_LABEL: Record<string, string> = {
-    EQUIPMENT_FAILURE: "장비고장",
-    DRAWING_CHANGE:    "도면변경",
-    CONSUMABLE:        "소모품교체",
-    WORK_EXTENSION:    "작업연장",
-    OTHER:             "기타",
-  };
   const byEq = filteredLogs.reduce((acc, l) => {
-    const k = eqShort(l.equipment.name);
-    if (!acc[k]) acc[k] = { qty: 0, steelWeight: 0, pauseByReason: {} };
+    const k      = eqShort(l.equipment.name);
+    const totMs  = durationMs(l.startAt, l.endAt);
+    if (!acc[k]) acc[k] = { qty: 0, steelWeight: 0, useWeight: 0, totalMs: 0, pauseMs: 0 };
     acc[k].qty++;
     acc[k].steelWeight += l.steelWeight ?? 0;
-    if (l.pauses) {
-      for (const p of l.pauses) {
-        if (!p.resumedAt) continue;
-        const ms = new Date(p.resumedAt).getTime() - new Date(p.pausedAt).getTime();
-        acc[k].pauseByReason[p.reason] = (acc[k].pauseByReason[p.reason] ?? 0) + ms;
-      }
-    }
+    acc[k].useWeight   += l.useWeight   ?? 0;
+    acc[k].totalMs     += totMs;
+    acc[k].pauseMs     += l.pauseMs;
     return acc;
-  }, {} as Record<string, { qty: number; steelWeight: number; pauseByReason: Record<string, number> }>);
+  }, {} as Record<string, { qty: number; steelWeight: number; useWeight: number; totalMs: number; pauseMs: number }>);
 
   // 호선 > 블록 2단계 집계 (정규작업만 — 청구서 기반 데이터)
   type BlockStat = { qty: number; steelWeight: number; useWeight: number };
@@ -322,43 +312,67 @@ export default function ReportsMain({
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-gray-400 border-b bg-gray-50">
-                  <th className="text-left px-4 py-2">장비</th>
-                  <th className="text-right px-4 py-2">수량(매)</th>
-                  <th className="text-right px-4 py-2">중량(kg)</th>
-                  <th className="text-left px-4 py-2 text-orange-400">미가동 사유별</th>
+                  <th className="text-left  px-4 py-2 font-semibold">장비</th>
+                  <th className="text-right px-4 py-2 font-semibold">절단수량(SH)</th>
+                  <th className="text-right px-4 py-2 font-semibold">강재중량(Kg)</th>
+                  <th className="text-right px-4 py-2 font-semibold">사용중량(Kg)</th>
+                  <th className="text-right px-4 py-2 font-semibold">총가동시간(H:M)</th>
+                  <th className="text-right px-4 py-2 font-semibold text-orange-500">미가동시간(H:M)</th>
+                  <th className="text-right px-4 py-2 font-semibold text-green-600">실가동시간(H:M)</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {Object.entries(byEq).map(([name, v]) => {
-                  const totalPauseMs = Object.values(v.pauseByReason).reduce((s, ms) => s + ms, 0);
+                  const activeMs = Math.max(0, v.totalMs - v.pauseMs);
+                  const fmt = (ms: number) => {
+                    if (ms <= 0) return "-";
+                    const h = Math.floor(ms / 3600000);
+                    const m = Math.floor((ms % 3600000) / 60000);
+                    return `${h}:${String(m).padStart(2, "0")}`;
+                  };
                   return (
                     <tr key={name} className="hover:bg-gray-50">
                       <td className="px-4 py-2.5 font-semibold text-gray-800">{name}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{v.qty.toLocaleString()}매</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{v.qty.toLocaleString()}</td>
                       <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">
                         {v.steelWeight.toLocaleString(undefined, { maximumFractionDigits: 1 })}
                       </td>
-                      <td className="px-4 py-2.5">
-                        {totalPauseMs === 0 ? (
-                          <span className="text-gray-300">-</span>
-                        ) : (
-                          <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-                            {Object.entries(v.pauseByReason).map(([reason, ms]) => (
-                              <span key={reason} className="text-orange-600">
-                                {PAUSE_REASON_LABEL[reason] ?? reason}
-                                <span className="text-orange-400 ml-1">{Math.round(ms / 60000)}분</span>
-                              </span>
-                            ))}
-                            <span className="text-gray-400 ml-1">
-                              (합계 {Math.round(totalPauseMs / 60000)}분)
-                            </span>
-                          </div>
-                        )}
+                      <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">
+                        {v.useWeight.toLocaleString(undefined, { maximumFractionDigits: 1 })}
                       </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-gray-600">{fmt(v.totalMs)}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-orange-500">{fmt(v.pauseMs)}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-green-700 font-semibold">{fmt(activeMs)}</td>
                     </tr>
                   );
                 })}
               </tbody>
+              {Object.keys(byEq).length > 1 && (() => {
+                const totals = Object.values(byEq).reduce(
+                  (s, v) => ({ qty: s.qty + v.qty, steelWeight: s.steelWeight + v.steelWeight, useWeight: s.useWeight + v.useWeight, totalMs: s.totalMs + v.totalMs, pauseMs: s.pauseMs + v.pauseMs }),
+                  { qty: 0, steelWeight: 0, useWeight: 0, totalMs: 0, pauseMs: 0 }
+                );
+                const activeMs = Math.max(0, totals.totalMs - totals.pauseMs);
+                const fmt = (ms: number) => {
+                  if (ms <= 0) return "-";
+                  const h = Math.floor(ms / 3600000);
+                  const m = Math.floor((ms % 3600000) / 60000);
+                  return `${h}:${String(m).padStart(2, "0")}`;
+                };
+                return (
+                  <tfoot className="border-t bg-gray-50 font-semibold text-xs">
+                    <tr>
+                      <td className="px-4 py-2 text-gray-600">합계</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-gray-800">{totals.qty.toLocaleString()}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-gray-800">{totals.steelWeight.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-gray-800">{totals.useWeight.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-gray-700">{fmt(totals.totalMs)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-orange-500">{fmt(totals.pauseMs)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-green-700">{fmt(activeMs)}</td>
+                    </tr>
+                  </tfoot>
+                );
+              })()}
             </table>
           </div>
         </div>
