@@ -540,46 +540,53 @@ function NormalDetailTable({
       <thead className="bg-gray-50 border-b">
         <tr>
           {[
-            ["날짜", "left"], ["장비", "left"], ["작업자", "left"], ["호선", "left"], ["블록", "left"],
-            ["도면번호", "left"], ["Heat NO", "left"], ["재질", "left"], ["두께", "right"],
-            ["폭×길이", "right"], ["작업시간", "center"], ["미가동(분)", "center"],
-            ["강재중량(kg)", "right"], ["사용중량(kg)", "right"], ["특이사항", "left"],
+            ["호선", "left"], ["블록", "left"], ["도면번호", "left"], ["재질", "left"], ["두께", "right"],
+            ["폭1", "right"], ["폭2", "right"], ["길이1", "right"], ["길이2", "right"],
+            ["철판중량(kg)", "right"], ["사용중량(kg)", "right"],
+            ["Heat NO", "left"], ["강재상태", "center"],
+            ["작업자", "left"], ["장비", "left"],
+            ["작업일", "left"], ["총가동시간", "center"], ["중단시간", "center"], ["실가동시간", "center"],
+            ["비고", "left"],
           ].map(([l, a]) => (
             <th key={l} className={`px-3 py-2 text-gray-500 font-semibold text-${a} whitespace-nowrap`}>{l}</th>
           ))}
         </tr>
       </thead>
       <tbody className="divide-y">
-        {logs.map((log) => (
+        {logs.map((log) => {
+          const totalMs  = durationMs(log.startAt, log.endAt);
+          const activeMs = durationMs(log.startAt, log.endAt, log.pauseMs);
+          return (
           <tr key={log.id} className="hover:bg-gray-50">
-            <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{formatDate(log.startAt)}</td>
-            <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">{log.equipment.name}</td>
-            <td className="px-3 py-2 text-gray-700">{log.operator}</td>
             <td className="px-3 py-2 text-gray-600 text-[11px] whitespace-nowrap">
-              {log.project ? `[${log.project.projectCode}] ${log.project.projectName}` : <span className="text-gray-400">-</span>}
+              {log.project ? `[${log.project.projectCode}]` : <span className="text-gray-400">-</span>}
             </td>
             <td className="px-3 py-2 text-gray-700 font-medium whitespace-nowrap">{log.block ?? <span className="text-gray-300">-</span>}</td>
             <td className="px-3 py-2 font-mono text-gray-800">{log.drawingNo ?? "-"}</td>
-            <td className="px-3 py-2 font-mono text-blue-700">{log.heatNo || "-"}</td>
             <td className="px-3 py-2">
               {log.material ? <span className="px-1.5 py-0.5 bg-slate-100 rounded font-medium">{log.material}</span> : <span className="text-gray-400">-</span>}
             </td>
             <td className="px-3 py-2 text-right text-gray-700">{log.thickness ? `${log.thickness}t` : "-"}</td>
-            <td className="px-3 py-2 text-right text-gray-700 whitespace-nowrap">
-              {log.width && log.length ? `${log.width.toLocaleString()} × ${log.length.toLocaleString()}` : "-"}
-            </td>
-            <td className="px-3 py-2 text-center text-gray-500 whitespace-nowrap">
-              <div>{formatTime(log.startAt)} ~ {log.endAt ? formatTime(log.endAt) : "-"}</div>
-              <div className="text-green-600 font-medium">{formatDuration(log)}</div>
-            </td>
-            <td className="px-3 py-2 text-center text-orange-500 font-medium whitespace-nowrap">
-              {formatPauseMin(log.pauseMs)}
-            </td>
+            <td className="px-3 py-2 text-right tabular-nums text-gray-700">{log.dimW1?.toLocaleString() ?? "-"}</td>
+            <td className="px-3 py-2 text-right tabular-nums text-gray-400">{log.dimW2?.toLocaleString() ?? "-"}</td>
+            <td className="px-3 py-2 text-right tabular-nums text-gray-700">{log.dimL1?.toLocaleString() ?? "-"}</td>
+            <td className="px-3 py-2 text-right tabular-nums text-gray-400">{log.dimL2?.toLocaleString() ?? "-"}</td>
             <td className="px-3 py-2 text-right text-gray-700">{numCell(log.steelWeight)}</td>
             <td className="px-3 py-2 text-right text-gray-700">{numCell(log.useWeight)}</td>
+            <td className="px-3 py-2 font-mono text-blue-700">{log.heatNo || "-"}</td>
+            <td className="px-3 py-2 text-center">
+              <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">절단완료</span>
+            </td>
+            <td className="px-3 py-2 text-gray-700">{log.operator}</td>
+            <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">{log.equipment.name}</td>
+            <td className="px-3 py-2 text-gray-500 whitespace-nowrap font-mono text-[11px]">{formatDate(log.startAt)}</td>
+            <td className="px-3 py-2 text-center text-gray-500 whitespace-nowrap">{formatDurationMs(totalMs)}</td>
+            <td className="px-3 py-2 text-center text-orange-500 whitespace-nowrap">{formatPauseMin(log.pauseMs)}</td>
+            <td className="px-3 py-2 text-center text-green-700 font-semibold whitespace-nowrap">{formatDurationMs(activeMs)}</td>
             <td className="px-3 py-2 text-gray-400 max-w-[120px] truncate">{log.memo ?? "-"}</td>
           </tr>
-        ))}
+          );
+        })}
       </tbody>
       <TotalFootNormal totalQty={totalQty} totalSteel={totalSteel} totalUse={totalUse} totalMs={totalMs} count={logs.length} />
     </table>

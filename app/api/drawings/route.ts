@@ -75,7 +75,10 @@ export async function GET(request: NextRequest) {
     if (allConfirmed) {
       const drawings = await prisma.drawingList.findMany({
         where: { status: { in: ["WAITING", "CUT"] } },
-        include: { project: { select: { id: true, projectCode: true, projectName: true } } },
+        include: {
+          project:         { select: { id: true, projectCode: true, projectName: true } },
+          assignedRemnant: { select: { width1: true, length1: true, width2: true, length2: true } },
+        },
         orderBy: [{ projectId: "asc" }, { createdAt: "asc" }],
       });
       return NextResponse.json({ success: true, data: drawings });

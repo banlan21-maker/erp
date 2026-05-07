@@ -50,8 +50,13 @@ interface Drawing {
   qty: number;
   useWeight: number | null;
   status: string;
+  assignedRemnant: { width1: number | null; length1: number | null; width2: number | null; length2: number | null } | null;
 }
 
+interface CuttingPause {
+  reason: string; reasonText: string | null;
+  pausedAt: string; resumedAt: string | null;
+}
 interface CuttingLog {
   id: string;
   drawingListId: string | null;
@@ -67,34 +72,65 @@ interface CuttingLog {
   qty: number | null;
   drawingNo: string | null;
   operator: string;
-  status: "STARTED" | "COMPLETED";
+  status: "STARTED" | "PAUSED" | "COMPLETED";
   startAt: string;
   endAt: string | null;
   memo: string | null;
+  pauses?: CuttingPause[];
 }
 
-function calcSteelWeight(t: number, w: number, l: number): number {
-  return Math.round(t * w * l * 7.85 / 1_000_000 * 10) / 10;
+// ── 치수 헬퍼 ─────────────────────────────────────────────────────────────
+function calcSteelWeight(t: number, w1: number, l1: number, w2?: number | null, l2?: number | null): number {
+  const area = w1 * l1 - (w2 ?? 0) * (l2 ?? 0);
+  return Math.round(t * area * 7.85 / 1_000_000 * 10) / 10;
+}
+
+// ── 시간 헬퍼 ─────────────────────────────────────────────────────────────
+function calcPauseMs(pauses?: CuttingPause[]): number {
+  if (!pauses?.length) return 0;
+  return pauses.reduce((s, p) => {
+    if (!p.resumedAt) return s;
+    return s + (new Date(p.resumedAt).getTime() - new Date(p.pausedAt).getTime());
+  }, 0);
+}
+function fmtHM(ms: number): string {
+  if (ms <= 0) return "-";
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  return h > 0 ? `${h}시간 ${m}분` : `${m}분`;
+}
+function fmtPauseMin(ms: number): string {
+  if (ms <= 0) return "-";
+  return `${Math.round(ms / 60000)}분`;
+}
+function fmtDate(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getDate()).padStart(2,"0")}`;
 }
 
 // ─── 컬럼 정의 (순서 = 테이블 표시 순서) ─────────────────────────────────
 
 const COLUMNS = [
-  { key: "hosin",     label: "호선",    align: "left"  as const, filterable: true  },
-  { key: "block",     label: "블록",    align: "left"  as const, filterable: true  },
-  { key: "drawingNo", label: "도면번호", align: "left"  as const, filterable: true  },
-  { key: "material",  label: "재질",    align: "left"  as const, filterable: true  },
-  { key: "thickness", label: "두께",    align: "right" as const, filterable: true  },
-  { key: "width",     label: "폭",      align: "right" as const, filterable: true  },
-  { key: "length",      label: "길이",    align: "right" as const, filterable: true  },
-  { key: "steelWeight", label: "철판중량", align: "right" as const, filterable: false },
-  { key: "useWeight",   label: "사용중량", align: "right" as const, filterable: false },
-  { key: "heatNo",      label: "Heat NO", align: "left"  as const, filterable: true  },
-  { key: "status",    label: "강재상태", align: "left"  as const, filterable: true  },
-  { key: "operator",  label: "작업자",  align: "left"  as const, filterable: true  },
-  { key: "equipment", label: "장비",    align: "left"  as const, filterable: true  },
-  { key: "duration",  label: "작업시간", align: "left"  as const, filterable: false },
-  { key: "memo",      label: "비고",    align: "left"  as const, filterable: false },
+  { key: "hosin",      label: "호선",     align: "left"  as const, filterable: true  },
+  { key: "block",      label: "블록",     align: "left"  as const, filterable: true  },
+  { key: "drawingNo",  label: "도면번호",  align: "left"  as const, filterable: true  },
+  { key: "material",   label: "재질",     align: "left"  as const, filterable: true  },
+  { key: "thickness",  label: "두께",     align: "right" as const, filterable: true  },
+  { key: "width1",     label: "폭1",      align: "right" as const, filterable: true  },
+  { key: "width2",     label: "폭2",      align: "right" as const, filterable: false },
+  { key: "length1",    label: "길이1",    align: "right" as const, filterable: true  },
+  { key: "length2",    label: "길이2",    align: "right" as const, filterable: false },
+  { key: "steelWeight",label: "철판중량",  align: "right" as const, filterable: false },
+  { key: "useWeight",  label: "사용중량",  align: "right" as const, filterable: false },
+  { key: "heatNo",     label: "Heat NO", align: "left"  as const, filterable: true  },
+  { key: "status",     label: "강재상태",  align: "left"  as const, filterable: true  },
+  { key: "operator",   label: "작업자",   align: "left"  as const, filterable: true  },
+  { key: "equipment",  label: "장비",     align: "left"  as const, filterable: true  },
+  { key: "workDate",   label: "작업일",   align: "left"  as const, filterable: false },
+  { key: "totalTime",  label: "총가동시간", align: "left"  as const, filterable: false },
+  { key: "pauseTime",  label: "중단시간",  align: "left"  as const, filterable: false },
+  { key: "activeTime", label: "실가동시간", align: "left"  as const, filterable: false },
+  { key: "memo",       label: "비고",     align: "left"  as const, filterable: false },
 ] as const;
 type ColKey = (typeof COLUMNS)[number]["key"];
 const FILTER_COLS = COLUMNS.filter(c => c.filterable);
@@ -791,6 +827,9 @@ export default function WorklogAdmin({
 
   // ── 필터 헬퍼 ───────────────────────────────────────────────────────────
 
+  const getW1 = (d: Drawing) => d.assignedRemnant?.width1  ?? d.width;
+  const getL1 = (d: Drawing) => d.assignedRemnant?.length1 ?? d.length;
+
   const getVal = (d: Drawing, log: CuttingLog | null, col: FCKey): string => {
     switch (col) {
       case "hosin":     return d.project?.projectCode ?? "";
@@ -798,8 +837,8 @@ export default function WorklogAdmin({
       case "drawingNo": return d.drawingNo ?? "";
       case "material":  return d.material;
       case "thickness": return String(d.thickness);
-      case "width":     return String(d.width);
-      case "length":    return String(d.length);
+      case "width1":    return String(getW1(d));
+      case "length1":   return String(getL1(d));
       case "heatNo":    return d.heatNo ?? "";
       case "status":    return log?.status ?? "";
       case "operator":  return log?.operator ?? "";
@@ -1013,17 +1052,23 @@ export default function WorklogAdmin({
                         <td className="px-3 py-1.5 text-gray-600">{d.material}</td>
                         {/* 두께 */}
                         <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.thickness}</td>
-                        {/* 폭 */}
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.width}</td>
-                        {/* 길이 */}
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.length}</td>
+                        {/* 폭1 */}
+                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{getW1(d)}</td>
+                        {/* 폭2 */}
+                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-400">{d.assignedRemnant?.width2 ?? "-"}</td>
+                        {/* 길이1 */}
+                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{getL1(d)}</td>
+                        {/* 길이2 */}
+                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-400">{d.assignedRemnant?.length2 ?? "-"}</td>
                         {/* 철판중량 */}
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{calcSteelWeight(d.thickness, d.width, d.length).toFixed(1)}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">
+                          {calcSteelWeight(d.thickness, getW1(d), getL1(d), d.assignedRemnant?.width2, d.assignedRemnant?.length2).toFixed(1)}
+                        </td>
                         {/* 사용중량 */}
                         <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.useWeight?.toFixed(1) ?? "-"}</td>
                         {/* Heat NO */}
                         <td className="px-3 py-1.5 font-mono text-[11px] text-blue-700">{d.heatNo ?? "-"}</td>
-                        {/* 작업상태 */}
+                        {/* 강재상태 */}
                         <td className="px-3 py-1.5">
                           {log ? (
                             <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${STATUS_COLOR[log.status] ?? "bg-gray-100 text-gray-600"}`}>
@@ -1037,14 +1082,21 @@ export default function WorklogAdmin({
                         <td className="px-3 py-1.5 font-semibold text-gray-800">{log?.operator ?? "-"}</td>
                         {/* 장비 */}
                         <td className="px-3 py-1.5 text-gray-500">{log?.equipment?.name ?? "-"}</td>
-                        {/* 작업시간 */}
-                        <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">
-                          {log ? (
-                            <div>
-                              <div className="text-[11px] text-gray-500">{fmtDt(log.startAt)} ~ {log.endAt ? fmtDt(log.endAt) : "진행중"}</div>
-                              {log.endAt && <div className="text-green-600 font-medium">{fmtDuration(log.startAt, log.endAt)}</div>}
-                            </div>
-                          ) : "-"}
+                        {/* 작업일 */}
+                        <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap font-mono text-[11px]">
+                          {log ? fmtDate(log.startAt) : "-"}
+                        </td>
+                        {/* 총가동시간 */}
+                        <td className="px-3 py-1.5 text-gray-500 whitespace-nowrap">
+                          {log?.endAt ? fmtHM(new Date(log.endAt).getTime() - new Date(log.startAt).getTime()) : (log ? "진행중" : "-")}
+                        </td>
+                        {/* 중단시간 */}
+                        <td className="px-3 py-1.5 text-orange-500 whitespace-nowrap">
+                          {log ? fmtPauseMin(calcPauseMs(log.pauses)) : "-"}
+                        </td>
+                        {/* 실가동시간 */}
+                        <td className="px-3 py-1.5 text-green-700 font-semibold whitespace-nowrap">
+                          {log?.endAt ? fmtHM(Math.max(0, new Date(log.endAt).getTime() - new Date(log.startAt).getTime() - calcPauseMs(log.pauses))) : (log ? "진행중" : "-")}
                         </td>
                         {/* 비고 */}
                         <td className="px-3 py-1.5 text-gray-400 max-w-[120px] truncate">{log?.memo ?? "-"}</td>
@@ -1081,7 +1133,7 @@ export default function WorklogAdmin({
                   })}
                   {filteredDrawings.length === 0 && (
                     <tr>
-                      <td colSpan={16} className="px-4 py-10 text-center text-gray-400">
+                      <td colSpan={22} className="px-4 py-10 text-center text-gray-400">
                         {drawings.length === 0 ? "확정된 강재리스트가 없습니다." : "필터 결과가 없습니다."}
                       </td>
                     </tr>
