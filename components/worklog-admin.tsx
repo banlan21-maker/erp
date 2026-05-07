@@ -719,9 +719,7 @@ export default function WorklogAdmin({
       if (v) set.add(v);
       else hasEmpty = true;
     }
-    const result: FilterValue[] = col === "status"
-      ? Array.from(set).sort().map(v => ({ value: v, label: STATUS_LABEL[v] ?? v }))
-      : Array.from(set).sort().map(v => ({ value: v, label: v }));
+    const result: FilterValue[] = Array.from(set).sort().map(v => ({ value: v, label: v }));
     if (hasEmpty) result.push({ value: "__EMPTY__", label: "항목없음" });
     return result;
   };
