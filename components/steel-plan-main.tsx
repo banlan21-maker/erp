@@ -42,6 +42,7 @@ interface SteelPlanHeatRow {
   length: number;
   heatNo: string;
   status: "WAITING" | "CUT";
+  cutAt:         string | null;
   sourceFile:    string | null;
   uploadBatchNo: string | null;
   createdAt: string;
@@ -1251,14 +1252,15 @@ export default function SteelPlanMain() {
                         </th>
                       );
                     })}
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">사용완료일</th>
                     <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">수정/삭제</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {heatLoading ? (
-                    <tr><td colSpan={9} className="py-8 text-center text-gray-400">불러오는 중...</td></tr>
+                    <tr><td colSpan={10} className="py-8 text-center text-gray-400">불러오는 중...</td></tr>
                   ) : heatRows.length === 0 ? (
-                    <tr><td colSpan={9} className="py-8 text-center text-gray-400">등록된 판번호가 없습니다</td></tr>
+                    <tr><td colSpan={10} className="py-8 text-center text-gray-400">등록된 판번호가 없습니다</td></tr>
                   ) : (
                     heatRows.map((row) => {
                       const st = HEAT_STATUS[row.status];
@@ -1285,6 +1287,9 @@ export default function SteelPlanMain() {
                           </td>
                           <td className="px-2 py-1 text-center">
                             <span className={`px-1.5 py-0 rounded-full text-[11px] font-medium ${st.cls}`}>{st.label}</span>
+                          </td>
+                          <td className="px-2 py-1 text-center text-gray-500 font-mono text-[11px]">
+                            {row.cutAt ? new Date(row.cutAt).toLocaleDateString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit" }) : <span className="text-gray-300">-</span>}
                           </td>
                           <td className="px-2 py-1 text-center">
                             {editingHeat?.id === row.id ? (

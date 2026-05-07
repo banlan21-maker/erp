@@ -105,7 +105,7 @@ export async function PATCH(
       if (log.heatNo?.trim()) {
         const heatResult = await prisma.steelPlanHeat.updateMany({
           where: { heatNo: log.heatNo.trim(), status: "WAITING" },
-          data:  { status: "CUT" },
+          data:  { status: "CUT", cutAt: log.endAt ?? new Date() },
         });
 
         // 판번호 목록에 없는 경우: 자동 등록 안 함 (강재입고관리에서 사전 등록 필수)
@@ -185,7 +185,7 @@ export async function DELETE(
     if (log.heatNo?.trim()) {
       await prisma.steelPlanHeat.updateMany({
         where: { heatNo: log.heatNo.trim(), status: "CUT" },
-        data:  { status: "WAITING" },
+        data:  { status: "WAITING", cutAt: null },
       });
     }
 

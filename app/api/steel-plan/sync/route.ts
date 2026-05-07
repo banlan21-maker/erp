@@ -77,7 +77,7 @@ export async function POST() {
     if (heatIdsToRevert.length > 0) {
       const result = await prisma.steelPlanHeat.updateMany({
         where: { id: { in: heatIdsToRevert } },
-        data:  { status: "WAITING" },
+        data:  { status: "WAITING", cutAt: null },
       });
       revertedHeats = result.count;
     }

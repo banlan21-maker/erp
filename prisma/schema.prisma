@@ -17,56 +17,56 @@ enum SupplyCategory {
 }
 
 enum SupplyDepartment {
-  CUTTING   // 절단
-  FACILITY  // 공무
+  CUTTING // 절단
+  FACILITY // 공무
 }
 
 // ── 스케줄러 ──────────────────────────────────────────────
 
 enum ScheduleWorkType {
-  NORMAL    // 일반
-  REVISION  // 도면개정
+  NORMAL // 일반
+  REVISION // 도면개정
 }
 
 enum ScheduleHoldReason {
-  MATERIAL_DELAY  // 강재지연
-  URGENT          // 긴급작업
-  REVISION        // 도면개정
-  OTHER           // 기타
+  MATERIAL_DELAY // 강재지연
+  URGENT // 긴급작업
+  REVISION // 도면개정
+  OTHER // 기타
 }
 
 enum ScheduleStatus {
-  PLANNED       // 예정
-  IN_PROGRESS   // 진행중
-  COMPLETED     // 완료
-  HOLD          // 홀드
-  CANCELLED     // 취소
+  PLANNED // 예정
+  IN_PROGRESS // 진행중
+  COMPLETED // 완료
+  HOLD // 홀드
+  CANCELLED // 취소
 }
 
 enum UrgentWorkStatus {
-  PENDING      // 대기
-  IN_PROGRESS  // 진행중
-  COMPLETED    // 완료
+  PENDING // 대기
+  IN_PROGRESS // 진행중
+  COMPLETED // 완료
 }
 
 // ── 잔재 관리 ──────────────────────────────────────────────
 
 enum RemnantType {
-  REMNANT    // 현장잔재 (정규 작업 후 남은 자투리)
-  SURPLUS    // 여유원재 (입고했지만 미사용 판재)
+  REMNANT // 현장잔재 (정규 작업 후 남은 자투리)
+  SURPLUS // 여유원재 (입고했지만 미사용 판재)
   REGISTERED // 등록잔재 (등록된 잔재)
 }
 
 enum RemnantShape {
-  RECTANGLE  // 사각형
-  L_SHAPE    // L자형
-  IRREGULAR  // 불규칙형
+  RECTANGLE // 사각형
+  L_SHAPE // L자형
+  IRREGULAR // 불규칙형
 }
 
 enum RemnantStatus {
-  PENDING    // 등록 (초기 등록, 원철판 미절단)
-  IN_STOCK   // 재고 (원철판 절단완료, 판번호 부여됨)
-  EXHAUSTED  // 소진 (다른 곳에 사용됨)
+  PENDING // 등록 (초기 등록, 원철판 미절단)
+  IN_STOCK // 재고 (원철판 절단완료, 판번호 부여됨)
+  EXHAUSTED // 소진 (다른 곳에 사용됨)
 }
 
 enum EquipmentStatus {
@@ -101,46 +101,46 @@ enum Priority {
 }
 
 enum CuttingStatus {
-  STARTED    // 절단 진행중
-  COMPLETED  // 절단 완료
+  STARTED // 절단 진행중
+  COMPLETED // 절단 완료
 }
 
 enum DrawingStatus {
-  REGISTERED  // 대기 (SteelPlan 있으나 미입고)
-  WAITING     // 입고완료 (SteelPlan 매칭 + 입고)
-  CAUTION     // 주의 (SteelPlan에 없는 항목)
-  CUT         // 절단 (작업일보 등록)
+  REGISTERED // 대기 (SteelPlan 있으나 미입고)
+  WAITING // 입고완료 (SteelPlan 매칭 + 입고)
+  CAUTION // 주의 (SteelPlan에 없는 항목)
+  CUT // 절단 (작업일보 등록)
 }
 
 enum SteelPlanStatus {
-  REGISTERED  // 등록 (계획 등록)
-  RECEIVED    // 입고완료
-  ISSUED      // 출고완료 (절단장 투입)
-  COMPLETED   // 레거시 - 더 이상 사용 안 함
+  REGISTERED // 등록 (계획 등록)
+  RECEIVED // 입고완료
+  ISSUED // 출고완료 (절단장 투입)
+  COMPLETED // 레거시 - 더 이상 사용 안 함
 }
 
 enum SteelPlanHeatStatus {
-  WAITING  // 대기
-  CUT      // 절단
+  WAITING // 대기
+  CUT // 절단
 }
 
 // Excel 업로드 형식 프리셋
 model ExcelPreset {
-  id            String   @id @default(cuid())
-  name          String   // 프리셋 이름 (제공업체명 or 형식명)
-  dataStartRow  Int      @default(2) // 데이터 시작 행번호 (1-indexed)
-  colBlock      Int?     // 블록 열번호
-  colDrawingNo  Int?     // 도면/NEST 열번호
-  colHeatNo     Int?     // Heat NO 열번호
-  colMaterial   Int?     // 재질 열번호
-  colThickness  Int?     // 두께 열번호
-  colWidth      Int?     // 폭 열번호
-  colLength     Int?     // 길이 열번호
-  colQty        Int?     // 수량 열번호
-  colSteelWeight Int?    // 강재중량 열번호
-  colUseWeight  Int?     // 사용중량 열번호
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String   @id @default(cuid())
+  name           String // 프리셋 이름 (제공업체명 or 형식명)
+  dataStartRow   Int      @default(2) // 데이터 시작 행번호 (1-indexed)
+  colBlock       Int? // 블록 열번호
+  colDrawingNo   Int? // 도면/NEST 열번호
+  colHeatNo      Int? // Heat NO 열번호
+  colMaterial    Int? // 재질 열번호
+  colThickness   Int? // 두께 열번호
+  colWidth       Int? // 폭 열번호
+  colLength      Int? // 길이 열번호
+  colQty         Int? // 수량 열번호
+  colSteelWeight Int? // 강재중량 열번호
+  colUseWeight   Int? // 사용중량 열번호
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 // 호선(프로젝트) 마스터
@@ -152,7 +152,7 @@ model Project {
   client          String
   status          ProjectStatus @default(ACTIVE)
   memo            String?
-  storageLocation String?       // 보관 위치 (야드 구역)
+  storageLocation String? // 보관 위치 (야드 구역)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -171,65 +171,65 @@ model Project {
 model BomVendor {
   id        String   @id @default(cuid())
   name      String   @unique // 업체명
-  desc      String?          // 설명
-  preset    Json             // 파싱 설정 (header_row, project_cell, block_cell, filter, fields, ...)
+  desc      String? // 설명
+  preset    Json // 파싱 설정 (header_row, project_cell, block_cell, filter, fields, ...)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  bomItems  BomItem[]
+  bomItems BomItem[]
 }
 
 // BOM 항목 (업체 엑셀 파싱 후 DB 저장)
 model BomItem {
-  id         String     @id @default(cuid())
-  projectId  String
-  project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  vendorId   String?
-  vendor     BomVendor? @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  id        String     @id @default(cuid())
+  projectId String
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  vendorId  String?
+  vendor    BomVendor? @relation(fields: [vendorId], references: [id], onDelete: SetNull)
 
-  hosin      String     // 호선
-  block      String     // 블록
-  partName   String     // 파트명
-  thickness  String?    // 두께 (문자열, dim_parse 결과 포함)
-  size       String?    // 사이즈
-  material   String?    // 재질
-  process    String?    // 가공
-  qty        Int?       // 수량
-  weight     Float?     // 중량(kg)
-  nestNo     String?    // NEST NO
-  sourceFile String?    // 원본 파일명
+  hosin      String // 호선
+  block      String // 블록
+  partName   String // 파트명
+  thickness  String? // 두께 (문자열, dim_parse 결과 포함)
+  size       String? // 사이즈
+  material   String? // 재질
+  process    String? // 가공
+  qty        Int? // 수량
+  weight     Float? // 중량(kg)
+  nestNo     String? // NEST NO
+  sourceFile String? // 원본 파일명
 
-  createdAt  DateTime   @default(now())
+  createdAt DateTime @default(now())
 }
 
 // 강재리스트 (Excel 업로드 파싱)
 model DrawingList {
-  id          String   @id @default(cuid())
-  projectId   String
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  block       String?
-  drawingNo   String?
-  heatNo      String?
-  material    String
-  thickness   Float
-  width       Float
-  length      Float
-  qty         Int
-  steelWeight Float?
-  useWeight   Float?
-  sourceFile  String?
+  block               String?
+  drawingNo           String?
+  heatNo              String?
+  material            String
+  thickness           Float
+  width               Float
+  length              Float
+  qty                 Int
+  steelWeight         Float?
+  useWeight           Float?
+  sourceFile          String?
   status              DrawingStatus @default(REGISTERED)
-  receivedAt          DateTime?     // 입고일 (대기 상태로 변경 시 자동 기록)
-  alternateVesselCode String?       // 대체호선: 비어있으면 자기 호선 재고, 있으면 해당 호선 재고에서 매칭
-  hasRemnant          Boolean  @default(false)  // 등록잔재 발생 여부
+  receivedAt          DateTime? // 입고일 (대기 상태로 변경 시 자동 기록)
+  alternateVesselCode String? // 대체호선: 비어있으면 자기 호선 재고, 있으면 해당 호선 재고에서 매칭
+  hasRemnant          Boolean       @default(false) // 등록잔재 발생 여부
 
   // 등록잔재 사용 절단: 어떤 잔재를 사용하는지 (있으면 하단 잔재사용 리스트)
-  assignedRemnantId   String?
-  assignedRemnant     Remnant? @relation("AssignedRemnant", fields: [assignedRemnantId], references: [id], onDelete: SetNull)
+  assignedRemnantId String?
+  assignedRemnant   Remnant? @relation("AssignedRemnant", fields: [assignedRemnantId], references: [id], onDelete: SetNull)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   workOrders  WorkOrder[]
   cuttingLogs CuttingLog[]
@@ -238,55 +238,55 @@ model DrawingList {
 
 // 작업지시 (내부 참조용 유지)
 model WorkOrder {
-  id            String          @id @default(cuid())
+  id            String       @id @default(cuid())
   projectId     String
-  project       Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   drawingListId String?
-  drawingList   DrawingList?    @relation(fields: [drawingListId], references: [id])
+  drawingList   DrawingList? @relation(fields: [drawingListId], references: [id])
   equipmentId   String?
-  equipment     Equipment?      @relation(fields: [equipmentId], references: [id])
+  equipment     Equipment?   @relation(fields: [equipmentId], references: [id])
 
-  orderNo       String          @unique
-  status        WorkOrderStatus @default(PENDING)
-  priority      Priority        @default(NORMAL)
-  assignedAt    DateTime?
-  dueDate       DateTime?
-  memo          String?
+  orderNo    String          @unique
+  status     WorkOrderStatus @default(PENDING)
+  priority   Priority        @default(NORMAL)
+  assignedAt DateTime?
+  dueDate    DateTime?
+  memo       String?
 
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // 절단 작업일보
 model CuttingLog {
-  id            String        @id @default(cuid())
+  id            String       @id @default(cuid())
   equipmentId   String
-  equipment     Equipment     @relation(fields: [equipmentId], references: [id])
+  equipment     Equipment    @relation(fields: [equipmentId], references: [id])
   projectId     String?
-  project       Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  project       Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
   drawingListId String?
-  drawingList   DrawingList?  @relation(fields: [drawingListId], references: [id], onDelete: SetNull)
+  drawingList   DrawingList? @relation(fields: [drawingListId], references: [id], onDelete: SetNull)
 
-  heatNo        String        // Heat NO (필수)
-  material      String?       // 재질 (도면에서 자동입력)
-  thickness     Float?        // 두께 (도면에서 자동입력)
-  width         Float?        // 폭 (도면에서 자동입력)
-  length        Float?        // 길이 (도면에서 자동입력)
-  qty           Int?          // 수량 (도면에서 자동입력)
-  drawingNo     String?       // 도면번호 (도면에서 자동입력)
-  operator      String        // 작업자명 (필수)
-  status        CuttingStatus @default(STARTED)
-  startAt       DateTime      @default(now())
-  endAt         DateTime?     // 절단 종료 시각
-  memo          String?
+  heatNo    String // Heat NO (필수)
+  material  String? // 재질 (도면에서 자동입력)
+  thickness Float? // 두께 (도면에서 자동입력)
+  width     Float? // 폭 (도면에서 자동입력)
+  length    Float? // 길이 (도면에서 자동입력)
+  qty       Int? // 수량 (도면에서 자동입력)
+  drawingNo String? // 도면번호 (도면에서 자동입력)
+  operator  String // 작업자명 (필수)
+  status    CuttingStatus @default(STARTED)
+  startAt   DateTime      @default(now())
+  endAt     DateTime? // 절단 종료 시각
+  memo      String?
 
   // 돌발작업 연결 (기존 컬럼 불변 원칙)
-  isUrgent      Boolean       @default(false)
-  urgentWorkId  String?
-  urgentWork    UrgentWork?   @relation(fields: [urgentWorkId], references: [id], onDelete: SetNull)
+  isUrgent     Boolean     @default(false)
+  urgentWorkId String?
+  urgentWork   UrgentWork? @relation(fields: [urgentWorkId], references: [id], onDelete: SetNull)
 
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // 근무지 옵션
@@ -298,39 +298,39 @@ model WorksiteOption {
 
 // 인원 마스터
 model Worker {
-  id            String    @id @default(cuid())
-  name          String                        // 이름
-  nationality   String?                       // 국적
-  birthDate     DateTime?                     // 생년월일
-  phone         String?                       // 전화번호
-  role          String?                       // 담당
-  position      String?                       // 직책
-  worksite      String?                       // 근무지
-  carNumber     String?                       // 차량번호
-  joinDate      DateTime?                     // 입사일
-  bloodType     String?                       // 혈액형
-  shoeSize      String?                       // 신발사이즈
-  winterTop     String?                       // 동복 상의
-  winterBottom  String?                       // 동복 하의
-  summerTop     String?                       // 하계 상의
-  summerBottom  String?                       // 하계 하의
-  isCncOp       Boolean   @default(false)       // CNC 플라즈마 운전 가능 여부
+  id           String    @id @default(cuid())
+  name         String // 이름
+  nationality  String? // 국적
+  birthDate    DateTime? // 생년월일
+  phone        String? // 전화번호
+  role         String? // 담당
+  position     String? // 직책
+  worksite     String? // 근무지
+  carNumber    String? // 차량번호
+  joinDate     DateTime? // 입사일
+  bloodType    String? // 혈액형
+  shoeSize     String? // 신발사이즈
+  winterTop    String? // 동복 상의
+  winterBottom String? // 동복 하의
+  summerTop    String? // 하계 상의
+  summerBottom String? // 하계 하의
+  isCncOp      Boolean   @default(false) // CNC 플라즈마 운전 가능 여부
   // 외국인 전용 필드
-  nickname      String?                       // 닉네임
-  englishName   String?                       // 영문이름
-  visaType      String?                       // 비자타입
-  foreignIdNo   String?                       // 외국인등록증번호
-  passportNo    String?                       // 여권번호
-  visaExpiry    DateTime?                     // 비자만기일
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  nickname     String? // 닉네임
+  englishName  String? // 영문이름
+  visaType     String? // 비자타입
+  foreignIdNo  String? // 외국인등록증번호
+  passportNo   String? // 여권번호
+  visaExpiry   DateTime? // 비자만기일
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 }
 
 // 식수 관리
 model MealVendor {
   id              String       @id @default(cuid())
   name            String
-  factory         String                         // 진교 / 진동
+  factory         String // 진교 / 진동
   phone           String?
   pricePerMeal    Int?
   token           String       @unique
@@ -346,8 +346,8 @@ model MealVendor {
 
 model MealRecord {
   id        String      @id @default(cuid())
-  date      String                              // YYYY-MM-DD
-  factory   String                              // 진교 / 진동
+  date      String // YYYY-MM-DD
+  factory   String // 진교 / 진동
   mealType  String      @default("점심")
   count     Int
   memo      String?
@@ -370,11 +370,11 @@ model Equipment {
   nextInspection DateTime?
   memo           String?
 
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  workOrders     WorkOrder[]
-  cuttingLogs    CuttingLog[]
+  workOrders  WorkOrder[]
+  cuttingLogs CuttingLog[]
 }
 
 // ==========================================
@@ -383,68 +383,68 @@ model Equipment {
 
 model SupplyItem {
   id           Int              @id @default(autoincrement())
-  name         String           // 품명
-  category     SupplyCategory   // 물품 구분 (소모품/비품)
+  name         String // 품명
+  category     SupplyCategory // 물품 구분 (소모품/비품)
   department   SupplyDepartment @default(CUTTING) // 관리주체 (절단/공무)
-  subCategory  String?          // 세부분류
-  unit         String           // 단위 (개, 통, 켤레 등)
+  subCategory  String? // 세부분류
+  unit         String // 단위 (개, 통, 켤레 등)
   stockQty     Int              @default(0) // 현재 재고 수량
-  reorderPoint Int?             // 발주 기준점 (소모품 전용)
-  location     String?          // 보관 위치
-  memo         String?          // 비고
+  reorderPoint Int? // 발주 기준점 (소모품 전용)
+  location     String? // 보관 위치
+  memo         String? // 비고
 
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  inbounds     SupplyInbound[]
-  outbounds    SupplyOutbound[]
+  inbounds  SupplyInbound[]
+  outbounds SupplyOutbound[]
 }
 
 model SupplyInbound {
-  id              Int         @id @default(autoincrement())
-  itemId          Int
-  item            SupplyItem  @relation(fields: [itemId], references: [id])
-  vendorId        Int?
-  vendor          Vendor?     @relation(fields: [vendorId], references: [id])
-  qty             Int         // 입고 수량
-  stockQtyAfter   Int?        // 입고 후 총재고 스냅샷
-  receivedBy      String      // 입고 담당자
-  receivedAt      DateTime    @default(now()) // 입고 일시
-  memo            String?     // 비고
+  id            Int        @id @default(autoincrement())
+  itemId        Int
+  item          SupplyItem @relation(fields: [itemId], references: [id])
+  vendorId      Int?
+  vendor        Vendor?    @relation(fields: [vendorId], references: [id])
+  qty           Int // 입고 수량
+  stockQtyAfter Int? // 입고 후 총재고 스냅샷
+  receivedBy    String // 입고 담당자
+  receivedAt    DateTime   @default(now()) // 입고 일시
+  memo          String? // 비고
 
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model SupplyOutbound {
-  id              Int         @id @default(autoincrement())
-  itemId          Int
-  item            SupplyItem  @relation(fields: [itemId], references: [id])
-  qty             Int         // 출고 수량
-  stockQtyAfter   Int?        // 출고 후 총재고 스냅샷
-  usedBy          String      // 사용자
-  usedAt          DateTime    @default(now()) // 출고 일시
-  memo            String?     // 비고
+  id            Int        @id @default(autoincrement())
+  itemId        Int
+  item          SupplyItem @relation(fields: [itemId], references: [id])
+  qty           Int // 출고 수량
+  stockQtyAfter Int? // 출고 후 총재고 스냅샷
+  usedBy        String // 사용자
+  usedAt        DateTime   @default(now()) // 출고 일시
+  memo          String? // 비고
 
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Vendor {
-  id             Int         @id @default(autoincrement())
-  name           String      // 업체명
-  contact        String?     // 담당자명
-  phone          String?     // 연락처
-  email          String?     // 이메일
-  businessNumber String?     // 사업자번호
-  category       String?     // 주요 취급 품목 카테고리
-  memo           String?     // 비고
-  isFavorite     Boolean     @default(false)  // 즐겨찾기
+  id             Int     @id @default(autoincrement())
+  name           String // 업체명
+  contact        String? // 담당자명
+  phone          String? // 연락처
+  email          String? // 이메일
+  businessNumber String? // 사업자번호
+  category       String? // 주요 취급 품목 카테고리
+  memo           String? // 비고
+  isFavorite     Boolean @default(false) // 즐겨찾기
 
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  inbounds     SupplyInbound[]
+  inbounds SupplyInbound[]
 }
 
 // ==========================================
@@ -452,65 +452,65 @@ model Vendor {
 // ==========================================
 
 model CncSchedule {
-  id               String              @id @default(cuid())
+  id String @id @default(cuid())
 
   // 기존 블록 연결 (자재 등록 전 선행 생성 가능하므로 nullable)
-  projectId        String?
-  project          Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   // 자재 미등록 상태에서 직접 입력하는 경우
-  vesselCode       String              // 호선 코드
-  blockName        String              // 블록명
+  vesselCode String // 호선 코드
+  blockName  String // 블록명
 
-  plannedStart     DateTime?           // 절단 시작 예정일
-  plannedEnd       DateTime?           // 절단 완료 예정일
-  deliveryFactory  DateTime?           // 가공장 납기일
-  deliveryAssembly DateTime?           // 조립장 납기일
+  plannedStart     DateTime? // 절단 시작 예정일
+  plannedEnd       DateTime? // 절단 완료 예정일
+  deliveryFactory  DateTime? // 가공장 납기일
+  deliveryAssembly DateTime? // 조립장 납기일
 
-  workType         ScheduleWorkType    @default(NORMAL)
-  status           ScheduleStatus      @default(PLANNED)
-  holdReason       ScheduleHoldReason? // 중단 사유 (홀드 시)
+  workType   ScheduleWorkType    @default(NORMAL)
+  status     ScheduleStatus      @default(PLANNED)
+  holdReason ScheduleHoldReason? // 중단 사유 (홀드 시)
 
-  priority         Int                 @default(0)   // 낮을수록 우선
-  memo             String?
+  priority Int     @default(0) // 낮을수록 우선
+  memo     String?
 
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model UrgentWork {
-  id           String           @id @default(cuid())
-  urgentNo     String           @unique  // URG-2026-001 자동채번
-  title        String           // 작업명
-  urgency      String           @default("URGENT")  // URGENT / FLEXIBLE / PRECUT
+  id       String @id @default(cuid())
+  urgentNo String @unique // URG-2026-001 자동채번
+  title    String // 작업명
+  urgency  String @default("URGENT") // URGENT / FLEXIBLE / PRECUT
 
-  requester    String?          // 요청자
-  department   String?          // 부서
+  requester  String? // 요청자
+  department String? // 부서
 
   // 호선/블록 연관
-  projectId    String?
-  project      Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  vesselName   String?          // 직접 입력 호선명
+  projectId  String?
+  project    Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  vesselName String? // 직접 입력 호선명
 
-  requestDate  DateTime         @default(now())
-  dueDate      DateTime?
+  requestDate DateTime  @default(now())
+  dueDate     DateTime?
 
-  materialMemo String?          // 재질 메모 (자유 텍스트)
-  drawingNo    String?          // 도면번호
-  destination  String?          // 도착지
+  materialMemo String? // 재질 메모 (자유 텍스트)
+  drawingNo    String? // 도면번호
+  destination  String? // 도착지
 
   // 사용 예정 잔재 연결
-  remnantId    String?
-  remnant      Remnant?         @relation(fields: [remnantId], references: [id], onDelete: SetNull)
+  remnantId String?
+  remnant   Remnant? @relation(fields: [remnantId], references: [id], onDelete: SetNull)
 
   status       UrgentWorkStatus @default(PENDING)
   registeredBy String?
   memo         String?
 
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  cuttingLogs  CuttingLog[]
+  cuttingLogs CuttingLog[]
 }
 
 // ── 잔재 모델 ──────────────────────────────────────────────
@@ -522,38 +522,38 @@ model UrgentWork {
 // 장비 종류 프리셋 (사용자 추가 가능)
 model MgmtEquipmentKindPreset {
   id        String @id @default(cuid())
-  label     String @unique  // 표시 이름 (예: CNC설비, 크레인)
+  label     String @unique // 표시 이름 (예: CNC설비, 크레인)
   sortOrder Int    @default(0)
 }
 
 enum MgmtEquipmentUsage {
-  IN_USE       // 사용중
-  MAINTENANCE  // 점검중
-  DISPOSED     // 폐기
+  IN_USE // 사용중
+  MAINTENANCE // 점검중
+  DISPOSED // 폐기
 }
 
 // 장비 마스터 (관리 파트 전용)
 model MgmtEquipment {
-  id           String              @id @default(cuid())
-  code         String              @unique  // EQP-001 자동채번
-  managementNo String?             // 관리번호 (외부 부여 관리번호, 선택)
-  name         String              // 장비명
-  kind         String              // 장비 종류 (MgmtEquipmentKindPreset.label 참조)
-  maker        String?             // 제조사
-  modelName    String?             // 모델명
-  madeYear     Int?                // 제조년도
-  acquiredAt   DateTime?           // 취득일
-  acquiredCost Int?                // 취득금액
-  location     String?             // 설치 위치
-  usage        MgmtEquipmentUsage  @default(IN_USE)
-  memo         String?             // 비고
+  id           String             @id @default(cuid())
+  code         String             @unique // EQP-001 자동채번
+  managementNo String? // 관리번호 (외부 부여 관리번호, 선택)
+  name         String // 장비명
+  kind         String // 장비 종류 (MgmtEquipmentKindPreset.label 참조)
+  maker        String? // 제조사
+  modelName    String? // 모델명
+  madeYear     Int? // 제조년도
+  acquiredAt   DateTime? // 취득일
+  acquiredCost Int? // 취득금액
+  location     String? // 설치 위치
+  usage        MgmtEquipmentUsage @default(IN_USE)
+  memo         String? // 비고
 
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  specs        MgmtEquipmentSpec[]
-  inspections  MgmtInspectionItem[]
-  repairs      MgmtRepairLog[]
+  specs       MgmtEquipmentSpec[]
+  inspections MgmtInspectionItem[]
+  repairs     MgmtRepairLog[]
 }
 
 // 사양 (항목명 + 값 쌍)
@@ -561,8 +561,8 @@ model MgmtEquipmentSpec {
   id          String        @id @default(cuid())
   equipmentId String
   equipment   MgmtEquipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
-  specKey     String        // 항목명
-  specValue   String        // 값
+  specKey     String // 항목명
+  specValue   String // 값
   sortOrder   Int           @default(0)
 }
 
@@ -571,14 +571,14 @@ model MgmtInspectionItem {
   id              String        @id @default(cuid())
   equipmentId     String
   equipment       MgmtEquipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
-  itemName        String        // 검사 항목명
-  periodMonth     Int           // 주기 (월)
-  lastInspectedAt DateTime?     // 최종 검사일
-  nextInspectAt   DateTime?     // 다음 검사 예정일 (자동계산)
-  inspector       String?       // 담당 기관/담당자
-  memo            String?       // 비고
+  itemName        String // 검사 항목명
+  periodMonth     Int // 주기 (월)
+  lastInspectedAt DateTime? // 최종 검사일
+  nextInspectAt   DateTime? // 다음 검사 예정일 (자동계산)
+  inspector       String? // 담당 기관/담당자
+  memo            String? // 비고
 
-  logs            MgmtInspectionLog[]
+  logs MgmtInspectionLog[]
 }
 
 // 검사 이력 (누적 보관, 삭제 금지)
@@ -586,10 +586,10 @@ model MgmtInspectionLog {
   id          String             @id @default(cuid())
   itemId      String
   item        MgmtInspectionItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  completedAt DateTime           // 완료일
+  completedAt DateTime // 완료일
   memo        String?
 
-  createdAt   DateTime           @default(now())
+  createdAt DateTime @default(now())
 }
 
 // 수선 이력 (누적 보관, 삭제 금지)
@@ -597,13 +597,13 @@ model MgmtRepairLog {
   id          String        @id @default(cuid())
   equipmentId String
   equipment   MgmtEquipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
-  repairedAt  DateTime      // 수선일
-  content     String        // 수선 내용
-  contractor  String?       // 수선 업체/담당자
-  cost        Int?          // 비용
-  memo        String?       // 비고
+  repairedAt  DateTime // 수선일
+  content     String // 수선 내용
+  contractor  String? // 수선 업체/담당자
+  cost        Int? // 비용
+  memo        String? // 비고
 
-  createdAt   DateTime      @default(now())
+  createdAt DateTime @default(now())
 }
 
 // ==========================================
@@ -611,20 +611,20 @@ model MgmtRepairLog {
 // ==========================================
 
 enum NoticeCategory {
-  NOTICE      // 공지사항
-  MANAGEMENT  // 경영진/관리자 전달사항
+  NOTICE // 공지사항
+  MANAGEMENT // 경영진/관리자 전달사항
 }
 
 model Notice {
-  id        String         @id @default(cuid())
-  category  NoticeCategory
-  title     String
-  content   String
-  author    String
-  isPinned  Boolean        @default(false)
+  id       String         @id @default(cuid())
+  category NoticeCategory
+  title    String
+  content  String
+  author   String
+  isPinned Boolean        @default(false)
 
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ==========================================
@@ -633,12 +633,12 @@ model Notice {
 
 // 조직도 레이아웃 (Worker 테이블 미수정 — workerId는 plain string)
 model OrgChartNode {
-  id        String   @id @default(cuid())
-  workerId  String   @unique  // Worker.id 참조 (plain String, 인원 테이블 구조 불변)
-  x         Float    @default(0)
-  y         Float    @default(0)
-  parentId  String?  // 상위 노드의 workerId (상하관계)
-  visible   Boolean  @default(true)
+  id       String  @id @default(cuid())
+  workerId String  @unique // Worker.id 참조 (plain String, 인원 테이블 구조 불변)
+  x        Float   @default(0)
+  y        Float   @default(0)
+  parentId String? // 상위 노드의 workerId (상하관계)
+  visible  Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -646,14 +646,14 @@ model OrgChartNode {
 
 // 비상연락망 그룹
 model EmergencyGroup {
-  id        String             @id @default(cuid())
+  id        String @id @default(cuid())
   name      String
-  sortOrder Int                @default(0)
+  sortOrder Int    @default(0)
 
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  contacts  EmergencyContact[]
+  contacts EmergencyContact[]
 }
 
 // 비상연락망 항목
@@ -661,13 +661,13 @@ model EmergencyContact {
   id          String         @id @default(cuid())
   groupId     String
   group       EmergencyGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  workerId    String?        // Worker.id 참조 (plain String, 인원 테이블 구조 불변)
-  directName  String?        // 직접 입력 이름 (외부 기관용)
-  directPhone String?        // 직접 입력 연락처 (외부 기관용)
+  workerId    String? // Worker.id 참조 (plain String, 인원 테이블 구조 불변)
+  directName  String? // 직접 입력 이름 (외부 기관용)
+  directPhone String? // 직접 입력 연락처 (외부 기관용)
   sortOrder   Int            @default(0)
 
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ==========================================
@@ -675,96 +675,96 @@ model EmergencyContact {
 // ==========================================
 
 enum TransportVehicleType {
-  VEHICLE    // 일반차량
-  EQUIPMENT  // 운송장비
+  VEHICLE // 일반차량
+  EQUIPMENT // 운송장비
 }
 
 enum TransportUsage {
-  IN_USE       // 사용중
-  MAINTENANCE  // 점검중
-  DISPOSED     // 폐기
+  IN_USE // 사용중
+  MAINTENANCE // 점검중
+  DISPOSED // 폐기
 }
 
 enum TransportFactory {
-  FACTORY1  // 1공장
-  FACTORY2  // 2공장
+  FACTORY1 // 1공장
+  FACTORY2 // 2공장
 }
 
 enum FuelType {
-  GASOLINE  // 휘발유
-  DIESEL    // 경유
-  LPG       // LPG
-  ELECTRIC  // 전기
+  GASOLINE // 휘발유
+  DIESEL // 경유
+  LPG // LPG
+  ELECTRIC // 전기
 }
 
 enum EquipSubType {
-  FORKLIFT  // 지게차
-  CRANE     // 크레인 차량
-  OTHER     // 기타
+  FORKLIFT // 지게차
+  CRANE // 크레인 차량
+  OTHER // 기타
 }
 
 enum TransportPowerType {
-  ENGINE    // 엔진
-  ELECTRIC  // 전동
-  LPG       // LPG
+  ENGINE // 엔진
+  ELECTRIC // 전동
+  LPG // LPG
 }
 
 enum ConsumableBasis {
-  MILEAGE  // 주행거리
-  PERIOD   // 기간
-  BOTH     // 둘 다
+  MILEAGE // 주행거리
+  PERIOD // 기간
+  BOTH // 둘 다
 }
 
 // 운송차량/장비 마스터
 model TransportVehicle {
-  id               String               @id @default(cuid())
-  code             String               @unique  // VEH-001 자동채번
-  vehicleType      TransportVehicleType
-  name             String               // 차량/장비명
-  plateNo          String?              // 차량번호(번호판)
-  maker            String?              // 제조사
-  modelName        String?              // 모델명
-  madeYear         Int?                 // 연식
-  acquiredAt       DateTime?            // 취득일
-  acquiredCost     Int?                 // 취득금액
-  factory          TransportFactory     // 보관 공장
-  factoryLocation  String?              // 세부 위치
-  manager          String?              // 담당자
-  usage            TransportUsage       @default(IN_USE)
-  memo             String?              // 비고
+  id              String               @id @default(cuid())
+  code            String               @unique // VEH-001 자동채번
+  vehicleType     TransportVehicleType
+  name            String // 차량/장비명
+  plateNo         String? // 차량번호(번호판)
+  maker           String? // 제조사
+  modelName       String? // 모델명
+  madeYear        Int? // 연식
+  acquiredAt      DateTime? // 취득일
+  acquiredCost    Int? // 취득금액
+  factory         TransportFactory // 보관 공장
+  factoryLocation String? // 세부 위치
+  manager         String? // 담당자
+  usage           TransportUsage       @default(IN_USE)
+  memo            String? // 비고
 
   // 일반차량 전용
-  fuelType         FuelType?            // 연료 종류
-  displacement     Int?                 // 배기량 (cc)
-  mileage          Int?                 // 현재 주행거리 (km)
-  insuranceExpiry  DateTime?            // 보험 만료일
-  inspExpiry       DateTime?            // 정기검사 만료일
+  fuelType        FuelType? // 연료 종류
+  displacement    Int? // 배기량 (cc)
+  mileage         Int? // 현재 주행거리 (km)
+  insuranceExpiry DateTime? // 보험 만료일
+  inspExpiry      DateTime? // 정기검사 만료일
 
   // 운송장비 전용
-  equipSubType     EquipSubType?        // 장비 세부 종류
-  maxLoad          Float?               // 최대 하중 (톤)
-  powerType        TransportPowerType?  // 동력 방식
-  mastHeight       Float?               // 마스트 높이 (m, 지게차)
+  equipSubType EquipSubType? // 장비 세부 종류
+  maxLoad      Float? // 최대 하중 (톤)
+  powerType    TransportPowerType? // 동력 방식
+  mastHeight   Float? // 마스트 높이 (m, 지게차)
 
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  specs            TransportVehicleSpec[]
-  consumables      TransportConsumable[]
-  consumableLogs   TransportConsumableLog[]
-  inspections      TransportInspectionItem[]
-  repairs          TransportRepairLog[]
-  drivingLogs      TransportDrivingLog[]
+  specs          TransportVehicleSpec[]
+  consumables    TransportConsumable[]
+  consumableLogs TransportConsumableLog[]
+  inspections    TransportInspectionItem[]
+  repairs        TransportRepairLog[]
+  drivingLogs    TransportDrivingLog[]
 }
 
 // 기타 사양 (운송장비 전용)
 model TransportVehicleSpec {
-  id          String           @id @default(cuid())
-  vehicleId   String
-  vehicle     TransportVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  specKey     String
-  specValue   String
-  sortOrder   Int              @default(0)
+  id        String           @id @default(cuid())
+  vehicleId String
+  vehicle   TransportVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  specKey   String
+  specValue String
+  sortOrder Int              @default(0)
 }
 
 // 소모품 교체 주기 (일반차량 전용)
@@ -772,17 +772,17 @@ model TransportConsumable {
   id                  String           @id @default(cuid())
   vehicleId           String
   vehicle             TransportVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  itemName            String           // 소모품명
-  basis               ConsumableBasis  // 교체 기준 종류
-  intervalKm          Int?             // 교체 기준값 (km)
-  intervalMonth       Int?             // 교체 기준값 (월)
-  lastReplacedAt      DateTime?        // 최종 교체일
-  lastReplacedMileage Int?             // 최종 교체 시 주행거리
-  nextReplaceMileage  Int?             // 다음 교체 예정 주행거리 (자동계산)
-  nextReplaceAt       DateTime?        // 다음 교체 예정일 (자동계산)
+  itemName            String // 소모품명
+  basis               ConsumableBasis // 교체 기준 종류
+  intervalKm          Int? // 교체 기준값 (km)
+  intervalMonth       Int? // 교체 기준값 (월)
+  lastReplacedAt      DateTime? // 최종 교체일
+  lastReplacedMileage Int? // 최종 교체 시 주행거리
+  nextReplaceMileage  Int? // 다음 교체 예정 주행거리 (자동계산)
+  nextReplaceAt       DateTime? // 다음 교체 예정일 (자동계산)
   sortOrder           Int              @default(0)
 
-  logs                TransportConsumableLog[]
+  logs TransportConsumableLog[]
 }
 
 // 소모품 교체 이력 (누적 보관, 삭제 금지)
@@ -792,11 +792,11 @@ model TransportConsumableLog {
   consumable   TransportConsumable @relation(fields: [consumableId], references: [id], onDelete: Cascade)
   vehicleId    String
   vehicle      TransportVehicle    @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  replacedAt   DateTime            // 교체일
-  mileageAt    Int?                // 교체 시 주행거리
+  replacedAt   DateTime // 교체일
+  mileageAt    Int? // 교체 시 주행거리
   memo         String?
 
-  createdAt    DateTime            @default(now())
+  createdAt DateTime @default(now())
 }
 
 // 운송장비 정기검사 항목 (운송장비 전용)
@@ -804,14 +804,14 @@ model TransportInspectionItem {
   id              String           @id @default(cuid())
   vehicleId       String
   vehicle         TransportVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  itemName        String           // 검사 항목명
-  periodMonth     Int              // 주기 (월)
-  lastInspectedAt DateTime?        // 최종 검사일
-  nextInspectAt   DateTime?        // 다음 검사 예정일 (자동계산)
-  inspector       String?          // 담당 기관/담당자
+  itemName        String // 검사 항목명
+  periodMonth     Int // 주기 (월)
+  lastInspectedAt DateTime? // 최종 검사일
+  nextInspectAt   DateTime? // 다음 검사 예정일 (자동계산)
+  inspector       String? // 담당 기관/담당자
   memo            String?
 
-  logs            TransportInspectionLog[]
+  logs TransportInspectionLog[]
 }
 
 // 운송장비 검사 이력 (누적 보관, 삭제 금지)
@@ -822,42 +822,42 @@ model TransportInspectionLog {
   completedAt DateTime
   memo        String?
 
-  createdAt   DateTime                @default(now())
+  createdAt DateTime @default(now())
 }
 
 // 수선/정비 이력 (공통, 누적 보관, 삭제 금지)
 model TransportRepairLog {
-  id          String           @id @default(cuid())
-  vehicleId   String
-  vehicle     TransportVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  repairedAt  DateTime         // 수선일
-  content     String           // 수선 내용
-  contractor  String?          // 수선 업체/담당자
-  cost        Int?             // 비용
-  memo        String?
+  id         String           @id @default(cuid())
+  vehicleId  String
+  vehicle    TransportVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  repairedAt DateTime // 수선일
+  content    String // 수선 내용
+  contractor String? // 수선 업체/담당자
+  cost       Int? // 비용
+  memo       String?
 
-  createdAt   DateTime         @default(now())
+  createdAt DateTime @default(now())
 }
 
 // 차량 운행일지
 model TransportDrivingLog {
-  id            String           @id @default(cuid())
-  vehicleId     String
-  vehicle       TransportVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  date          DateTime         // 운행일
-  driver        String           // 운전자
-  departure     String?          // 출발지
-  destination   String?          // 도착지
-  purpose       String?          // 목적/용무
-  startTime     String?          // 출발시간 HH:MM
-  endTime       String?          // 도착시간 HH:MM
-  startMileage  Int?             // 출발 전 주행거리 (km)
-  endMileage    Int?             // 도착 후 주행거리 (km)
-  fuelCost      Int?             // 유류비 (원)
-  tollCost      Int?             // 통행료 (원)
-  memo          String?
+  id           String           @id @default(cuid())
+  vehicleId    String
+  vehicle      TransportVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  date         DateTime // 운행일
+  driver       String // 운전자
+  departure    String? // 출발지
+  destination  String? // 도착지
+  purpose      String? // 목적/용무
+  startTime    String? // 출발시간 HH:MM
+  endTime      String? // 도착시간 HH:MM
+  startMileage Int? // 출발 전 주행거리 (km)
+  endMileage   Int? // 도착 후 주행거리 (km)
+  fuelCost     Int? // 유류비 (원)
+  tollCost     Int? // 통행료 (원)
+  memo         String?
 
-  createdAt     DateTime         @default(now())
+  createdAt DateTime @default(now())
 }
 
 // ==========================================
@@ -866,44 +866,44 @@ model TransportDrivingLog {
 
 // 호선별 공정 소요일수 설정 (DB 관리, 하드코딩 금지)
 model LbProcessSetting {
-  id                    String   @id @default(cuid())
-  vesselCode            String   @unique  // 호선번호 (예: 4506)
-  isDefault             Boolean  @default(false) // 기본값 여부
+  id         String  @id @default(cuid())
+  vesselCode String  @unique // 호선번호 (예: 4506)
+  isDefault  Boolean @default(false) // 기본값 여부
 
-  cutLeadDays           Float    @default(7)   // 절단 선행일수 (조립착수일 기준)
-  cutDuration           Float    @default(5)   // 절단 기간 (일)
+  cutLeadDays Float @default(7) // 절단 선행일수 (조립착수일 기준)
+  cutDuration Float @default(5) // 절단 기간 (일)
 
-  assemblySmallDays     Float    @default(10)  // 소조 소요일수
-  assemblyMidDays       Float    @default(10)  // 중조 소요일수
-  assemblyLargeDays     Float    @default(15)  // 대조 소요일수
+  assemblySmallDays Float @default(10) // 소조 소요일수
+  assemblyMidDays   Float @default(10) // 중조 소요일수
+  assemblyLargeDays Float @default(15) // 대조 소요일수
 
-  hullInspLeadDays      Float    @default(3)   // 대조F 이후 최소 여유일수 (선각검사 배정 기준)
-  hullInspIntervalDays  Float    @default(7)   // 선각검사 주기 (일)
-  hullInspBlocksPerSession Float @default(2)   // 회당 검사 블록 수
-  paintLeadDays         Float    @default(2)   // 도장 착수 선행일수 (선각검사 기준)
-  paintDuration         Float    @default(7)   // 도장 기간
-  peLeadDays            Float    @default(1)   // P-E 착수 선행일수 (도장완료 기준)
-  peDuration            Float    @default(3)   // P-E 기간
+  hullInspLeadDays         Float @default(3) // 대조F 이후 최소 여유일수 (선각검사 배정 기준)
+  hullInspIntervalDays     Float @default(7) // 선각검사 주기 (일)
+  hullInspBlocksPerSession Float @default(2) // 회당 검사 블록 수
+  paintLeadDays            Float @default(2) // 도장 착수 선행일수 (선각검사 기준)
+  paintDuration            Float @default(7) // 도장 기간
+  peLeadDays               Float @default(1) // P-E 착수 선행일수 (도장완료 기준)
+  peDuration               Float @default(3) // P-E 기간
 
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // 공장 캘린더 — 비작업일 등록
 enum LbHolidayType {
-  LEGAL      // 법정공휴일 (고정일)
+  LEGAL // 법정공휴일 (고정일)
   SUBSTITUTE // 대체공휴일
-  COMPANY    // 회사 자체 휴무 (하계/동계 등)
-  RAIN       // 장마/우천 (야드 공정에만 적용)
-  VACATION   // 회사 휴가 (기간 지정)
+  COMPANY // 회사 자체 휴무 (하계/동계 등)
+  RAIN // 장마/우천 (야드 공정에만 적용)
+  VACATION // 회사 휴가 (기간 지정)
 }
 
 model LbCalendarDay {
   id        String        @id @default(cuid())
-  date      String        // YYYY-MM-DD
+  date      String // YYYY-MM-DD
   type      LbHolidayType
-  label     String        // 설명 (신정, 설날, 하계휴가 등)
-  year      Int           // 필터용
+  label     String // 설명 (신정, 설날, 하계휴가 등)
+  year      Int // 필터용
   createdAt DateTime      @default(now())
 
   @@unique([date, type])
@@ -912,96 +912,96 @@ model LbCalendarDay {
 // LB 생산계획 버전 관리
 model LbPlanVersion {
   id               String   @id @default(cuid())
-  name             String                        // 버전명 (예: "2026-04-03 14:32 저장본")
-  isDeployed       Boolean  @default(false)      // 배포 여부 (L/B확인 탭에 표시)
-  blockCount       Int      @default(0)          // 블록 수
-  settingsSnapshot Json?                         // 스냅샷: processSettings + dataStartRow
+  name             String // 버전명 (예: "2026-04-03 14:32 저장본")
+  isDeployed       Boolean  @default(false) // 배포 여부 (L/B확인 탭에 표시)
+  blockCount       Int      @default(0) // 블록 수
+  settingsSnapshot Json? // 스냅샷: processSettings + dataStartRow
   createdAt        DateTime @default(now())
 
-  plans       LbPlan[]
+  plans LbPlan[]
 }
 
 // LB 생산계획 (호선 + 블록 단위)
 model LbPlan {
-  id              String   @id @default(cuid())
-  vesselCode      String   // 호선번호 (예: 4506)
-  blk             String   // BLK 번호
-  no              Int?     // 순번
-  weeklyQty       Int?     // 주당생산량 (자유 입력)
+  id         String @id @default(cuid())
+  vesselCode String // 호선번호 (예: 4506)
+  blk        String // BLK 번호
+  no         Int? // 순번
+  weeklyQty  Int? // 주당생산량 (자유 입력)
 
   // 직접 입력값
-  erectionDate    DateTime?   // 탑재일 (조선소 납기)
-  assemblyStart   DateTime?   // 조립착수일
+  erectionDate  DateTime? // 탑재일 (조선소 납기)
+  assemblyStart DateTime? // 조립착수일
 
   // 자동계산값 (DB 저장)
-  pnd             DateTime?   // PND = 탑재일 - 1일
-  cutS            DateTime?   // 절단 S
-  cutF            DateTime?   // 절단 F
-  smallS          DateTime?   // 소조 S
-  smallF          DateTime?   // 소조 F
-  midS            DateTime?   // 중조 S
-  midF            DateTime?   // 중조 F
-  largeS          DateTime?   // 대조 S
-  largeF          DateTime?   // 대조 F (= 탑재일)
-  hullInspDate    DateTime?   // 선각검사
-  paintStart      DateTime?   // 도장 착수
-  paintEnd        DateTime?   // 도장 완료
-  peStart         DateTime?   // P-E 착수
-  peEnd           DateTime?   // P-E 완료
-  delayDays       Int?        // 지연일수 (PND - P-E완료)
-  manualFields    Json?       // 수동수정된 필드명 목록 (예: ["cutS", "hullInspDate"])
+  pnd          DateTime? // PND = 탑재일 - 1일
+  cutS         DateTime? // 절단 S
+  cutF         DateTime? // 절단 F
+  smallS       DateTime? // 소조 S
+  smallF       DateTime? // 소조 F
+  midS         DateTime? // 중조 S
+  midF         DateTime? // 중조 F
+  largeS       DateTime? // 대조 S
+  largeF       DateTime? // 대조 F (= 탑재일)
+  hullInspDate DateTime? // 선각검사
+  paintStart   DateTime? // 도장 착수
+  paintEnd     DateTime? // 도장 완료
+  peStart      DateTime? // P-E 착수
+  peEnd        DateTime? // P-E 완료
+  delayDays    Int? // 지연일수 (PND - P-E완료)
+  manualFields Json? // 수동수정된 필드명 목록 (예: ["cutS", "hullInspDate"])
 
   // 버전 연결
-  versionId       String?
-  version         LbPlanVersion? @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  versionId String?
+  version   LbPlanVersion? @relation(fields: [versionId], references: [id], onDelete: Cascade)
 
   // 메타
-  createdBy       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Remnant {
-  id           String        @id @default(cuid())
-  remnantNo    String        @unique  // REM-2026-001 자동채번
+  id        String @id @default(cuid())
+  remnantNo String @unique // REM-2026-001 자동채번
 
-  type         RemnantType
-  shape        RemnantShape
+  type  RemnantType
+  shape RemnantShape
 
-  material     String        // 재질
-  thickness    Float         // 두께 (mm)
-  weight       Float         // 중량 (kg)
+  material  String // 재질
+  thickness Float // 두께 (mm)
+  weight    Float // 중량 (kg)
 
   // 치수 (형태별 입력)
-  width1       Float?        // W 또는 W1 (사각형·L자형 전체폭)
-  length1      Float?        // L 또는 L1 (사각형·L자형 전체길이)
-  width2       Float?        // W2 (L자형 절단폭)
-  length2      Float?        // L2 (L자형 절단길이)
+  width1  Float? // W 또는 W1 (사각형·L자형 전체폭)
+  length1 Float? // L 또는 L1 (사각형·L자형 전체길이)
+  width2  Float? // W2 (L자형 절단폭)
+  length2 Float? // L2 (L자형 절단길이)
 
   // 발생 출처
   sourceProjectId  String?
-  sourceProject    Project?      @relation(fields: [sourceProjectId], references: [id], onDelete: SetNull)
-  sourceVesselName String?       // 직접 입력 호선명
-  sourceBlock      String?       // 직접 입력 블록 번호
+  sourceProject    Project? @relation(fields: [sourceProjectId], references: [id], onDelete: SetNull)
+  sourceVesselName String? // 직접 입력 호선명
+  sourceBlock      String? // 직접 입력 블록 번호
 
   // DrawingList 연결 (원철판 → 등록잔재, cascade 삭제)
-  drawingListId    String?
-  drawingList      DrawingList?  @relation(fields: [drawingListId], references: [id], onDelete: Cascade)
+  drawingListId String?
+  drawingList   DrawingList? @relation(fields: [drawingListId], references: [id], onDelete: Cascade)
 
   // 부모 등록잔재 연결 (등록잔재 → 자식 등록잔재)
-  parentRemnantId  String?
-  parentRemnant    Remnant?      @relation("RemnantTree", fields: [parentRemnantId], references: [id], onDelete: SetNull)
-  childRemnants    Remnant[]     @relation("RemnantTree")
+  parentRemnantId String?
+  parentRemnant   Remnant?  @relation("RemnantTree", fields: [parentRemnantId], references: [id], onDelete: SetNull)
+  childRemnants   Remnant[] @relation("RemnantTree")
 
   // 발생 판번호 (원철판 절단완료 시 자동 기입)
-  heatNo       String?
+  heatNo String?
 
   // 보관 및 기타
-  location     String?       // 보관 위치
-  photoUrl     String?       // 사진
-  memo         String?       // 메모사항
+  location     String? // 보관 위치
+  photoUrl     String? // 사진
+  memo         String? // 메모사항
   status       RemnantStatus @default(PENDING)
-  registeredBy String        // 등록자
+  registeredBy String // 등록자
 
   // 레거시 필드 (미사용, 데이터 보존용)
   originalVesselName String?
@@ -1009,11 +1009,11 @@ model Remnant {
   consultPerson      String?
   needsConsult       Boolean @default(false)
 
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  urgentWorks      UrgentWork[]
-  assignedToLists  DrawingList[] @relation("AssignedRemnant")
+  urgentWorks     UrgentWork[]
+  assignedToLists DrawingList[] @relation("AssignedRemnant")
 }
 
 // ==========================================
@@ -1021,41 +1021,42 @@ model Remnant {
 // ==========================================
 
 model SteelPlan {
-  id               String          @id @default(cuid())
-  vesselCode       String          // 호선
-  material         String          // 재질 (예: AH36, SS400)
-  thickness        Float           // 두께 (mm)
-  width            Float           // 폭 (mm)
-  length           Float           // 길이 (mm)
-  status              SteelPlanStatus @default(REGISTERED)
-  receivedAt          DateTime?       // 입고 처리일
-  selectionPrintedAt  DateTime?       // 선별지시서 출력일
-  issuedAt            DateTime?       // 출고 처리일 (절단장 투입일)
-  actualHeatNo     String?         // 레거시 필드 (사용 안 함)
-  actualVesselCode String?         // 레거시 필드 (사용 안 함)
-  actualDrawingNo  String?         // 레거시 필드 (사용 안 함)
-  memo             String?
-  storageLocation  String?         // 보관위치
-  sourceFile       String?         // 업로드 파일명
-  uploadBatchNo    String?         // 업로드 배치번호 (YYMMDDHHMMSS, 같은 업로드끼리 공유)
-  reservedFor      String?         // 확정 블록 (예: "B80C")
+  id                 String          @id @default(cuid())
+  vesselCode         String // 호선
+  material           String // 재질 (예: AH36, SS400)
+  thickness          Float // 두께 (mm)
+  width              Float // 폭 (mm)
+  length             Float // 길이 (mm)
+  status             SteelPlanStatus @default(REGISTERED)
+  receivedAt         DateTime? // 입고 처리일
+  selectionPrintedAt DateTime? // 선별지시서 출력일
+  issuedAt           DateTime? // 출고 처리일 (절단장 투입일)
+  actualHeatNo       String? // 레거시 필드 (사용 안 함)
+  actualVesselCode   String? // 레거시 필드 (사용 안 함)
+  actualDrawingNo    String? // 레거시 필드 (사용 안 함)
+  memo               String?
+  storageLocation    String? // 보관위치
+  sourceFile         String? // 업로드 파일명
+  uploadBatchNo      String? // 업로드 배치번호 (YYMMDDHHMMSS, 같은 업로드끼리 공유)
+  reservedFor        String? // 확정 블록 (예: "B80C")
 
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model SteelPlanHeat {
   id            String              @id @default(cuid())
-  vesselCode    String              // 호선
-  material      String              // 재질
-  thickness     Float               // 두께 (mm)
-  width         Float               // 폭 (mm)
-  length        Float               // 길이 (mm)
-  heatNo        String              // 판번호
+  vesselCode    String // 호선
+  material      String // 재질
+  thickness     Float // 두께 (mm)
+  width         Float // 폭 (mm)
+  length        Float // 길이 (mm)
+  heatNo        String // 판번호
   status        SteelPlanHeatStatus @default(WAITING)
-  sourceFile    String?             // 업로드 파일명
-  uploadBatchNo String?             // 업로드 배치번호 (YYMMDDHHMMSS, 같은 업로드끼리 공유)
+  cutAt         DateTime? // 절단 완료일 (CUT 전환 시 기록, WAITING 복원 시 초기화)
+  sourceFile    String? // 업로드 파일명
+  uploadBatchNo String? // 업로드 배치번호 (YYMMDDHHMMSS, 같은 업로드끼리 공유)
 
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
