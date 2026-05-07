@@ -44,6 +44,11 @@ export async function GET(req: NextRequest) {
   const search          = sp.get("search")          || undefined;
   const all             = sp.get("all")             === "true";
   const page            = Math.max(1, parseInt(sp.get("page") || "1"));
+  const sortByRaw       = sp.get("sortBy")  || "";
+  const sortDirRaw      = sp.get("sortDir") || "asc";
+  const SORTABLE        = ["vesselCode","material","thickness","width","length","status","receivedAt","storageLocation","reservedFor","selectionPrintedAt","issuedAt","uploadBatchNo","createdAt"] as const;
+  const sortBy          = (SORTABLE as readonly string[]).includes(sortByRaw) ? sortByRaw as typeof SORTABLE[number] : null;
+  const sortDir         = sortDirRaw === "desc" ? "desc" : "asc" as const;
 
   // Column IN filters
   const vesselCodes     = parseList(sp.get("vesselCodes"));
@@ -90,7 +95,9 @@ export async function GET(req: NextRequest) {
     prisma.steelPlan.count({ where }),
     prisma.steelPlan.findMany({
       where,
-      orderBy: [{ vesselCode: "asc" }, { createdAt: "asc" }],
+      orderBy: sortBy
+        ? [{ [sortBy]: sortDir }, { createdAt: "asc" }]
+        : [{ vesselCode: "asc" }, { createdAt: "asc" }],
       ...(all ? {} : { skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE }),
     }),
     prisma.steelPlan.findMany({

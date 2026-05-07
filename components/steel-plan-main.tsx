@@ -5,6 +5,7 @@ import * as XLSX from "xlsx";
 import {
   Upload, Plus, Trash2, RefreshCw, Download, Search, X,
   CheckSquare, Square, ClipboardList, PackageOpen, Hash, PackageCheck, Printer, Filter,
+  ArrowUp, ArrowDown, ArrowUpDown,
 } from "lucide-react";
 import ColumnFilterDropdown, { type FilterValue } from "./column-filter-dropdown";
 
@@ -98,6 +99,21 @@ export default function SteelPlanMain() {
   const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
   const [distinctValues, setDistinctValues] = useState<Record<string, FilterValue[]>>({});
 
+  /* ── 정렬 ── */
+  const [sortCol, setSortCol] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const handleSort = (col: string) => {
+    if (sortCol === col) {
+      if (sortDir === "asc") { setSortDir("desc"); }
+      else { setSortCol(null); setSortDir("asc"); }
+    } else {
+      setSortCol(col);
+      setSortDir("asc");
+    }
+    setPage(1);
+  };
+
   /* ── 선택입고 날짜 모달 ── */
   const [receivedDateModal, setReceivedDateModal] = useState<{ targetIds: string[] } | null>(null);
   const [receivedDateInput, setReceivedDateInput] = useState("");
@@ -170,6 +186,7 @@ export default function SteelPlanMain() {
     const p = new URLSearchParams();
     if (search) p.set("search", search);
     p.set("page", String(page));
+    if (sortCol) { p.set("sortBy", sortCol); p.set("sortDir", sortDir); }
     const cf = colFilters;
     if (cf.vesselCode?.length)          p.set("vesselCodes",          cf.vesselCode.join(","));
     if (cf.material?.length)            p.set("materials",             cf.material.join(","));
@@ -194,7 +211,7 @@ export default function SteelPlanMain() {
       setTotalPages(json.totalPages);
     }
     setLoading(false);
-  }, [search, page, colFilters]);
+  }, [search, page, colFilters, sortCol, sortDir]);
 
   const loadHeatDistinct = useCallback(async () => {
     const res = await fetch("/api/steel-plan/heat/distinct");
@@ -953,57 +970,50 @@ export default function SteelPlanMain() {
                         {allChecked ? <CheckSquare size={13} className="text-blue-600" /> : <Square size={13} className="text-gray-400" />}
                       </button>
                     </th>
-                    {(["uploadBatchNo"] as const).map((col) => {
-                      const active = (colFilters[col]?.length ?? 0) > 0;
+                    {([
+                      ["uploadBatchNo", "업로드번호"],
+                      ["vesselCode",    "호선"],
+                      ["material",      "재질"],
+                      ["thickness",     "두께"],
+                      ["width",         "폭"],
+                      ["length",        "길이"],
+                    ] as [string, string][]).map(([col, label]) => {
+                      const filterActive = (colFilters[col]?.length ?? 0) > 0;
+                      const sorted = sortCol === col;
                       return (
                         <th key={col} className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">
                           <div className="flex items-center justify-center gap-0.5">
-                            <span>업로드번호</span>
-                            <button onClick={(e) => { setOpenFilter(col); setFilterAnchorEl(e.currentTarget); }} className={`rounded hover:bg-gray-200 p-0.5 ${active ? "text-blue-500" : "text-gray-400"}`}>
-                              <Filter size={10} fill={active ? "currentColor" : "none"} />
+                            <span>{label}</span>
+                            <button onClick={(e) => { setOpenFilter(col); setFilterAnchorEl(e.currentTarget); }} className={`rounded hover:bg-gray-200 p-0.5 ${filterActive ? "text-blue-500" : "text-gray-400"}`}>
+                              <Filter size={10} fill={filterActive ? "currentColor" : "none"} />
                             </button>
-                          </div>
-                        </th>
-                      );
-                    })}
-                    {(["vesselCode","material","thickness","width","length"] as const).map((col, i) => {
-                      const labels = ["호선","재질","두께","폭","길이"];
-                      const active = (colFilters[col]?.length ?? 0) > 0;
-                      return (
-                        <th key={col} className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">
-                          <div className="flex items-center justify-center gap-0.5">
-                            <span>{labels[i]}</span>
-                            <button onClick={(e) => { setOpenFilter(col); setFilterAnchorEl(e.currentTarget); }} className={`rounded hover:bg-gray-200 p-0.5 ${active ? "text-blue-500" : "text-gray-400"}`}>
-                              <Filter size={10} fill={active ? "currentColor" : "none"} />
+                            <button onClick={() => handleSort(col)} className={`rounded hover:bg-gray-200 p-0.5 ${sorted ? "text-blue-600" : "text-gray-300 hover:text-gray-500"}`} title={sorted ? (sortDir === "asc" ? "오름차순" : "내림차순") : "정렬"}>
+                              {sorted ? (sortDir === "asc" ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} />}
                             </button>
                           </div>
                         </th>
                       );
                     })}
                     <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">중량(kg)</th>
-                    {(["receivedAt","storageLocation","status","reservedFor"] as const).map((col, i) => {
-                      const labels = ["입고일","보관위치","상태","확정호선/블록"];
-                      const active = (colFilters[col]?.length ?? 0) > 0;
+                    {([
+                      ["receivedAt",       "입고일"],
+                      ["storageLocation",  "보관위치"],
+                      ["status",           "상태"],
+                      ["reservedFor",      "확정호선/블록"],
+                      ["selectionPrintedAt","선별지시일"],
+                      ["issuedAt",         "출고일"],
+                    ] as [string, string][]).map(([col, label]) => {
+                      const filterActive = (colFilters[col]?.length ?? 0) > 0;
+                      const sorted = sortCol === col;
                       return (
                         <th key={col} className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">
                           <div className="flex items-center justify-center gap-0.5">
-                            <span>{labels[i]}</span>
-                            <button onClick={(e) => { setOpenFilter(col); setFilterAnchorEl(e.currentTarget); }} className={`rounded hover:bg-gray-200 p-0.5 ${active ? "text-blue-500" : "text-gray-400"}`}>
-                              <Filter size={10} fill={active ? "currentColor" : "none"} />
+                            <span>{label}</span>
+                            <button onClick={(e) => { setOpenFilter(col); setFilterAnchorEl(e.currentTarget); }} className={`rounded hover:bg-gray-200 p-0.5 ${filterActive ? "text-blue-500" : "text-gray-400"}`}>
+                              <Filter size={10} fill={filterActive ? "currentColor" : "none"} />
                             </button>
-                          </div>
-                        </th>
-                      );
-                    })}
-                    {(["selectionPrintedAt", "issuedAt"] as const).map((col, i) => {
-                      const labels = ["선별지시일", "출고일"];
-                      const active = (colFilters[col]?.length ?? 0) > 0;
-                      return (
-                        <th key={col} className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">
-                          <div className="flex items-center justify-center gap-0.5">
-                            <span>{labels[i]}</span>
-                            <button onClick={(e) => { setOpenFilter(col); setFilterAnchorEl(e.currentTarget); }} className={`rounded hover:bg-gray-200 p-0.5 ${active ? "text-blue-500" : "text-gray-400"}`}>
-                              <Filter size={10} fill={active ? "currentColor" : "none"} />
+                            <button onClick={() => handleSort(col)} className={`rounded hover:bg-gray-200 p-0.5 ${sorted ? "text-blue-600" : "text-gray-300 hover:text-gray-500"}`} title={sorted ? (sortDir === "asc" ? "오름차순" : "내림차순") : "정렬"}>
+                              {sorted ? (sortDir === "asc" ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} />}
                             </button>
                           </div>
                         </th>
