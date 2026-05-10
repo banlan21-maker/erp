@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { UtensilsCrossed, Plus, Pencil, Trash2, Copy, RefreshCw, X, Save, Check, Link2, Building2 } from "lucide-react";
+import { UtensilsCrossed, Plus, Pencil, Trash2, Copy, RefreshCw, X, Save, Check, Link2, Building2, Download, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import * as XLSX from "xlsx";
 
 const FACTORIES = ["진교", "진동"] as const;
 type Factory = typeof FACTORIES[number];
@@ -181,6 +182,7 @@ export default function MealMain() {
   const [monthMonth, setMonthMonth] = useState(String(now.getUTCMonth() + 1));
   const [monthRecords, setMonthRecords] = useState<MealRecord[]>([]);
   const [loadingMonth, setLoadingMonth] = useState(false);
+  const [monthlySubTab, setMonthlySubTab] = useState<"전체" | "진교" | "진동">("전체");
 
   const loadMonth = useCallback(async () => {
     setLoadingMonth(true);
@@ -193,7 +195,7 @@ export default function MealMain() {
 
   useEffect(() => { if (activeTab === "monthly") loadMonth(); }, [activeTab, loadMonth]);
 
-  // Build daily table
+  // 전체 통합 테이블 (점심만)
   const daysCount = getDaysInMonth(parseInt(monthYear), parseInt(monthMonth));
   const dailyRows = Array.from({ length: daysCount }, (_, i) => {
     const day = String(i + 1).padStart(2, "0");
@@ -204,6 +206,105 @@ export default function MealMain() {
   });
   const jingyoTotal = dailyRows.reduce((s, r) => s + (r.jingyo?.count ?? 0), 0);
   const jindongTotal = dailyRows.reduce((s, r) => s + (r.jindong?.count ?? 0), 0);
+
+  // 공장별 테이블 (식사 구분별)
+  const getFactoryRows = (factory: Factory) =>
+    Array.from({ length: daysCount }, (_, i) => {
+      const day = String(i + 1).padStart(2, "0");
+      const dateStr = `${monthYear}-${monthMonth.padStart(2,"0")}-${day}`;
+      const recs = monthRecords.filter(r => r.date === dateStr && r.factory === factory);
+      const lunch = recs.find(r => r.mealType === "점심");
+      const dinner = recs.find(r => r.mealType === "저녁");
+      const other = recs.find(r => r.mealType === "기타");
+      const memo = recs.map(r => r.memo).filter(Boolean).join(" / ");
+      return { dateStr, lunch, dinner, other, memo };
+    });
+
+  // 엑셀 다운로드
+  const downloadExcel = (tab: "전체" | Factory) => {
+    const title = `${tab === "전체" ? "전체" : `${tab} 공장`} ${monthYear}년 ${monthMonth}월 식수 현황`;
+    const wb = XLSX.utils.book_new();
+
+    if (tab === "전체") {
+      const data: (string | number)[][] = [
+        [title],
+        ["날짜", "요일", "진교 점심", "진동 점심", "합계", "비고"],
+        ...dailyRows.map(r => {
+          const jg = r.jingyo?.count ?? 0;
+          const jd = r.jindong?.count ?? 0;
+          const memo = [r.jingyo?.memo, r.jindong?.memo].filter(Boolean).join(" / ");
+          return [r.dateStr.slice(5), getDayStr(r.dateStr), jg || "-", jd || "-", (jg + jd) || "-", memo];
+        }),
+        ["합계", "", jingyoTotal, jindongTotal, jingyoTotal + jindongTotal, ""],
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), "전체");
+    } else {
+      const rows = getFactoryRows(tab);
+      const lt = rows.reduce((s, r) => s + (r.lunch?.count ?? 0), 0);
+      const dt = rows.reduce((s, r) => s + (r.dinner?.count ?? 0), 0);
+      const ot = rows.reduce((s, r) => s + (r.other?.count ?? 0), 0);
+      const data: (string | number)[][] = [
+        [title],
+        ["날짜", "요일", "점심", "저녁", "기타", "합계", "메모"],
+        ...rows.map(r => {
+          const l = r.lunch?.count ?? 0; const d = r.dinner?.count ?? 0; const o = r.other?.count ?? 0;
+          return [r.dateStr.slice(5), getDayStr(r.dateStr), l || "-", d || "-", o || "-", (l+d+o) || "-", r.memo || ""];
+        }),
+        ["합계", "", lt, dt, ot, lt + dt + ot, ""],
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), tab);
+    }
+
+    XLSX.writeFile(wb, `식수현황_${tab}_${monthYear}년${monthMonth}월.xlsx`);
+  };
+
+  // 보고서 출력
+  const printReport = (tab: "전체" | Factory) => {
+    const title = `${tab === "전체" ? "전체" : `${tab} 공장`} ${monthYear}년 ${monthMonth}월 식수 현황`;
+
+    let tableHtml = "";
+    if (tab === "전체") {
+      tableHtml = `
+        <tr><th>날짜</th><th>요일</th><th>진교 점심</th><th>진동 점심</th><th>합계</th><th>비고</th></tr>
+        ${dailyRows.map(r => {
+          const jg = r.jingyo?.count ?? 0; const jd = r.jindong?.count ?? 0;
+          const memo = [r.jingyo?.memo, r.jindong?.memo].filter(Boolean).join(" / ");
+          const we = isWeekend(r.dateStr) ? " class=\"weekend\"" : "";
+          return `<tr${we}><td>${r.dateStr.slice(5)}</td><td>${getDayStr(r.dateStr)}</td><td>${jg || "-"}</td><td>${jd || "-"}</td><td>${(jg+jd) || "-"}</td><td>${memo}</td></tr>`;
+        }).join("")}
+        <tr class="total"><td colspan="2">합계</td><td>${jingyoTotal}식</td><td>${jindongTotal}식</td><td>${jingyoTotal+jindongTotal}식</td><td></td></tr>`;
+    } else {
+      const rows = getFactoryRows(tab);
+      const lt = rows.reduce((s, r) => s + (r.lunch?.count ?? 0), 0);
+      const dt = rows.reduce((s, r) => s + (r.dinner?.count ?? 0), 0);
+      const ot = rows.reduce((s, r) => s + (r.other?.count ?? 0), 0);
+      tableHtml = `
+        <tr><th>날짜</th><th>요일</th><th>점심</th><th>저녁</th><th>기타</th><th>합계</th><th>메모</th></tr>
+        ${rows.map(r => {
+          const l = r.lunch?.count ?? 0; const d = r.dinner?.count ?? 0; const o = r.other?.count ?? 0;
+          const we = isWeekend(r.dateStr) ? " class=\"weekend\"" : "";
+          return `<tr${we}><td>${r.dateStr.slice(5)}</td><td>${getDayStr(r.dateStr)}</td><td>${l||"-"}</td><td>${d||"-"}</td><td>${o||"-"}</td><td>${(l+d+o)||"-"}</td><td>${r.memo||""}</td></tr>`;
+        }).join("")}
+        <tr class="total"><td colspan="2">합계</td><td>${lt}식</td><td>${dt}식</td><td>${ot}식</td><td>${lt+dt+ot}식</td><td></td></tr>`;
+    }
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+      <style>
+        body{font-family:'Malgun Gothic',sans-serif;font-size:12px;padding:20px}
+        h1{text-align:center;font-size:16px;margin-bottom:16px}
+        table{width:100%;border-collapse:collapse}
+        th,td{border:1px solid #999;padding:5px 8px;text-align:center}
+        th{background:#e8e8e8;font-weight:bold}
+        .weekend{color:red}
+        .total{font-weight:bold;background:#dbeafe}
+        @media print{@page{margin:1.5cm}}
+      </style></head>
+      <body><h1>${title}</h1><table>${tableHtml}</table>
+      <script>window.onload=()=>{window.print();}<\/script></body></html>`;
+
+    const w = window.open("", "_blank", "width=900,height=700");
+    if (w) { w.document.write(html); w.document.close(); }
+  };
 
   // --- vendor modal ---
   const [showVendorModal, setShowVendorModal] = useState(false);
@@ -442,7 +543,8 @@ export default function MealMain() {
       {/* ========== 월별 현황 ========== */}
       {activeTab === "monthly" && (
         <div className="space-y-4">
-          <div className="flex items-center gap-3">
+          {/* 연/월 선택 */}
+          <div className="flex items-center gap-3 flex-wrap">
             <Input type="number" value={monthYear} onChange={e => setMonthYear(e.target.value)} className="w-24 h-9" placeholder="연도" />
             <span className="text-gray-600">년</span>
             <select value={monthMonth} onChange={e => setMonthMonth(e.target.value)} className="h-9 px-3 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -451,48 +553,140 @@ export default function MealMain() {
             <Button size="sm" onClick={loadMonth} disabled={loadingMonth} variant="outline">조회</Button>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-center whitespace-nowrap">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500">날짜</th>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500">요일</th>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500">진교 점심</th>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500">진동 점심</th>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500">비고</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {loadingMonth ? (
-                    <tr><td colSpan={5} className="py-8 text-gray-400">불러오는 중...</td></tr>
-                  ) : dailyRows.map(({ dateStr, jingyo, jindong }) => {
-                    const weekend = isWeekend(dateStr);
-                    const jg = jingyo?.count;
-                    const jd = jindong?.count;
-                    const memo = [jingyo?.memo, jindong?.memo].filter(Boolean).join(" / ");
-                    return (
-                      <tr key={dateStr} className={weekend ? "bg-red-50/40 text-red-700" : "hover:bg-gray-50"}>
-                        <td className="px-4 py-2.5 font-mono">{dateStr.slice(5)}</td>
-                        <td className="px-4 py-2.5 font-semibold">{getDayStr(dateStr)}</td>
-                        <td className={`px-4 py-2.5 font-semibold ${jg != null ? "text-blue-700" : "text-gray-300"}`}>{jg != null ? `${jg}명` : "-"}</td>
-                        <td className={`px-4 py-2.5 font-semibold ${jd != null ? "text-blue-700" : "text-gray-300"}`}>{jd != null ? `${jd}명` : "-"}</td>
-                        <td className="px-4 py-2.5 text-xs text-gray-500 text-left">{memo || ""}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot className="bg-blue-50 border-t-2 border-blue-200">
-                  <tr>
-                    <td colSpan={2} className="px-4 py-3 font-bold text-blue-800 text-left">합계</td>
-                    <td className="px-4 py-3 font-bold text-blue-800">{jingyoTotal}식</td>
-                    <td className="px-4 py-3 font-bold text-blue-800">{jindongTotal}식</td>
-                    <td className="px-4 py-3 font-bold text-blue-800 text-left">전체 {jingyoTotal + jindongTotal}식</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+          {/* 서브탭: 전체 / 진교 / 진동 */}
+          <div className="flex border-b border-gray-200 gap-0">
+            {(["전체","진교","진동"] as const).map(t => (
+              <button key={t} onClick={() => setMonthlySubTab(t)}
+                className={`px-5 py-2.5 text-sm font-semibold relative transition-colors ${monthlySubTab === t ? "text-blue-600" : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"}`}>
+                {t}
+                {monthlySubTab === t && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-md" />}
+              </button>
+            ))}
           </div>
+
+          {/* 전체 현황 */}
+          {monthlySubTab === "전체" && (
+            <div className="space-y-3">
+              <div className="flex justify-end gap-2">
+                <Button size="sm" variant="outline" onClick={() => downloadExcel("전체")} className="gap-1.5 text-green-700 border-green-300 hover:bg-green-50">
+                  <Download size={14} /> 엑셀 다운로드
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => printReport("전체")} className="gap-1.5 text-gray-700">
+                  <Printer size={14} /> 월별보고서 출력
+                </Button>
+              </div>
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-center whitespace-nowrap">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold text-xs text-gray-500">날짜</th>
+                        <th className="px-4 py-3 font-semibold text-xs text-gray-500">요일</th>
+                        <th className="px-4 py-3 font-semibold text-xs text-gray-500">진교 점심</th>
+                        <th className="px-4 py-3 font-semibold text-xs text-gray-500">진동 점심</th>
+                        <th className="px-4 py-3 font-semibold text-xs text-gray-500">비고</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {loadingMonth ? (
+                        <tr><td colSpan={5} className="py-8 text-gray-400">불러오는 중...</td></tr>
+                      ) : dailyRows.map(({ dateStr, jingyo, jindong }) => {
+                        const weekend = isWeekend(dateStr);
+                        const jg = jingyo?.count; const jd = jindong?.count;
+                        const memo = [jingyo?.memo, jindong?.memo].filter(Boolean).join(" / ");
+                        return (
+                          <tr key={dateStr} className={weekend ? "bg-red-50/40 text-red-700" : "hover:bg-gray-50"}>
+                            <td className="px-4 py-2.5 font-mono">{dateStr.slice(5)}</td>
+                            <td className="px-4 py-2.5 font-semibold">{getDayStr(dateStr)}</td>
+                            <td className={`px-4 py-2.5 font-semibold ${jg != null ? "text-blue-700" : "text-gray-300"}`}>{jg != null ? `${jg}명` : "-"}</td>
+                            <td className={`px-4 py-2.5 font-semibold ${jd != null ? "text-blue-700" : "text-gray-300"}`}>{jd != null ? `${jd}명` : "-"}</td>
+                            <td className="px-4 py-2.5 text-xs text-gray-500 text-left">{memo || ""}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="bg-blue-50 border-t-2 border-blue-200">
+                      <tr>
+                        <td colSpan={2} className="px-4 py-3 font-bold text-blue-800 text-left">합계</td>
+                        <td className="px-4 py-3 font-bold text-blue-800">{jingyoTotal}식</td>
+                        <td className="px-4 py-3 font-bold text-blue-800">{jindongTotal}식</td>
+                        <td className="px-4 py-3 font-bold text-blue-800 text-left">전체 {jingyoTotal + jindongTotal}식</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 진교 / 진동 공장별 현황 */}
+          {(monthlySubTab === "진교" || monthlySubTab === "진동") && (() => {
+            const factory = monthlySubTab;
+            const rows = getFactoryRows(factory);
+            const lt = rows.reduce((s, r) => s + (r.lunch?.count ?? 0), 0);
+            const dt = rows.reduce((s, r) => s + (r.dinner?.count ?? 0), 0);
+            const ot = rows.reduce((s, r) => s + (r.other?.count ?? 0), 0);
+            return (
+              <div className="space-y-3">
+                <div className="flex justify-end gap-2">
+                  <Button size="sm" variant="outline" onClick={() => downloadExcel(factory)} className="gap-1.5 text-green-700 border-green-300 hover:bg-green-50">
+                    <Download size={14} /> 엑셀 다운로드
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => printReport(factory)} className="gap-1.5 text-gray-700">
+                    <Printer size={14} /> 월별보고서 출력
+                  </Button>
+                </div>
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-center whitespace-nowrap">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="px-4 py-3 font-semibold text-xs text-gray-500">날짜</th>
+                          <th className="px-4 py-3 font-semibold text-xs text-gray-500">요일</th>
+                          <th className="px-4 py-3 font-semibold text-xs text-blue-600">점심</th>
+                          <th className="px-4 py-3 font-semibold text-xs text-indigo-600">저녁</th>
+                          <th className="px-4 py-3 font-semibold text-xs text-gray-500">기타</th>
+                          <th className="px-4 py-3 font-semibold text-xs text-gray-700">합계</th>
+                          <th className="px-4 py-3 font-semibold text-xs text-gray-500">메모</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {loadingMonth ? (
+                          <tr><td colSpan={7} className="py-8 text-gray-400">불러오는 중...</td></tr>
+                        ) : rows.map(({ dateStr, lunch, dinner, other, memo }) => {
+                          const weekend = isWeekend(dateStr);
+                          const l = lunch?.count; const d = dinner?.count; const o = other?.count;
+                          const total = (l ?? 0) + (d ?? 0) + (o ?? 0);
+                          const hasAny = l != null || d != null || o != null;
+                          return (
+                            <tr key={dateStr} className={weekend ? "bg-red-50/40 text-red-700" : "hover:bg-gray-50"}>
+                              <td className="px-4 py-2.5 font-mono">{dateStr.slice(5)}</td>
+                              <td className="px-4 py-2.5 font-semibold">{getDayStr(dateStr)}</td>
+                              <td className={`px-4 py-2.5 font-semibold ${l != null ? "text-blue-700" : "text-gray-300"}`}>{l != null ? `${l}명` : "-"}</td>
+                              <td className={`px-4 py-2.5 font-semibold ${d != null ? "text-indigo-700" : "text-gray-300"}`}>{d != null ? `${d}명` : "-"}</td>
+                              <td className={`px-4 py-2.5 font-semibold ${o != null ? "text-gray-700" : "text-gray-300"}`}>{o != null ? `${o}명` : "-"}</td>
+                              <td className={`px-4 py-2.5 font-bold ${hasAny ? "text-gray-900" : "text-gray-300"}`}>{hasAny ? `${total}명` : "-"}</td>
+                              <td className="px-4 py-2.5 text-xs text-gray-500 text-left">{memo || ""}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot className="bg-blue-50 border-t-2 border-blue-200">
+                        <tr>
+                          <td colSpan={2} className="px-4 py-3 font-bold text-blue-800 text-left">합계</td>
+                          <td className="px-4 py-3 font-bold text-blue-800">{lt}식</td>
+                          <td className="px-4 py-3 font-bold text-blue-800">{dt}식</td>
+                          <td className="px-4 py-3 font-bold text-blue-800">{ot}식</td>
+                          <td className="px-4 py-3 font-bold text-blue-800">{lt + dt + ot}식</td>
+                          <td></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
