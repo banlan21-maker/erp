@@ -13,7 +13,7 @@ export async function GET(
     if (!vendor) return NextResponse.json({ success: false, error: "업체를 찾을 수 없습니다." }, { status: 404 });
     return NextResponse.json({
       success: true,
-      data: { id: vendor.id, name: vendor.name, factory: vendor.factory, deadlineHour: vendor.deadlineHour, deadlineMin: vendor.deadlineMin, isActive: vendor.isActive },
+      data: { id: vendor.id, name: vendor.name, factory: vendor.factory, deadlineHour: vendor.deadlineHour, deadlineMin: vendor.deadlineMin, isActive: vendor.isActive, pricePerMeal: vendor.pricePerMeal },
     });
   } catch (error) {
     console.error("[GET by-token vendor]", error);

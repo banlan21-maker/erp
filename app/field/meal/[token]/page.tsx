@@ -6,8 +6,14 @@ import { use } from "react";
 const DAYS = ["일","월","화","수","목","금","토"];
 function getTodayKST() { return new Date(Date.now()+9*3600000).toISOString().slice(0,10); }
 function getDayStr(d: string) { return DAYS[new Date(d+"T12:00:00").getDay()]; }
+function isWeekend(d: string) { const day = new Date(d+"T12:00:00").getDay(); return day===0||day===6; }
+function getDaysInMonth(year: number, month: number) { return new Date(year, month, 0).getDate(); }
 
-interface Vendor { id: string; name: string; factory: string; deadlineHour: number; deadlineMin: number; isActive: boolean; }
+interface Vendor {
+  id: string; name: string; factory: string;
+  deadlineHour: number; deadlineMin: number;
+  isActive: boolean; pricePerMeal: number | null;
+}
 interface MealRecord { id: string; date: string; factory: string; mealType: string; count: number; memo: string|null; }
 
 function getNowKST() { return new Date(Date.now()+9*3600000); }
@@ -24,6 +30,7 @@ export default function MealFieldPage({ params }: { params: Promise<{ token: str
   const [monthRecords, setMonthRecords] = useState<MealRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [imgLoading, setImgLoading] = useState(false);
 
   const now = getNowKST();
   const [monthYear, setMonthYear] = useState(String(now.getUTCFullYear()));
@@ -56,12 +63,96 @@ export default function MealFieldPage({ params }: { params: Promise<{ token: str
 
   const today = getTodayKST();
 
+  // 이미지 다운로드
+  const downloadImage = async () => {
+    if (!vendor) return;
+    setImgLoading(true);
+    try {
+      const price = vendor.pricePerMeal ?? 0;
+      const dc = getDaysInMonth(parseInt(monthYear), parseInt(monthMonth));
+      const rows = Array.from({ length: dc }, (_, i) => {
+        const day = String(i+1).padStart(2,"0");
+        const dateStr = `${monthYear}-${monthMonth.padStart(2,"0")}-${day}`;
+        const recs = monthRecords.filter(r => r.date === dateStr);
+        const totalCount = recs.reduce((s, r) => s + r.count, 0);
+        const mealSummary = recs.map(r => `${r.mealType} ${r.count}명`).join(" / ");
+        const memo = recs.map(r => r.memo).filter(Boolean).join(" / ");
+        return { dateStr, recs, totalCount, mealSummary, memo };
+      });
+      const grandTotal = rows.reduce((s, r) => s + r.totalCount, 0);
+      const byType: Record<string, number> = {};
+      monthRecords.forEach(r => { byType[r.mealType] = (byType[r.mealType]||0) + r.count; });
+
+      const thStyle = "border:1px solid #aaa;padding:7px 10px;background:#e8e8e8;text-align:center;font-weight:bold;font-size:13px";
+      const tdStyle = "border:1px solid #ccc;padding:6px 10px;text-align:center;font-size:13px";
+
+      const rowsHtml = rows.map(r => {
+        const we = isWeekend(r.dateStr) ? "color:#cc0000;" : "";
+        if (r.recs.length === 0) {
+          return `<tr style="${we}">
+            <td style="${tdStyle}">${r.dateStr.slice(5)}</td>
+            <td style="${tdStyle}">${getDayStr(r.dateStr)}</td>
+            <td style="${tdStyle};color:#ccc" colspan="3">-</td>
+          </tr>`;
+        }
+        return r.recs.map((rec, i) => `<tr style="${we}">
+          ${i===0 ? `<td style="${tdStyle}" rowspan="${r.recs.length}">${r.dateStr.slice(5)}</td>
+            <td style="${tdStyle}" rowspan="${r.recs.length}">${getDayStr(r.dateStr)}</td>` : ""}
+          <td style="${tdStyle}">${rec.mealType}</td>
+          <td style="${tdStyle};font-weight:bold;color:#1d4ed8;font-size:15px">${rec.count}명${price ? `<br/><span style="font-size:11px;color:#555;font-weight:normal">${(rec.count*price).toLocaleString()}원</span>` : ""}</td>
+          <td style="${tdStyle};text-align:left;color:#666">${rec.memo||""}</td>
+        </tr>`).join("");
+      }).join("");
+
+      const totalSummary = Object.entries(byType).map(([k,v])=>`${k} ${v}명`).join(" &nbsp;/&nbsp; ");
+      const totalAmt = grandTotal && price ? `&nbsp;|&nbsp; 합계금액: <strong style="color:#15803d">${(grandTotal*price).toLocaleString()}원</strong>` : "";
+
+      const innerHtml = `
+        <div style="padding:32px;background:white;font-family:'Malgun Gothic',sans-serif;width:700px;box-sizing:border-box">
+          <h2 style="text-align:center;font-size:18px;margin:0 0 6px;color:#111">${vendor.factory} 공장 ${monthYear}년 ${monthMonth}월 식수 현황</h2>
+          <p style="text-align:center;color:#555;margin:0 0 4px;font-size:13px">업체: <strong>${vendor.name}</strong>${price ? ` &nbsp;|&nbsp; 단가: <strong>${price.toLocaleString()}원/식</strong>` : ""}</p>
+          <table style="width:100%;border-collapse:collapse;margin-top:16px">
+            <thead><tr>
+              <th style="${thStyle}">날짜</th>
+              <th style="${thStyle}">요일</th>
+              <th style="${thStyle}">식사</th>
+              <th style="${thStyle}">인원${price ? " / 금액" : ""}</th>
+              <th style="${thStyle}">전달사항</th>
+            </tr></thead>
+            <tbody>${rowsHtml}</tbody>
+            <tfoot><tr style="background:#dbeafe;font-weight:bold">
+              <td style="${thStyle}" colspan="3">합계</td>
+              <td style="${thStyle};text-align:left" colspan="2">
+                ${totalSummary} &nbsp;/&nbsp; 전체 ${grandTotal}명${totalAmt}
+              </td>
+            </tr></tfoot>
+          </table>
+        </div>`;
+
+      const div = document.createElement("div");
+      div.style.cssText = "position:fixed;left:-9999px;top:0;background:white";
+      div.innerHTML = innerHtml;
+      document.body.appendChild(div);
+
+      const { default: html2canvas } = await import("html2canvas");
+      const canvas = await html2canvas(div.firstElementChild as HTMLElement, { scale: 2, useCORS: true });
+      document.body.removeChild(div);
+
+      const link = document.createElement("a");
+      link.download = `식수현황_${vendor.factory}_${monthYear}년${monthMonth}월.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    } catch (e) {
+      console.error(e);
+      alert("이미지 생성 중 오류가 발생했습니다.");
+    } finally { setImgLoading(false); }
+  };
+
   if (loading) return (
     <div className="min-h-screen bg-white flex items-center justify-center">
       <p className="text-2xl text-gray-400 font-bold">불러오는 중...</p>
     </div>
   );
-
   if (error || !vendor) return (
     <div className="min-h-screen bg-white flex items-center justify-center p-6">
       <div className="text-center">
@@ -72,13 +163,10 @@ export default function MealFieldPage({ params }: { params: Promise<{ token: str
   );
 
   const isLocked = isPastDeadline(vendor.deadlineHour, vendor.deadlineMin);
-
-  // Sort by mealType order
   const mealOrder = ["점심","저녁","기타"];
   const sortedToday = [...todayRecords].sort((a,b) => mealOrder.indexOf(a.mealType) - mealOrder.indexOf(b.mealType));
 
-  // Monthly table
-  const daysInMonth = new Date(parseInt(monthYear), parseInt(monthMonth), 0).getDate();
+  const daysInMonth = getDaysInMonth(parseInt(monthYear), parseInt(monthMonth));
   const monthRows = Array.from({length: daysInMonth}, (_, i) => {
     const day = String(i+1).padStart(2,"0");
     const dateStr = `${monthYear}-${monthMonth.padStart(2,"0")}-${day}`;
@@ -88,6 +176,7 @@ export default function MealFieldPage({ params }: { params: Promise<{ token: str
   const totalByType: Record<string, number> = {};
   monthRecords.forEach(r => { totalByType[r.mealType] = (totalByType[r.mealType]||0) + r.count; });
   const grandTotal = Object.values(totalByType).reduce((s,v)=>s+v,0);
+  const price = vendor.pricePerMeal ?? 0;
 
   return (
     <div className="min-h-screen bg-white text-gray-900 max-w-lg mx-auto">
@@ -95,6 +184,7 @@ export default function MealFieldPage({ params }: { params: Promise<{ token: str
       <div className="bg-blue-600 text-white px-6 py-5">
         <div className="text-base font-semibold opacity-80">{vendor.factory} 공장 식당</div>
         <div className="text-2xl font-bold mt-0.5">{vendor.name}</div>
+        {price > 0 && <div className="text-sm opacity-75 mt-0.5">단가: {price.toLocaleString()}원/식</div>}
         {isLocked && (
           <div className="mt-2 text-sm bg-red-500 text-white px-3 py-1 rounded-full inline-block font-semibold">
             마감 ({vendor.deadlineHour}:{String(vendor.deadlineMin).padStart(2,"0")})
@@ -112,7 +202,7 @@ export default function MealFieldPage({ params }: { params: Promise<{ token: str
         ))}
       </div>
 
-      {/* 오늘 수량 탭 */}
+      {/* 오늘 수량 */}
       {activeTab === "today" && (
         <div className="px-6 py-8">
           <div className="text-center mb-8">
@@ -128,13 +218,28 @@ export default function MealFieldPage({ params }: { params: Promise<{ token: str
           ) : (
             <div className="space-y-4">
               {sortedToday.map(rec => (
-                <div key={rec.id} className="bg-gray-50 rounded-2xl px-6 py-5 flex items-center justify-between">
-                  <span className="text-2xl font-bold text-gray-700">{rec.mealType}</span>
-                  <span className="text-5xl font-black text-blue-600">{rec.count}<span className="text-2xl font-bold ml-1">명</span></span>
+                <div key={rec.id} className="bg-gray-50 rounded-2xl px-6 py-5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl font-bold text-gray-700">{rec.mealType}</span>
+                    <span className="text-5xl font-black text-blue-600">{rec.count}<span className="text-2xl font-bold ml-1">명</span></span>
+                  </div>
+                  {price > 0 && (
+                    <div className="text-right text-base font-semibold text-green-600 mt-1">
+                      {(rec.count * price).toLocaleString()}원
+                    </div>
+                  )}
                 </div>
               ))}
+              {price > 0 && sortedToday.length > 1 && (
+                <div className="bg-green-50 rounded-2xl px-6 py-4 flex items-center justify-between">
+                  <span className="text-lg font-bold text-green-800">오늘 합계 금액</span>
+                  <span className="text-2xl font-black text-green-700">
+                    {(sortedToday.reduce((s,r)=>s+r.count,0) * price).toLocaleString()}원
+                  </span>
+                </div>
+              )}
               {sortedToday.some(r=>r.memo) && (
-                <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-2xl px-6 py-4">
+                <div className="mt-2 bg-yellow-50 border border-yellow-200 rounded-2xl px-6 py-4">
                   <div className="text-base font-bold text-yellow-800 mb-2">전달사항</div>
                   {sortedToday.filter(r=>r.memo).map(r=>(
                     <p key={r.id} className="text-lg text-yellow-900">{r.memo}</p>
@@ -146,10 +251,10 @@ export default function MealFieldPage({ params }: { params: Promise<{ token: str
         </div>
       )}
 
-      {/* 월별 수량 탭 */}
+      {/* 월별 수량 */}
       {activeTab === "monthly" && (
-        <div className="px-4 py-6">
-          <div className="flex items-center gap-2 mb-5 px-2">
+        <div className="px-4 py-6 space-y-4">
+          <div className="flex items-center gap-2 px-2">
             <input type="number" value={monthYear} onChange={e=>setMonthYear(e.target.value)}
               className="w-20 h-11 border border-gray-200 rounded-xl px-3 text-lg font-bold text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <span className="text-lg font-bold text-gray-600">년</span>
@@ -160,7 +265,24 @@ export default function MealFieldPage({ params }: { params: Promise<{ token: str
             <button onClick={loadMonth} className="flex-1 h-11 bg-blue-600 text-white rounded-xl text-base font-bold">조회</button>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-gray-100">
+          {/* 이미지 저장 버튼 */}
+          <button onClick={downloadImage} disabled={imgLoading}
+            className="mx-2 flex items-center justify-center gap-2 w-[calc(100%-16px)] py-3 rounded-xl bg-purple-600 text-white font-bold text-base active:bg-purple-700 disabled:opacity-60">
+            {imgLoading ? "이미지 생성 중..." : "📷 이달 보고서 이미지 저장"}
+          </button>
+
+          {/* 합계 금액 카드 */}
+          {grandTotal > 0 && price > 0 && (
+            <div className="mx-2 bg-green-50 border border-green-200 rounded-xl px-5 py-3 flex items-center justify-between">
+              <div>
+                <div className="text-sm text-green-700 font-semibold">이달 합계</div>
+                <div className="text-xs text-green-600">{grandTotal}명 × {price.toLocaleString()}원</div>
+              </div>
+              <div className="text-2xl font-black text-green-700">{(grandTotal * price).toLocaleString()}원</div>
+            </div>
+          )}
+
+          <div className="overflow-x-auto rounded-xl border border-gray-100 mx-2">
             <table className="w-full text-base text-center">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
@@ -168,6 +290,7 @@ export default function MealFieldPage({ params }: { params: Promise<{ token: str
                   <th className="py-3 px-2 font-bold text-gray-600">요일</th>
                   <th className="py-3 px-3 font-bold text-gray-600">식사</th>
                   <th className="py-3 px-3 font-bold text-gray-600">인원</th>
+                  {price > 0 && <th className="py-3 px-3 font-bold text-green-700">금액</th>}
                   <th className="py-3 px-3 font-bold text-gray-600 text-left">전달사항</th>
                 </tr>
               </thead>
@@ -179,7 +302,7 @@ export default function MealFieldPage({ params }: { params: Promise<{ token: str
                     <tr key={dateStr} className={we?"bg-red-50/30":""}>
                       <td className={`py-2.5 px-3 font-mono text-sm ${we?"text-red-400":""}`}>{dateStr.slice(5)}</td>
                       <td className={`py-2.5 px-2 font-bold text-sm ${we?"text-red-400":""}`}>{DAYS[dow]}</td>
-                      <td colSpan={3} className="py-2.5 px-3 text-gray-200">-</td>
+                      <td colSpan={price>0?4:3} className="py-2.5 px-3 text-gray-200">-</td>
                     </tr>
                   );
                   return recs.map((r,i)=>(
@@ -188,6 +311,7 @@ export default function MealFieldPage({ params }: { params: Promise<{ token: str
                       {i===0 && <td rowSpan={recs.length} className={`py-2.5 px-2 font-bold text-sm ${we?"text-red-400":""}`}>{DAYS[dow]}</td>}
                       <td className="py-2.5 px-3 text-sm text-gray-600">{r.mealType}</td>
                       <td className="py-2.5 px-3 font-bold text-blue-700 text-lg">{r.count}명</td>
+                      {price > 0 && <td className="py-2.5 px-3 font-semibold text-green-700 text-sm">{(r.count*price).toLocaleString()}원</td>}
                       <td className="py-2.5 px-3 text-sm text-gray-500 text-left">{r.memo||""}</td>
                     </tr>
                   ));
@@ -196,9 +320,10 @@ export default function MealFieldPage({ params }: { params: Promise<{ token: str
               <tfoot className="bg-blue-50 border-t-2 border-blue-200">
                 <tr>
                   <td colSpan={3} className="py-3 px-3 font-bold text-blue-800 text-left">합계</td>
-                  <td colSpan={2} className="py-3 px-3 font-bold text-blue-800 text-left">
-                    {Object.entries(totalByType).map(([k,v])=>`${k} ${v}식`).join(" / ")}
-                    {grandTotal > 0 && ` / 전체 ${grandTotal}식`}
+                  <td className="py-3 px-3 font-bold text-blue-800">{grandTotal}명</td>
+                  {price > 0 && <td className="py-3 px-3 font-bold text-green-800">{(grandTotal*price).toLocaleString()}원</td>}
+                  <td className="py-3 px-3 font-bold text-blue-800 text-left">
+                    {Object.entries(totalByType).map(([k,v])=>`${k} ${v}명`).join(" / ")}
                   </td>
                 </tr>
               </tfoot>

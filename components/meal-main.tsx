@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   UtensilsCrossed, Plus, Pencil, Trash2, Copy, RefreshCw, X, Save,
-  Check, Link2, Building2, Download, Printer, Image as ImageIcon,
+  Check, Link2, Building2, Download, Printer,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -318,104 +318,6 @@ export default function MealMain() {
     if (w) { w.document.write(html); w.document.close(); }
   };
 
-  /* ── 업체 이미지 보고서 ── */
-  const [vendorReportModal, setVendorReportModal] = useState<{ vendor: MealVendor; year: string; month: string } | null>(null);
-  const [vendorReportLoading, setVendorReportLoading] = useState(false);
-
-  const downloadVendorImage = async () => {
-    if (!vendorReportModal) return;
-    const { vendor, year, month } = vendorReportModal;
-    setVendorReportLoading(true);
-    try {
-      const r = await fetch(`/api/meal-record?year=${year}&month=${month}&factory=${vendor.factory}`);
-      const d = await r.json();
-      if (!d.success) return;
-      const records: MealRecord[] = d.data;
-      const price = vendor.pricePerMeal ?? 0;
-      const dc = getDaysInMonth(parseInt(year), parseInt(month));
-      const rows = Array.from({ length: dc }, (_, i) => {
-        const day = String(i + 1).padStart(2, "0");
-        const dateStr = `${year}-${month.padStart(2, "0")}-${day}`;
-        const recs = records.filter(r => r.date === dateStr);
-        const lunch = recs.find(r => r.mealType === "점심");
-        const dinner = recs.find(r => r.mealType === "저녁");
-        const other = recs.find(r => r.mealType === "기타");
-        const memo = recs.map(r => r.memo).filter(Boolean).join(" / ");
-        return { dateStr, lunch, dinner, other, memo };
-      });
-      const lt = rows.reduce((s, r) => s + (r.lunch?.count ?? 0), 0);
-      const dt = rows.reduce((s, r) => s + (r.dinner?.count ?? 0), 0);
-      const ot = rows.reduce((s, r) => s + (r.other?.count ?? 0), 0);
-      const grand = lt + dt + ot;
-
-      const rowsHtml = rows.map(r => {
-        const l = r.lunch?.count ?? 0; const d2 = r.dinner?.count ?? 0; const o = r.other?.count ?? 0;
-        const total = l + d2 + o;
-        const we = isWeekend(r.dateStr) ? "color:red;" : "";
-        return `<tr style="${we}">
-          <td>${r.dateStr.slice(5)}</td><td>${getDayStr(r.dateStr)}</td>
-          <td>${l || "-"}</td><td>${d2 || "-"}</td><td>${o || "-"}</td><td style="font-weight:bold">${total || "-"}</td>
-          <td>${total && price ? (total * price).toLocaleString() + "원" : "-"}</td>
-          <td style="text-align:left;font-size:11px">${r.memo || ""}</td></tr>`;
-      }).join("");
-
-      const tableStyle = "width:100%;border-collapse:collapse;font-size:12px";
-      const thStyle = "border:1px solid #aaa;padding:6px 8px;background:#e8e8e8;text-align:center;font-weight:bold";
-      const tdStyle = "border:1px solid #ccc;padding:5px 8px;text-align:center";
-
-      const innerHtml = `
-        <div style="padding:32px;background:white;font-family:'Malgun Gothic',sans-serif;width:880px">
-          <h2 style="text-align:center;font-size:17px;margin:0 0 6px">${vendor.factory} 공장 ${year}년 ${month}월 식수 현황</h2>
-          <p style="text-align:center;color:#555;margin:0 0 16px;font-size:12px">
-            업체: ${vendor.name}${price ? ` &nbsp;|&nbsp; 단가: ${price.toLocaleString()}원/식` : ""}
-          </p>
-          <table style="${tableStyle}">
-            <thead><tr>
-              <th style="${thStyle}">날짜</th><th style="${thStyle}">요일</th>
-              <th style="${thStyle}">점심</th><th style="${thStyle}">저녁</th>
-              <th style="${thStyle}">기타</th><th style="${thStyle}">합계</th>
-              <th style="${thStyle}">금액</th><th style="${thStyle}">메모</th>
-            </tr></thead>
-            <tbody>${rows.map(r => {
-              const l = r.lunch?.count ?? 0; const d2 = r.dinner?.count ?? 0; const o = r.other?.count ?? 0;
-              const total = l + d2 + o;
-              const we = isWeekend(r.dateStr) ? "color:red;" : "";
-              return `<tr style="${we}">
-                <td style="${tdStyle}">${r.dateStr.slice(5)}</td><td style="${tdStyle}">${getDayStr(r.dateStr)}</td>
-                <td style="${tdStyle}">${l || "-"}</td><td style="${tdStyle}">${d2 || "-"}</td>
-                <td style="${tdStyle}">${o || "-"}</td><td style="${tdStyle};font-weight:bold">${total || "-"}</td>
-                <td style="${tdStyle}">${total && price ? (total * price).toLocaleString() + "원" : "-"}</td>
-                <td style="${tdStyle};text-align:left;font-size:11px">${r.memo || ""}</td></tr>`;
-            }).join("")}</tbody>
-            <tfoot><tr style="font-weight:bold;background:#dbeafe">
-              <td style="${thStyle}" colspan="2">합계</td>
-              <td style="${thStyle}">${lt}명</td><td style="${thStyle}">${dt}명</td>
-              <td style="${thStyle}">${ot}명</td><td style="${thStyle}">${grand}명</td>
-              <td style="${thStyle}">${grand && price ? (grand * price).toLocaleString() + "원" : "-"}</td>
-              <td style="${thStyle}"></td>
-            </tr></tfoot>
-          </table>
-        </div>`;
-
-      const div = document.createElement("div");
-      div.style.cssText = "position:fixed;left:-9999px;top:0;background:white";
-      div.innerHTML = innerHtml;
-      document.body.appendChild(div);
-
-      const { default: html2canvas } = await import("html2canvas");
-      const canvas = await html2canvas(div.firstElementChild as HTMLElement, { scale: 2, useCORS: true });
-      document.body.removeChild(div);
-
-      const link = document.createElement("a");
-      link.download = `식수보고서_${vendor.factory}_${year}년${month}월.png`;
-      link.href = canvas.toDataURL("image/png");
-      link.click();
-      setVendorReportModal(null);
-    } catch (e) {
-      console.error(e);
-      alert("이미지 생성 중 오류가 발생했습니다.");
-    } finally { setVendorReportLoading(false); }
-  };
 
   /* ── 업체 모달 ── */
   const [showVendorModal, setShowVendorModal] = useState(false);
@@ -901,10 +803,6 @@ export default function MealMain() {
                             <RefreshCw size={13} />
                           </button>
                         </div>
-                        <button onClick={() => setVendorReportModal({ vendor: v, year: String(now.getUTCFullYear()), month: String(now.getUTCMonth() + 1) })}
-                          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-purple-200 text-purple-600 hover:bg-purple-50 transition-colors w-full justify-center font-semibold">
-                          <ImageIcon size={13} /> 월별 보고서 이미지 저장
-                        </button>
                       </div>
                     </div>
                   </div>
@@ -915,38 +813,6 @@ export default function MealMain() {
         </div>
       )}
 
-      {/* ========== 업체 이미지 보고서 모달 ========== */}
-      {vendorReportModal && (
-        <div className="fixed inset-0 z-50 bg-gray-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-              <h3 className="font-bold text-lg text-gray-900">월별 보고서 이미지</h3>
-              <button onClick={() => setVendorReportModal(null)} className="text-gray-400 hover:text-gray-600 p-1 rounded"><X size={20} /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="text-sm text-gray-600">
-                <strong>{vendorReportModal.vendor.factory} 공장</strong> — {vendorReportModal.vendor.name}
-              </div>
-              <div className="flex items-center gap-2">
-                <Input type="number" value={vendorReportModal.year}
-                  onChange={e => setVendorReportModal(p => p ? { ...p, year: e.target.value } : null)}
-                  className="w-24 h-9" placeholder="연도" />
-                <span className="text-gray-600">년</span>
-                <select value={vendorReportModal.month}
-                  onChange={e => setVendorReportModal(p => p ? { ...p, month: e.target.value } : null)}
-                  className="h-9 px-3 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
-                  {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}월</option>)}
-                </select>
-              </div>
-              <Button onClick={downloadVendorImage} disabled={vendorReportLoading}
-                className="w-full bg-purple-600 hover:bg-purple-700 gap-2">
-                <ImageIcon size={15} />
-                {vendorReportLoading ? "이미지 생성 중..." : "PNG 이미지 다운로드"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ========== 업체 등록/수정 모달 ========== */}
       {showVendorModal && (
