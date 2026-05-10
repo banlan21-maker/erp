@@ -63,85 +63,177 @@ export default function MealFieldPage({ params }: { params: Promise<{ token: str
 
   const today = getTodayKST();
 
-  // 이미지 다운로드
-  const downloadImage = async () => {
+  // 이미지 다운로드 (Canvas API 직접 드로잉)
+  const downloadImage = () => {
     if (!vendor) return;
     setImgLoading(true);
     try {
       const price = vendor.pricePerMeal ?? 0;
       const dc = getDaysInMonth(parseInt(monthYear), parseInt(monthMonth));
-      const rows = Array.from({ length: dc }, (_, i) => {
-        const day = String(i+1).padStart(2,"0");
-        const dateStr = `${monthYear}-${monthMonth.padStart(2,"0")}-${day}`;
+
+      // 행 데이터 구성
+      interface DrawRow { dateStr: string; we: boolean; mealType: string; count: number; memo: string; empty: boolean; }
+      const drawRows: DrawRow[] = [];
+      for (let i = 0; i < dc; i++) {
+        const day = String(i + 1).padStart(2, "0");
+        const dateStr = `${monthYear}-${monthMonth.padStart(2, "0")}-${day}`;
         const recs = monthRecords.filter(r => r.date === dateStr);
-        const totalCount = recs.reduce((s, r) => s + r.count, 0);
-        const mealSummary = recs.map(r => `${r.mealType} ${r.count}명`).join(" / ");
-        const memo = recs.map(r => r.memo).filter(Boolean).join(" / ");
-        return { dateStr, recs, totalCount, mealSummary, memo };
-      });
-      const grandTotal = rows.reduce((s, r) => s + r.totalCount, 0);
-      const byType: Record<string, number> = {};
-      monthRecords.forEach(r => { byType[r.mealType] = (byType[r.mealType]||0) + r.count; });
-
-      const thStyle = "border:1px solid #aaa;padding:7px 10px;background:#e8e8e8;text-align:center;font-weight:bold;font-size:13px";
-      const tdStyle = "border:1px solid #ccc;padding:6px 10px;text-align:center;font-size:13px";
-
-      const rowsHtml = rows.map(r => {
-        const we = isWeekend(r.dateStr) ? "color:#cc0000;" : "";
-        if (r.recs.length === 0) {
-          return `<tr style="${we}">
-            <td style="${tdStyle}">${r.dateStr.slice(5)}</td>
-            <td style="${tdStyle}">${getDayStr(r.dateStr)}</td>
-            <td style="${tdStyle};color:#ccc" colspan="3">-</td>
-          </tr>`;
+        const we = isWeekend(dateStr);
+        if (recs.length === 0) {
+          drawRows.push({ dateStr, we, mealType: "", count: 0, memo: "", empty: true });
+        } else {
+          recs.forEach(rec => drawRows.push({ dateStr, we, mealType: rec.mealType, count: rec.count, memo: rec.memo || "", empty: false }));
         }
-        return r.recs.map((rec, i) => `<tr style="${we}">
-          ${i===0 ? `<td style="${tdStyle}" rowspan="${r.recs.length}">${r.dateStr.slice(5)}</td>
-            <td style="${tdStyle}" rowspan="${r.recs.length}">${getDayStr(r.dateStr)}</td>` : ""}
-          <td style="${tdStyle}">${rec.mealType}</td>
-          <td style="${tdStyle};font-weight:bold;color:#1d4ed8;font-size:15px">${rec.count}명${price ? `<br/><span style="font-size:11px;color:#555;font-weight:normal">${(rec.count*price).toLocaleString()}원</span>` : ""}</td>
-          <td style="${tdStyle};text-align:left;color:#666">${rec.memo||""}</td>
-        </tr>`).join("");
-      }).join("");
+      }
+      const grandTotal = monthRecords.reduce((s, r) => s + r.count, 0);
+      const byType: Record<string, number> = {};
+      monthRecords.forEach(r => { byType[r.mealType] = (byType[r.mealType] || 0) + r.count; });
 
-      const totalSummary = Object.entries(byType).map(([k,v])=>`${k} ${v}명`).join(" &nbsp;/&nbsp; ");
-      const totalAmt = grandTotal && price ? `&nbsp;|&nbsp; 합계금액: <strong style="color:#15803d">${(grandTotal*price).toLocaleString()}원</strong>` : "";
+      // 레이아웃
+      const SCALE = 2;
+      const W = 660;
+      const TITLE_Y = 32;
+      const SUB_Y = 56;
+      const TABLE_TOP = 82;
+      const HDR_H = 36;
+      const ROW_H = 30;
+      const FOOT_H = 36;
+      const H = TABLE_TOP + HDR_H + drawRows.length * ROW_H + FOOT_H + 20;
 
-      const innerHtml = `
-        <div style="padding:32px;background:white;font-family:'Malgun Gothic',sans-serif;width:700px;box-sizing:border-box">
-          <h2 style="text-align:center;font-size:18px;margin:0 0 6px;color:#111">${vendor.factory} 공장 ${monthYear}년 ${monthMonth}월 식수 현황</h2>
-          <p style="text-align:center;color:#555;margin:0 0 4px;font-size:13px">업체: <strong>${vendor.name}</strong>${price ? ` &nbsp;|&nbsp; 단가: <strong>${price.toLocaleString()}원/식</strong>` : ""}</p>
-          <table style="width:100%;border-collapse:collapse;margin-top:16px">
-            <thead><tr>
-              <th style="${thStyle}">날짜</th>
-              <th style="${thStyle}">요일</th>
-              <th style="${thStyle}">식사</th>
-              <th style="${thStyle}">인원${price ? " / 금액" : ""}</th>
-              <th style="${thStyle}">전달사항</th>
-            </tr></thead>
-            <tbody>${rowsHtml}</tbody>
-            <tfoot><tr style="background:#dbeafe;font-weight:bold">
-              <td style="${thStyle}" colspan="3">합계</td>
-              <td style="${thStyle};text-align:left" colspan="2">
-                ${totalSummary} &nbsp;/&nbsp; 전체 ${grandTotal}명${totalAmt}
-              </td>
-            </tr></tfoot>
-          </table>
-        </div>`;
+      const canvas = document.createElement("canvas");
+      canvas.width = W * SCALE;
+      canvas.height = H * SCALE;
+      const ctx = canvas.getContext("2d")!;
+      ctx.scale(SCALE, SCALE);
 
-      const div = document.createElement("div");
-      div.style.cssText = "position:fixed;left:-9999px;top:0;background:white";
-      div.innerHTML = innerHtml;
-      document.body.appendChild(div);
+      // 배경
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, W, H);
 
-      const { default: html2canvas } = await import("html2canvas");
-      const canvas = await html2canvas(div.firstElementChild as HTMLElement, { scale: 2, useCORS: true });
-      document.body.removeChild(div);
+      // 제목
+      ctx.font = "bold 15px sans-serif";
+      ctx.fillStyle = "#111111";
+      ctx.textAlign = "center";
+      ctx.fillText(`${vendor.factory} 공장 ${monthYear}년 ${monthMonth}월 식수 현황`, W / 2, TITLE_Y);
 
-      const link = document.createElement("a");
-      link.download = `식수현황_${vendor.factory}_${monthYear}년${monthMonth}월.png`;
-      link.href = canvas.toDataURL("image/png");
-      link.click();
+      // 부제목
+      ctx.font = "12px sans-serif";
+      ctx.fillStyle = "#555555";
+      const sub = `업체: ${vendor.name}${price ? `  |  단가: ${price.toLocaleString()}원/식` : ""}`;
+      ctx.fillText(sub, W / 2, SUB_Y);
+
+      // 컬럼 정의
+      const cols = price > 0
+        ? [{ w: 62 }, { w: 38 }, { w: 60 }, { w: 70 }, { w: 100 }, { w: W - 62 - 38 - 60 - 70 - 100 }]
+        : [{ w: 62 }, { w: 38 }, { w: 60 }, { w: 70 }, { w: W - 62 - 38 - 60 - 70 }];
+      const hdrs = price > 0
+        ? ["날짜", "요일", "식사", "인원", "금액", "전달사항"]
+        : ["날짜", "요일", "식사", "인원", "전달사항"];
+
+      function colX(i: number) { return cols.slice(0, i).reduce((s, c) => s + c.w, 0); }
+
+      // 헤더
+      ctx.fillStyle = "#e0e7ff";
+      ctx.fillRect(0, TABLE_TOP, W, HDR_H);
+      ctx.font = "bold 11px sans-serif";
+      ctx.fillStyle = "#1e3a8a";
+      for (let i = 0; i < hdrs.length; i++) {
+        ctx.textAlign = "center";
+        ctx.fillText(hdrs[i], colX(i) + cols[i].w / 2, TABLE_TOP + HDR_H / 2 + 4);
+      }
+
+      // 헤더 테두리
+      ctx.strokeStyle = "#93c5fd";
+      ctx.lineWidth = 0.5;
+      for (let i = 0; i < cols.length; i++) {
+        ctx.strokeRect(colX(i) + 0.25, TABLE_TOP + 0.25, cols[i].w - 0.5, HDR_H - 0.5);
+      }
+
+      // 데이터 행
+      drawRows.forEach((row, idx) => {
+        const y = TABLE_TOP + HDR_H + idx * ROW_H;
+        if (row.we) { ctx.fillStyle = "#fff1f2"; ctx.fillRect(0, y, W, ROW_H); }
+
+        const textColor = row.we ? "#b91c1c" : "#333333";
+        ctx.font = "11px sans-serif";
+        ctx.fillStyle = textColor;
+        ctx.textAlign = "center";
+
+        // 날짜
+        ctx.fillText(row.dateStr.slice(5), colX(0) + cols[0].w / 2, y + ROW_H / 2 + 4);
+        // 요일
+        ctx.fillText(getDayStr(row.dateStr), colX(1) + cols[1].w / 2, y + ROW_H / 2 + 4);
+
+        if (!row.empty) {
+          // 식사 구분
+          ctx.fillText(row.mealType, colX(2) + cols[2].w / 2, y + ROW_H / 2 + 4);
+          // 인원
+          ctx.font = "bold 12px sans-serif";
+          ctx.fillStyle = "#1d4ed8";
+          ctx.fillText(`${row.count}명`, colX(3) + cols[3].w / 2, y + ROW_H / 2 + 4);
+          // 금액
+          if (price > 0) {
+            ctx.font = "11px sans-serif";
+            ctx.fillStyle = "#15803d";
+            ctx.fillText(`${(row.count * price).toLocaleString()}원`, colX(4) + cols[4].w / 2, y + ROW_H / 2 + 4);
+          }
+          // 메모
+          if (row.memo) {
+            ctx.font = "10px sans-serif";
+            ctx.fillStyle = "#666666";
+            ctx.textAlign = "left";
+            const memoCol = price > 0 ? 5 : 4;
+            ctx.fillText(row.memo.substring(0, 22), colX(memoCol) + 4, y + ROW_H / 2 + 4);
+          }
+        } else {
+          ctx.fillStyle = "#cccccc";
+          ctx.fillText("-", colX(2) + cols[2].w / 2, y + ROW_H / 2 + 4);
+        }
+
+        // 행 테두리
+        ctx.strokeStyle = "#e2e8f0";
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i < cols.length; i++) {
+          ctx.strokeRect(colX(i) + 0.25, y + 0.25, cols[i].w - 0.5, ROW_H - 0.5);
+        }
+      });
+
+      // 합계 행
+      const footY = TABLE_TOP + HDR_H + drawRows.length * ROW_H;
+      ctx.fillStyle = "#dbeafe";
+      ctx.fillRect(0, footY, W, FOOT_H);
+      ctx.font = "bold 11px sans-serif";
+      ctx.fillStyle = "#1e40af";
+      ctx.textAlign = "center";
+      ctx.fillText("합계", colX(0) + (cols[0].w + cols[1].w + cols[2].w) / 2, footY + FOOT_H / 2 + 4);
+      ctx.fillText(`${grandTotal}명`, colX(3) + cols[3].w / 2, footY + FOOT_H / 2 + 4);
+      if (price > 0) {
+        ctx.fillStyle = "#15803d";
+        ctx.fillText(`${(grandTotal * price).toLocaleString()}원`, colX(4) + cols[4].w / 2, footY + FOOT_H / 2 + 4);
+      }
+      const sumCol = price > 0 ? 5 : 4;
+      ctx.font = "10px sans-serif";
+      ctx.fillStyle = "#1e40af";
+      ctx.textAlign = "left";
+      const summaryText = Object.entries(byType).map(([k, v]) => `${k} ${v}명`).join("  /  ");
+      ctx.fillText(summaryText, colX(sumCol) + 4, footY + FOOT_H / 2 + 4);
+      ctx.strokeStyle = "#93c5fd";
+      ctx.lineWidth = 0.5;
+      for (let i = 0; i < cols.length; i++) {
+        ctx.strokeRect(colX(i) + 0.25, footY + 0.25, cols[i].w - 0.5, FOOT_H - 0.5);
+      }
+
+      // 다운로드
+      canvas.toBlob(blob => {
+        if (!blob) { alert("이미지 생성 실패"); return; }
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.download = `식수현황_${vendor!.factory}_${monthYear}년${monthMonth}월.png`;
+        link.href = url;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }, "image/png");
+
     } catch (e) {
       console.error(e);
       alert("이미지 생성 중 오류가 발생했습니다.");
