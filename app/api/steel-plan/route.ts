@@ -44,11 +44,12 @@ export async function GET(req: NextRequest) {
   const search          = sp.get("search")          || undefined;
   const all             = sp.get("all")             === "true";
   const page            = Math.max(1, parseInt(sp.get("page") || "1"));
-  const sortByRaw       = sp.get("sortBy")  || "";
-  const sortDirRaw      = sp.get("sortDir") || "asc";
   const SORTABLE        = ["vesselCode","material","thickness","width","length","status","receivedAt","storageLocation","reservedFor","selectionPrintedAt","issuedAt","uploadBatchNo","createdAt"] as const;
-  const sortBy          = (SORTABLE as readonly string[]).includes(sortByRaw) ? sortByRaw as typeof SORTABLE[number] : null;
-  const sortDir         = sortDirRaw === "desc" ? "desc" : "asc" as const;
+  const sortByCols      = (sp.get("sortBy") || "").split(",").filter(Boolean);
+  const sortDirCols     = (sp.get("sortDir") || "").split(",");
+  const sortKeys        = sortByCols
+    .map((col, i) => ({ col, dir: (sortDirCols[i] === "desc" ? "desc" : "asc") as "asc" | "desc" }))
+    .filter((k) => (SORTABLE as readonly string[]).includes(k.col));
 
   // Column IN filters
   const vesselCodes     = parseList(sp.get("vesselCodes"));
@@ -95,8 +96,8 @@ export async function GET(req: NextRequest) {
     prisma.steelPlan.count({ where }),
     prisma.steelPlan.findMany({
       where,
-      orderBy: sortBy
-        ? [{ [sortBy]: sortDir }, { createdAt: "asc" }]
+      orderBy: sortKeys.length
+        ? [...sortKeys.map((k) => ({ [k.col]: k.dir })), { createdAt: "asc" }]
         : [{ vesselCode: "asc" }, { createdAt: "asc" }],
       ...(all ? {} : { skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE }),
     }),
