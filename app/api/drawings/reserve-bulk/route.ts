@@ -146,16 +146,15 @@ export async function DELETE(request: NextRequest) {
     // 신규 형식: "호선/블록" + 구형 형식: 블록만
     const newFmtCodes = blockCodes.map((b) => `${vesselCode}/${b}`);
 
-    // 등록잔재 사용 행 확정 취소: WAITING → REGISTERED (raw SQL로 Prisma 버전 무관)
-    const assignedWaitingRaw = await prisma.$queryRaw<{ id: string }[]>`
-      SELECT id FROM "DrawingList"
-      WHERE "projectId" = ${projectId} AND status = 'WAITING' AND "assignedRemnantId" IS NOT NULL
-    `;
-    if (assignedWaitingRaw.length > 0) {
-      await prisma.drawingList.updateMany({
-        where: { id: { in: assignedWaitingRaw.map(r => r.id) } },
-        data: { status: "REGISTERED" },
-      });
+    // 절단완료(CUT) 도면이 있으면 확정취소 불가 — 작업일보에서 절단완료 취소 먼저 필요
+    const cutCount = await prisma.drawingList.count({
+      where: { projectId, status: "CUT" },
+    });
+    if (cutCount > 0) {
+      return NextResponse.json({
+        success: false,
+        error: `절단완료된 도면이 ${cutCount}건 있습니다. 작업일보에서 절단완료 취소 후 다시 시도하세요.`,
+      }, { status: 409 });
     }
 
     // 출고완료(ISSUED) 항목이 있으면 확정취소 불가 — 입출고장에서 출고취소 먼저 필요
@@ -167,6 +166,18 @@ export async function DELETE(request: NextRequest) {
         success: false,
         error: `출고완료된 철판이 ${issuedCount}장 있습니다. 입출고장에서 출고취소 후 다시 시도하세요.`,
       }, { status: 409 });
+    }
+
+    // 등록잔재 사용 행 확정 취소: WAITING → REGISTERED (raw SQL로 Prisma 버전 무관)
+    const assignedWaitingRaw = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "DrawingList"
+      WHERE "projectId" = ${projectId} AND status = 'WAITING' AND "assignedRemnantId" IS NOT NULL
+    `;
+    if (assignedWaitingRaw.length > 0) {
+      await prisma.drawingList.updateMany({
+        where: { id: { in: assignedWaitingRaw.map(r => r.id) } },
+        data: { status: "REGISTERED" },
+      });
     }
 
     // 원재사용 행: SteelPlan 예약 해제 (RECEIVED만)
