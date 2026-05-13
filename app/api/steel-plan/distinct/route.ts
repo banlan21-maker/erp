@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 const STATUS_LABEL: Record<string, string> = {
   REGISTERED: "등록",
   RECEIVED:   "입고완료",
+  ISSUED:     "출고완료",
   COMPLETED:  "절단완료",
 };
 
