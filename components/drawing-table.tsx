@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { DrawingList } from "@prisma/client";
-import { Pencil, Trash2, Check, X, Filter, XCircle, Plus, CalendarCheck } from "lucide-react";
+import { Pencil, Trash2, Check, X, Filter, XCircle, Plus, CalendarCheck, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ColumnFilterDropdown from "@/components/column-filter-dropdown";
@@ -81,6 +81,27 @@ function colValue(d: DrawingList, col: string): string {
   }
 }
 
+// ─── 정렬 버튼 (재사용) ───────────────────────────────────────────────────────
+
+type SortKey = { col: string; dir: "asc" | "desc" };
+
+function SortButton({ col, sortKeys, onSort }: { col: string; sortKeys: SortKey[]; onSort: (col: string) => void }) {
+  const idx = sortKeys.findIndex(k => k.col === col);
+  const sk  = idx >= 0 ? sortKeys[idx] : null;
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onSort(col); }}
+      className={`p-0.5 rounded hover:bg-gray-200 transition-colors ${sk ? "text-blue-600" : "text-gray-300 hover:text-gray-500"}`}
+      title={sk ? (sk.dir === "asc" ? "오름차순 (다시 누르면 내림차순)" : "내림차순 (다시 누르면 해제)") : "정렬"}
+    >
+      <span className="flex items-center gap-px">
+        {sk ? (sk.dir === "asc" ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} />}
+        {sortKeys.length > 1 && sk && <span className="text-[8px] leading-none">{idx + 1}</span>}
+      </span>
+    </button>
+  );
+}
+
 // ─── 필터 헤더 버튼 ───────────────────────────────────────────────────────────
 
 interface FilterHeaderProps {
@@ -94,11 +115,14 @@ interface FilterHeaderProps {
   anchorEl: HTMLElement | null;
   onOpen: (col: string, el: HTMLElement) => void;
   onClose: () => void;
+  sortKeys?: SortKey[];
+  onSort?: (col: string) => void;
 }
 
 function FilterHeader({
   col, label, align = "left", drawings, filters,
   onFilterChange, openCol, anchorEl, onOpen, onClose,
+  sortKeys, onSort,
 }: FilterHeaderProps) {
   const allValues = useMemo(() => {
     const vals = [...new Set(drawings.map(d => colValue(d, col)))];
@@ -125,6 +149,7 @@ function FilterHeader({
         >
           <Filter size={11} fill={isActive ? "currentColor" : "none"} />
         </button>
+        {onSort && sortKeys && <SortButton col={col} sortKeys={sortKeys} onSort={onSort} />}
       </div>
       {openCol === col && anchorEl && (
         <ColumnFilterDropdown
@@ -137,6 +162,36 @@ function FilterHeader({
       )}
     </th>
   );
+}
+
+// ─── 정렬 비교 헬퍼 ───────────────────────────────────────────────────────────
+
+function colSortValue(d: DrawingList, col: string): number | string {
+  switch (col) {
+    case "thickness": return d.thickness;
+    case "width":     return d.width;
+    case "length":    return d.length;
+    case "steelWeight": return calcSteelWeight(d.thickness, d.width, d.length);
+    case "useWeight": return d.useWeight ?? Number.NEGATIVE_INFINITY;
+    case "status":    return STATUS_LABEL[(d.status ?? "REGISTERED") as DrawingStatusType] ?? "";
+    case "block":     return d.block ?? "";
+    case "drawingNo": return d.drawingNo ?? "";
+    case "heatNo":    return d.heatNo ?? "";
+    case "material":  return d.material;
+    default:          return colValue(d, col);
+  }
+}
+
+function compareSortKeys<T>(a: T, b: T, sortKeys: SortKey[], getValue: (row: T, col: string) => number | string): number {
+  for (const { col, dir } of sortKeys) {
+    const av = getValue(a, col);
+    const bv = getValue(b, col);
+    let cmp = 0;
+    if (typeof av === "number" && typeof bv === "number") cmp = av - bv;
+    else cmp = String(av).localeCompare(String(bv), "ko");
+    if (cmp !== 0) return dir === "asc" ? cmp : -cmp;
+  }
+  return 0;
 }
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────────────────────────
@@ -296,6 +351,28 @@ export default function DrawingTable({
   const [openCol, setOpenCol] = useState<string | null>(null);
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
 
+  // 정렬 (다중 컬럼) — 원재사용 / 등록잔재사용 각각 별도
+  const [sortKeys, setSortKeys] = useState<SortKey[]>([]);
+  const [assignedSortKeys, setAssignedSortKeys] = useState<SortKey[]>([]);
+
+  const handleSort = useCallback((col: string) => {
+    setSortKeys(prev => {
+      const i = prev.findIndex(k => k.col === col);
+      if (i === -1) return [...prev, { col, dir: "asc" }];
+      if (prev[i].dir === "asc") return prev.map((k, j) => j === i ? { ...k, dir: "desc" } : k);
+      return prev.filter((_, j) => j !== i);
+    });
+  }, []);
+
+  const handleAssignedSort = useCallback((col: string) => {
+    setAssignedSortKeys(prev => {
+      const i = prev.findIndex(k => k.col === col);
+      if (i === -1) return [...prev, { col, dir: "asc" }];
+      if (prev[i].dir === "asc") return prev.map((k, j) => j === i ? { ...k, dir: "desc" } : k);
+      return prev.filter((_, j) => j !== i);
+    });
+  }, []);
+
   const handleFilterChange = useCallback((col: string, values: string[]) => {
     setFilters(prev => ({ ...prev, [col]: values }));
   }, []);
@@ -316,15 +393,36 @@ export default function DrawingTable({
   const normalDrawings  = useMemo(() => drawings.filter(d => !(d as DrawingList & { assignedRemnantId?: string | null }).assignedRemnantId), [drawings]);
   const assignedDrawings = useMemo(() => drawings.filter(d => !!(d as DrawingList & { assignedRemnantId?: string | null }).assignedRemnantId), [drawings]);
 
-  // 필터 적용 (원재사용만)
+  // 필터 + 정렬 (원재사용만)
   const filteredDrawings = useMemo(() => {
-    return normalDrawings.filter(d =>
+    const filtered = normalDrawings.filter(d =>
       Object.entries(filters).every(([col, values]) => {
         if (values.length === 0) return true;
         return values.includes(colValue(d, col));
       })
     );
-  }, [normalDrawings, filters]);
+    if (sortKeys.length === 0) return filtered;
+    return [...filtered].sort((a, b) => compareSortKeys(a, b, sortKeys, colSortValue));
+  }, [normalDrawings, filters, sortKeys]);
+
+  // 등록잔재사용 정렬 (잔재 상세값까지 비교 가능)
+  const sortedAssignedDrawings = useMemo(() => {
+    if (assignedSortKeys.length === 0) return assignedDrawings;
+    const getAssignedValue = (d: DrawingList, col: string): number | string => {
+      const dExt = d as DrawingList & { assignedRemnantId?: string | null };
+      const rem  = dExt.assignedRemnantId ? assignedRemnantDetails[dExt.assignedRemnantId] : null;
+      switch (col) {
+        case "remnantNo": return rem?.remnantNo ?? "";
+        case "width1":    return rem?.width1  ?? Number.NEGATIVE_INFINITY;
+        case "width2":    return rem?.width2  ?? Number.NEGATIVE_INFINITY;
+        case "length1":   return rem?.length1 ?? Number.NEGATIVE_INFINITY;
+        case "length2":   return rem?.length2 ?? Number.NEGATIVE_INFINITY;
+        case "remWeight": return rem?.weight  ?? Number.NEGATIVE_INFINITY;
+        default:          return colSortValue(d, col);
+      }
+    };
+    return [...assignedDrawings].sort((a, b) => compareSortKeys(a, b, assignedSortKeys, getAssignedValue));
+  }, [assignedDrawings, assignedSortKeys, assignedRemnantDetails]);
 
   // 편집 헬퍼
   const startEdit = (d: DrawingList) => { setEditingId(d.id); setEditForm(toEditForm(d)); };
@@ -384,6 +482,8 @@ export default function DrawingTable({
     openCol, anchorEl,
     onOpen: handleFilterOpen,
     onClose: handleFilterClose,
+    sortKeys,
+    onSort: handleSort,
   };
 
   if (drawings.length === 0) {
@@ -673,23 +773,32 @@ export default function DrawingTable({
             <table className="w-full text-xs whitespace-nowrap">
               <thead className="bg-orange-100 border-b border-orange-200">
                 <tr>
-                  <th className="px-2 py-2.5 text-center text-orange-700 font-semibold">상태</th>
-                  <th className="px-2 py-2.5 text-left  text-orange-700 font-semibold">사용잔재번호</th>
-                  <th className="px-2 py-2.5 text-left  text-orange-700 font-semibold">블록</th>
-                  <th className="px-2 py-2.5 text-left  text-orange-700 font-semibold">도면번호</th>
-                  <th className="px-2 py-2.5 text-left  text-orange-700 font-semibold">재질</th>
-                  <th className="px-2 py-2.5 text-right text-orange-700 font-semibold">두께</th>
-                  <th className="px-2 py-2.5 text-right text-orange-700 font-semibold">폭1</th>
-                  <th className="px-2 py-2.5 text-right text-orange-700 font-semibold">폭2</th>
-                  <th className="px-2 py-2.5 text-right text-orange-700 font-semibold">길이1</th>
-                  <th className="px-2 py-2.5 text-right text-orange-700 font-semibold">길이2</th>
-                  <th className="px-2 py-2.5 text-right text-orange-700 font-semibold">강재중량(kg)</th>
-                  <th className="px-2 py-2.5 text-right text-orange-700 font-semibold">사용중량(kg)</th>
-                  <th className="px-2 py-2.5 text-center text-orange-700 font-semibold">실사용판번호</th>
+                  {([
+                    ["status",     "상태",         "center"],
+                    ["remnantNo",  "사용잔재번호", "left"],
+                    ["block",      "블록",         "left"],
+                    ["drawingNo",  "도면번호",     "left"],
+                    ["material",   "재질",         "left"],
+                    ["thickness",  "두께",         "right"],
+                    ["width1",     "폭1",          "right"],
+                    ["width2",     "폭2",          "right"],
+                    ["length1",    "길이1",        "right"],
+                    ["length2",    "길이2",        "right"],
+                    ["remWeight",  "강재중량(kg)", "right"],
+                    ["useWeight",  "사용중량(kg)", "right"],
+                    ["heatNo",     "실사용판번호", "center"],
+                  ] as [string, string, "left" | "right" | "center"][]).map(([col, label, align]) => (
+                    <th key={col} className={`px-2 py-2.5 text-orange-700 font-semibold text-${align}`}>
+                      <div className={`flex items-center gap-1 ${align === "right" ? "justify-end" : align === "center" ? "justify-center" : ""}`}>
+                        <span>{label}</span>
+                        <SortButton col={col} sortKeys={assignedSortKeys} onSort={handleAssignedSort} />
+                      </div>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-orange-100">
-                {assignedDrawings.map(d => {
+                {sortedAssignedDrawings.map(d => {
                   const dExt = d as DrawingList & { assignedRemnantId?: string | null };
                   const rem = dExt.assignedRemnantId ? assignedRemnantDetails[dExt.assignedRemnantId] : null;
                   const status = (d.status ?? "REGISTERED") as DrawingStatusType;
