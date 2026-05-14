@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
   const sp = new URL(req.url).searchParams;
 
   const search    = sp.get("search") || undefined;
+  const all       = sp.get("all")    === "true";
   const page      = Math.max(1, parseInt(sp.get("page") || "1"));
 
   const vesselCodes    = parseList(sp.get("vesselCodes"));
@@ -21,6 +22,7 @@ export async function GET(req: NextRequest) {
   const heatNos        = parseList(sp.get("heatNos"));
   const statuses       = parseList(sp.get("statuses")) as ("WAITING" | "CUT")[];
   const uploadBatchNos = parseList(sp.get("uploadBatchNos"));
+  const ids            = parseList(sp.get("ids"));
 
   const nullableIn = (values: string[], field: string) => {
     if (!values.length) return {};
@@ -32,6 +34,7 @@ export async function GET(req: NextRequest) {
   };
 
   const where = {
+    ...(ids.length ? { id: { in: ids } } : {}),
     ...(search
       ? { OR: [
           { vesselCode: { contains: search, mode: "insensitive" as const } },
@@ -54,8 +57,7 @@ export async function GET(req: NextRequest) {
     prisma.steelPlanHeat.findMany({
       where,
       orderBy: [{ vesselCode: "asc" }, { createdAt: "asc" }],
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
+      ...(all ? {} : { skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE }),
     }),
     prisma.steelPlanHeat.findMany({
       select:   { vesselCode: true },

@@ -244,6 +244,126 @@ export default function SteelPlanMain() {
   useEffect(() => { loadPlan(); }, [loadPlan]);
   useEffect(() => { if (tab === "heatno") { loadHeatDistinct(); loadHeat(); } }, [tab, loadHeatDistinct, loadHeat]);
 
+  /* ── 엑셀 다운로드 ── */
+  const [excelLoading, setExcelLoading] = useState<"none" | "plan-all" | "plan-current" | "heat-all" | "heat-current">("none");
+
+  const buildPlanFilterParams = (forAll: boolean, useSelected: boolean) => {
+    const p = new URLSearchParams();
+    p.set("all", "true");
+    if (useSelected) {
+      const ids = Array.from(selectedIds);
+      if (ids.length === 0) return null;
+      p.set("ids", ids.join(","));
+      return p;
+    }
+    if (forAll) return p;
+    if (search) p.set("search", search);
+    const cf = colFilters;
+    if (cf.vesselCode?.length)          p.set("vesselCodes",          cf.vesselCode.join(","));
+    if (cf.material?.length)            p.set("materials",            cf.material.join(","));
+    if (cf.thickness?.length)           p.set("thicknesses",          cf.thickness.join(","));
+    if (cf.width?.length)               p.set("widths",               cf.width.join(","));
+    if (cf.length?.length)              p.set("lengths",              cf.length.join(","));
+    if (cf.status?.length)              p.set("statuses",             cf.status.join(","));
+    if (cf.receivedAt?.length)          p.set("receivedDates",        cf.receivedAt.join(","));
+    if (cf.storageLocation?.length)     p.set("storageLocations",     cf.storageLocation.join(","));
+    if (cf.reservedFor?.length)         p.set("reservedFors",         cf.reservedFor.join(","));
+    if (cf.uploadBatchNo?.length)       p.set("uploadBatchNos",       cf.uploadBatchNo.join(","));
+    if (cf.selectionPrintedAt?.length)  p.set("selectionPrintedDates",cf.selectionPrintedAt.join(","));
+    if (cf.issuedAt?.length)            p.set("issuedDates",          cf.issuedAt.join(","));
+    return p;
+  };
+
+  const downloadPlanExcel = async (mode: "all" | "current") => {
+    const useSelected = mode === "current" && selectedIds.size > 0;
+    const params = buildPlanFilterParams(mode === "all", useSelected);
+    if (!params) return;
+    setExcelLoading(mode === "all" ? "plan-all" : "plan-current");
+    try {
+      const res = await fetch(`/api/steel-plan?${params}`);
+      const json = await res.json();
+      const data: SteelPlanRow[] = json.data ?? [];
+      if (data.length === 0) { alert("다운로드할 데이터가 없습니다."); return; }
+
+      const fmt = (iso: string | null) => iso ? new Date(iso).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" }) : "";
+      const rows_ws = data.map((r) => ({
+        "업로드번호": r.uploadBatchNo ?? "",
+        "호선":       r.vesselCode,
+        "재질":       r.material,
+        "두께":       fmtT(r.thickness),
+        "폭":         fmtL(r.width),
+        "길이":       fmtL(r.length),
+        "중량(kg)":   calcWeight(r.thickness, r.width, r.length),
+        "상태":       PLAN_STATUS[r.status]?.label ?? r.status,
+        "확정호선/블록": r.reservedFor ?? "",
+        "보관위치":   r.storageLocation ?? "",
+        "입고일":     fmt(r.receivedAt),
+        "선별지시일": fmt(r.selectionPrintedAt),
+        "출고일":     fmt(r.issuedAt),
+        "메모":       r.memo ?? "",
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows_ws);
+      ws["!cols"] = [{ wch: 14 },{ wch: 8 },{ wch: 8 },{ wch: 6 },{ wch: 7 },{ wch: 7 },{ wch: 9 },{ wch: 9 },{ wch: 16 },{ wch: 12 },{ wch: 12 },{ wch: 12 },{ wch: 12 },{ wch: 30 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "강재전체목록");
+      const today = new Date().toISOString().split("T")[0];
+      const tag = useSelected ? "선택" : (mode === "all" ? "전체" : "필터");
+      XLSX.writeFile(wb, `강재전체목록_${tag}_${today}.xlsx`);
+    } finally {
+      setExcelLoading("none");
+    }
+  };
+
+  const buildHeatFilterParams = (forAll: boolean) => {
+    const p = new URLSearchParams();
+    p.set("all", "true");
+    if (forAll) return p;
+    if (heatSearch) p.set("search", heatSearch);
+    const cf = heatColFilters;
+    if (cf.vesselCode?.length)    p.set("vesselCodes",    cf.vesselCode.join(","));
+    if (cf.material?.length)      p.set("materials",      cf.material.join(","));
+    if (cf.thickness?.length)     p.set("thicknesses",    cf.thickness.join(","));
+    if (cf.width?.length)         p.set("widths",         cf.width.join(","));
+    if (cf.length?.length)        p.set("lengths",        cf.length.join(","));
+    if (cf.heatNo?.length)        p.set("heatNos",        cf.heatNo.join(","));
+    if (cf.status?.length)        p.set("statuses",       cf.status.join(","));
+    if (cf.uploadBatchNo?.length) p.set("uploadBatchNos", cf.uploadBatchNo.join(","));
+    return p;
+  };
+
+  const downloadHeatExcel = async (mode: "all" | "current") => {
+    setExcelLoading(mode === "all" ? "heat-all" : "heat-current");
+    try {
+      const params = buildHeatFilterParams(mode === "all");
+      const res = await fetch(`/api/steel-plan/heat?${params}`);
+      const json = await res.json();
+      const data: SteelPlanHeatRow[] = json.data ?? [];
+      if (data.length === 0) { alert("다운로드할 데이터가 없습니다."); return; }
+
+      const fmt = (iso: string | null) => iso ? new Date(iso).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" }) : "";
+      const rows_ws = data.map((r) => ({
+        "업로드번호": r.uploadBatchNo ?? "",
+        "호선":       r.vesselCode,
+        "재질":       r.material,
+        "두께":       fmtT(r.thickness),
+        "폭":         fmtL(r.width),
+        "길이":       fmtL(r.length),
+        "판번호":     r.heatNo,
+        "상태":       HEAT_STATUS[r.status]?.label ?? r.status,
+        "사용완료일": fmt(r.cutAt),
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows_ws);
+      ws["!cols"] = [{ wch: 14 },{ wch: 8 },{ wch: 8 },{ wch: 6 },{ wch: 7 },{ wch: 7 },{ wch: 14 },{ wch: 8 },{ wch: 12 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "판번호리스트");
+      const today = new Date().toISOString().split("T")[0];
+      const tag = mode === "all" ? "전체" : "필터";
+      XLSX.writeFile(wb, `판번호리스트_${tag}_${today}.xlsx`);
+    } finally {
+      setExcelLoading("none");
+    }
+  };
+
   /* ── 선별지시서 출력 ── */
   const [printing, setPrinting] = useState(false);
   const handlePrint = async () => {
@@ -915,6 +1035,22 @@ export default function SteelPlanMain() {
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-500">총 {total}건</span>
               <button
+                onClick={() => downloadPlanExcel("all")}
+                disabled={excelLoading !== "none"}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="전체 데이터를 엑셀로 다운로드"
+              >
+                <Download size={14} /> {excelLoading === "plan-all" ? "다운로드 중..." : "전체 다운로드"}
+              </button>
+              <button
+                onClick={() => downloadPlanExcel("current")}
+                disabled={excelLoading !== "none" || total === 0}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                title={selectedIds.size > 0 ? "선택된 항목만 다운로드" : "필터 결과 다운로드"}
+              >
+                <Download size={14} /> {excelLoading === "plan-current" ? "다운로드 중..." : (selectedIds.size > 0 ? `선택 다운로드(${selectedIds.size})` : "필터 다운로드")}
+              </button>
+              <button
                 onClick={handlePrint}
                 disabled={printing || total === 0}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-800 text-white rounded-lg hover:bg-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1234,6 +1370,22 @@ export default function SteelPlanMain() {
             )}
             <button onClick={syncAndRefresh} title="작업일보 기준으로 강재·판번호 상태 자동 동기화" className="p-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-500"><RefreshCw size={14} /></button>
             <span className="text-sm text-gray-500 ml-auto">총 {heatTotal}건</span>
+            <button
+              onClick={() => downloadHeatExcel("all")}
+              disabled={excelLoading !== "none"}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="전체 데이터를 엑셀로 다운로드"
+            >
+              <Download size={14} /> {excelLoading === "heat-all" ? "다운로드 중..." : "전체 다운로드"}
+            </button>
+            <button
+              onClick={() => downloadHeatExcel("current")}
+              disabled={excelLoading !== "none" || heatTotal === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="필터 결과 다운로드"
+            >
+              <Download size={14} /> {excelLoading === "heat-current" ? "다운로드 중..." : "필터 다운로드"}
+            </button>
           </div>
 
           {/* 판번호 리스트 테이블 */}

@@ -67,8 +67,10 @@ export async function GET(req: NextRequest) {
   const uploadBatchNos        = parseList(sp.get("uploadBatchNos"));
   const selectionPrintedDates = parseList(sp.get("selectionPrintedDates"));
   const issuedDates           = parseList(sp.get("issuedDates"));
+  const ids                   = parseList(sp.get("ids"));
 
   const where = {
+    ...(ids.length ? { id: { in: ids } } : {}),
     ...(search
       ? { OR: [
           { vesselCode: { contains: search, mode: "insensitive" as const } },
