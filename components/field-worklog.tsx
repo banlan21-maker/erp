@@ -294,11 +294,8 @@ export default function FieldWorklog({
     finally { setLoading(false); }
   };
 
-  const handleBlockChange = async (pid: string) => {
-    setS1(s => ({ ...s, projectId: pid }));
-    resetStep2();
-    setDrawings([]);
-    if (!pid) return;
+  const loadDrawings = useCallback(async (pid: string) => {
+    if (!pid) { setDrawings([]); return; }
     setDwLoading(true);
     try {
       // 확정된 항목만 표시 (SteelPlan.reservedFor = 해당 블록인 WAITING 행)
@@ -306,6 +303,13 @@ export default function FieldWorklog({
       const d = await res.json();
       if (d.success) setDrawings(d.data);
     } finally { setDwLoading(false); }
+  }, []);
+
+  const handleBlockChange = async (pid: string) => {
+    setS1(s => ({ ...s, projectId: pid }));
+    resetStep2();
+    setDrawings([]);
+    await loadDrawings(pid);
   };
 
   const handleDrawingSelect = async (did: string) => {
@@ -405,7 +409,7 @@ export default function FieldWorklog({
       const d = await res.json();
       if (!d.success) { setError(d.error); return; }
       resetStep2();
-      await refreshLogs();
+      await Promise.all([refreshLogs(), loadDrawings(s1.projectId)]);
     } catch { setError("서버 오류"); } finally { setLoading(false); }
   };
 
