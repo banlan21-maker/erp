@@ -166,10 +166,16 @@ export async function POST(req: NextRequest) {
 }
 
 // DELETE /api/steel-plan
-// body: { vesselCode } → 호선 전체 삭제
-// body: { uploadBatchNo } → 배치 단위 삭제
+// body: { ids: string[] }     → 선택 ID 일괄 삭제
+// body: { vesselCode }        → 호선 전체 삭제
+// body: { uploadBatchNo }     → 배치 단위 삭제
 export async function DELETE(req: NextRequest) {
   const body = await req.json();
+
+  if (Array.isArray(body.ids) && body.ids.length > 0) {
+    const { count } = await prisma.steelPlan.deleteMany({ where: { id: { in: body.ids } } });
+    return NextResponse.json({ planCount: count });
+  }
 
   if (body.uploadBatchNo) {
     const [plan, heat] = await Promise.all([
@@ -187,5 +193,5 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ planCount: plan.count, heatCount: heat.count });
   }
 
-  return NextResponse.json({ error: "uploadBatchNo 또는 vesselCode 필요" }, { status: 400 });
+  return NextResponse.json({ error: "ids 또는 uploadBatchNo 또는 vesselCode 필요" }, { status: 400 });
 }

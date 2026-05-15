@@ -74,3 +74,14 @@ export async function GET(req: NextRequest) {
     vesselCodes: allVessels.map((v) => v.vesselCode),
   });
 }
+
+// DELETE /api/steel-plan/heat
+// body: { ids: string[] } — 선택된 판번호 일괄 삭제
+export async function DELETE(req: NextRequest) {
+  const body = await req.json();
+  if (!Array.isArray(body.ids) || body.ids.length === 0) {
+    return NextResponse.json({ error: "ids 필요" }, { status: 400 });
+  }
+  const { count } = await prisma.steelPlanHeat.deleteMany({ where: { id: { in: body.ids } } });
+  return NextResponse.json({ count });
+}

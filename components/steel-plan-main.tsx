@@ -497,6 +497,42 @@ export default function SteelPlanMain() {
     setSelectedHeatIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   };
 
+  /* ── 선택 삭제 확인 모달 ── */
+  const [deleteModal, setDeleteModal] = useState<{ scope: "plan" | "heat"; ids: string[] } | null>(null);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+
+  const openDeleteModal = (scope: "plan" | "heat") => {
+    const ids = scope === "plan" ? Array.from(selectedIds) : Array.from(selectedHeatIds);
+    if (ids.length === 0) return;
+    setDeleteConfirmInput("");
+    setDeleteModal({ scope, ids });
+  };
+
+  const submitDelete = async () => {
+    if (!deleteModal) return;
+    if (deleteConfirmInput.trim() !== "삭제") return;
+    setDeleteSubmitting(true);
+    try {
+      const url = deleteModal.scope === "plan" ? "/api/steel-plan" : "/api/steel-plan/heat";
+      const res = await fetch(url, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: deleteModal.ids }),
+      });
+      if (!res.ok) { alert("삭제 실패"); return; }
+      if (deleteModal.scope === "plan") {
+        setSelectedIds(new Set());
+        await Promise.all([loadPlan(), loadDistinct()]);
+      } else {
+        setSelectedHeatIds(new Set());
+        await Promise.all([loadHeat(), loadHeatDistinct()]);
+      }
+      setDeleteModal(null);
+    } catch { alert("서버 오류"); }
+    finally { setDeleteSubmitting(false); }
+  };
+
   /* ── rows 로컬 업데이트 헬퍼 ── */
   const updateRowsLocally = (ids: string[], patch: Partial<SteelPlanRow>) => {
     setRows((prev) => prev.map((r) => ids.includes(r.id) ? { ...r, ...patch } : r));
@@ -1098,6 +1134,9 @@ export default function SteelPlanMain() {
               <button onClick={markSelectedIssueCancelled} className="flex items-center gap-1.5 px-3 py-1 text-sm border border-blue-400 text-blue-700 rounded-lg hover:bg-blue-100">
                 <PackageOpen size={13} /> 선택 출고취소
               </button>
+              <button onClick={() => openDeleteModal("plan")} className="flex items-center gap-1.5 px-3 py-1 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">
+                <Trash2 size={13} /> 선택 삭제
+              </button>
               <button onClick={() => setSelectedIds(new Set())} className="ml-auto text-sm text-green-600 hover:underline">선택 해제</button>
             </div>
           )}
@@ -1395,6 +1434,17 @@ export default function SteelPlanMain() {
               <Download size={14} /> {excelLoading === "heat-current" ? "다운로드 중..." : "필터 다운로드"}
             </button>
           </div>
+
+          {/* 선택 액션 바 */}
+          {selectedHeatIds.size > 0 && (
+            <div className="flex items-center gap-2 flex-wrap bg-green-50 border border-green-200 rounded-lg px-4 py-2">
+              <span className="text-sm font-medium text-green-700">{selectedHeatIds.size}건 선택됨</span>
+              <button onClick={() => openDeleteModal("heat")} className="flex items-center gap-1.5 px-3 py-1 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">
+                <Trash2 size={13} /> 선택 삭제
+              </button>
+              <button onClick={() => setSelectedHeatIds(new Set())} className="ml-auto text-sm text-green-600 hover:underline">선택 해제</button>
+            </div>
+          )}
 
           {/* 판번호 리스트 테이블 */}
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -2147,6 +2197,57 @@ export default function SteelPlanMain() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 선택 삭제 확인 모달 */}
+      {deleteModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => !deleteSubmitting && setDeleteModal(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <Trash2 size={16} className="text-red-500" />
+                선택 항목 삭제
+              </h3>
+              <button onClick={() => setDeleteModal(null)} disabled={deleteSubmitting} className="text-gray-400 hover:text-gray-600 disabled:opacity-40">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-sm text-gray-700">
+                {deleteModal.scope === "plan" ? "강재 전체목록" : "판번호 리스트"}에서 선택한
+                <span className="font-bold text-red-600 mx-1">{deleteModal.ids.length}건</span>을 삭제합니다.
+              </p>
+              <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-md p-2.5">
+                ⚠️ 삭제된 데이터는 복구할 수 없습니다. 계속하려면 아래에 <strong>삭제</strong>라고 입력하세요.
+              </p>
+              <input
+                autoFocus
+                type="text"
+                value={deleteConfirmInput}
+                onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && deleteConfirmInput.trim() === "삭제" && !deleteSubmitting) submitDelete(); }}
+                placeholder='"삭제" 입력'
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-red-400"
+              />
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteModal(null)}
+                disabled={deleteSubmitting}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40"
+              >
+                취소
+              </button>
+              <button
+                onClick={submitDelete}
+                disabled={deleteConfirmInput.trim() !== "삭제" || deleteSubmitting}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Trash2 size={13} /> {deleteSubmitting ? "삭제 중..." : "삭제"}
+              </button>
+            </div>
           </div>
         </div>
       )}
