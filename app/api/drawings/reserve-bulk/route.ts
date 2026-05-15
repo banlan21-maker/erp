@@ -158,13 +158,29 @@ export async function DELETE(request: NextRequest) {
     }
 
     // 출고완료(ISSUED) 항목이 있으면 확정취소 불가 — 입출고장에서 출고취소 먼저 필요
-    const issuedCount = await prisma.steelPlan.count({
-      where: { status: "ISSUED", reservedFor: { in: [...newFmtCodes, ...blockCodes] } },
+    // 신규 형식("호선/블록")은 호선 정보 포함 → 그대로 매칭
+    // 구형 형식(블록만)은 호선 필터 필수 → 다른 프로젝트의 동명 블록과 충돌 방지
+    const issuedPlates = await prisma.steelPlan.findMany({
+      where: {
+        status: "ISSUED",
+        OR: [
+          { reservedFor: { in: newFmtCodes } },
+          { vesselCode, reservedFor: { in: blockCodes } },
+        ],
+      },
+      select: {
+        vesselCode: true, material: true, thickness: true,
+        width: true, length: true, reservedFor: true,
+      },
+      take: 5,
     });
-    if (issuedCount > 0) {
+    if (issuedPlates.length > 0) {
+      const sample = issuedPlates.slice(0, 3).map(p =>
+        `[${p.reservedFor}] ${p.material} t${p.thickness} ${p.width}×${p.length}`
+      ).join(", ");
       return NextResponse.json({
         success: false,
-        error: `출고완료된 철판이 ${issuedCount}장 있습니다. 입출고장에서 출고취소 후 다시 시도하세요.`,
+        error: `출고완료된 철판이 ${issuedPlates.length}장${issuedPlates.length === 5 ? "+" : ""} 있습니다. 입출고장에서 출고취소 후 다시 시도하세요.\n예시: ${sample}`,
       }, { status: 409 });
     }
 
