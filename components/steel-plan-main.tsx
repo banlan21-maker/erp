@@ -134,6 +134,7 @@ export default function SteelPlanMain() {
   /* ── 판번호 리스트 상태 ── */
   const [heatRows, setHeatRows]         = useState<SteelPlanHeatRow[]>([]);
   const [heatLoading, setHeatLoading]   = useState(false);
+  const [selectedHeatIds, setSelectedHeatIds] = useState<Set<string>>(new Set());
   const [editingHeat, setEditingHeat]   = useState<{ id: string; heatNo: string } | null>(null);
   const [editHeatNo,  setEditHeatNo]    = useState("");
   const [heatSearch, setHeatSearch]     = useState("");
@@ -487,6 +488,13 @@ export default function SteelPlanMain() {
   const toggleAll  = () => setSelectedIds(allChecked ? new Set() : new Set(rows.map((r) => r.id)));
   const toggleOne  = (id: string) => {
     setSelectedIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  };
+
+  /* ── 판번호 리스트 체크박스 ── */
+  const allHeatChecked = heatRows.length > 0 && heatRows.every((r) => selectedHeatIds.has(r.id));
+  const toggleAllHeat  = () => setSelectedHeatIds(allHeatChecked ? new Set() : new Set(heatRows.map((r) => r.id)));
+  const toggleOneHeat  = (id: string) => {
+    setSelectedHeatIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   };
 
   /* ── rows 로컬 업데이트 헬퍼 ── */
@@ -1394,6 +1402,11 @@ export default function SteelPlanMain() {
               <table className="w-full" style={{ fontSize: "12px" }}>
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
+                    <th className="w-7 px-1 py-1 text-center">
+                      <button onClick={toggleAllHeat}>
+                        {allHeatChecked ? <CheckSquare size={13} className="text-blue-600" /> : <Square size={13} className="text-gray-400" />}
+                      </button>
+                    </th>
                     {(["uploadBatchNo"] as const).map((col) => {
                       const active = (heatColFilters[col]?.length ?? 0) > 0;
                       return (
@@ -1427,14 +1440,19 @@ export default function SteelPlanMain() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {heatLoading ? (
-                    <tr><td colSpan={10} className="py-8 text-center text-gray-400">불러오는 중...</td></tr>
+                    <tr><td colSpan={11} className="py-8 text-center text-gray-400">불러오는 중...</td></tr>
                   ) : heatRows.length === 0 ? (
-                    <tr><td colSpan={10} className="py-8 text-center text-gray-400">등록된 판번호가 없습니다</td></tr>
+                    <tr><td colSpan={11} className="py-8 text-center text-gray-400">등록된 판번호가 없습니다</td></tr>
                   ) : (
                     heatRows.map((row) => {
                       const st = HEAT_STATUS[row.status];
                       return (
-                        <tr key={row.id} className="hover:bg-gray-50">
+                        <tr key={row.id} className={`hover:bg-gray-50 ${selectedHeatIds.has(row.id) ? "bg-blue-50" : ""}`}>
+                          <td className="px-1 py-1 text-center">
+                            <button onClick={() => toggleOneHeat(row.id)}>
+                              {selectedHeatIds.has(row.id) ? <CheckSquare size={13} className="text-blue-600" /> : <Square size={13} className="text-gray-400" />}
+                            </button>
+                          </td>
                           <td className="px-2 py-1 text-center font-mono text-[10px] text-gray-400">
                             {row.uploadBatchNo ?? <span className="text-gray-200">-</span>}
                           </td>
