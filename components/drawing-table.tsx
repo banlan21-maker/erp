@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { DrawingList } from "@prisma/client";
 import * as XLSX from "xlsx";
-import { Pencil, Trash2, Check, X, Filter, XCircle, Plus, CalendarCheck, ArrowUp, ArrowDown, ArrowUpDown, Download, ChevronDown } from "lucide-react";
+import { Pencil, Trash2, Check, X, Filter, XCircle, Plus, CalendarCheck, ArrowUp, ArrowDown, ArrowUpDown, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ColumnFilterDropdown from "@/components/column-filter-dropdown";
@@ -347,92 +347,6 @@ export default function DrawingTable({
     } catch { alert("서버 오류"); } finally { setAdding(false); }
   };
 
-  // 블록별 엑셀 다운로드 드롭다운
-  const [blockMenuOpen, setBlockMenuOpen] = useState(false);
-  const blockMenuRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!blockMenuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (blockMenuRef.current && !blockMenuRef.current.contains(e.target as Node)) setBlockMenuOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [blockMenuOpen]);
-
-  const blocksWithCounts = useMemo(() => {
-    const m = new Map<string, number>();
-    drawings.forEach(d => {
-      const b = d.block?.trim() || "(블록없음)";
-      m.set(b, (m.get(b) ?? 0) + 1);
-    });
-    return Array.from(m.entries()).sort((a, b) => a[0].localeCompare(b[0], "ko"));
-  }, [drawings]);
-
-  const downloadBlockExcel = (blockName: string) => {
-    setBlockMenuOpen(false);
-    const matchBlock = (b: string | null) => (b?.trim() || "(블록없음)") === blockName;
-    const blockRows = drawings.filter(d => matchBlock(d.block));
-    if (blockRows.length === 0) return;
-
-    const normal   = blockRows.filter(d => !(d as DrawingList & { assignedRemnantId?: string | null }).assignedRemnantId);
-    const assigned = blockRows.filter(d =>  !!(d as DrawingList & { assignedRemnantId?: string | null }).assignedRemnantId);
-
-    const wb = XLSX.utils.book_new();
-
-    if (normal.length > 0) {
-      const data = normal.map(d => {
-        const dExt = d as DrawingList & { alternateVesselCode?: string | null; hasRemnant?: boolean };
-        return {
-          "상태":         STATUS_LABEL[(d.status ?? "REGISTERED") as DrawingStatusType] ?? d.status ?? "",
-          "대체호선":     dExt.alternateVesselCode ?? "",
-          "블록":         d.block ?? "",
-          "도면번호":     d.drawingNo ?? "",
-          "재질":         d.material,
-          "두께(mm)":     d.thickness,
-          "폭(mm)":       d.width,
-          "길이(mm)":     d.length,
-          "강재중량(kg)": calcSteelWeight(d.thickness, d.width, d.length),
-          "사용중량(kg)": d.useWeight ?? "",
-          "실사용판번호": d.heatNo ?? "",
-          "잔재":         dExt.hasRemnant ? "잔재" : "",
-        };
-      });
-      const ws = XLSX.utils.json_to_sheet(data);
-      ws["!cols"] = [{ wch: 8 },{ wch: 10 },{ wch: 10 },{ wch: 14 },{ wch: 8 },{ wch: 8 },{ wch: 8 },{ wch: 8 },{ wch: 12 },{ wch: 12 },{ wch: 14 },{ wch: 6 }];
-      XLSX.utils.book_append_sheet(wb, ws, "원재사용");
-    }
-
-    if (assigned.length > 0) {
-      const data = assigned.map(d => {
-        const dExt = d as DrawingList & { assignedRemnantId?: string | null };
-        const rem  = dExt.assignedRemnantId ? assignedRemnantDetails[dExt.assignedRemnantId] : null;
-        return {
-          "상태":         STATUS_LABEL[(d.status ?? "REGISTERED") as DrawingStatusType] ?? d.status ?? "",
-          "사용잔재번호": rem?.remnantNo ?? "",
-          "블록":         d.block ?? "",
-          "도면번호":     d.drawingNo ?? "",
-          "재질":         d.material,
-          "두께(mm)":     d.thickness,
-          "폭1":          rem?.width1  ?? "",
-          "폭2":          rem?.width2  ?? "",
-          "길이1":        rem?.length1 ?? "",
-          "길이2":        rem?.length2 ?? "",
-          "강재중량(kg)": rem?.weight  ?? "",
-          "사용중량(kg)": d.useWeight  ?? "",
-          "실사용판번호": d.heatNo     ?? "",
-        };
-      });
-      const ws = XLSX.utils.json_to_sheet(data);
-      ws["!cols"] = [{ wch: 8 },{ wch: 14 },{ wch: 10 },{ wch: 14 },{ wch: 8 },{ wch: 8 },{ wch: 8 },{ wch: 8 },{ wch: 8 },{ wch: 8 },{ wch: 12 },{ wch: 12 },{ wch: 14 }];
-      XLSX.utils.book_append_sheet(wb, ws, "등록잔재사용");
-    }
-
-    const today = new Date().toISOString().split("T")[0];
-    const safeBlock = blockName.replace(/[\\/:*?"<>|]/g, "_");
-    const safeProject = (projectCode ?? "").replace(/[\\/:*?"<>|]/g, "_");
-    XLSX.writeFile(wb, `블록강재_${safeProject ? safeProject + "_" : ""}${safeBlock}_${today}.xlsx`);
-  };
-
   // 필터
   const [filters, setFilters] = useState<Record<string, string[]>>({});
   const [openCol, setOpenCol] = useState<string | null>(null);
@@ -510,6 +424,70 @@ export default function DrawingTable({
     };
     return [...assignedDrawings].sort((a, b) => compareSortKeys(a, b, assignedSortKeys, getAssignedValue));
   }, [assignedDrawings, assignedSortKeys, assignedRemnantDetails]);
+
+  // 현재 화면(필터·정렬 반영)을 엑셀로 다운로드
+  const downloadExcel = () => {
+    if (filteredDrawings.length === 0 && sortedAssignedDrawings.length === 0) {
+      alert("다운로드할 데이터가 없습니다.");
+      return;
+    }
+    const wb = XLSX.utils.book_new();
+
+    if (filteredDrawings.length > 0) {
+      const data = filteredDrawings.map(d => {
+        const dExt = d as DrawingList & { alternateVesselCode?: string | null; hasRemnant?: boolean };
+        return {
+          "상태":         STATUS_LABEL[(d.status ?? "REGISTERED") as DrawingStatusType] ?? d.status ?? "",
+          "대체호선":     dExt.alternateVesselCode ?? "",
+          "블록":         d.block ?? "",
+          "도면번호":     d.drawingNo ?? "",
+          "재질":         d.material,
+          "두께(mm)":     d.thickness,
+          "폭(mm)":       d.width,
+          "길이(mm)":     d.length,
+          "강재중량(kg)": calcSteelWeight(d.thickness, d.width, d.length),
+          "사용중량(kg)": d.useWeight ?? "",
+          "실사용판번호": d.heatNo ?? "",
+          "잔재":         dExt.hasRemnant ? "잔재" : "",
+        };
+      });
+      const ws = XLSX.utils.json_to_sheet(data);
+      ws["!cols"] = [{ wch: 8 },{ wch: 10 },{ wch: 10 },{ wch: 14 },{ wch: 8 },{ wch: 8 },{ wch: 8 },{ wch: 8 },{ wch: 12 },{ wch: 12 },{ wch: 14 },{ wch: 6 }];
+      XLSX.utils.book_append_sheet(wb, ws, "원재사용");
+    }
+
+    if (sortedAssignedDrawings.length > 0) {
+      const data = sortedAssignedDrawings.map(d => {
+        const dExt = d as DrawingList & { assignedRemnantId?: string | null };
+        const rem  = dExt.assignedRemnantId ? assignedRemnantDetails[dExt.assignedRemnantId] : null;
+        return {
+          "상태":         STATUS_LABEL[(d.status ?? "REGISTERED") as DrawingStatusType] ?? d.status ?? "",
+          "사용잔재번호": rem?.remnantNo ?? "",
+          "블록":         d.block ?? "",
+          "도면번호":     d.drawingNo ?? "",
+          "재질":         d.material,
+          "두께(mm)":     d.thickness,
+          "폭1":          rem?.width1  ?? "",
+          "폭2":          rem?.width2  ?? "",
+          "길이1":        rem?.length1 ?? "",
+          "길이2":        rem?.length2 ?? "",
+          "강재중량(kg)": rem?.weight  ?? "",
+          "사용중량(kg)": d.useWeight  ?? "",
+          "실사용판번호": d.heatNo     ?? "",
+        };
+      });
+      const ws = XLSX.utils.json_to_sheet(data);
+      ws["!cols"] = [{ wch: 8 },{ wch: 14 },{ wch: 10 },{ wch: 14 },{ wch: 8 },{ wch: 8 },{ wch: 8 },{ wch: 8 },{ wch: 8 },{ wch: 8 },{ wch: 12 },{ wch: 12 },{ wch: 14 }];
+      XLSX.utils.book_append_sheet(wb, ws, "등록잔재사용");
+    }
+
+    const today = new Date().toISOString().split("T")[0];
+    const safeProject = (projectCode ?? "").replace(/[\\/:*?"<>|]/g, "_");
+    // 블록 필터가 1개만 적용된 경우 파일명에 블록 포함
+    const blockFilter = filters.block ?? [];
+    const blockTag = blockFilter.length === 1 ? `_${blockFilter[0].replace(/[\\/:*?"<>|]/g, "_")}` : "";
+    XLSX.writeFile(wb, `블록강재${safeProject ? "_" + safeProject : ""}${blockTag}_${today}.xlsx`);
+  };
 
   // 편집 헬퍼
   const startEdit = (d: DrawingList) => { setEditingId(d.id); setEditForm(toEditForm(d)); };
@@ -669,34 +647,16 @@ export default function DrawingTable({
             <Plus size={13} /> 강재 추가
           </Button>
 
-          {/* 블록별 엑셀 다운로드 */}
-          <div className="relative" ref={blockMenuRef}>
-            <Button
-              size="sm"
-              onClick={() => setBlockMenuOpen(o => !o)}
-              disabled={blocksWithCounts.length === 0}
-              className="text-xs flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-            >
-              <Download size={13} /> 블록별 엑셀 <ChevronDown size={12} />
-            </Button>
-            {blockMenuOpen && blocksWithCounts.length > 0 && (
-              <div className="absolute right-0 top-full mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[180px] max-h-72 overflow-y-auto">
-                <div className="px-3 py-1.5 border-b border-gray-100 text-[10px] text-gray-500 font-semibold uppercase tracking-wider sticky top-0 bg-white">
-                  블록 선택 ({blocksWithCounts.length}개)
-                </div>
-                {blocksWithCounts.map(([block, count]) => (
-                  <button
-                    key={block}
-                    onClick={() => downloadBlockExcel(block)}
-                    className="w-full px-3 py-2 text-left text-xs hover:bg-emerald-50 flex items-center justify-between gap-2 border-b border-gray-50 last:border-b-0"
-                  >
-                    <span className="font-medium text-gray-700 truncate">{block}</span>
-                    <span className="text-[10px] text-gray-400">{count}행</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* 엑셀 다운로드 (현재 화면) */}
+          <Button
+            size="sm"
+            onClick={downloadExcel}
+            disabled={drawings.length === 0}
+            className="text-xs flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+            title="현재 화면 (필터·정렬 적용) 엑셀 다운로드"
+          >
+            <Download size={13} /> 엑셀 다운로드
+          </Button>
 
           {/* 일괄 확정 / 일괄 확정 취소 */}
           <Button size="sm" onClick={bulkReserve} disabled={bulkReserving || bulkUnreserving}
