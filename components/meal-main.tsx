@@ -45,6 +45,11 @@ interface MealRecord {
   count: number; memo: string | null; registrar: string | null;
   createdAt: string; updatedAt: string;
 }
+interface MealSettlement {
+  id: string; factory: string; month: string;
+  totalCount: number; totalAmount: number;
+  confirmedAt: string; confirmedBy: string | null;
+}
 
 const emptyVendorForm = {
   name: "", factory: "진교", phone: "", pricePerMeal: "",
@@ -175,15 +180,92 @@ export default function MealMain() {
   const [loadingMonth, setLoadingMonth] = useState(false);
   const [monthlySubTab, setMonthlySubTab] = useState<"전체" | "진교" | "진동">("전체");
 
+  const [settlements, setSettlements] = useState<MealSettlement[]>([]);
+
   const loadMonth = useCallback(async () => {
     setLoadingMonth(true);
     try {
-      const r = await fetch(`/api/meal-record?year=${monthYear}&month=${monthMonth}`);
-      const d = await r.json();
-      if (d.success) setMonthRecords(d.data);
+      const ym = `${monthYear}-${monthMonth.padStart(2, "0")}`;
+      const [r, sr] = await Promise.all([
+        fetch(`/api/meal-record?year=${monthYear}&month=${monthMonth}`),
+        fetch(`/api/meal-settlement?month=${ym}`),
+      ]);
+      const [d, sd] = await Promise.all([r.json(), sr.json()]);
+      if (d.success)  setMonthRecords(d.data);
+      if (sd.success) setSettlements(sd.data);
     } finally { setLoadingMonth(false); }
   }, [monthYear, monthMonth]);
   useEffect(() => { if (activeTab === "monthly") loadMonth(); }, [activeTab, loadMonth]);
+
+  const monthYM = `${monthYear}-${monthMonth.padStart(2, "0")}`;
+  const settlementOf = (factory: Factory) => settlements.find(s => s.factory === factory) ?? null;
+
+  /* ── 셀 인라인 편집 ── */
+  const [cellEdit, setCellEdit] = useState<{ dateStr: string; factory: Factory; mealType: string; count: string; memo: string } | null>(null);
+  const [cellSaving, setCellSaving] = useState(false);
+
+  const openCellEdit = (dateStr: string, factory: Factory, mealType: string) => {
+    const rec = monthRecords.find(r => r.date === dateStr && r.factory === factory && r.mealType === mealType);
+    setCellEdit({
+      dateStr, factory, mealType,
+      count: rec ? String(rec.count) : "0",
+      memo:  rec?.memo ?? "",
+    });
+  };
+
+  const saveCellEdit = async () => {
+    if (!cellEdit) return;
+    setCellSaving(true);
+    try {
+      const v = vendors.find(vv => vv.factory === cellEdit.factory && vv.isActive);
+      const r = await fetch("/api/meal-record", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: cellEdit.dateStr, factory: cellEdit.factory, mealType: cellEdit.mealType,
+          count: parseInt(cellEdit.count) || 0, memo: cellEdit.memo,
+          registrar: registrars[cellEdit.factory], vendorId: v?.id || null,
+        }),
+      });
+      const d = await r.json();
+      if (!d.success) { alert(d.error ?? "저장 실패"); return; }
+      await loadMonth();
+      setCellEdit(null);
+    } finally { setCellSaving(false); }
+  };
+
+  /* ── 결산 확정/취소 ── */
+  const [settling, setSettling] = useState<Factory | null>(null);
+  const confirmSettlement = async (factory: Factory) => {
+    const rows = getFactoryRows(factory);
+    const lt = rows.reduce((s, r) => s + (r.lunch?.count  ?? 0), 0);
+    const dt = rows.reduce((s, r) => s + (r.dinner?.count ?? 0), 0);
+    const ot = rows.reduce((s, r) => s + (r.other?.count  ?? 0), 0);
+    const total = lt + dt + ot;
+    const price = vendors.find(v => v.factory === factory && v.isActive)?.pricePerMeal ?? 0;
+    const amount = total * price;
+    if (!confirm(`${factory} ${monthYM} 결산을 확정합니다.\n총 ${total}명 / ${amount.toLocaleString()}원\n식당 업체에도 '결산완료'로 표시됩니다.`)) return;
+    setSettling(factory);
+    try {
+      const r = await fetch("/api/meal-settlement", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ factory, month: monthYM, totalCount: total, totalAmount: amount, confirmedBy: registrars[factory] || null }),
+      });
+      const d = await r.json();
+      if (!d.success) { alert(d.error ?? "결산 실패"); return; }
+      await loadMonth();
+    } finally { setSettling(null); }
+  };
+
+  const cancelSettlement = async (factory: Factory) => {
+    if (!confirm(`${factory} ${monthYM} 결산을 취소합니다. 식당 업체 화면의 '결산완료' 표시도 사라집니다.`)) return;
+    setSettling(factory);
+    try {
+      const r = await fetch(`/api/meal-settlement?factory=${encodeURIComponent(factory)}&month=${monthYM}`, { method: "DELETE" });
+      const d = await r.json();
+      if (!d.success) { alert(d.error ?? "취소 실패"); return; }
+      await loadMonth();
+    } finally { setSettling(null); }
+  };
 
   const daysCount = getDaysInMonth(parseInt(monthYear), parseInt(monthMonth));
   const dailyRows = Array.from({ length: daysCount }, (_, i) => {
@@ -657,6 +739,7 @@ export default function MealMain() {
             const dt = rows.reduce((s, r) => s + (r.dinner?.count ?? 0), 0);
             const ot = rows.reduce((s, r) => s + (r.other?.count ?? 0), 0);
             const grand = lt + dt + ot;
+            const settlement = settlementOf(factory);
             return (
               <div className="space-y-3">
                 {vendor && price > 0 && (
@@ -665,7 +748,31 @@ export default function MealMain() {
                     &nbsp;| 예상 합계: <strong className="text-green-700">{(grand * price).toLocaleString()}원</strong>
                   </div>
                 )}
+                {settlement && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Check size={16} className="text-emerald-600" />
+                      <span className="font-bold text-emerald-700">결산완료</span>
+                      <span className="text-gray-600">
+                        {monthYM} | {settlement.totalCount}명 | {settlement.totalAmount.toLocaleString()}원
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        ({new Date(settlement.confirmedAt).toLocaleString("ko-KR", { hour12: false })}{settlement.confirmedBy ? ` · ${settlement.confirmedBy}` : ""})
+                      </span>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => cancelSettlement(factory)} disabled={settling === factory}
+                      className="text-red-600 border-red-300 hover:bg-red-50 h-7 text-xs">
+                      {settling === factory ? "처리 중..." : "결산 취소"}
+                    </Button>
+                  </div>
+                )}
                 <div className="flex justify-end gap-2">
+                  {!settlement && (
+                    <Button size="sm" onClick={() => confirmSettlement(factory)} disabled={settling === factory}
+                      className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white">
+                      <Check size={14} /> {settling === factory ? "처리 중..." : "결산 확정"}
+                    </Button>
+                  )}
                   <Button size="sm" variant="outline" onClick={() => downloadExcel(factory)} className="gap-1.5 text-green-700 border-green-300 hover:bg-green-50">
                     <Download size={14} /> 엑셀 다운로드
                   </Button>
@@ -695,13 +802,14 @@ export default function MealMain() {
                           const weekend = isWeekend(dateStr);
                           const l = lunch?.count ?? 0; const d = dinner?.count ?? 0; const o = other?.count ?? 0;
                           const total = l + d + o;
+                          const cellCls = (cnt: number, base: string) => `px-3 py-2.5 font-semibold cursor-pointer hover:bg-blue-100 transition-colors ${cnt ? base : "text-gray-300 hover:text-gray-600"}`;
                           return (
                             <tr key={dateStr} className={weekend ? "bg-red-50/40 text-red-700" : "hover:bg-gray-50"}>
                               <td className="px-3 py-2.5 font-mono">{dateStr.slice(5)}</td>
                               <td className="px-3 py-2.5 font-semibold">{getDayStr(dateStr)}</td>
-                              <td className={`px-3 py-2.5 font-semibold ${l ? "text-blue-700" : "text-gray-300"}`}>{l || "-"}</td>
-                              <td className={`px-3 py-2.5 font-semibold ${d ? "text-indigo-700" : "text-gray-300"}`}>{d || "-"}</td>
-                              <td className={`px-3 py-2.5 font-semibold ${o ? "text-gray-700" : "text-gray-300"}`}>{o || "-"}</td>
+                              <td onClick={() => openCellEdit(dateStr, factory, "점심")} title="클릭하여 수정" className={cellCls(l, "text-blue-700")}>{l || "-"}</td>
+                              <td onClick={() => openCellEdit(dateStr, factory, "저녁")} title="클릭하여 수정" className={cellCls(d, "text-indigo-700")}>{d || "-"}</td>
+                              <td onClick={() => openCellEdit(dateStr, factory, "기타")} title="클릭하여 수정" className={cellCls(o, "text-gray-700")}>{o || "-"}</td>
                               <td className={`px-3 py-2.5 font-bold ${total ? "text-gray-900" : "text-gray-300"}`}>{total || "-"}</td>
                               {price > 0 && <td className="px-3 py-2.5 text-green-700 font-semibold">{total ? (total * price).toLocaleString() + "원" : "-"}</td>}
                               <td className="px-3 py-2.5 text-xs text-gray-500 text-left">{memo || ""}</td>
@@ -873,6 +981,59 @@ export default function MealMain() {
               <Button variant="outline" onClick={() => setShowVendorModal(false)}>취소</Button>
               <Button onClick={saveVendor} disabled={savingVendor} className="bg-blue-600 hover:bg-blue-700">
                 <Save size={15} className="mr-1.5" /> {savingVendor ? "저장 중..." : "저장"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 월별현황 셀 편집 모달 */}
+      {cellEdit && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => !cellSaving && setCellEdit(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <Pencil size={16} className="text-blue-500" /> 식수 수정
+              </h3>
+              <button onClick={() => setCellEdit(null)} disabled={cellSaving} className="text-gray-400 hover:text-gray-600 disabled:opacity-40">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div className="text-sm text-gray-600">
+                <span className="font-bold text-gray-900">{cellEdit.dateStr.slice(5)} ({getDayStr(cellEdit.dateStr)})</span>
+                {" · "}
+                <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-semibold text-xs">{cellEdit.factory}</span>
+                {" · "}
+                <span className={`px-2 py-0.5 rounded font-semibold text-xs ${MEAL_COLOR[cellEdit.mealType]}`}>{cellEdit.mealType}</span>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">인원수</label>
+                <Input
+                  type="number"
+                  min={0}
+                  autoFocus
+                  value={cellEdit.count}
+                  onChange={(e) => setCellEdit(prev => prev ? { ...prev, count: e.target.value } : prev)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !cellSaving) saveCellEdit(); }}
+                  className="h-10 text-lg font-bold text-right"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">메모</label>
+                <Input
+                  value={cellEdit.memo}
+                  onChange={(e) => setCellEdit(prev => prev ? { ...prev, memo: e.target.value } : prev)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !cellSaving) saveCellEdit(); }}
+                  placeholder="(선택)"
+                  className="h-9 text-sm"
+                />
+              </div>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setCellEdit(null)} disabled={cellSaving}>취소</Button>
+              <Button size="sm" onClick={saveCellEdit} disabled={cellSaving} className="bg-blue-600 hover:bg-blue-700">
+                <Save size={13} className="mr-1" /> {cellSaving ? "저장 중..." : "저장"}
               </Button>
             </div>
           </div>

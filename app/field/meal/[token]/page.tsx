@@ -15,6 +15,7 @@ interface Vendor {
   isActive: boolean; pricePerMeal: number | null;
 }
 interface MealRecord { id: string; date: string; factory: string; mealType: string; count: number; memo: string|null; }
+interface Settlement { id: string; factory: string; month: string; totalCount: number; totalAmount: number; confirmedAt: string; }
 
 function getNowKST() { return new Date(Date.now()+9*3600000); }
 function isPastDeadline(h: number, m: number) {
@@ -28,6 +29,7 @@ export default function MealFieldPage({ params }: { params: Promise<{ token: str
   const [vendor, setVendor] = useState<Vendor|null>(null);
   const [todayRecords, setTodayRecords] = useState<MealRecord[]>([]);
   const [monthRecords, setMonthRecords] = useState<MealRecord[]>([]);
+  const [settlement, setSettlement] = useState<Settlement|null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [imgLoading, setImgLoading] = useState(false);
@@ -56,7 +58,10 @@ export default function MealFieldPage({ params }: { params: Promise<{ token: str
   const loadMonth = useCallback(async () => {
     const r = await fetch(`/api/meal-record/by-token/${token}?year=${monthYear}&month=${monthMonth}`);
     const d = await r.json();
-    if (d.success) setMonthRecords(d.data);
+    if (d.success) {
+      setMonthRecords(d.data);
+      setSettlement(d.settlement ?? null);
+    }
   }, [token, monthYear, monthMonth]);
 
   useEffect(() => { if (activeTab === "monthly") loadMonth(); }, [activeTab, loadMonth]);
@@ -356,6 +361,23 @@ export default function MealFieldPage({ params }: { params: Promise<{ token: str
             </select>
             <button onClick={loadMonth} className="flex-1 h-11 bg-blue-600 text-white rounded-xl text-base font-bold">조회</button>
           </div>
+
+          {/* 결산완료 배지 */}
+          {settlement && (
+            <div className="mx-2 bg-emerald-100 border-2 border-emerald-400 rounded-xl px-4 py-3 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xl font-black flex-shrink-0">✓</div>
+              <div className="flex-1">
+                <div className="text-base font-black text-emerald-800">결산완료</div>
+                <div className="text-xs text-emerald-700 mt-0.5">
+                  {settlement.month} · 총 {settlement.totalCount}명
+                  {settlement.totalAmount > 0 && ` · ${settlement.totalAmount.toLocaleString()}원`}
+                </div>
+                <div className="text-[10px] text-emerald-600/70 mt-0.5">
+                  확정일시: {new Date(settlement.confirmedAt).toLocaleString("ko-KR", { hour12: false })}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* 이미지 저장 버튼 */}
           <button onClick={downloadImage} disabled={imgLoading}

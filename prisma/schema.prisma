@@ -382,6 +382,21 @@ model MealRecord {
   @@unique([date, factory, mealType])
 }
 
+// 식수 월별 결산
+model MealSettlement {
+  id          String   @id @default(cuid())
+  factory     String // 진교 / 진동
+  month       String // YYYY-MM
+  totalCount  Int      @default(0)
+  totalAmount Int      @default(0)
+  confirmedAt DateTime @default(now())
+  confirmedBy String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([factory, month])
+}
+
 // 장비 마스터
 model Equipment {
   id             String          @id @default(cuid())

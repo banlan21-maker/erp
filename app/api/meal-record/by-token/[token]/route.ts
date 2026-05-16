@@ -21,11 +21,16 @@ export async function GET(
 
     if (year && month) {
       const ym = `${year}-${month.padStart(2, "0")}`;
-      const records = await prisma.mealRecord.findMany({
-        where: { date: { startsWith: ym }, factory },
-        orderBy: { date: "asc" },
-      });
-      return NextResponse.json({ success: true, data: records });
+      const [records, settlement] = await Promise.all([
+        prisma.mealRecord.findMany({
+          where: { date: { startsWith: ym }, factory },
+          orderBy: { date: "asc" },
+        }),
+        prisma.mealSettlement.findUnique({
+          where: { factory_month: { factory, month: ym } },
+        }),
+      ]);
+      return NextResponse.json({ success: true, data: records, settlement });
     }
 
     const queryDate = date || new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
