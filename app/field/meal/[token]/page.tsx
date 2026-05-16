@@ -55,6 +55,13 @@ export default function MealFieldPage({ params }: { params: Promise<{ token: str
     init();
   }, [token]);
 
+  // 브라우저 탭 제목
+  useEffect(() => {
+    document.title = vendor
+      ? `${vendor.factory} ${vendor.name} 식수 | CNC ERP`
+      : "식수 관리 | CNC ERP";
+  }, [vendor]);
+
   const loadMonth = useCallback(async () => {
     const r = await fetch(`/api/meal-record/by-token/${token}?year=${monthYear}&month=${monthMonth}`);
     const d = await r.json();

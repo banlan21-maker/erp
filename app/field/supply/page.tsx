@@ -1,7 +1,10 @@
 export const dynamic = "force-dynamic";
 
+import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import FieldSupply from "@/components/field-supply";
+
+export const metadata: Metadata = { title: "현장 자재 신청" };
 
 export default async function FieldSupplyPage() {
   const [items, vendors] = await Promise.all([

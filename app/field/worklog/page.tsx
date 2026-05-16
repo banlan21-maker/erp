@@ -1,7 +1,10 @@
 export const dynamic = "force-dynamic";
 
+import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import FieldWorklog from "@/components/field-worklog";
+
+export const metadata: Metadata = { title: "현장 작업일보" };
 
 export default async function FieldWorklogPage() {
   const [equipment, projects, workers] = await Promise.all([
