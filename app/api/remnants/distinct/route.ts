@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 
 const TYPE_LABEL: Record<string, string>   = { REMNANT: "현장잔재", SURPLUS: "여유원재", REGISTERED: "등록잔재" };
 const SHAPE_LABEL: Record<string, string>  = { RECTANGLE: "사각형", L_SHAPE: "L자형", IRREGULAR: "불규칙형" };
-const STATUS_LABEL: Record<string, string> = { PENDING: "등록", IN_STOCK: "재고있음", IN_USE: "사용중", EXHAUSTED: "소진" };
+const STATUS_LABEL: Record<string, string> = { IN_STOCK: "재고", EXHAUSTED: "소진" };
 
 // GET /api/remnants/distinct?type=REGISTERED
 export async function GET(request: NextRequest) {

@@ -192,9 +192,8 @@ export default function ProjectsMain({
 
 // ─── 등록잔재리스트 탭 ────────────────────────────────────────────────────────
 const SHAPE_LABEL: Record<string, string> = { RECTANGLE: "사각형", L_SHAPE: "L자형" };
-const STATUS_LABEL_R: Record<string, string> = { PENDING: "등록", IN_STOCK: "재고", EXHAUSTED: "소진" };
+const STATUS_LABEL_R: Record<string, string> = { IN_STOCK: "재고", EXHAUSTED: "소진" };
 const STATUS_COLOR_R: Record<string, string> = {
-  PENDING:   "bg-yellow-100 text-yellow-700",
   IN_STOCK:  "bg-green-100 text-green-700",
   EXHAUSTED: "bg-gray-100 text-gray-500",
 };

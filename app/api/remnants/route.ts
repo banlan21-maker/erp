@@ -197,6 +197,7 @@ export async function POST(request: NextRequest) {
         location:  location?.trim() || null,
         registeredBy: registeredBy.trim(),
         memo: memo?.trim() || null,
+        status: "IN_STOCK", // 등록 즉시 재고로 분류 (PENDING 단계 미사용)
       },
       include: {
         sourceProject: { select: { id: true, projectCode: true, projectName: true } },

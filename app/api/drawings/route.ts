@@ -409,6 +409,7 @@ export async function POST(request: NextRequest) {
           drawingListId: dlRow.id,
           parentRemnantId,
           registeredBy: "system",
+          status: "IN_STOCK",
         },
       });
     }
