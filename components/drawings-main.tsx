@@ -139,10 +139,17 @@ interface PreviewRow {
   qty: number; steelWeight: number | null; useWeight: number | null;
 }
 
-interface RemnantInput {
-  open: boolean; remnantNo: string; shape: "RECTANGLE" | "L_SHAPE";
+interface RemnantInputItem {
+  remnantNo: string; shape: "RECTANGLE" | "L_SHAPE";
   width1: string; length1: string; width2: string; length2: string;
 }
+interface RemnantInput {
+  open: boolean;
+  items: RemnantInputItem[];
+}
+const emptyRemnantItem: RemnantInputItem = {
+  remnantNo: "", shape: "RECTANGLE", width1: "", length1: "", width2: "", length2: "",
+};
 
 interface RemnantOption {
   id: string; remnantNo: string; material: string; thickness: number; shape: string;
@@ -233,13 +240,17 @@ function UploadTab({
     setLoading(true);
 
     const remnantsData = Object.entries(remnantInputs)
-      .filter(([, v]) => v.open && v.width1 && v.length1)
-      .map(([idx, v]) => ({
-        rowIndex: Number(idx), remnantNo: v.remnantNo, shape: v.shape,
-        width1: Number(v.width1), length1: Number(v.length1),
-        width2: v.width2 ? Number(v.width2) : undefined,
-        length2: v.length2 ? Number(v.length2) : undefined,
-      }));
+      .filter(([, v]) => v.open)
+      .flatMap(([idx, v]) =>
+        v.items
+          .filter(item => item.width1 && item.length1)
+          .map(item => ({
+            rowIndex: Number(idx), remnantNo: item.remnantNo, shape: item.shape,
+            width1: Number(item.width1), length1: Number(item.length1),
+            width2: item.width2 ? Number(item.width2) : undefined,
+            length2: item.length2 ? Number(item.length2) : undefined,
+          }))
+      );
 
     // 등록잔재 지정 (빈 문자열 = 선택 안 됨 → 제외)
     const assignmentsData = Object.entries(remnantAssignments)
@@ -274,8 +285,39 @@ function UploadTab({
       ...prev,
       [idx]: prev[idx]
         ? { ...prev[idx], open: !prev[idx].open }
-        : { open: true, remnantNo: "", shape: "RECTANGLE", width1: "", length1: "", width2: "", length2: "" },
+        : { open: true, items: [{ ...emptyRemnantItem }] },
     }));
+  };
+
+  const addRemnantItem = (idx: number) => {
+    setRemnantInputs(prev => {
+      const cur = prev[idx] ?? { open: true, items: [] };
+      return { ...prev, [idx]: { ...cur, open: true, items: [...cur.items, { ...emptyRemnantItem }] } };
+    });
+  };
+
+  const removeRemnantItem = (idx: number, itemIdx: number) => {
+    setRemnantInputs(prev => {
+      const cur = prev[idx];
+      if (!cur) return prev;
+      const items = cur.items.filter((_, i) => i !== itemIdx);
+      if (items.length === 0) {
+        // 마지막 항목 제거 → 영역 자체를 닫음
+        const next = { ...prev };
+        delete next[idx];
+        return next;
+      }
+      return { ...prev, [idx]: { ...cur, items } };
+    });
+  };
+
+  const updateRemnantItem = (idx: number, itemIdx: number, field: keyof RemnantInputItem, val: string) => {
+    setRemnantInputs(prev => {
+      const cur = prev[idx];
+      if (!cur) return prev;
+      const items = cur.items.map((it, i) => i === itemIdx ? { ...it, [field]: val } : it);
+      return { ...prev, [idx]: { ...cur, items } };
+    });
   };
 
   const moveToAssigned = (idx: number) => setRemnantAssignments(prev => ({ ...prev, [idx]: "" }));
@@ -505,12 +547,33 @@ function UploadTab({
                                 {rem?.open && (
                                   <tr className="bg-orange-50 border-b">
                                     <td colSpan={8} className="px-4 py-3">
-                                      <RemnantInputRow
-                                        rem={rem} idx={idx}
-                                        projectCode={selectedProject?.projectCode}
-                                        blockName={blockName} material={row.material} thickness={row.thickness}
-                                        onChange={(field, val) => setRemnantInputs(p => ({ ...p, [idx]: { ...p[idx], [field]: val } }))}
-                                      />
+                                      <div className="space-y-3">
+                                        {rem.items.map((item, itemIdx) => (
+                                          <div key={itemIdx} className="bg-white border border-orange-200 rounded-lg p-3 relative">
+                                            <div className="flex items-center justify-between mb-2">
+                                              <span className="text-[11px] font-bold text-orange-700">잔재 #{itemIdx + 1}</span>
+                                              <button
+                                                onClick={() => removeRemnantItem(idx, itemIdx)}
+                                                className="text-[10px] px-2 py-0.5 border border-red-300 text-red-600 rounded hover:bg-red-50"
+                                              >
+                                                삭제
+                                              </button>
+                                            </div>
+                                            <RemnantInputRow
+                                              item={item}
+                                              projectCode={selectedProject?.projectCode}
+                                              blockName={blockName} material={row.material} thickness={row.thickness}
+                                              onChange={(field, val) => updateRemnantItem(idx, itemIdx, field, val)}
+                                            />
+                                          </div>
+                                        ))}
+                                        <button
+                                          onClick={() => addRemnantItem(idx)}
+                                          className="w-full px-3 py-1.5 text-xs border border-dashed border-orange-400 text-orange-700 rounded-lg hover:bg-orange-100 font-medium"
+                                        >
+                                          + 잔재 추가
+                                        </button>
+                                      </div>
                                     </td>
                                   </tr>
                                 )}
@@ -611,13 +674,34 @@ function UploadTab({
                                   {rem?.open && (
                                     <tr className="bg-amber-50 border-b border-orange-200">
                                       <td colSpan={7} className="px-4 py-3">
-                                        <RemnantInputRow
-                                          rem={rem} idx={idx}
-                                          projectCode={selectedProject?.projectCode}
-                                          blockName={blockName} material={row.material} thickness={row.thickness}
-                                          parentRemnantNo={selectedRem?.remnantNo}
-                                          onChange={(field, val) => setRemnantInputs(p => ({ ...p, [idx]: { ...p[idx], [field]: val } }))}
-                                        />
+                                        <div className="space-y-3">
+                                          {rem.items.map((item, itemIdx) => (
+                                            <div key={itemIdx} className="bg-white border border-amber-300 rounded-lg p-3 relative">
+                                              <div className="flex items-center justify-between mb-2">
+                                                <span className="text-[11px] font-bold text-amber-700">자식 잔재 #{itemIdx + 1}</span>
+                                                <button
+                                                  onClick={() => removeRemnantItem(idx, itemIdx)}
+                                                  className="text-[10px] px-2 py-0.5 border border-red-300 text-red-600 rounded hover:bg-red-50"
+                                                >
+                                                  삭제
+                                                </button>
+                                              </div>
+                                              <RemnantInputRow
+                                                item={item}
+                                                projectCode={selectedProject?.projectCode}
+                                                blockName={blockName} material={row.material} thickness={row.thickness}
+                                                parentRemnantNo={selectedRem?.remnantNo}
+                                                onChange={(field, val) => updateRemnantItem(idx, itemIdx, field, val)}
+                                              />
+                                            </div>
+                                          ))}
+                                          <button
+                                            onClick={() => addRemnantItem(idx)}
+                                            className="w-full px-3 py-1.5 text-xs border border-dashed border-amber-400 text-amber-700 rounded-lg hover:bg-amber-100 font-medium"
+                                          >
+                                            + 잔재 추가
+                                          </button>
+                                        </div>
                                       </td>
                                     </tr>
                                   )}
@@ -672,23 +756,23 @@ function UploadTab({
 
 /* ── 등록잔재 입력 행 (공통 컴포넌트) ─────────────────────────────────────── */
 function RemnantInputRow({
-  rem, idx, projectCode, blockName, material, thickness, parentRemnantNo, onChange,
+  item, projectCode, blockName, material, thickness, parentRemnantNo, onChange,
 }: {
-  rem: RemnantInput; idx: number;
+  item: RemnantInputItem;
   projectCode?: string; blockName: string; material: string; thickness: number;
   parentRemnantNo?: string;
-  onChange: (field: string, val: string) => void;
+  onChange: (field: keyof RemnantInputItem, val: string) => void;
 }) {
   return (
     <div className="flex flex-wrap gap-3 items-end">
       <div>
         <label className="text-[10px] text-gray-500 font-semibold block mb-1">잔재번호</label>
-        <input className="h-7 text-xs border rounded px-2 w-28" placeholder="예: R-001" value={rem.remnantNo}
+        <input className="h-7 text-xs border rounded px-2 w-28" placeholder="예: R-001" value={item.remnantNo}
           onChange={e => onChange("remnantNo", e.target.value)} />
       </div>
       <div>
         <label className="text-[10px] text-gray-500 font-semibold block mb-1">형태</label>
-        <select className="h-7 text-xs border rounded px-1 bg-white" value={rem.shape}
+        <select className="h-7 text-xs border rounded px-1 bg-white" value={item.shape}
           onChange={e => onChange("shape", e.target.value)}>
           <option value="RECTANGLE">사각형</option>
           <option value="L_SHAPE">L자형</option>
@@ -696,24 +780,24 @@ function RemnantInputRow({
       </div>
       <div>
         <label className="text-[10px] text-gray-500 font-semibold block mb-1">폭1 <span className="text-red-400">*</span></label>
-        <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={rem.width1}
+        <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={item.width1}
           onChange={e => onChange("width1", e.target.value)} />
       </div>
       <div>
         <label className="text-[10px] text-gray-500 font-semibold block mb-1">길이1 <span className="text-red-400">*</span></label>
-        <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={rem.length1}
+        <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={item.length1}
           onChange={e => onChange("length1", e.target.value)} />
       </div>
-      {rem.shape === "L_SHAPE" && (
+      {item.shape === "L_SHAPE" && (
         <>
           <div>
             <label className="text-[10px] text-gray-500 font-semibold block mb-1">폭2</label>
-            <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={rem.width2}
+            <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={item.width2}
               onChange={e => onChange("width2", e.target.value)} />
           </div>
           <div>
             <label className="text-[10px] text-gray-500 font-semibold block mb-1">길이2</label>
-            <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={rem.length2}
+            <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={item.length2}
               onChange={e => onChange("length2", e.target.value)} />
           </div>
         </>
