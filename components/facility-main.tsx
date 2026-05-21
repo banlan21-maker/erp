@@ -236,11 +236,11 @@ export default function FacilityMain() {
         {/* 컨트롤 */}
         <div className="p-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 relative bg-white shadow-sm rounded-lg border border-gray-200">
+            <div className="flex items-center gap-1 relative bg-white shadow-sm rounded-lg border border-gray-200 pr-3">
               <Calendar size={14} className="absolute left-3 text-gray-400" />
-              <input type="number" value={year} onChange={e => setYear(e.target.value)} className="w-20 pl-8 pr-2 py-1.5 h-9 text-sm bg-transparent focus:outline-none" />
+              <input type="number" value={year} onChange={e => setYear(e.target.value)} className="w-24 pl-9 pr-1 py-1.5 h-9 text-sm bg-transparent focus:outline-none" />
+              <span className="text-gray-500 text-sm">년</span>
             </div>
-            <span className="text-gray-500 text-sm">년</span>
             <select value={month} onChange={e => setMonth(e.target.value)} className="h-9 px-3 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
               {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}월</option>)}
             </select>
