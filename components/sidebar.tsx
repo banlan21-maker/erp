@@ -6,7 +6,7 @@ import {
   LayoutDashboard, FolderOpen, FileSpreadsheet, ClipboardList,
   Users, BarChart2, ChevronLeft, ChevronRight, Smartphone,
   ExternalLink, Package, Truck, History, CalendarDays, Eye, Wrench,
-  UtensilsCrossed, Archive, Zap,
+  UtensilsCrossed, Archive, Zap, Gauge,
 } from "lucide-react";
 import type { ComponentType } from "react";
 
@@ -46,6 +46,7 @@ const menuGroups: Record<string, MenuItem[]> = {
     { href: "/management/workers",    label: "인원관리",      icon: Users },
     { href: "/management/equipment",  label: "장비관리",      icon: Wrench },
     { href: "/management/transport",  label: "운송관리",      icon: Truck },
+    { href: "/management/facility",   label: "시설관리",      icon: Gauge },
     { href: "/management/vendors",    label: "거래처 관리",   icon: Package },
     { href: "/meal",                  label: "식수 관리",     icon: UtensilsCrossed },
   ],
@@ -173,9 +174,9 @@ export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
           </div>
         )}
 
-        {/* 관리 모듈 - 현장 운행일지 링크 */}
+        {/* 관리 모듈 - 현장 운행일지 / 현장 시설관리 링크 */}
         {module === "management" && (
-          <div className="pt-2 mt-2 border-t border-gray-700">
+          <div className="pt-2 mt-2 border-t border-gray-700 space-y-1">
             <a
               href="/field/driving-log"
               target="_blank"
@@ -191,6 +192,25 @@ export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
               {!isMini && (
                 <span className="flex-1 flex items-center justify-between">
                   현장 운행일지
+                  <ExternalLink size={12} className="opacity-60" />
+                </span>
+              )}
+            </a>
+            <a
+              href="/field/facility"
+              target="_blank"
+              rel="noopener noreferrer"
+              title={isMini ? "현장 시설관리 (새창)" : undefined}
+              className={`
+                flex items-center gap-3 rounded-lg text-sm font-medium transition-colors
+                text-emerald-400 hover:bg-gray-800 hover:text-emerald-300
+                ${isMini ? "justify-center px-0 py-2.5" : "px-3 py-2"}
+              `}
+            >
+              <Smartphone size={18} className="flex-shrink-0" />
+              {!isMini && (
+                <span className="flex-1 flex items-center justify-between">
+                  현장 시설관리
                   <ExternalLink size={12} className="opacity-60" />
                 </span>
               )}

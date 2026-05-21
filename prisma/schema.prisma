@@ -397,6 +397,50 @@ model MealSettlement {
   @@unique([factory, month])
 }
 
+// 시설관리 — 가스설비 일일점검
+model GasFacilityCheck {
+  id          String   @id @default(cuid())
+  date        String // YYYY-MM-DD
+  time        String // HH:MM
+  o2Pressure  Float? // 액화산소 압력
+  o2Charge    Float? // 액화산소 충전량
+  lpgPressure Float? // LPG 압력
+  lpgCharge   Float? // LPG 충전량
+  co2Pressure Float? // CO2 압력
+  co2Charge   Float? // CO2 충전량
+  memo        String?
+  recordedBy  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([date])
+}
+
+// 시설관리 — 컴프레셔 일일점검 (1호/2호/3호)
+model CompressorCheck {
+  id         String   @id @default(cuid())
+  date       String // YYYY-MM-DD
+  time       String // HH:MM
+  runtime1   Float? // 운전시간 1호
+  runtime2   Float?
+  runtime3   Float?
+  pressure1  Float? // 토출압력 1호
+  pressure2  Float?
+  pressure3  Float?
+  temp1      Float? // 온도 1호
+  temp2      Float?
+  temp3      Float?
+  visual1    String? // 외관검사 1호 (양호/불량 등)
+  visual2    String?
+  visual3    String?
+  memo       String?
+  recordedBy String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([date])
+}
+
 // 장비 마스터
 model Equipment {
   id             String          @id @default(cuid())
