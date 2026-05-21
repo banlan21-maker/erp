@@ -10,6 +10,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const data: Record<string, unknown> = {};
     if (b.usedDate  !== undefined) data.usedDate = b.usedDate;
     if (b.cardNo    !== undefined) data.cardNo = String(b.cardNo).trim();
+    if (b.category  !== undefined) data.category = b.category?.trim() || null;
     if (b.detail    !== undefined) data.detail = b.detail?.trim() || "";
     if (b.amount    !== undefined) data.amount = Math.round(Number(b.amount) || 0);
     if (b.userName  !== undefined) data.userName = b.userName?.trim() || null;

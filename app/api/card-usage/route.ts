@@ -33,6 +33,7 @@ export async function POST(request: NextRequest) {
       data: {
         usedDate: b.usedDate,
         cardNo: String(b.cardNo).trim(),
+        category: b.category?.trim() || null,
         detail: b.detail?.trim() || "",
         amount: Math.round(Number(b.amount) || 0),
         userName: b.userName?.trim() || null,

@@ -454,6 +454,7 @@ model CardUsage {
   id        String   @id @default(cuid())
   usedDate  String // YYYY-MM-DD
   cardNo    String // 끝 4자리
+  category  String? // 구분: 사무실 / 현장
   detail    String // 사용내역
   amount    Int // 금액
   userName  String? // 사용자

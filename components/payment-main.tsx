@@ -11,16 +11,18 @@ function getDayStr(d: string) { return DAYS[new Date(d + "T12:00:00").getDay()];
 
 interface Card { id: string; cardNo: string; label: string | null; }
 interface Usage {
-  id: string; usedDate: string; cardNo: string; detail: string;
+  id: string; usedDate: string; cardNo: string; category: string | null; detail: string;
   amount: number; userName: string | null; confirmed: boolean; memo: string | null;
 }
 type UsageForm = {
-  usedDate: string; cardNo: string; detail: string;
+  usedDate: string; cardNo: string; category: string; detail: string;
   amount: string; userName: string; confirmed: boolean; memo: string;
 };
 
+const CATEGORIES = ["사무실", "현장"] as const;
+
 const emptyForm = (): UsageForm => ({
-  usedDate: todayStr(), cardNo: "", detail: "", amount: "", userName: "", confirmed: false, memo: "",
+  usedDate: todayStr(), cardNo: "", category: "", detail: "", amount: "", userName: "", confirmed: false, memo: "",
 });
 
 export default function PaymentMain() {
@@ -59,7 +61,7 @@ export default function PaymentMain() {
 
   const openAdd = () => { setForm({ ...emptyForm(), cardNo: cards[0]?.cardNo ?? "" }); setModal({ mode: "add" }); };
   const openEdit = (r: Usage) => {
-    setForm({ usedDate: r.usedDate, cardNo: r.cardNo, detail: r.detail, amount: String(r.amount), userName: r.userName ?? "", confirmed: r.confirmed, memo: r.memo ?? "" });
+    setForm({ usedDate: r.usedDate, cardNo: r.cardNo, category: r.category ?? "", detail: r.detail, amount: String(r.amount), userName: r.userName ?? "", confirmed: r.confirmed, memo: r.memo ?? "" });
     setModal({ mode: "edit", id: r.id });
   };
 
@@ -117,12 +119,12 @@ export default function PaymentMain() {
     if (rows.length === 0) { alert("다운로드할 데이터가 없습니다."); return; }
     const data = [
       [`법인카드 사용대장 ${ym}`],
-      ["NO", "사용일자", "요일", "카드번호", "사용내역", "금액", "사용자", "확인", "비고"],
-      ...rows.map((r, i) => [i + 1, r.usedDate, getDayStr(r.usedDate), r.cardNo, r.detail, r.amount, r.userName ?? "", r.confirmed ? "확인" : "", r.memo ?? ""]),
-      ["", "", "", "", "합계", totalAmount, "", "", ""],
+      ["NO", "사용일자", "요일", "카드번호", "구분", "사용내역", "금액", "사용자", "확인", "비고"],
+      ...rows.map((r, i) => [i + 1, r.usedDate, getDayStr(r.usedDate), r.cardNo, r.category ?? "", r.detail, r.amount, r.userName ?? "", r.confirmed ? "확인" : "", r.memo ?? ""]),
+      ["", "", "", "", "", "합계", totalAmount, "", "", ""],
     ];
     const ws = XLSX.utils.aoa_to_sheet(data);
-    ws["!cols"] = [{ wch: 5 }, { wch: 12 }, { wch: 5 }, { wch: 10 }, { wch: 28 }, { wch: 12 }, { wch: 10 }, { wch: 6 }, { wch: 20 }];
+    ws["!cols"] = [{ wch: 5 }, { wch: 12 }, { wch: 5 }, { wch: 10 }, { wch: 8 }, { wch: 28 }, { wch: 12 }, { wch: 10 }, { wch: 6 }, { wch: 20 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "법인카드사용대장");
     XLSX.writeFile(wb, `법인카드사용대장_${ym}.xlsx`);
@@ -134,7 +136,7 @@ export default function PaymentMain() {
     const body = rows.map((r, i) => `
       <tr class="${i % 2 ? "even" : ""}">
         <td>${i + 1}</td><td>${r.usedDate}</td><td>${getDayStr(r.usedDate)}</td>
-        <td>${r.cardNo}</td><td class="left">${r.detail}</td>
+        <td>${r.cardNo}</td><td>${r.category ?? ""}</td><td class="left">${r.detail}</td>
         <td class="num">${r.amount.toLocaleString()}</td>
         <td>${r.userName ?? ""}</td><td>${r.confirmed ? "✔" : ""}</td>
         <td class="left">${r.memo ?? ""}</td>
@@ -157,11 +159,11 @@ tfoot td{background:#e2e8f0;font-weight:bold}
 <div class="header"><h1>법인카드 사용대장</h1>
 <p class="meta">대상 월: ${ym} | 출력일시: ${new Date().toLocaleString("ko-KR")} | 총 ${rows.length}건</p></div>
 <table><thead><tr>
-<th style="width:5%">NO</th><th style="width:11%">사용일자</th><th style="width:5%">요일</th>
-<th style="width:9%">카드번호</th><th style="width:28%">사용내역</th><th style="width:12%">금액</th>
-<th style="width:9%">사용자</th><th style="width:6%">확인</th><th>비고</th>
+<th style="width:4%">NO</th><th style="width:10%">사용일자</th><th style="width:4%">요일</th>
+<th style="width:8%">카드번호</th><th style="width:7%">구분</th><th style="width:26%">사용내역</th><th style="width:11%">금액</th>
+<th style="width:8%">사용자</th><th style="width:5%">확인</th><th>비고</th>
 </tr></thead><tbody>${body}</tbody>
-<tfoot><tr><td colspan="5">합계</td><td class="num">${totalAmount.toLocaleString()}원</td><td colspan="3"></td></tr></tfoot>
+<tfoot><tr><td colspan="6">합계</td><td class="num">${totalAmount.toLocaleString()}원</td><td colspan="3"></td></tr></tfoot>
 </table>
 <script>window.onload=()=>window.print()<\/script></body></html>`;
     const win = window.open("", "_blank", "width=1200,height=800");
@@ -218,6 +220,7 @@ tfoot td{background:#e2e8f0;font-weight:bold}
                 <th className="px-3 py-2.5 text-xs font-semibold border-r border-gray-300">NO</th>
                 <th className="px-3 py-2.5 text-xs font-semibold border-r border-gray-300">사용일자</th>
                 <th className="px-3 py-2.5 text-xs font-semibold border-r border-gray-300">카드번호</th>
+                <th className="px-3 py-2.5 text-xs font-semibold border-r border-gray-300">구분</th>
                 <th className="px-3 py-2.5 text-xs font-semibold border-r border-gray-300">사용내역</th>
                 <th className="px-3 py-2.5 text-xs font-semibold border-r border-gray-300">금액</th>
                 <th className="px-3 py-2.5 text-xs font-semibold border-r border-gray-300">사용자</th>
@@ -228,14 +231,19 @@ tfoot td{background:#e2e8f0;font-weight:bold}
             </thead>
             <tbody className="divide-y divide-gray-200">
               {loading ? (
-                <tr><td colSpan={9} className="py-12 text-gray-400"><RefreshCw className="animate-spin mx-auto mb-2 text-blue-500" size={24} />불러오는 중...</td></tr>
+                <tr><td colSpan={10} className="py-12 text-gray-400"><RefreshCw className="animate-spin mx-auto mb-2 text-blue-500" size={24} />불러오는 중...</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={9} className="py-16 text-gray-400">{ym} 사용내역이 없습니다.</td></tr>
+                <tr><td colSpan={10} className="py-16 text-gray-400">{ym} 사용내역이 없습니다.</td></tr>
               ) : rows.map((r, i) => (
                 <tr key={r.id} className="hover:bg-blue-50/30">
                   <td className="px-3 py-2.5 text-center border-r border-gray-200 text-gray-500">{i + 1}</td>
                   <td className="px-3 py-2.5 text-center border-r border-gray-200 font-mono">{r.usedDate.slice(5)} ({getDayStr(r.usedDate)})</td>
                   <td className="px-3 py-2.5 text-center border-r border-gray-200"><span className="px-2 py-0.5 bg-slate-100 rounded font-mono font-semibold">{r.cardNo}</span></td>
+                  <td className="px-3 py-2.5 text-center border-r border-gray-200">
+                    {r.category ? (
+                      <span className={`px-2 py-0.5 rounded text-xs font-semibold ${r.category === "사무실" ? "bg-indigo-100 text-indigo-700" : "bg-amber-100 text-amber-700"}`}>{r.category}</span>
+                    ) : <span className="text-gray-300">-</span>}
+                  </td>
                   <td className="px-3 py-2.5 text-center border-r border-gray-200">{r.detail || "-"}</td>
                   <td className="px-3 py-2.5 text-center border-r border-gray-200 font-semibold text-blue-700">{r.amount.toLocaleString()}원</td>
                   <td className="px-3 py-2.5 text-center border-r border-gray-200">{r.userName ?? "-"}</td>
@@ -278,6 +286,21 @@ tfoot td{background:#e2e8f0;font-weight:bold}
                     <option value="">선택...</option>
                     {cards.map(c => <option key={c.id} value={c.cardNo}>{c.cardNo}{c.label ? ` (${c.label})` : ""}</option>)}
                   </select></div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">구분</label>
+                <div className="flex gap-2">
+                  {CATEGORIES.map(cat => (
+                    <button key={cat} type="button" onClick={() => setForm({ ...form, category: form.category === cat ? "" : cat })}
+                      className={`flex-1 h-9 rounded-lg text-sm font-semibold border transition-colors ${
+                        form.category === cat
+                          ? (cat === "사무실" ? "bg-indigo-600 text-white border-indigo-600" : "bg-amber-500 text-white border-amber-500")
+                          : "bg-white text-gray-500 border-gray-300 hover:bg-gray-50"
+                      }`}>
+                      {cat}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div><label className="text-xs font-semibold text-gray-600 mb-1 block">사용내역</label>
                 <input value={form.detail} onChange={e => setForm({ ...form, detail: e.target.value })} placeholder="예: 사무용품 구매" className="w-full h-9 px-3 border border-gray-300 rounded-lg text-sm" /></div>

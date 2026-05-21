@@ -17,7 +17,7 @@ export default function FieldPayment() {
   const [done, setDone] = useState(false);
 
   const [form, setForm] = useState({
-    usedDate: todayStr(), cardNo: "", detail: "", amount: "", userName: "", memo: "",
+    usedDate: todayStr(), cardNo: "", category: "", detail: "", amount: "", userName: "", memo: "",
   });
 
   useEffect(() => {
@@ -66,6 +66,22 @@ export default function FieldPayment() {
               <option value="">선택...</option>
               {cards.map(c => <option key={c.id} value={c.cardNo}>{c.cardNo}{c.label ? ` (${c.label})` : ""}</option>)}
             </select>
+          </div>
+        </div>
+
+        <div>
+          <label className={labelCls}>구분</label>
+          <div className="grid grid-cols-2 gap-3">
+            {(["사무실", "현장"] as const).map(cat => (
+              <button key={cat} type="button" onClick={() => set("category", form.category === cat ? "" : cat)}
+                className={`py-3.5 rounded-xl text-base font-bold border transition-colors ${
+                  form.category === cat
+                    ? (cat === "사무실" ? "bg-indigo-600 text-white border-indigo-600" : "bg-amber-500 text-white border-amber-500")
+                    : "bg-gray-800 text-gray-400 border-gray-700"
+                }`}>
+                {cat}
+              </button>
+            ))}
           </div>
         </div>
 

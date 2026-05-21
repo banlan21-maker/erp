@@ -78,8 +78,8 @@ export default function FieldFacility() {
   const g = (k: keyof typeof gas, v: string) => setGas(p => ({ ...p, [k]: v }));
   const c = (k: keyof typeof comp, v: string) => setComp(p => ({ ...p, [k]: v }));
 
-  // 3호기 묶음 입력 렌더
-  const TripleInput = ({ label, keys, unit }: { label: string; keys: [keyof typeof comp, keyof typeof comp, keyof typeof comp]; unit?: string }) => (
+  // 3호기 묶음 입력 렌더 (컴포넌트가 아닌 함수 호출 → 매 렌더마다 재마운트되지 않아 포커스 유지)
+  const renderTriple = (label: string, keys: [keyof typeof comp, keyof typeof comp, keyof typeof comp], unit?: string) => (
     <div>
       <label className={labelCls}>{label}{unit ? ` (${unit})` : ""}</label>
       <div className="grid grid-cols-3 gap-2">
@@ -169,9 +169,9 @@ export default function FieldFacility() {
         ) : (
           <div className="space-y-4">
             <div className="bg-gray-900 rounded-2xl p-4 border border-gray-800 space-y-4">
-              <TripleInput label="운전시간" keys={["runtime1", "runtime2", "runtime3"]} unit="h" />
-              <TripleInput label="토출압력" keys={["pressure1", "pressure2", "pressure3"]} />
-              <TripleInput label="온도" keys={["temp1", "temp2", "temp3"]} unit="℃" />
+              {renderTriple("운전시간", ["runtime1", "runtime2", "runtime3"], "h")}
+              {renderTriple("토출압력", ["pressure1", "pressure2", "pressure3"])}
+              {renderTriple("온도", ["temp1", "temp2", "temp3"], "℃")}
               {/* 외관검사 */}
               <div>
                 <label className={labelCls}>외관검사</label>
