@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
       const ids = idsParam.split(",").filter(Boolean);
       const remnants = await prisma.remnant.findMany({
         where: { id: { in: ids } },
-        select: { id: true, remnantNo: true, shape: true, material: true, thickness: true, weight: true, width1: true, length1: true, width2: true, length2: true, status: true },
+        select: { id: true, remnantNo: true, type: true, shape: true, material: true, thickness: true, weight: true, width1: true, length1: true, width2: true, length2: true, status: true },
       });
       return NextResponse.json({ success: true, data: remnants });
     }

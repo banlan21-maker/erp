@@ -152,10 +152,14 @@ const emptyRemnantItem: RemnantInputItem = {
 };
 
 interface RemnantOption {
-  id: string; remnantNo: string; material: string; thickness: number; shape: string;
+  id: string; remnantNo: string; type: string; material: string; thickness: number; shape: string;
   width1: number | null; length1: number | null; width2: number | null; length2: number | null;
   weight: number;
 }
+
+// 잔재 사용 지정: 등록잔재(REGISTERED) 또는 현장잔재(REMNANT)
+type AssignKind = "REGISTERED" | "REMNANT";
+interface Assignment { kind: AssignKind; remnantId: string; }
 
 /* ── 강재등록 탭 ─────────────────────────────────────────────────────────── */
 function UploadTab({
@@ -177,23 +181,32 @@ function UploadTab({
   const [previewRows, setPreviewRows] = useState<PreviewRow[] | null>(null);
   // 행별 등록잔재 발생 입력 (원재사용 + 잔재사용 모두 가능)
   const [remnantInputs, setRemnantInputs] = useState<Record<number, RemnantInput>>({});
-  // 행별 사용할 등록잔재 지정 (idx → remnantId, "" = 지정됐지만 아직 선택 전)
-  const [remnantAssignments, setRemnantAssignments] = useState<Record<number, string>>({});
-  // 선택 가능한 IN_STOCK 등록잔재 목록
+  // 행별 사용할 잔재 지정 (idx → { kind, remnantId }, remnantId "" = 지정됐지만 미선택)
+  const [remnantAssignments, setRemnantAssignments] = useState<Record<number, Assignment>>({});
+  // 선택 가능한 IN_STOCK 잔재 목록 (등록잔재 + 현장잔재)
   const [availableRemnants, setAvailableRemnants] = useState<RemnantOption[]>([]);
 
   useEffect(() => {
     fetch("/api/excel-presets").then(r => r.json()).then(d => { if (d.success) setPresets(d.data); });
   }, []);
 
-  // 미리보기가 열릴 때 사용 가능한 등록잔재 불러오기
+  // 미리보기가 열릴 때 사용 가능한 잔재(등록잔재 + 현장잔재) 불러오기
   useEffect(() => {
     if (!previewRows) { setAvailableRemnants([]); return; }
-    fetch("/api/remnants?type=REGISTERED&status=IN_STOCK")
-      .then(r => r.json())
-      .then(d => { if (d.success) setAvailableRemnants(d.data); });
+    Promise.all([
+      fetch("/api/remnants?type=REGISTERED&status=IN_STOCK").then(r => r.json()),
+      fetch("/api/remnants?type=REMNANT&status=IN_STOCK").then(r => r.json()),
+    ]).then(([reg, rem]) => {
+      const list: RemnantOption[] = [];
+      if (reg.success) list.push(...reg.data);
+      if (rem.success) list.push(...rem.data);
+      setAvailableRemnants(list);
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!previewRows]);
+
+  const remnantsByKind = (kind: AssignKind) =>
+    availableRemnants.filter(r => r.type === kind);
 
   const grouped: Record<string, ProjectOption[]> = {};
   for (const p of projectOptions) {
@@ -252,10 +265,10 @@ function UploadTab({
           }))
       );
 
-    // 등록잔재 지정 (빈 문자열 = 선택 안 됨 → 제외)
+    // 잔재 사용 지정 (등록잔재/현장잔재 공통 — remnantId 미선택은 제외)
     const assignmentsData = Object.entries(remnantAssignments)
-      .filter(([, remnantId]) => remnantId)
-      .map(([idx, remnantId]) => ({ rowIndex: Number(idx), remnantId }));
+      .filter(([, a]) => a.remnantId)
+      .map(([idx, a]) => ({ rowIndex: Number(idx), remnantId: a.remnantId }));
 
     const fd = new FormData();
     fd.append("file", file);
@@ -320,16 +333,149 @@ function UploadTab({
     });
   };
 
-  const moveToAssigned = (idx: number) => setRemnantAssignments(prev => ({ ...prev, [idx]: "" }));
+  const assignTo = (idx: number, kind: AssignKind) => setRemnantAssignments(prev => ({ ...prev, [idx]: { kind, remnantId: "" } }));
   const moveToNormal = (idx: number) => setRemnantAssignments(prev => {
     const next = { ...prev }; delete next[idx]; return next;
   });
   const setAssignedRemnant = (idx: number, remnantId: string) =>
-    setRemnantAssignments(prev => ({ ...prev, [idx]: remnantId }));
+    setRemnantAssignments(prev => ({ ...prev, [idx]: { ...(prev[idx] ?? { kind: "REGISTERED" as AssignKind }), remnantId } }));
 
-  const assignedIndices = new Set(Object.keys(remnantAssignments).map(Number));
-  const normalCount  = previewRows ? previewRows.filter((_, i) => !assignedIndices.has(i)).length : 0;
-  const assignedCount = assignedIndices.size;
+  const assignedIndices  = new Set(Object.keys(remnantAssignments).map(Number));
+  const registeredIndices = new Set(Object.entries(remnantAssignments).filter(([, a]) => a.kind === "REGISTERED").map(([i]) => Number(i)));
+  const remnantIndices    = new Set(Object.entries(remnantAssignments).filter(([, a]) => a.kind === "REMNANT").map(([i]) => Number(i)));
+  const normalCount    = previewRows ? previewRows.filter((_, i) => !assignedIndices.has(i)).length : 0;
+  const registeredCount = registeredIndices.size;
+  const remnantCount    = remnantIndices.size;
+
+  // 잔재 사용 목록 렌더 (등록잔재 / 현장잔재 공통)
+  const renderAssignedList = (kind: AssignKind, indices: Set<number>, count: number) => {
+    if (!previewRows || count === 0) return null;
+    const isReg = kind === "REGISTERED";
+    const label = isReg ? "등록잔재 사용 목록" : "현장잔재 사용 목록";
+    const opts = remnantsByKind(kind);
+    const C = isReg
+      ? { wrap: "bg-orange-50 border-orange-200", head: "bg-orange-100 border-orange-200", txt: "text-orange-700", soft: "text-orange-400", chip: "bg-orange-100 text-orange-700", rowHover: "hover:bg-orange-100/50", openBg: "bg-amber-50", childBorder: "border-amber-300", childTxt: "text-amber-700", addBtn: "border-amber-400 text-amber-700 hover:bg-amber-100", inputBtnOpen: "bg-amber-100 border-amber-300 text-amber-700", inputBtn: "border-orange-300 text-orange-600 hover:bg-orange-100" }
+      : { wrap: "bg-teal-50 border-teal-200", head: "bg-teal-100 border-teal-200", txt: "text-teal-700", soft: "text-teal-400", chip: "bg-teal-100 text-teal-700", rowHover: "hover:bg-teal-100/50", openBg: "bg-cyan-50", childBorder: "border-cyan-300", childTxt: "text-cyan-700", addBtn: "border-cyan-400 text-cyan-700 hover:bg-cyan-100", inputBtnOpen: "bg-cyan-100 border-cyan-300 text-cyan-700", inputBtn: "border-teal-300 text-teal-600 hover:bg-teal-100" };
+    return (
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-2">
+          <span className={`text-xs font-semibold ${C.txt}`}>{label}</span>
+          <span className={`text-xs ${C.soft}`}>{count}행</span>
+          {opts.length === 0 && (
+            <span className="text-xs text-red-500">사용 가능한 {isReg ? "등록잔재" : "현장잔재"}(재고)가 없습니다</span>
+          )}
+        </div>
+        <div className={`${C.wrap} border rounded-xl overflow-x-auto max-h-[350px] overflow-y-auto`}>
+          <table className="w-full text-xs whitespace-nowrap">
+            <thead className={`${C.head} border-b sticky top-0`}>
+              <tr>
+                <th className={`px-3 py-2 text-left ${C.txt} font-semibold`}>블록</th>
+                <th className={`px-3 py-2 text-left ${C.txt} font-semibold`}>도면번호</th>
+                <th className={`px-3 py-2 text-left ${C.txt} font-semibold`}>재질</th>
+                <th className={`px-3 py-2 text-right ${C.txt} font-semibold`}>두께</th>
+                <th className={`px-3 py-2 text-left ${C.txt} font-semibold`}>사용할 {isReg ? "등록잔재" : "현장잔재"}</th>
+                <th className={`px-3 py-2 ${C.txt} font-semibold`}></th>
+                <th className={`px-3 py-2 ${C.txt} font-semibold`}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {previewRows.map((row, idx) => {
+                if (!indices.has(idx)) return null;
+                const rem = remnantInputs[idx];
+                const blockName = row.block ?? selectedProject?.projectName ?? "-";
+                const curRemId = remnantAssignments[idx]?.remnantId ?? "";
+                const selectedRem = opts.find(r => r.id === curRemId);
+                return (
+                  <React.Fragment key={idx}>
+                    <tr className={`border-b ${C.head.split(" ")[1]} ${rem?.open ? C.openBg : C.rowHover}`}>
+                      <td className="px-3 py-2 font-medium text-gray-800">{blockName}</td>
+                      <td className="px-3 py-2 font-mono text-gray-600">{row.drawingNo ?? "-"}</td>
+                      <td className="px-3 py-2"><span className="px-1.5 py-0.5 bg-slate-100 rounded font-medium">{row.material}</span></td>
+                      <td className="px-3 py-2 text-right">{row.thickness}</td>
+                      <td className="px-3 py-2">
+                        <select
+                          value={curRemId}
+                          onChange={e => setAssignedRemnant(idx, e.target.value)}
+                          className="h-7 text-xs border rounded px-2 bg-white min-w-[220px]"
+                        >
+                          <option value="">잔재 선택...</option>
+                          {opts.map(r => (
+                            <option key={r.id} value={r.id}>
+                              {r.remnantNo} — {r.material} {r.thickness}t {r.width1}×{r.length1}
+                              {r.shape === "L_SHAPE" && r.width2 ? ` / ${r.width2}×${r.length2}` : ""} ({r.weight}kg)
+                            </option>
+                          ))}
+                        </select>
+                        {selectedRem && (
+                          <div className={`mt-1 text-[10px] ${C.chip} rounded px-2 py-0.5 inline-block`}>
+                            {selectedRem.remnantNo} · 폭 {selectedRem.width1}
+                            {selectedRem.shape === "L_SHAPE" && selectedRem.width2 ? `/${selectedRem.width2}` : ""}
+                            × 길이 {selectedRem.length1}
+                            {selectedRem.shape === "L_SHAPE" && selectedRem.length2 ? `/${selectedRem.length2}` : ""}
+                            · {selectedRem.weight}kg
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <button
+                          onClick={() => toggleRemnantInput(idx)}
+                          className={`px-2 py-0.5 text-xs rounded border font-medium transition-colors ${rem?.open ? C.inputBtnOpen : C.inputBtn}`}
+                        >
+                          {rem?.open ? "▲ 잔재취소" : "+ 자식잔재"}
+                        </button>
+                      </td>
+                      <td className="px-3 py-2">
+                        <button
+                          onClick={() => moveToNormal(idx)}
+                          className="px-2 py-0.5 text-xs rounded border border-gray-300 text-gray-500 hover:bg-gray-100 font-medium"
+                        >
+                          ← 원재로
+                        </button>
+                      </td>
+                    </tr>
+                    {rem?.open && (
+                      <tr className={`${C.openBg} border-b ${C.head.split(" ")[1]}`}>
+                        <td colSpan={7} className="px-4 py-3">
+                          <div className="space-y-3">
+                            {rem.items.map((item, itemIdx) => (
+                              <div key={itemIdx} className={`bg-white border ${C.childBorder} rounded-lg p-3 relative`}>
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className={`text-[11px] font-bold ${C.childTxt}`}>자식 잔재 #{itemIdx + 1}</span>
+                                  <button
+                                    onClick={() => removeRemnantItem(idx, itemIdx)}
+                                    className="text-[10px] px-2 py-0.5 border border-red-300 text-red-600 rounded hover:bg-red-50"
+                                  >
+                                    삭제
+                                  </button>
+                                </div>
+                                <RemnantInputRow
+                                  item={item}
+                                  projectCode={selectedProject?.projectCode}
+                                  blockName={blockName} material={row.material} thickness={row.thickness}
+                                  parentRemnantNo={selectedRem?.remnantNo}
+                                  onChange={(field, val) => updateRemnantItem(idx, itemIdx, field, val)}
+                                />
+                              </div>
+                            ))}
+                            <button
+                              onClick={() => addRemnantItem(idx)}
+                              className={`w-full px-3 py-1.5 text-xs border border-dashed rounded-lg font-medium ${C.addBtn}`}
+                            >
+                              + 잔재 추가
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -474,8 +620,11 @@ function UploadTab({
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <h4 className="text-sm font-semibold text-gray-700">
                       미리보기 — {previewRows.length}행
-                      {assignedCount > 0 && (
-                        <span className="ml-2 text-orange-600 text-xs">(잔재사용 {assignedCount}행)</span>
+                      {registeredCount > 0 && (
+                        <span className="ml-2 text-orange-600 text-xs">(등록잔재 {registeredCount}행)</span>
+                      )}
+                      {remnantCount > 0 && (
+                        <span className="ml-2 text-teal-600 text-xs">(현장잔재 {remnantCount}행)</span>
                       )}
                     </h4>
                     <div className="flex gap-2">
@@ -523,25 +672,34 @@ function UploadTab({
                                   <td className="px-3 py-2 text-right">{row.thickness}</td>
                                   <td className="px-3 py-2 text-right">{row.width.toLocaleString()}</td>
                                   <td className="px-3 py-2 text-right">{row.length.toLocaleString()}</td>
-                                  <td className="px-3 py-2 text-right">
-                                    <button
-                                      onClick={() => toggleRemnantInput(idx)}
-                                      className={`px-2 py-0.5 text-xs rounded border font-medium transition-colors ${
-                                        rem?.open
-                                          ? "bg-orange-100 border-orange-300 text-orange-700"
-                                          : "border-gray-300 text-gray-500 hover:border-orange-300 hover:text-orange-600"
-                                      }`}
-                                    >
-                                      {rem?.open ? "▲ 잔재취소" : "+ 등록잔재"}
-                                    </button>
-                                  </td>
-                                  <td className="px-3 py-2 text-right">
-                                    <button
-                                      onClick={() => moveToAssigned(idx)}
-                                      className="px-2 py-0.5 text-xs rounded border border-blue-300 text-blue-600 hover:bg-blue-50 font-medium"
-                                    >
-                                      잔재지정 →
-                                    </button>
+                                  <td className="px-3 py-2 text-right" colSpan={2}>
+                                    <div className="flex items-center justify-end gap-1.5">
+                                      <button
+                                        onClick={() => toggleRemnantInput(idx)}
+                                        className={`px-2 py-0.5 text-xs rounded border font-medium transition-colors ${
+                                          rem?.open
+                                            ? "bg-orange-100 border-orange-300 text-orange-700"
+                                            : "border-gray-300 text-gray-500 hover:border-orange-300 hover:text-orange-600"
+                                        }`}
+                                        title="이 도면에서 발생하는 잔재를 등록"
+                                      >
+                                        {rem?.open ? "▲ 잔재등록취소" : "+ 잔재등록"}
+                                      </button>
+                                      <button
+                                        onClick={() => assignTo(idx, "REGISTERED")}
+                                        className="px-2 py-0.5 text-xs rounded border border-orange-300 text-orange-600 hover:bg-orange-50 font-medium"
+                                        title="등록잔재를 사용해 이 도면을 절단"
+                                      >
+                                        등록잔재 →
+                                      </button>
+                                      <button
+                                        onClick={() => assignTo(idx, "REMNANT")}
+                                        className="px-2 py-0.5 text-xs rounded border border-teal-300 text-teal-600 hover:bg-teal-50 font-medium"
+                                        title="현장잔재를 사용해 이 도면을 절단"
+                                      >
+                                        현장잔재 →
+                                      </button>
+                                    </div>
                                   </td>
                                 </tr>
                                 {rem?.open && (
@@ -588,131 +746,10 @@ function UploadTab({
                     </div>
                   </div>
 
-                  {/* 등록잔재사용 목록 */}
-                  {assignedCount > 0 && (
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-orange-700">등록잔재 사용 목록</span>
-                        <span className="text-xs text-orange-400">{assignedCount}행</span>
-                        {availableRemnants.length === 0 && (
-                          <span className="text-xs text-red-500">사용 가능한 등록잔재(재고)가 없습니다</span>
-                        )}
-                      </div>
-                      <div className="bg-orange-50 border border-orange-200 rounded-xl overflow-x-auto max-h-[350px] overflow-y-auto">
-                        <table className="w-full text-xs whitespace-nowrap">
-                          <thead className="bg-orange-100 border-b border-orange-200 sticky top-0">
-                            <tr>
-                              <th className="px-3 py-2 text-left text-orange-700 font-semibold">블록</th>
-                              <th className="px-3 py-2 text-left text-orange-700 font-semibold">도면번호</th>
-                              <th className="px-3 py-2 text-left text-orange-700 font-semibold">재질</th>
-                              <th className="px-3 py-2 text-right text-orange-700 font-semibold">두께</th>
-                              <th className="px-3 py-2 text-left text-orange-700 font-semibold">사용할 등록잔재</th>
-                              <th className="px-3 py-2 text-orange-700 font-semibold"></th>
-                              <th className="px-3 py-2 text-orange-700 font-semibold"></th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {previewRows.map((row, idx) => {
-                              if (!assignedIndices.has(idx)) return null;
-                              const rem = remnantInputs[idx];
-                              const blockName = row.block ?? selectedProject?.projectName ?? "-";
-                              const selectedRem = availableRemnants.find(r => r.id === remnantAssignments[idx]);
-                              return (
-                                <React.Fragment key={idx}>
-                                  <tr className={`border-b border-orange-200 ${rem?.open ? "bg-amber-50" : "hover:bg-orange-100/50"}`}>
-                                    <td className="px-3 py-2 font-medium text-gray-800">{blockName}</td>
-                                    <td className="px-3 py-2 font-mono text-gray-600">{row.drawingNo ?? "-"}</td>
-                                    <td className="px-3 py-2"><span className="px-1.5 py-0.5 bg-slate-100 rounded font-medium">{row.material}</span></td>
-                                    <td className="px-3 py-2 text-right">{row.thickness}</td>
-                                    <td className="px-3 py-2">
-                                      <select
-                                        value={remnantAssignments[idx] ?? ""}
-                                        onChange={e => setAssignedRemnant(idx, e.target.value)}
-                                        className="h-7 text-xs border rounded px-2 bg-white min-w-[220px]"
-                                      >
-                                        <option value="">잔재 선택...</option>
-                                        {availableRemnants.map(r => (
-                                          <option key={r.id} value={r.id}>
-                                            {r.remnantNo} — {r.material} {r.thickness}t{" "}
-                                            {r.width1}×{r.length1}
-                                            {r.shape === "L_SHAPE" && r.width2 ? ` / ${r.width2}×${r.length2}` : ""}
-                                            {" "}({r.weight}kg)
-                                          </option>
-                                        ))}
-                                      </select>
-                                      {selectedRem && (
-                                        <div className="mt-1 text-[10px] text-orange-700 bg-orange-100 rounded px-2 py-0.5 inline-block">
-                                          {selectedRem.remnantNo} · 폭 {selectedRem.width1}
-                                          {selectedRem.shape === "L_SHAPE" && selectedRem.width2 ? `/${selectedRem.width2}` : ""}
-                                          × 길이 {selectedRem.length1}
-                                          {selectedRem.shape === "L_SHAPE" && selectedRem.length2 ? `/${selectedRem.length2}` : ""}
-                                          · {selectedRem.weight}kg
-                                        </div>
-                                      )}
-                                    </td>
-                                    <td className="px-3 py-2">
-                                      <button
-                                        onClick={() => toggleRemnantInput(idx)}
-                                        className={`px-2 py-0.5 text-xs rounded border font-medium transition-colors ${
-                                          rem?.open
-                                            ? "bg-amber-100 border-amber-300 text-amber-700"
-                                            : "border-orange-300 text-orange-600 hover:bg-orange-100"
-                                        }`}
-                                      >
-                                        {rem?.open ? "▲ 잔재취소" : "+ 자식잔재"}
-                                      </button>
-                                    </td>
-                                    <td className="px-3 py-2">
-                                      <button
-                                        onClick={() => moveToNormal(idx)}
-                                        className="px-2 py-0.5 text-xs rounded border border-gray-300 text-gray-500 hover:bg-gray-100 font-medium"
-                                      >
-                                        ← 원재로
-                                      </button>
-                                    </td>
-                                  </tr>
-                                  {rem?.open && (
-                                    <tr className="bg-amber-50 border-b border-orange-200">
-                                      <td colSpan={7} className="px-4 py-3">
-                                        <div className="space-y-3">
-                                          {rem.items.map((item, itemIdx) => (
-                                            <div key={itemIdx} className="bg-white border border-amber-300 rounded-lg p-3 relative">
-                                              <div className="flex items-center justify-between mb-2">
-                                                <span className="text-[11px] font-bold text-amber-700">자식 잔재 #{itemIdx + 1}</span>
-                                                <button
-                                                  onClick={() => removeRemnantItem(idx, itemIdx)}
-                                                  className="text-[10px] px-2 py-0.5 border border-red-300 text-red-600 rounded hover:bg-red-50"
-                                                >
-                                                  삭제
-                                                </button>
-                                              </div>
-                                              <RemnantInputRow
-                                                item={item}
-                                                projectCode={selectedProject?.projectCode}
-                                                blockName={blockName} material={row.material} thickness={row.thickness}
-                                                parentRemnantNo={selectedRem?.remnantNo}
-                                                onChange={(field, val) => updateRemnantItem(idx, itemIdx, field, val)}
-                                              />
-                                            </div>
-                                          ))}
-                                          <button
-                                            onClick={() => addRemnantItem(idx)}
-                                            className="w-full px-3 py-1.5 text-xs border border-dashed border-amber-400 text-amber-700 rounded-lg hover:bg-amber-100 font-medium"
-                                          >
-                                            + 잔재 추가
-                                          </button>
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  )}
-                                </React.Fragment>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
+                  {/* 등록잔재 사용 목록 */}
+                  {renderAssignedList("REGISTERED", registeredIndices, registeredCount)}
+                  {/* 현장잔재 사용 목록 */}
+                  {renderAssignedList("REMNANT", remnantIndices, remnantCount)}
                 </div>
               )}
             </div>
