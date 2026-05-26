@@ -310,9 +310,11 @@ export async function POST(request: NextRequest) {
       );
 
     const rowsToInsert = result.rows.map((row) => {
+      // 재질 정규화(트림) — 공백 유입 시 재고 매칭 실패 방지
+      const mat = row.material.trim();
       // 초기 상태: 규격 존재 → 미입고(REGISTERED), 없음 → 경고(CAUTION)
       // 정확한 입고/미입고 구분은 아래 syncSpecsAfterUpload에서 재조정
-      const status: "REGISTERED" | "CAUTION" = hasMatch(row.material, row.thickness, row.width, row.length)
+      const status: "REGISTERED" | "CAUTION" = hasMatch(mat, row.thickness, row.width, row.length)
         ? "REGISTERED"
         : "CAUTION";
       return {
@@ -320,7 +322,7 @@ export async function POST(request: NextRequest) {
         block: row.block?.trim() || project.projectName,
         drawingNo: row.drawingNo,
         heatNo: row.heatNo,
-        material: row.material,
+        material: mat,
         thickness: row.thickness,
         width: row.width,
         length: row.length,
