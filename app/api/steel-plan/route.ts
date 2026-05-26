@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
   const uploadBatchNo = genBatchNo();
 
   const planData = items.map((item) => ({
-    vesselCode: item.vesselCode, material: item.material,
+    vesselCode: item.vesselCode, material: item.material.trim().toUpperCase(),
     thickness: item.thickness,  width: item.width, length: item.length,
     memo: item.memo ?? null,    sourceFile: item.sourceFile ?? null,
     uploadBatchNo,
@@ -154,7 +154,7 @@ export async function POST(req: NextRequest) {
   const heatData = items
     .filter((item) => item.heatNo?.trim())
     .map((item) => ({
-      vesselCode: item.vesselCode, material: item.material,
+      vesselCode: item.vesselCode, material: item.material.trim().toUpperCase(),
       thickness: item.thickness,  width: item.width, length: item.length,
       heatNo: item.heatNo!.trim(), sourceFile: item.sourceFile ?? null,
       uploadBatchNo,

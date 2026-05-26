@@ -32,7 +32,7 @@ export async function PATCH(
     where: { id },
     data: {
       ...(body.vesselCode !== undefined ? { vesselCode: body.vesselCode }          : {}),
-      ...(body.material   !== undefined ? { material:   body.material }            : {}),
+      ...(body.material   !== undefined ? { material:   String(body.material).trim().toUpperCase() } : {}),
       ...(body.thickness  !== undefined ? { thickness:  Number(body.thickness) }   : {}),
       ...(body.width      !== undefined ? { width:      Number(body.width) }       : {}),
       ...(body.length     !== undefined ? { length:     Number(body.length) }      : {}),

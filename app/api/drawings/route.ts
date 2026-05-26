@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
         qty: number; steelWeight?: number | null; useWeight?: number | null;
       }) => {
         const t = Number(r.thickness), w = Number(r.width), l = Number(r.length);
-        const mat = r.material.trim();
+        const mat = r.material.trim().toUpperCase();
         // 초기 상태: 강재입고관리에 규격 존재 → 미입고(REGISTERED), 없음 → 경고(CAUTION)
         // 정확한 입고/미입고 구분은 아래 syncSpecsAfterUpload에서 재조정
         const status: "REGISTERED" | "CAUTION" = hasMatch(mat, t, w, l) ? "REGISTERED" : "CAUTION";
@@ -310,8 +310,8 @@ export async function POST(request: NextRequest) {
       );
 
     const rowsToInsert = result.rows.map((row) => {
-      // 재질 정규화(트림) — 공백 유입 시 재고 매칭 실패 방지
-      const mat = row.material.trim();
+      // 재질 정규화(트림 + 대문자) — 공백·대소문자 불일치로 인한 매칭 실패 방지
+      const mat = row.material.trim().toUpperCase();
       // 초기 상태: 규격 존재 → 미입고(REGISTERED), 없음 → 경고(CAUTION)
       // 정확한 입고/미입고 구분은 아래 syncSpecsAfterUpload에서 재조정
       const status: "REGISTERED" | "CAUTION" = hasMatch(mat, row.thickness, row.width, row.length)

@@ -184,7 +184,7 @@ export async function POST(request: NextRequest) {
         remnantNo,
         type,
         shape,
-        material: material.trim(),
+        material: material.trim().toUpperCase(),
         thickness: Number(thickness),
         weight:    Number(weight),
         width1:    width1    != null ? Number(width1)  : null,

@@ -63,7 +63,7 @@ export async function PATCH(
 
     const projectCode       = current.project.projectCode;
     const newBlock          = block?.trim() || null;
-    const newMaterial       = material.trim();
+    const newMaterial       = material.trim().toUpperCase();
     const newThickness      = Number(thickness);
     const newWidth          = Number(width);
     const newLength         = Number(length);

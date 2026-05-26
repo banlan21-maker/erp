@@ -33,7 +33,7 @@ export async function PATCH(
       data: {
         ...(type     !== undefined ? { type }                                  : {}),
         ...(shape    !== undefined ? { shape }                                 : {}),
-        ...(material !== undefined ? { material: material.trim() }             : {}),
+        ...(material !== undefined ? { material: material.trim().toUpperCase() } : {}),
         ...(thickness!== undefined ? { thickness: Number(thickness) }          : {}),
         ...(weight   !== undefined ? { weight:    Number(weight) }             : {}),
         ...(width1   !== undefined ? { width1:    width1  ? Number(width1)  : null } : {}),
