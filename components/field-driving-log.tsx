@@ -131,11 +131,11 @@ function LocationPicker({
             <button
               type="button"
               onClick={() => onChange(value === loc.name ? "" : loc.name)}
-              className={`px-3 py-2 rounded-full text-sm font-semibold border transition-colors active:scale-95 ${
+              className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors active:scale-95 ${
                 value === loc.name
                   ? "bg-blue-600 border-blue-600 text-white"
                   : "border-gray-600 text-gray-400 bg-gray-800"
-              } ${editMode ? "pr-7" : ""}`}
+              } ${editMode ? "pr-5" : ""}`}
             >
               {loc.name}
             </button>
@@ -143,7 +143,7 @@ function LocationPicker({
               <button
                 type="button"
                 onClick={() => onDeleteLocation(loc)}
-                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center text-xs active:scale-90"
+                className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-600 text-white flex items-center justify-center text-[10px] active:scale-90"
                 title="삭제"
               >
                 ×
@@ -369,7 +369,7 @@ export default function FieldDrivingLog({
               <button
                 key={p} type="button"
                 onClick={() => set("purpose", form.purpose === p ? "" : p)}
-                className={`px-4 py-2.5 rounded-full text-sm font-semibold border transition-colors active:scale-95 ${
+                className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors active:scale-95 ${
                   form.purpose === p
                     ? "bg-blue-600 border-blue-600 text-white"
                     : "border-gray-600 text-gray-400 bg-gray-800"
