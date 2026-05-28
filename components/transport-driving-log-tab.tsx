@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Trash2, RefreshCw, X, Save, ChevronLeft, ChevronRight, FileText } from "lucide-react";
+import { Plus, Trash2, RefreshCw, X, Save, ChevronLeft, ChevronRight, FileText, Download } from "lucide-react";
+import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { TransportVehicle } from "@/components/transport-main";
@@ -96,6 +97,105 @@ export default function TransportDrivingLogTab({
       .then(d => { if (d.success) setWorkers(d.data); })
       .catch(() => {});
   }, []);
+
+  /* 엑셀 다운로드 — 차량별 시트 + 종합 시트 */
+  const downloadExcel = async () => {
+    // 다운로드는 항상 해당 월 전체(차량 필터 무시) 기준
+    const p = new URLSearchParams({ year: String(year), month: String(month) });
+    const res = await fetch(`/api/transport-driving-log?${p}`);
+    if (!res.ok) { alert("다운로드 데이터 조회 실패"); return; }
+    const data = await res.json();
+    if (!data.success) { alert(data.error ?? "조회 실패"); return; }
+    const all: DrivingLog[] = data.data ?? [];
+    if (all.length === 0) { alert(`${year}년 ${month}월 운행일지가 없습니다.`); return; }
+
+    const ym = `${year}-${String(month).padStart(2, "0")}`;
+    const wb = XLSX.utils.book_new();
+
+    const header = [
+      "운행일", "차량코드", "차량명", "번호판", "운전자",
+      "출발지", "도착지", "목적",
+      "출발시간", "도착시간",
+      "출발km", "도착km", "주행거리(km)",
+      "유류비(원)", "통행료(원)", "메모",
+    ];
+
+    const toRow = (l: DrivingLog) => [
+      l.date,
+      l.vehicle.code,
+      l.vehicle.name,
+      l.vehicle.plateNo ?? "",
+      l.driver,
+      l.departure ?? "",
+      l.destination ?? "",
+      l.purpose ?? "",
+      l.startTime ?? "",
+      l.endTime ?? "",
+      l.startMileage ?? "",
+      l.endMileage ?? "",
+      l.startMileage != null && l.endMileage != null && l.endMileage >= l.startMileage ? l.endMileage - l.startMileage : "",
+      l.fuelCost ?? "",
+      l.tollCost ?? "",
+      l.memo ?? "",
+    ];
+
+    const cols = [{ wch: 11 },{ wch: 8 },{ wch: 14 },{ wch: 10 },{ wch: 8 },{ wch: 10 },{ wch: 10 },{ wch: 10 },{ wch: 7 },{ wch: 7 },{ wch: 10 },{ wch: 10 },{ wch: 12 },{ wch: 11 },{ wch: 11 },{ wch: 22 }];
+
+    // 1) 종합 시트
+    const allSheet = XLSX.utils.aoa_to_sheet([
+      [`차량 운행일지 종합 (${ym})`],
+      header,
+      ...all.map(toRow),
+      [],
+      [
+        "합계", "", "", "", "", "", "", "", "", "", "", "",
+        all.reduce((s, l) => s + (l.startMileage != null && l.endMileage != null && l.endMileage >= l.startMileage ? l.endMileage - l.startMileage : 0), 0),
+        all.reduce((s, l) => s + (l.fuelCost ?? 0), 0),
+        all.reduce((s, l) => s + (l.tollCost ?? 0), 0),
+        `총 ${all.length}건`,
+      ],
+    ]);
+    allSheet["!cols"] = cols;
+    XLSX.utils.book_append_sheet(wb, allSheet, "종합");
+
+    // 2) 차량별 시트
+    const byVehicle = new Map<string, DrivingLog[]>();
+    for (const l of all) {
+      const key = l.vehicleId;
+      if (!byVehicle.has(key)) byVehicle.set(key, []);
+      byVehicle.get(key)!.push(l);
+    }
+
+    const safeName = (name: string) => name.replace(/[\\/?*\[\]:]/g, "_").slice(0, 28);
+    const usedNames = new Set<string>(["종합"]);
+    for (const [, group] of byVehicle) {
+      const v = group[0].vehicle;
+      let baseName = safeName(`${v.code}_${v.name}`);
+      if (!baseName) baseName = "차량";
+      let name = baseName;
+      let i = 2;
+      while (usedNames.has(name)) name = `${baseName}_${i++}`.slice(0, 31);
+      usedNames.add(name);
+
+      const ws = XLSX.utils.aoa_to_sheet([
+        [`[${v.code}] ${v.name}${v.plateNo ? ` (${v.plateNo})` : ""} — ${ym}`],
+        header,
+        ...group.map(toRow),
+        [],
+        [
+          "합계", "", "", "", "", "", "", "", "", "", "", "",
+          group.reduce((s, l) => s + (l.startMileage != null && l.endMileage != null && l.endMileage >= l.startMileage ? l.endMileage - l.startMileage : 0), 0),
+          group.reduce((s, l) => s + (l.fuelCost ?? 0), 0),
+          group.reduce((s, l) => s + (l.tollCost ?? 0), 0),
+          `총 ${group.length}건`,
+        ],
+      ]);
+      ws["!cols"] = cols;
+      XLSX.utils.book_append_sheet(wb, ws, name);
+    }
+
+    XLSX.writeFile(wb, `차량운행일지_${ym}.xlsx`);
+  };
 
   /* 월 이동 */
   const prevMonth = () => {
@@ -266,20 +366,25 @@ export default function TransportDrivingLogTab({
           </button>
         </div>
 
-        <Button onClick={() => {
-          const selVehicle = inUsedVehicles.find(v => v.id === selVehicleId);
-          setShowForm(true);
-          setForm({
-            ...LOG_INIT,
-            date: `${year}-${String(month).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`,
-            vehicleId:    selVehicleId,
-            startMileage: selVehicle?.mileage != null ? String(selVehicle.mileage) : "",
-          });
-          setFormErr("");
-        }}
-          className="flex items-center gap-2">
-          <Plus size={15} /> 운행일지 등록
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={downloadExcel} variant="outline" className="flex items-center gap-2 text-emerald-700 border-emerald-300 hover:bg-emerald-50" title="해당 월 전체를 차량별 시트 + 종합 시트로 엑셀 다운로드">
+            <Download size={15} /> 월별 엑셀
+          </Button>
+          <Button onClick={() => {
+            const selVehicle = inUsedVehicles.find(v => v.id === selVehicleId);
+            setShowForm(true);
+            setForm({
+              ...LOG_INIT,
+              date: `${year}-${String(month).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`,
+              vehicleId:    selVehicleId,
+              startMileage: selVehicle?.mileage != null ? String(selVehicle.mileage) : "",
+            });
+            setFormErr("");
+          }}
+            className="flex items-center gap-2">
+            <Plus size={15} /> 운행일지 등록
+          </Button>
+        </div>
       </div>
 
       {/* 월간 요약 카드 */}
