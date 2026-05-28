@@ -16,7 +16,7 @@ import type {
 
 const USAGE_LABELS: Record<TransportUsage, string> = { IN_USE: "사용중", MAINTENANCE: "점검중", DISPOSED: "폐기" };
 const USAGE_COLORS: Record<TransportUsage, string> = { IN_USE: "bg-green-100 text-green-700", MAINTENANCE: "bg-yellow-100 text-yellow-700", DISPOSED: "bg-gray-200 text-gray-500" };
-const FACTORY_LABELS: Record<TransportFactory, string> = { FACTORY1: "1공장", FACTORY2: "2공장" };
+const FACTORY_LABELS: Record<TransportFactory, string> = { FACTORY1: "진교", FACTORY2: "진동" };
 const FUEL_LABELS: Record<FuelType, string> = { GASOLINE: "휘발유", DIESEL: "경유", LPG: "LPG", ELECTRIC: "전기" };
 const EQUIP_SUB_LABELS: Record<EquipSubType, string> = { FORKLIFT: "지게차", CRANE: "크레인 차량", OTHER: "기타" };
 const POWER_LABELS: Record<TransportPowerType, string> = { ENGINE: "엔진", ELECTRIC: "전동", LPG: "LPG" };
@@ -413,7 +413,7 @@ export default function TransportCard({ vehicle: initial }: { vehicle: VehicleDe
                 <EditField label="취득일"         value={editForm.acquiredAt}      onChange={v => setE("acquiredAt", v)} type="date" />
                 <EditField label="취득금액 (원)"  value={editForm.acquiredCost}    onChange={v => setE("acquiredCost", v)} type="number" />
                 <EditSelect label="보관 공장" value={editForm.factory} onChange={v => setE("factory", v)}
-                  options={[{ value: "FACTORY1", label: "1공장" }, { value: "FACTORY2", label: "2공장" }]} />
+                  options={[{ value: "FACTORY1", label: "진교" }, { value: "FACTORY2", label: "진동" }]} />
                 <EditField label="세부 위치"      value={editForm.factoryLocation} onChange={v => setE("factoryLocation", v)} />
                 <EditField label="담당자"         value={editForm.manager}         onChange={v => setE("manager", v)} />
                 <EditSelect label="사용 상태" value={editForm.usage} onChange={v => setE("usage", v)}

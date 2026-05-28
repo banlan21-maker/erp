@@ -800,8 +800,8 @@ enum TransportUsage {
 }
 
 enum TransportFactory {
-  FACTORY1 // 1공장
-  FACTORY2 // 2공장
+  FACTORY1 // 진교
+  FACTORY2 // 진동
 }
 
 enum FuelType {

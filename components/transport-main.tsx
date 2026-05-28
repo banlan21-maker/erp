@@ -94,8 +94,8 @@ const USAGE_COLORS: Record<TransportUsage, string> = {
 };
 
 const FACTORY_LABELS: Record<TransportFactory, string> = {
-  FACTORY1: "1공장",
-  FACTORY2: "2공장",
+  FACTORY1: "진교",
+  FACTORY2: "진동",
 };
 
 const FUEL_LABELS: Record<FuelType, string> = {
@@ -419,8 +419,8 @@ export default function TransportMain({ initialVehicles }: Props) {
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">보관 공장 <span className="text-red-500">*</span></label>
                 <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.factory} onChange={e => setForm(p => ({ ...p, factory: e.target.value as TransportFactory }))}>
-                  <option value="FACTORY1">1공장</option>
-                  <option value="FACTORY2">2공장</option>
+                  <option value="FACTORY1">진교</option>
+                  <option value="FACTORY2">진동</option>
                 </select>
               </div>
               <div>
@@ -638,9 +638,9 @@ export default function TransportMain({ initialVehicles }: Props) {
               <div className="flex items-center gap-2">
                 <Filter size={13} className="text-gray-400" />
                 <select className="border border-gray-200 rounded-lg px-3 py-2 text-sm" value={filterFactory} onChange={e => setFilterFactory(e.target.value as "ALL" | TransportFactory)}>
-                  <option value="ALL">전체 공장</option>
-                  <option value="FACTORY1">1공장</option>
-                  <option value="FACTORY2">2공장</option>
+                  <option value="ALL">전체 보관공장</option>
+                  <option value="FACTORY1">진교</option>
+                  <option value="FACTORY2">진동</option>
                 </select>
                 <select className="border border-gray-200 rounded-lg px-3 py-2 text-sm" value={filterType} onChange={e => setFilterType(e.target.value as "ALL" | TransportVehicleType)}>
                   <option value="ALL">전체 종류</option>
@@ -680,7 +680,7 @@ export default function TransportMain({ initialVehicles }: Props) {
                     <th className="px-4 py-3 font-medium">차량번호</th>
                     <th className="px-4 py-3 font-medium">명칭</th>
                     <th className="px-4 py-3 font-medium">종류</th>
-                    <th className="px-4 py-3 font-medium">공장</th>
+                    <th className="px-4 py-3 font-medium">보관공장</th>
                     <th className="px-4 py-3 font-medium">담당자</th>
                     <th className="px-4 py-3 font-medium">사용여부</th>
                     <th className="px-4 py-3 font-medium">알림</th>
