@@ -441,6 +441,14 @@ model CompressorCheck {
   @@index([date])
 }
 
+// 현장 운행일지 — 출발지/도착지 위치 프리셋 (출발·도착 공용)
+model DrivingLocation {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
 // 결제관리 — 법인카드 마스터
 model CorporateCard {
   id        String   @id @default(cuid())

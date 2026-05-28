@@ -7,7 +7,6 @@ interface Vehicle { id: string; code: string; name: string; plateNo: string | nu
 interface Worker  { id: string; name: string; position: string | null }
 
 const PURPOSE_PRESETS  = ["자재운반", "현장이동", "정비", "출장"];
-const LOCATION_PRESETS = ["진교", "삼정", "세림", "한국야나세", "통영조선소", "삼부TS", "함안공장"];
 
 const todayStr = () => new Date().toISOString().split("T")[0];
 
@@ -107,32 +106,50 @@ function MobileAutocomplete({
   );
 }
 
-/* ── 장소 선택 (칩 + 직접입력) ── */
+/* ── 장소 선택 (칩 + 직접입력 + 위치 관리) ── */
+interface DrivingLocation { id: string; name: string; }
 function LocationPicker({
   value,
   onChange,
   placeholder,
+  locations,
+  editMode,
+  onDeleteLocation,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  locations: DrivingLocation[];
+  editMode: boolean;
+  onDeleteLocation: (loc: DrivingLocation) => void;
 }) {
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
-        {LOCATION_PRESETS.map(loc => (
-          <button
-            key={loc}
-            type="button"
-            onClick={() => onChange(value === loc ? "" : loc)}
-            className={`px-3 py-2 rounded-full text-sm font-semibold border transition-colors active:scale-95 ${
-              value === loc
-                ? "bg-blue-600 border-blue-600 text-white"
-                : "border-gray-600 text-gray-400 bg-gray-800"
-            }`}
-          >
-            {loc}
-          </button>
+        {locations.map(loc => (
+          <div key={loc.id} className="relative">
+            <button
+              type="button"
+              onClick={() => onChange(value === loc.name ? "" : loc.name)}
+              className={`px-3 py-2 rounded-full text-sm font-semibold border transition-colors active:scale-95 ${
+                value === loc.name
+                  ? "bg-blue-600 border-blue-600 text-white"
+                  : "border-gray-600 text-gray-400 bg-gray-800"
+              } ${editMode ? "pr-7" : ""}`}
+            >
+              {loc.name}
+            </button>
+            {editMode && (
+              <button
+                type="button"
+                onClick={() => onDeleteLocation(loc)}
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center text-xs active:scale-90"
+                title="삭제"
+              >
+                ×
+              </button>
+            )}
+          </div>
         ))}
       </div>
       <input
@@ -158,6 +175,39 @@ export default function FieldDrivingLog({
   const [saving, setSaving] = useState(false);
   const [done,   setDone]   = useState(false);
   const [error,  setError]  = useState("");
+
+  // 위치 프리셋 (출발·도착 공용)
+  const [locations, setLocations] = useState<DrivingLocation[]>([]);
+  const [locEditMode, setLocEditMode] = useState(false);
+  const [newLocName, setNewLocName] = useState("");
+
+  const loadLocations = async () => {
+    const r = await fetch("/api/driving-location");
+    const d = await r.json();
+    if (d.success) setLocations(d.data);
+  };
+  useEffect(() => { loadLocations(); }, []);
+
+  const addLocation = async () => {
+    const nm = newLocName.trim();
+    if (!nm) return;
+    const r = await fetch("/api/driving-location", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: nm }),
+    });
+    const d = await r.json();
+    if (!d.success) { alert(d.error ?? "추가 실패"); return; }
+    setNewLocName("");
+    loadLocations();
+  };
+
+  const deleteLocation = async (loc: DrivingLocation) => {
+    if (!confirm(`위치 '${loc.name}'을(를) 삭제하시겠습니까?`)) return;
+    const r = await fetch(`/api/driving-location?id=${loc.id}`, { method: "DELETE" });
+    const d = await r.json();
+    if (!d.success) { alert(d.error ?? "삭제 실패"); return; }
+    loadLocations();
+  };
 
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
@@ -339,12 +389,46 @@ export default function FieldDrivingLog({
 
         {/* ⑤ 출발지 / 도착지 */}
         <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">위치 (출발·도착 공용)</span>
+            <button
+              type="button"
+              onClick={() => setLocEditMode(m => !m)}
+              className={`px-3 py-1 rounded-full text-xs font-semibold border ${locEditMode ? "bg-amber-500 border-amber-500 text-white" : "border-gray-600 text-gray-400 bg-gray-800"}`}
+            >
+              {locEditMode ? "편집 완료" : "위치 편집"}
+            </button>
+          </div>
+
+          {/* 편집 모드: 위치 추가 */}
+          {locEditMode && (
+            <div className="flex gap-2">
+              <input
+                value={newLocName}
+                onChange={e => setNewLocName(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addLocation(); } }}
+                placeholder="새 위치명 입력"
+                className={fieldCls}
+              />
+              <button
+                type="button"
+                onClick={addLocation}
+                className="px-4 rounded-2xl bg-blue-600 text-white font-bold text-sm active:bg-blue-700 whitespace-nowrap"
+              >
+                추가
+              </button>
+            </div>
+          )}
+
           <div>
             <label className={labelCls}>출발지</label>
             <LocationPicker
               value={form.departure}
               onChange={v => set("departure", v)}
               placeholder="출발지 직접 입력"
+              locations={locations}
+              editMode={locEditMode}
+              onDeleteLocation={deleteLocation}
             />
           </div>
           <div>
@@ -353,6 +437,9 @@ export default function FieldDrivingLog({
               value={form.destination}
               onChange={v => set("destination", v)}
               placeholder="도착지 직접 입력"
+              locations={locations}
+              editMode={locEditMode}
+              onDeleteLocation={deleteLocation}
             />
           </div>
         </div>
