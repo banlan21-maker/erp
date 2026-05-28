@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Car, CheckCircle2, ChevronDown, RefreshCw } from "lucide-react";
+import { Car, CheckCircle2, ChevronDown, RefreshCw, Star } from "lucide-react";
 
 interface Vehicle { id: string; code: string; name: string; plateNo: string | null; mileage: number | null }
 interface Worker  { id: string; name: string; position: string | null }
@@ -181,6 +181,40 @@ export default function FieldDrivingLog({
   const [locEditMode, setLocEditMode] = useState(false);
   const [newLocName, setNewLocName] = useState("");
 
+  // 즐겨찾기 (해당 기기 localStorage 저장 — 차량 최대 2, 운전자 1)
+  const FAV_VEH_KEY = "fav.driving.vehicleIds";
+  const FAV_DRV_KEY = "fav.driving.driver";
+  const [favVehicleIds, setFavVehicleIds] = useState<string[]>([]);
+  const [favDriver, setFavDriver]         = useState<string>("");
+  const [vehFavEdit, setVehFavEdit] = useState(false);
+  const [drvFavEdit, setDrvFavEdit] = useState(false);
+
+  useEffect(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(FAV_VEH_KEY) || "[]");
+      if (Array.isArray(v)) setFavVehicleIds(v.filter((x: unknown): x is string => typeof x === "string").slice(0, 2));
+      setFavDriver(localStorage.getItem(FAV_DRV_KEY) || "");
+    } catch { /* noop */ }
+  }, []);
+
+  const toggleFavVehicle = (id: string) => {
+    setFavVehicleIds(prev => {
+      const next = prev.includes(id)
+        ? prev.filter(x => x !== id)
+        : [...prev, id].slice(-2); // 최신 2개만 유지 (먼저 등록된 게 밀려남)
+      try { localStorage.setItem(FAV_VEH_KEY, JSON.stringify(next)); } catch { /* noop */ }
+      return next;
+    });
+  };
+
+  const toggleFavDriver = (name: string) => {
+    setFavDriver(prev => {
+      const next = prev === name ? "" : name;
+      try { localStorage.setItem(FAV_DRV_KEY, next); } catch { /* noop */ }
+      return next;
+    });
+  };
+
   const loadLocations = async () => {
     const r = await fetch("/api/driving-location");
     const d = await r.json();
@@ -318,23 +352,79 @@ export default function FieldDrivingLog({
 
         {/* ① 차량 선택 */}
         <div>
-          <label className={labelCls}>차량 <span className="text-red-400">*</span></label>
-          <div className="relative">
-            <select
-              value={form.vehicleId}
-              onChange={e => handleVehicleChange(e.target.value)}
-              className={fieldCls + " pr-10"}
+          <div className="flex items-center justify-between mb-2">
+            <label className={labelCls + " mb-0"}>차량 <span className="text-red-400">*</span></label>
+            <button
+              type="button"
+              onClick={() => setVehFavEdit(m => !m)}
+              className={`px-3 py-1 rounded-full text-xs font-semibold border ${vehFavEdit ? "bg-amber-500 border-amber-500 text-white" : "border-gray-600 text-gray-400 bg-gray-800"}`}
             >
-              <option value="">-- 차량 선택 --</option>
-              {vehicles.map(v => (
-                <option key={v.id} value={v.id}>
-                  {v.name}{v.plateNo ? ` (${v.plateNo})` : ""}
-                </option>
-              ))}
-            </select>
-            <ChevronDown size={18} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" />
+              {vehFavEdit ? "편집 완료" : "★ 즐겨찾기 편집"}
+            </button>
           </div>
-          {selVehicle?.mileage != null && (
+
+          {/* 즐겨찾기 칩 (최대 2개) */}
+          {!vehFavEdit && favVehicleIds.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {favVehicleIds.map(id => {
+                const v = vehicles.find(x => x.id === id);
+                if (!v) return null;
+                const selected = form.vehicleId === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => handleVehicleChange(id)}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold border flex items-center gap-1 ${selected ? "bg-blue-600 border-blue-600 text-white" : "border-amber-400 text-amber-400 bg-gray-800"}`}
+                  >
+                    <Star size={11} fill="currentColor" /> {v.name}{v.plateNo ? ` (${v.plateNo})` : ""}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* 편집 패널: 모든 차량 + 별 토글 */}
+          {vehFavEdit ? (
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl divide-y divide-gray-800 max-h-72 overflow-y-auto">
+              {vehicles.map(v => {
+                const fav = favVehicleIds.includes(v.id);
+                const disabled = !fav && favVehicleIds.length >= 2;
+                return (
+                  <div key={v.id} className="flex items-center justify-between px-3 py-2.5">
+                    <span className="text-sm text-gray-200">{v.name}{v.plateNo ? <span className="text-gray-500 ml-1">({v.plateNo})</span> : null}</span>
+                    <button
+                      type="button"
+                      onClick={() => toggleFavVehicle(v.id)}
+                      disabled={disabled}
+                      className={`p-1.5 rounded ${fav ? "text-amber-400" : disabled ? "text-gray-700" : "text-gray-500 hover:text-amber-400"}`}
+                      title={disabled ? "최대 2개까지 즐겨찾기 가능" : fav ? "즐겨찾기 해제" : "즐겨찾기 추가"}
+                    >
+                      <Star size={18} fill={fav ? "currentColor" : "none"} />
+                    </button>
+                  </div>
+                );
+              })}
+              <p className="px-3 py-2 text-[11px] text-gray-500">최대 2개까지 즐겨찾기 가능 · 이 기기에만 저장됨</p>
+            </div>
+          ) : (
+            <div className="relative">
+              <select
+                value={form.vehicleId}
+                onChange={e => handleVehicleChange(e.target.value)}
+                className={fieldCls + " pr-10"}
+              >
+                <option value="">-- 차량 선택 --</option>
+                {vehicles.map(v => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}{v.plateNo ? ` (${v.plateNo})` : ""}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={18} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" />
+            </div>
+          )}
+          {!vehFavEdit && selVehicle?.mileage != null && (
             <p className="mt-1.5 text-xs text-blue-400 px-1">현재 주행거리: {selVehicle.mileage.toLocaleString()} km</p>
           )}
         </div>
@@ -352,13 +442,59 @@ export default function FieldDrivingLog({
 
         {/* ③ 운전자 */}
         <div>
-          <label className={labelCls}>운전자 <span className="text-red-400">*</span></label>
-          <MobileAutocomplete
-            value={form.driver}
-            onChange={v => set("driver", v)}
-            options={workerOptions}
-            placeholder="이름 입력 또는 목록에서 선택"
-          />
+          <div className="flex items-center justify-between mb-2">
+            <label className={labelCls + " mb-0"}>운전자 <span className="text-red-400">*</span></label>
+            <button
+              type="button"
+              onClick={() => setDrvFavEdit(m => !m)}
+              className={`px-3 py-1 rounded-full text-xs font-semibold border ${drvFavEdit ? "bg-amber-500 border-amber-500 text-white" : "border-gray-600 text-gray-400 bg-gray-800"}`}
+            >
+              {drvFavEdit ? "편집 완료" : "★ 즐겨찾기 편집"}
+            </button>
+          </div>
+
+          {/* 즐겨찾기 칩 (1개) */}
+          {!drvFavEdit && favDriver && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              <button
+                type="button"
+                onClick={() => set("driver", favDriver)}
+                className={`px-3 py-1 rounded-full text-xs font-semibold border flex items-center gap-1 ${form.driver === favDriver ? "bg-blue-600 border-blue-600 text-white" : "border-amber-400 text-amber-400 bg-gray-800"}`}
+              >
+                <Star size={11} fill="currentColor" /> {favDriver}
+              </button>
+            </div>
+          )}
+
+          {/* 편집 패널: 모든 인원 + 별 토글 */}
+          {drvFavEdit ? (
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl divide-y divide-gray-800 max-h-72 overflow-y-auto">
+              {workers.map(w => {
+                const fav = favDriver === w.name;
+                return (
+                  <div key={w.id} className="flex items-center justify-between px-3 py-2.5">
+                    <span className="text-sm text-gray-200">{w.name}{w.position ? <span className="text-gray-500 ml-1">({w.position})</span> : null}</span>
+                    <button
+                      type="button"
+                      onClick={() => toggleFavDriver(w.name)}
+                      className={`p-1.5 rounded ${fav ? "text-amber-400" : "text-gray-500 hover:text-amber-400"}`}
+                      title={fav ? "즐겨찾기 해제" : "즐겨찾기 설정 (1명만 가능)"}
+                    >
+                      <Star size={18} fill={fav ? "currentColor" : "none"} />
+                    </button>
+                  </div>
+                );
+              })}
+              <p className="px-3 py-2 text-[11px] text-gray-500">1명만 즐겨찾기 가능 · 이 기기에만 저장됨</p>
+            </div>
+          ) : (
+            <MobileAutocomplete
+              value={form.driver}
+              onChange={v => set("driver", v)}
+              options={workerOptions}
+              placeholder="이름 입력 또는 목록에서 선택"
+            />
+          )}
         </div>
 
         {/* ④ 목적/용무 */}
