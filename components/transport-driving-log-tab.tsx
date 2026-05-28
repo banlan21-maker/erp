@@ -29,7 +29,6 @@ interface DrivingLog {
 }
 
 const PURPOSE_PRESETS = ["자재운반", "현장이동", "정비", "출장"];
-const LOCATION_PRESETS = ["진교", "삼정", "세림", "한국야나세", "통영조선소", "삼부TS", "함안공장"];
 
 const LOG_INIT = {
   vehicleId: "", date: "", driver: "",
@@ -71,6 +70,40 @@ export default function TransportDrivingLogTab({
 
   /* 인원 목록 (운전자 선택용) */
   const [workers, setWorkers] = useState<Worker[]>([]);
+
+  /* 위치 프리셋 (출발·도착 공용) — DB 기반, 추가/삭제 가능 */
+  interface DrivingLocation { id: string; name: string; }
+  const [locations, setLocations] = useState<DrivingLocation[]>([]);
+  const [locEditMode, setLocEditMode] = useState(false);
+  const [newLocName, setNewLocName] = useState("");
+
+  const loadLocations = async () => {
+    const r = await fetch("/api/driving-location");
+    const d = await r.json();
+    if (d.success) setLocations(d.data);
+  };
+  useEffect(() => { loadLocations(); }, []);
+
+  const addLocation = async () => {
+    const nm = newLocName.trim();
+    if (!nm) return;
+    const r = await fetch("/api/driving-location", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: nm }),
+    });
+    const d = await r.json();
+    if (!d.success) { alert(d.error ?? "추가 실패"); return; }
+    setNewLocName("");
+    loadLocations();
+  };
+
+  const deleteLocation = async (loc: DrivingLocation) => {
+    if (!confirm(`위치 '${loc.name}'을(를) 삭제하시겠습니까?`)) return;
+    const r = await fetch(`/api/driving-location?id=${loc.id}`, { method: "DELETE" });
+    const d = await r.json();
+    if (!d.success) { alert(d.error ?? "삭제 실패"); return; }
+    loadLocations();
+  };
 
   const set  = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
   const setE = (k: string, v: string) => setEditForm(f => ({ ...f, [k]: v }));
@@ -595,32 +628,70 @@ export default function TransportDrivingLogTab({
                 </div>
               </div>
 
-              {/* 출발지 → 도착지 */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">출발지</label>
-                  <Input
-                    list="location-suggestions"
-                    value={form.departure}
-                    onChange={e => set("departure", e.target.value)}
-                    placeholder="입력 또는 선택"
-                    autoComplete="off"
-                  />
+              {/* 출발지 / 도착지 — 위치 프리셋 (DB 기반, 추가·삭제 가능) */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-gray-600">위치 (출발·도착 공용)</span>
+                  <button
+                    type="button"
+                    onClick={() => setLocEditMode(m => !m)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-semibold border ${locEditMode ? "bg-amber-500 border-amber-500 text-white" : "border-gray-300 text-gray-600 bg-white hover:bg-gray-50"}`}
+                  >
+                    {locEditMode ? "편집 완료" : "위치 편집"}
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">도착지</label>
-                  <Input
-                    list="location-suggestions"
-                    value={form.destination}
-                    onChange={e => set("destination", e.target.value)}
-                    placeholder="입력 또는 선택"
-                    autoComplete="off"
-                  />
-                </div>
+
+                {locEditMode && (
+                  <div className="flex gap-2">
+                    <Input
+                      value={newLocName}
+                      onChange={e => setNewLocName(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addLocation(); } }}
+                      placeholder="새 위치명 입력"
+                    />
+                    <Button type="button" onClick={addLocation} variant="outline" className="text-blue-600 border-blue-300 hover:bg-blue-50 whitespace-nowrap">
+                      추가
+                    </Button>
+                  </div>
+                )}
+
+                {(["departure", "destination"] as const).map(field => {
+                  const label = field === "departure" ? "출발지" : "도착지";
+                  const value = form[field];
+                  return (
+                    <div key={field}>
+                      <label className="block text-xs font-medium text-gray-600 mb-1.5">{label}</label>
+                      <div className="flex flex-wrap gap-1.5 mb-1.5">
+                        {locations.map(loc => (
+                          <div key={loc.id} className="relative">
+                            <button
+                              type="button"
+                              onClick={() => set(field, value === loc.name ? "" : loc.name)}
+                              className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${value === loc.name ? "bg-blue-600 border-blue-600 text-white" : "border-gray-300 text-gray-600 bg-white hover:bg-gray-50"} ${locEditMode ? "pr-5" : ""}`}
+                            >
+                              {loc.name}
+                            </button>
+                            {locEditMode && (
+                              <button
+                                type="button"
+                                onClick={() => deleteLocation(loc)}
+                                className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[10px] leading-none"
+                                title="삭제"
+                              >×</button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <Input
+                        value={value}
+                        onChange={e => set(field, e.target.value)}
+                        placeholder="직접 입력"
+                        autoComplete="off"
+                      />
+                    </div>
+                  );
+                })}
               </div>
-              <datalist id="location-suggestions">
-                {LOCATION_PRESETS.map(loc => <option key={loc} value={loc} />)}
-              </datalist>
 
               {/* 출발·도착 시간 */}
               <div className="grid grid-cols-2 gap-4">
