@@ -64,28 +64,28 @@ function SortableContact({
   const phone = contact.displayPhone || contact.directPhone || "";
 
   return (
-    <div ref={setNodeRef} style={style} className="flex items-center gap-3 bg-white border border-gray-100 rounded-xl px-4 py-3 shadow-sm">
+    <div ref={setNodeRef} style={style} className="flex items-center gap-2 bg-white border border-gray-100 rounded-lg px-2 py-1.5 shadow-sm">
       {editMode && (
-        <button {...attributes} {...listeners} className="text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing">
-          <GripVertical size={16} />
+        <button {...attributes} {...listeners} className="text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing flex-shrink-0">
+          <GripVertical size={13} />
         </button>
       )}
       <div className="flex-1 min-w-0">
-        <p className="font-semibold text-gray-900 text-sm truncate">{contact.displayName || contact.directName || "-"}</p>
-        <p className="text-xs text-gray-500 truncate">{contact.displayRole || ""}</p>
+        <p className="font-semibold text-gray-900 text-xs truncate leading-tight">{contact.displayName || contact.directName || "-"}</p>
+        {(contact.displayRole) && <p className="text-[10px] text-gray-500 truncate leading-tight">{contact.displayRole}</p>}
       </div>
       {phone && (
         <a
           href={`tel:${phone.replace(/[^0-9+]/g, "")}`}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 text-xs font-semibold rounded-lg hover:bg-green-100 transition-colors"
+          className="flex items-center gap-1 px-2 py-1 bg-green-50 text-green-700 text-[10px] font-semibold rounded-md hover:bg-green-100 transition-colors flex-shrink-0"
           onClick={e => editMode && e.preventDefault()}
         >
-          <Phone size={13} />{phone}
+          <Phone size={10} />{phone}
         </a>
       )}
       {editMode && (
-        <button onClick={() => onDelete(contact.id)} className="text-gray-300 hover:text-red-500 transition-colors ml-1">
-          <Trash2 size={15} />
+        <button onClick={() => onDelete(contact.id)} className="text-gray-300 hover:text-red-500 transition-colors flex-shrink-0">
+          <Trash2 size={12} />
         </button>
       )}
     </div>
@@ -150,45 +150,45 @@ function GroupCard({
   }
 
   return (
-    <div className="bg-gray-50 border border-gray-200 rounded-2xl overflow-hidden">
+    <div className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden flex flex-col">
       {/* 그룹 헤더 */}
-      <div className="px-5 py-3 bg-white border-b border-gray-100 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="px-3 py-2 bg-white border-b border-gray-100 flex items-center justify-between">
+        <div className="flex items-center gap-1.5 min-w-0">
           {editMode && editingName ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <input
-                className="border border-blue-300 rounded-lg px-2 py-1 text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="border border-blue-300 rounded-md px-1.5 py-0.5 text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 w-28"
                 value={nameInput}
                 onChange={e => setNameInput(e.target.value)}
                 autoFocus
                 onKeyDown={e => { if (e.key === "Enter") { onRenameGroup(group.id, nameInput); setEditingName(false); } }}
               />
               <button onClick={() => { onRenameGroup(group.id, nameInput); setEditingName(false); }} className="text-blue-600 hover:text-blue-800">
-                <Check size={15} />
+                <Check size={13} />
               </button>
             </div>
           ) : (
             <>
-              <h3 className="font-bold text-gray-900">{group.name}</h3>
-              <span className="text-xs text-gray-400">{group.contacts.length}명</span>
+              <h3 className="font-bold text-gray-900 text-sm truncate">{group.name}</h3>
+              <span className="text-[10px] text-gray-400 flex-shrink-0">{group.contacts.length}명</span>
               {editMode && (
-                <button onClick={() => setEditingName(true)} className="text-gray-300 hover:text-gray-600 ml-1">
-                  <Edit2 size={13} />
+                <button onClick={() => setEditingName(true)} className="text-gray-300 hover:text-gray-600 flex-shrink-0">
+                  <Edit2 size={11} />
                 </button>
               )}
             </>
           )}
         </div>
         {editMode && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             <button
               onClick={() => setShowAddForm(v => !v)}
-              className="flex items-center gap-1 text-xs text-blue-600 hover:underline font-medium"
+              className="flex items-center gap-0.5 text-[10px] text-blue-600 hover:underline font-medium"
             >
-              <Plus size={13} /> 추가
+              <Plus size={11} /> 추가
             </button>
             <button onClick={() => onDeleteGroup(group.id)} className="text-gray-300 hover:text-red-500">
-              <Trash2 size={15} />
+              <Trash2 size={12} />
             </button>
           </div>
         )}
@@ -237,11 +237,11 @@ function GroupCard({
       )}
 
       {/* 항목 목록 */}
-      <div className="p-4 space-y-2">
+      <div className="p-2 space-y-1 flex-1">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={group.contacts.map(c => c.id)} strategy={verticalListSortingStrategy}>
             {group.contacts.length === 0 ? (
-              <p className="text-center text-gray-400 text-sm py-4">항목이 없습니다.</p>
+              <p className="text-center text-gray-400 text-xs py-3">항목이 없습니다.</p>
             ) : (
               group.contacts.map(c => (
                 <SortableContact key={c.id} contact={c} editMode={editMode} onDelete={onDeleteContact} />
@@ -444,7 +444,7 @@ export default function EmergencyTab({ workers }: { workers: Worker[] }) {
       ) : (
         <DndContext sensors={groupSensors} collisionDetection={closestCenter} onDragEnd={handleGroupDragEnd}>
           <SortableContext items={groups.map(g => g.id)} strategy={verticalListSortingStrategy}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 print:grid-cols-3 items-start">
               {groups.map(group => (
                 <SortableGroupWrapper key={group.id} groupId={group.id} editMode={editMode}>
                   <GroupCard
@@ -491,9 +491,9 @@ function SortableGroupWrapper({ groupId, editMode, children }: { groupId: string
         <button
           {...attributes}
           {...listeners}
-          className="absolute top-3 left-3 z-10 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing print:hidden"
+          className="absolute top-1.5 left-1.5 z-10 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing print:hidden"
         >
-          <GripVertical size={15} />
+          <GripVertical size={12} />
         </button>
       )}
       {children}
