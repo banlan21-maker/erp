@@ -886,9 +886,7 @@ function ListTab({
     grouped[p.projectCode].push(p);
   }
 
-  const [expanded, setExpanded] = React.useState<Record<string, boolean>>(
-    Object.fromEntries(Object.keys(grouped).map((c) => [c, true]))
-  );
+  const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
 
   if (projectOptions.length === 0) {
     return (
@@ -903,7 +901,7 @@ function ListTab({
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 items-start">
       {Object.entries(grouped).map(([code, blocks]) => {
-        const isOpen = expanded[code] ?? true;
+        const isOpen = expanded[code] ?? false;
         return (
           <div key={code} className="bg-white rounded-xl border overflow-hidden">
             <button

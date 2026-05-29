@@ -39,10 +39,8 @@ const TYPE_COLOR: Record<string, string> = {
 };
 
 export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
-  // 호선 펼침 (기본 모두 열림)
-  const [expanded, setExpanded] = useState<Record<string, boolean>>(
-    Object.fromEntries(vessels.map((v) => [v.code, true]))
-  );
+  // 호선 펼침 (기본 모두 접힘)
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   // 블록 폴더 펼침 (기본 모두 닫힘)
   const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({});
 
@@ -62,7 +60,7 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 items-start">
       {vessels.map((vessel) => {
-        const isOpen = expanded[vessel.code] ?? true;
+        const isOpen = expanded[vessel.code] ?? false;
         return (
           <div key={vessel.code} className="bg-white rounded-xl border overflow-hidden">
 
