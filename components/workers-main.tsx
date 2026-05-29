@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { UserPlus, Pencil, Trash2, Users, Search, Filter, X, Save, List, Plus, GitBranch, Phone, MapPin, Settings2 } from "lucide-react";
+import { UserPlus, Pencil, Trash2, Users, Search, Filter, X, Save, List, Plus, GitBranch, Phone, MapPin, Settings2, ArrowUp, ArrowDown, ArrowUpDown, Download } from "lucide-react";
+import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import dynamic from "next/dynamic";
 import EmergencyTab from "@/components/emergency-tab";
+import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
 
 const OrgChartTab = dynamic(() => import("@/components/org-chart-tab"), { ssr: false });
 
@@ -119,11 +121,6 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
 
   const [activeTab, setActiveTab] = useState<"list" | "register" | "org" | "emergency">("list");
   const [searchTerm, setSearchTerm] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [posFilter, setPosFilter] = useState("all");
-  const [natFilter, setNatFilter] = useState("all");
-  const [wsFilter, setWsFilter] = useState("all");
-
   const [worksiteOptions, setWorksiteOptions] = useState<WorksiteOption[]>([]);
   const [showWsManager, setShowWsManager] = useState(false);
   const [newWsName, setNewWsName] = useState("");
@@ -168,20 +165,174 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
     else alert(d.error ?? "삭제 실패");
   };
 
-  const uniqueRoles = Array.from(new Set(workers.map(w => w.role).filter(Boolean))) as string[];
-  const uniquePositions = Array.from(new Set(workers.map(w => w.position).filter(Boolean))) as string[];
-  const uniqueNationalities = Array.from(new Set(workers.map(w => w.nationality).filter(Boolean))) as string[];
+  /* ── 엑셀형 컬럼 정의 ── */
+  const COLUMNS = useMemo(() => [
+    { key: "name",         label: "이름",      align: "left"   as const },
+    { key: "nationality",  label: "국적",      align: "center" as const },
+    { key: "role",         label: "담당",      align: "left"   as const },
+    { key: "position",     label: "직책",      align: "left"   as const },
+    { key: "worksite",     label: "근무지",    align: "left"   as const },
+    { key: "carNumber",    label: "차량번호",  align: "left"   as const },
+    { key: "phone",        label: "연락처",    align: "left"   as const },
+    { key: "joinDate",     label: "입사일",    align: "left"   as const },
+    { key: "birthDate",    label: "생년월일",  align: "left"   as const },
+    { key: "visaExpiry",   label: "비자만기일",align: "left"   as const },
+    { key: "isCncOp",      label: "CNC OP",   align: "center" as const },
+    { key: "bloodType",    label: "혈액형",    align: "center" as const },
+    { key: "shoeSize",     label: "신발",      align: "center" as const },
+    { key: "winterTop",    label: "동복상의",  align: "center" as const },
+    { key: "winterBottom", label: "동복하의",  align: "center" as const },
+    { key: "summerTop",    label: "하계상의",  align: "center" as const },
+    { key: "summerBottom", label: "하계하의",  align: "center" as const },
+  ], []);
+
+  const colValue = useCallback((w: Worker, col: string): string => {
+    switch (col) {
+      case "name":         return w.name;
+      case "nationality":  return w.nationality ?? "";
+      case "role":         return w.role ?? "";
+      case "position":     return w.position ?? "";
+      case "worksite":     return w.worksite ?? "";
+      case "carNumber":    return w.carNumber ?? "";
+      case "phone":        return w.phone ?? "";
+      case "joinDate":     return formatDate(w.joinDate) !== "-" ? formatDate(w.joinDate) : "";
+      case "birthDate":    return formatDate(w.birthDate) !== "-" ? formatDate(w.birthDate) : "";
+      case "visaExpiry":   return formatDate(w.visaExpiry) !== "-" ? formatDate(w.visaExpiry) : "";
+      case "isCncOp":      return w.isCncOp ? "CNC OP" : "";
+      case "bloodType":    return w.bloodType ?? "";
+      case "shoeSize":     return w.shoeSize ?? "";
+      case "winterTop":    return w.winterTop ?? "";
+      case "winterBottom": return w.winterBottom ?? "";
+      case "summerTop":    return w.summerTop ?? "";
+      case "summerBottom": return w.summerBottom ?? "";
+      default: return "";
+    }
+  }, []);
+
+  const [colFilters, setColFilters] = useState<Record<string, string[]>>({});
+  const [openFilter, setOpenFilter] = useState<string | null>(null);
+  const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
+
+  type SortKey = { col: string; dir: "asc" | "desc" };
+  const [sortKeys, setSortKeys] = useState<SortKey[]>([]);
+
+  const handleSort = useCallback((col: string) => {
+    setSortKeys(prev => {
+      const i = prev.findIndex(k => k.col === col);
+      if (i === -1) return [...prev, { col, dir: "asc" }];
+      if (prev[i].dir === "asc") return prev.map((k, j) => j === i ? { ...k, dir: "desc" } : k);
+      return prev.filter((_, j) => j !== i);
+    });
+  }, []);
+
+  // 컬럼별 distinct (필터 드롭다운용)
+  const distinctValues = useMemo(() => {
+    const result: Record<string, FilterValue[]> = {};
+    for (const c of COLUMNS) {
+      const set = new Set<string>();
+      let hasEmpty = false;
+      for (const w of workers) {
+        const v = colValue(w, c.key);
+        if (v) set.add(v);
+        else hasEmpty = true;
+      }
+      const arr: FilterValue[] = Array.from(set).sort((a, b) => a.localeCompare(b, "ko")).map(v => ({ value: v, label: v }));
+      if (hasEmpty) arr.push({ value: "__EMPTY__", label: "(값 없음)" });
+      result[c.key] = arr;
+    }
+    return result;
+  }, [COLUMNS, workers, colValue]);
 
   const filteredWorkers = useMemo(() => {
-    return workers.filter((w) => {
-      const matchSearch = w.name.includes(searchTerm) || (w.phone && w.phone.includes(searchTerm));
-      const matchRole = roleFilter === "all" || w.role === roleFilter;
-      const matchPos = posFilter === "all" || w.position === posFilter;
-      const matchNat = natFilter === "all" || w.nationality === natFilter;
-      const matchWs = wsFilter === "all" || w.worksite === wsFilter;
-      return matchSearch && matchRole && matchPos && matchNat && matchWs;
+    const filtered = workers.filter((w) => {
+      // 검색
+      if (searchTerm && !w.name.includes(searchTerm) && !(w.phone && w.phone.includes(searchTerm))) return false;
+      // 컬럼 필터
+      return Object.entries(colFilters).every(([col, values]) => {
+        if (values.length === 0) return true;
+        const v = colValue(w, col);
+        if (values.includes("__EMPTY__") && !v) return true;
+        return values.includes(v);
+      });
     });
-  }, [workers, searchTerm, roleFilter, posFilter, natFilter, wsFilter]);
+    if (sortKeys.length === 0) return filtered;
+    return [...filtered].sort((a, b) => {
+      for (const { col, dir } of sortKeys) {
+        const av = colValue(a, col);
+        const bv = colValue(b, col);
+        const cmp = av.localeCompare(bv, "ko");
+        if (cmp !== 0) return dir === "asc" ? cmp : -cmp;
+      }
+      return 0;
+    });
+  }, [workers, searchTerm, colFilters, sortKeys, colValue]);
+
+  const activeFilterCount = Object.values(colFilters).filter(v => v.length > 0).length;
+
+  /* ── 엑셀 다운로드 (메인 시트 + 사이즈 집계 시트들) ── */
+  const downloadExcel = () => {
+    const list = filteredWorkers;
+    if (list.length === 0) { alert("다운로드할 데이터가 없습니다."); return; }
+
+    const wb = XLSX.utils.book_new();
+    const filterTag = activeFilterCount > 0 || searchTerm ? "필터" : "전체";
+
+    // 1) 메인 시트 — 인원 전체
+    const mainHeader = COLUMNS.map(c => c.label);
+    const mainRows = list.map(w => COLUMNS.map(c => colValue(w, c.key) || "-"));
+    const mainData = [
+      [`인원 리스트 (${filterTag} — 총 ${list.length}명)`],
+      mainHeader,
+      ...mainRows,
+    ];
+    const mainSheet = XLSX.utils.aoa_to_sheet(mainData);
+    mainSheet["!cols"] = COLUMNS.map(c => ({ wch: c.key === "name" || c.key === "phone" || c.key === "worksite" ? 14 : 10 }));
+    XLSX.utils.book_append_sheet(wb, mainSheet, "인원리스트");
+
+    // 2) 사이즈 집계 시트 (피복·신체 사이즈 발주용)
+    const sizeFields: { key: keyof Worker; label: string }[] = [
+      { key: "shoeSize",     label: "신발" },
+      { key: "winterTop",    label: "동복상의" },
+      { key: "winterBottom", label: "동복하의" },
+      { key: "summerTop",    label: "하계상의" },
+      { key: "summerBottom", label: "하계하의" },
+    ];
+
+    for (const f of sizeFields) {
+      // 사이즈별 카운트 + 해당 인원 이름들
+      const counter = new Map<string, string[]>();
+      for (const w of list) {
+        const size = ((w[f.key] as string | null) ?? "").trim() || "(미입력)";
+        if (!counter.has(size)) counter.set(size, []);
+        counter.get(size)!.push(w.name);
+      }
+      const rows = Array.from(counter.entries())
+        .map(([size, names]) => ({ size, count: names.length, names: names.join(", ") }))
+        .sort((a, b) => {
+          // (미입력)은 마지막
+          if (a.size === "(미입력)") return 1;
+          if (b.size === "(미입력)") return -1;
+          // 숫자형 사이즈 우선 비교 (신발 등)
+          const an = parseFloat(a.size), bn = parseFloat(b.size);
+          if (!isNaN(an) && !isNaN(bn)) return an - bn;
+          return a.size.localeCompare(b.size, "ko");
+        });
+
+      const data: (string | number)[][] = [
+        [`${f.label} 사이즈 집계 (총 ${list.length}명)`],
+        ["사이즈", "수량(명)", "대상자"],
+        ...rows.map(r => [r.size, r.count, r.names]),
+        [],
+        ["합계", list.length, ""],
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      ws["!cols"] = [{ wch: 14 }, { wch: 10 }, { wch: 60 }];
+      XLSX.utils.book_append_sheet(wb, ws, f.label);
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `인원리스트_${filterTag}_${today}.xlsx`);
+  };
 
   const [registerForm, setRegisterForm] = useState<FormState>(emptyForm);
   const [isRegistering, setIsRegistering] = useState(false);
@@ -297,107 +448,109 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
         {/* 인원 리스트 탭 */}
         {activeTab === "list" && (
           <div>
-            <div className="p-4 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gray-50/50">
-              <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                <div className="flex bg-white border border-gray-200 rounded-lg p-1 flex-wrap items-center gap-x-1">
-                  <Filter size={14} className="text-gray-400 ml-2 mr-1 self-center" />
-                  <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="focus:outline-none text-sm bg-transparent px-2 text-gray-700 py-1">
-                    <option value="all">담당 전체</option>
-                    {uniqueRoles.map(r => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                  <div className="w-px h-4 bg-gray-200 self-center mx-0.5" />
-                  <select value={posFilter} onChange={e => setPosFilter(e.target.value)} className="focus:outline-none text-sm bg-transparent px-2 text-gray-700 py-1">
-                    <option value="all">직책 전체</option>
-                    {uniquePositions.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                  <div className="w-px h-4 bg-gray-200 self-center mx-0.5" />
-                  <select value={natFilter} onChange={e => setNatFilter(e.target.value)} className="focus:outline-none text-sm bg-transparent px-2 text-gray-700 py-1">
-                    <option value="all">국적 전체</option>
-                    {uniqueNationalities.map(n => <option key={n} value={n}>{n}</option>)}
-                  </select>
-                  <div className="w-px h-4 bg-gray-200 self-center mx-0.5" />
-                  {/* 근무지 필터 + 관리 */}
-                  <div className="relative flex items-center" ref={wsManagerRef}>
-                    <select value={wsFilter} onChange={e => setWsFilter(e.target.value)} className="focus:outline-none text-sm bg-transparent px-2 text-gray-700 py-1">
-                      <option value="all">근무지 전체</option>
-                      {worksiteOptions.map(ws => <option key={ws.id} value={ws.name}>{ws.name}</option>)}
-                    </select>
-                    <button onClick={() => setShowWsManager(v => !v)} title="근무지 관리"
-                      className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors mr-1">
-                      <Settings2 size={13} />
-                    </button>
-                    {showWsManager && (
-                      <div className="absolute top-full right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl p-3 z-20 min-w-[200px]">
-                        <div className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1">
-                          <MapPin size={11} className="text-blue-500" /> 근무지 관리
-                        </div>
-                        <div className="space-y-0.5 mb-3 max-h-40 overflow-y-auto">
-                          {worksiteOptions.length === 0 && <p className="text-xs text-gray-400 py-1">등록된 근무지가 없습니다.</p>}
-                          {worksiteOptions.map(ws => (
-                            <div key={ws.id} className="flex items-center justify-between py-1 px-1.5 rounded hover:bg-gray-50">
-                              <span className="text-sm text-gray-700">{ws.name}</span>
-                              <button onClick={() => deleteWorksite(ws.id, ws.name)} className="text-gray-300 hover:text-red-500 transition-colors ml-3 flex-shrink-0">
-                                <X size={13} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="flex gap-1.5 border-t border-gray-100 pt-2">
-                          <input value={newWsName} onChange={e => setNewWsName(e.target.value)}
-                            onKeyDown={e => e.key === "Enter" && addWorksite()}
-                            placeholder="새 근무지명" className="flex-1 px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                          <button onClick={addWorksite} disabled={addingWs}
-                            className="px-2.5 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 font-semibold">
-                            추가
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
+            <div className="p-4 border-b border-gray-100 flex flex-wrap justify-between items-center gap-3 bg-gray-50/50">
+              <div className="flex flex-wrap items-center gap-2">
                 <div className="relative">
                   <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input type="text" placeholder="이름 또는 전화번호 검색"
-                    className="pl-9 pr-4 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-64 bg-white"
+                  <input type="text" placeholder="이름·전화번호 검색"
+                    className="pl-9 pr-4 py-1.5 h-9 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-56 bg-white"
                     value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                 </div>
+                {/* 근무지 마스터 관리 */}
+                <div className="relative" ref={wsManagerRef}>
+                  <button onClick={() => setShowWsManager(v => !v)} title="근무지 관리"
+                    className="flex items-center gap-1.5 h-9 px-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                    <Settings2 size={13} /> 근무지 관리
+                  </button>
+                  {showWsManager && (
+                    <div className="absolute top-full left-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl p-3 z-20 min-w-[220px]">
+                      <div className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1">
+                        <MapPin size={11} className="text-blue-500" /> 근무지 마스터
+                      </div>
+                      <div className="space-y-0.5 mb-3 max-h-40 overflow-y-auto">
+                        {worksiteOptions.length === 0 && <p className="text-xs text-gray-400 py-1">등록된 근무지가 없습니다.</p>}
+                        {worksiteOptions.map(ws => (
+                          <div key={ws.id} className="flex items-center justify-between py-1 px-1.5 rounded hover:bg-gray-50">
+                            <span className="text-sm text-gray-700">{ws.name}</span>
+                            <button onClick={() => deleteWorksite(ws.id, ws.name)} className="text-gray-300 hover:text-red-500 transition-colors ml-3 flex-shrink-0">
+                              <X size={13} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex gap-1.5 border-t border-gray-100 pt-2">
+                        <input value={newWsName} onChange={e => setNewWsName(e.target.value)}
+                          onKeyDown={e => e.key === "Enter" && addWorksite()}
+                          placeholder="새 근무지명" className="flex-1 px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        <button onClick={addWorksite} disabled={addingWs}
+                          className="px-2.5 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 font-semibold">
+                          추가
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {activeFilterCount > 0 && (
+                  <button onClick={() => setColFilters({})} className="flex items-center gap-1 h-9 px-3 text-xs border border-blue-300 text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100">
+                    <Filter size={11} fill="currentColor" /> 필터 {activeFilterCount}개 초기화
+                  </button>
+                )}
               </div>
-              <span className="text-sm text-gray-500 whitespace-nowrap">
-                검색된 인원 <strong className="text-gray-900">{filteredWorkers.length}</strong>명
-                <span className="text-xs text-gray-400 ml-1">(총 {workers.length}명)</span>
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-500 whitespace-nowrap">
+                  <strong className="text-gray-900">{filteredWorkers.length}</strong>명
+                  <span className="text-xs text-gray-400 ml-1">/ 총 {workers.length}명</span>
+                </span>
+                <button onClick={downloadExcel}
+                  className="flex items-center gap-1.5 h-9 px-3 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 shadow-sm"
+                  title="현재 필터·정렬 결과를 엑셀로 다운로드 (사이즈별 집계 시트 포함)">
+                  <Download size={14} /> 엑셀 다운로드
+                </button>
+              </div>
             </div>
 
             <div className="overflow-x-auto min-h-[400px]">
               <table className="w-full text-sm text-left whitespace-nowrap">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-[#f1f5f9] border-b-2 border-gray-300">
                   <tr>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500">이름</th>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500">국적</th>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500">담당</th>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500">직책</th>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500">근무지</th>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500">차량번호</th>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500">연락처</th>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500">입사일</th>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500">생년월일</th>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500">비자만기일</th>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500 text-center">CNC OP</th>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500">혈액형</th>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500">신발</th>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500 text-center">동복상의</th>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500 text-center">동복하의</th>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500 text-center">하계상의</th>
-                    <th className="px-4 py-3 font-semibold text-xs text-gray-500 text-center">하계하의</th>
-                    <th className="px-4 py-3 w-16 text-center text-xs text-gray-500 font-semibold">관리</th>
+                    {COLUMNS.map(c => {
+                      const filterActive = (colFilters[c.key]?.length ?? 0) > 0;
+                      const sortIdx = sortKeys.findIndex(k => k.col === c.key);
+                      const sortKey = sortKeys[sortIdx];
+                      const alignCls = c.align === "center" ? "text-center" : "text-left";
+                      return (
+                        <th key={c.key} className={`px-3 py-2.5 font-semibold text-xs text-gray-600 border-r border-gray-200 ${alignCls}`}>
+                          <div className={`flex items-center gap-0.5 ${c.align === "center" ? "justify-center" : ""}`}>
+                            <span>{c.label}</span>
+                            <button
+                              onClick={(e) => { setOpenFilter(c.key); setFilterAnchorEl(e.currentTarget); }}
+                              className={`rounded hover:bg-gray-200 p-0.5 ${filterActive ? "text-blue-600" : "text-gray-400"}`}
+                              title={filterActive ? `필터 ${colFilters[c.key].length}개` : "필터"}
+                            >
+                              <Filter size={10} fill={filterActive ? "currentColor" : "none"} />
+                            </button>
+                            <button
+                              onClick={() => handleSort(c.key)}
+                              className={`rounded hover:bg-gray-200 p-0.5 ${sortKey ? "text-blue-600" : "text-gray-300 hover:text-gray-500"}`}
+                              title={sortKey ? (sortKey.dir === "asc" ? "오름차순" : "내림차순") : "정렬"}
+                            >
+                              <span className="flex items-center gap-px">
+                                {sortKey ? (sortKey.dir === "asc" ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} />}
+                                {sortKeys.length > 1 && sortKey && <span className="text-[8px] leading-none">{sortIdx + 1}</span>}
+                              </span>
+                            </button>
+                          </div>
+                        </th>
+                      );
+                    })}
+                    <th className="px-3 py-2.5 w-20 text-center text-xs text-gray-600 font-semibold">관리</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filteredWorkers.length === 0 ? (
                     <tr>
-                      <td colSpan={18} className="px-6 py-12 text-center text-gray-500">
-                        {workers.length === 0 ? "등록된 인원이 없습니다. '신규 인원 등록' 탭을 이용해 추가하세요." : "검색 조건에 맞는 인원이 없습니다."}
+                      <td colSpan={COLUMNS.length + 1} className="px-6 py-12 text-center text-gray-500">
+                        {workers.length === 0 ? "등록된 인원이 없습니다. '신규 인원 등록' 탭을 이용해 추가하세요." : "필터·검색 조건에 맞는 인원이 없습니다."}
                       </td>
                     </tr>
                   ) : filteredWorkers.map((w) => {
@@ -471,6 +624,21 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
                 </tbody>
               </table>
             </div>
+
+            {/* 컬럼 필터 드롭다운 */}
+            {openFilter && filterAnchorEl && (
+              <ColumnFilterDropdown
+                anchorEl={filterAnchorEl}
+                values={distinctValues[openFilter] ?? []}
+                selected={colFilters[openFilter] ?? []}
+                onApply={(vals) => {
+                  setColFilters(prev => ({ ...prev, [openFilter]: vals }));
+                  setOpenFilter(null);
+                  setFilterAnchorEl(null);
+                }}
+                onClose={() => { setOpenFilter(null); setFilterAnchorEl(null); }}
+              />
+            )}
           </div>
         )}
 
