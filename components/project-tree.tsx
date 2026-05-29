@@ -60,7 +60,7 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 items-start">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 items-start">
       {vessels.map((vessel) => {
         const isOpen = expanded[vessel.code] ?? true;
         return (
@@ -80,7 +80,7 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
                   : <Folder size={16} className="text-yellow-400 flex-shrink-0" />}
                 <span className="font-bold text-xs">호선 [{vessel.code}]</span>
                 <span className="text-[11px] text-gray-400 ml-1">
-                  {vessel.blocks.length}개 블록 · 강재리스트 {vessel.totalDrawings}행
+                  {vessel.blocks.length}개 블록
                 </span>
               </button>
 
