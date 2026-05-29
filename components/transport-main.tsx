@@ -243,7 +243,8 @@ interface Props {
 
 export default function TransportMain({ initialVehicles }: Props) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"register" | "manage" | "drivingLog">("manage");
+  const [activeTab, setActiveTab] = useState<"manage" | "drivingLog">("drivingLog");
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [vehicles, setVehicles] = useState<TransportVehicle[]>(initialVehicles);
 
   // ── 등록 폼 상태 ──────────────────────────────────────────
@@ -301,11 +302,12 @@ export default function TransportMain({ initialVehicles }: Props) {
       const data = await res.json();
       if (!data.success) { setFormError(data.error || "등록 실패"); return; }
       setVehicles(prev => [...prev, data.data]);
-      // 폼 초기화
+      // 폼 초기화 후 모달 닫고 관리 탭으로 이동
       setForm(emptyForm);
       setConsumables(DEFAULT_CONSUMABLES.map(c => ({ ...c })));
       setInspections([]);
       setSpecs([]);
+      setShowRegisterModal(false);
       setActiveTab("manage");
     } finally {
       setSaving(false);
@@ -335,13 +337,12 @@ export default function TransportMain({ initialVehicles }: Props) {
         <p className="text-sm text-gray-500 mt-1">운송차량 및 장비를 등록하고 관리합니다.</p>
       </div>
 
-      {/* 탭 */}
-      <div className="border-b border-gray-200">
+      {/* 탭 + 등록 버튼 */}
+      <div className="border-b border-gray-200 flex items-end justify-between">
         <div className="flex gap-0">
           {([
-            { key: "manage",     label: "운송장비 관리" },
-            { key: "register",   label: "운송장비 등록" },
             { key: "drivingLog", label: "차량운행일지" },
+            { key: "manage",     label: "운송장비 관리" },
           ] as const).map(({ key, label }) => (
             <button
               key={key}
@@ -356,13 +357,25 @@ export default function TransportMain({ initialVehicles }: Props) {
             </button>
           ))}
         </div>
+        <button
+          onClick={() => { setForm(emptyForm); setConsumables(DEFAULT_CONSUMABLES.map(c => ({ ...c }))); setInspections([]); setSpecs([]); setFormError(""); setShowRegisterModal(true); }}
+          className="mb-2 mr-1 flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          <Plus size={15} /> 운송장비 등록
+        </button>
       </div>
 
-      {/* ── 등록 탭 ── */}
-      {activeTab === "register" && (
-        <div className="space-y-6">
+      {/* ── 등록 모달 ── */}
+      {showRegisterModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-start justify-center p-4 overflow-y-auto backdrop-blur-sm" onClick={() => !saving && setShowRegisterModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl my-6" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white rounded-t-2xl z-10">
+              <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2"><Plus size={18} className="text-blue-600" /> 운송장비 등록</h3>
+              <button onClick={() => setShowRegisterModal(false)} disabled={saving} className="p-1 hover:bg-gray-100 rounded-full disabled:opacity-50"><X size={18} /></button>
+            </div>
+            <div className="p-6 space-y-6">
           {/* 종류 선택 */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+          <div className="bg-gray-50 rounded-xl border border-gray-200 p-5">
             <p className="text-sm font-semibold text-gray-700 mb-3">1. 종류 선택</p>
             <div className="flex gap-3">
               {(["VEHICLE", "EQUIPMENT"] as TransportVehicleType[]).map(t => (
@@ -614,13 +627,18 @@ export default function TransportMain({ initialVehicles }: Props) {
 
           {/* 저장 */}
           {formError && <p className="text-sm text-red-600">{formError}</p>}
-          <div className="flex justify-end gap-3">
+          <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
+            <button onClick={() => setShowRegisterModal(false)} disabled={saving} className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50">
+              취소
+            </button>
             <button onClick={() => { setForm(emptyForm); setConsumables(DEFAULT_CONSUMABLES.map(c => ({ ...c }))); setInspections([]); setSpecs([]); setFormError(""); }} className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">
               <X size={14} className="inline mr-1" />초기화
             </button>
             <button onClick={handleSave} disabled={saving} className="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2">
               <Save size={14} />{saving ? "저장 중..." : "저장"}
             </button>
+          </div>
+            </div>
           </div>
         </div>
       )}
@@ -668,7 +686,7 @@ export default function TransportMain({ initialVehicles }: Props) {
           {filtered.length === 0 ? (
             <div className="py-16 text-center text-gray-400 text-sm bg-white rounded-xl border border-gray-200">
               {vehicles.length === 0
-                ? <><p className="text-base font-medium text-gray-500">등록된 차량/장비가 없습니다.</p><button onClick={() => setActiveTab("register")} className="mt-3 text-sm text-blue-600 hover:underline">+ 등록하러 가기</button></>
+                ? <><p className="text-base font-medium text-gray-500">등록된 차량/장비가 없습니다.</p><button onClick={() => { setForm(emptyForm); setConsumables(DEFAULT_CONSUMABLES.map(c => ({ ...c }))); setInspections([]); setSpecs([]); setFormError(""); setShowRegisterModal(true); }} className="mt-3 text-sm text-blue-600 hover:underline">+ 등록하러 가기</button></>
                 : "검색 결과가 없습니다."}
             </div>
           ) : (
