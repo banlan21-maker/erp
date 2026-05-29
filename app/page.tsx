@@ -5,6 +5,7 @@ import {
   AlertTriangle, XCircle, Clock, ChevronRight,
 } from "lucide-react";
 import NoticeSection from "@/components/notice-section";
+import WeatherBar from "@/components/weather-bar";
 
 export const dynamic = "force-dynamic";
 
@@ -117,6 +118,9 @@ export default async function LandingPage() {
 
       {/* ── 본문 ── */}
       <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-8 space-y-8">
+
+        {/* ── 진교·진동 현재 날씨 ── */}
+        <WeatherBar />
 
         {/* ── 파트 바로가기 카드 ── */}
         <div className="grid grid-cols-3 gap-4">
