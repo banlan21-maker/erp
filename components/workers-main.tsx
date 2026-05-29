@@ -119,7 +119,8 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
   const router = useRouter();
   const wsManagerRef = useRef<HTMLDivElement>(null);
 
-  const [activeTab, setActiveTab] = useState<"list" | "register" | "org" | "emergency">("list");
+  const [activeTab, setActiveTab] = useState<"list" | "org" | "emergency">("list");
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [worksiteOptions, setWorksiteOptions] = useState<WorksiteOption[]>([]);
   const [showWsManager, setShowWsManager] = useState(false);
@@ -364,7 +365,7 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
       if (!data.success) { alert(data.error ?? "등록 실패"); return; }
       alert("인원이 성공적으로 등록되었습니다.");
       setRegisterForm(emptyForm);
-      setActiveTab("list");
+      setShowRegisterModal(false);
       router.refresh();
     } catch { alert("서버 오류"); } finally { setIsRegistering(false); }
   };
@@ -425,22 +426,29 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
         </p>
       </div>
 
-      <div className="flex border-b border-gray-200">
-        {(["list","register","org","emergency"] as const).map((tab) => {
-          const labels: Record<string, React.ReactNode> = {
-            list: <><List size={16} />인원 리스트</>,
-            register: <><Plus size={16} />신규 인원 등록</>,
-            org: <><GitBranch size={16} />조직도</>,
-            emergency: <><Phone size={16} />비상연락망</>,
-          };
-          return (
-            <button key={tab} onClick={() => setActiveTab(tab)}
-              className={`px-5 py-3 text-sm font-semibold flex items-center gap-2 relative transition-colors ${activeTab === tab ? "text-blue-600" : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"}`}>
-              {labels[tab]}
-              {activeTab === tab && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-md" />}
-            </button>
-          );
-        })}
+      <div className="flex border-b border-gray-200 items-end justify-between">
+        <div className="flex">
+          {(["list","org","emergency"] as const).map((tab) => {
+            const labels: Record<string, React.ReactNode> = {
+              list: <><List size={16} />인원 리스트</>,
+              org: <><GitBranch size={16} />조직도</>,
+              emergency: <><Phone size={16} />비상연락망</>,
+            };
+            return (
+              <button key={tab} onClick={() => setActiveTab(tab)}
+                className={`px-5 py-3 text-sm font-semibold flex items-center gap-2 relative transition-colors ${activeTab === tab ? "text-blue-600" : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"}`}>
+                {labels[tab]}
+                {activeTab === tab && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-md" />}
+              </button>
+            );
+          })}
+        </div>
+        <button
+          onClick={() => { setRegisterForm(emptyForm); setShowRegisterModal(true); }}
+          className="mb-2 mr-1 flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm"
+        >
+          <UserPlus size={15} /> 신규 인원 등록
+        </button>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -550,7 +558,7 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
                   {filteredWorkers.length === 0 ? (
                     <tr>
                       <td colSpan={COLUMNS.length + 1} className="px-6 py-12 text-center text-gray-500">
-                        {workers.length === 0 ? "등록된 인원이 없습니다. '신규 인원 등록' 탭을 이용해 추가하세요." : "필터·검색 조건에 맞는 인원이 없습니다."}
+                        {workers.length === 0 ? "등록된 인원이 없습니다. 우측 상단 '+ 신규 인원 등록' 버튼으로 추가하세요." : "필터·검색 조건에 맞는 인원이 없습니다."}
                       </td>
                     </tr>
                   ) : filteredWorkers.map((w) => {
@@ -642,12 +650,16 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
           </div>
         )}
 
-        {/* 신규 인원 등록 탭 */}
-        {activeTab === "register" && (
-          <div>
+        {/* 신규 인원 등록 모달 */}
+        {showRegisterModal && (
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-start justify-center p-4 overflow-y-auto backdrop-blur-sm" onClick={() => !isRegistering && setShowRegisterModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl my-6" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white rounded-t-2xl z-10">
+              <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2"><UserPlus size={18} className="text-blue-600" /> 신규 인원 등록</h3>
+              <button onClick={() => setShowRegisterModal(false)} disabled={isRegistering} className="p-1 hover:bg-gray-100 rounded-full disabled:opacity-50"><X size={18} /></button>
+            </div>
             <div className="p-6 border-b border-gray-100 bg-blue-50/50">
-              <h3 className="font-bold text-gray-900">신규 인원 등록 정보</h3>
-              <p className="text-xs text-gray-500 mt-1">이름(*)을 포함하여 인원의 자세한 정보를 한 번에 입력하여 등록할 수 있습니다.</p>
+              <p className="text-xs text-gray-500">이름(*)을 포함하여 인원의 자세한 정보를 한 번에 입력하여 등록할 수 있습니다.</p>
             </div>
             <form onSubmit={handleRegisterSubmit} className="p-6 sm:p-8">
               <div className="mb-8">
@@ -729,14 +741,15 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
                 </div>
               </div>
               <div className="mt-8 pt-6 border-t border-gray-100 flex justify-end gap-3">
-                <button type="button" onClick={() => { setRegisterForm(emptyForm); setActiveTab("list"); }}
-                  className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">취소</button>
+                <button type="button" onClick={() => { setRegisterForm(emptyForm); setShowRegisterModal(false); }} disabled={isRegistering}
+                  className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">취소</button>
                 <button type="submit" disabled={isRegistering}
                   className="px-6 py-2.5 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm flex items-center gap-2">
                   <UserPlus size={16} /> {isRegistering ? "등록 중..." : "인원 등록 완료"}
                 </button>
               </div>
             </form>
+          </div>
           </div>
         )}
 
