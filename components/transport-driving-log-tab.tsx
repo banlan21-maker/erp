@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Plus, Trash2, RefreshCw, X, Save, ChevronLeft, ChevronRight, FileText, Download } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { Plus, Trash2, RefreshCw, X, Save, ChevronLeft, ChevronRight, FileText, Download, Filter, Pencil } from "lucide-react";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import ColumnFilterDropdown, { type FilterValue } from "./column-filter-dropdown";
 import type { TransportVehicle } from "@/components/transport-main";
 
 /* ── 타입 ── */
@@ -341,15 +342,86 @@ export default function TransportDrivingLogTab({
     { count: 0, distance: 0, fuel: 0, toll: 0 }
   );
 
-  /* 날짜별 그룹핑 */
-  const grouped = logs.reduce((acc, l) => {
-    if (!acc[l.date]) acc[l.date] = [];
-    acc[l.date].push(l);
-    return acc;
-  }, {} as Record<string, DrivingLog[]>);
-  const dates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
-
   const inUsedVehicles = vehicles.filter(v => v.usage !== "DISPOSED" && v.vehicleType === "VEHICLE");
+
+  /* 엑셀형 테이블 — 컬럼 정의, 필터, 헬퍼 */
+  const COLUMNS = useMemo(() => [
+    { key: "date",        label: "날짜",        align: "left"  as const },
+    { key: "vehicle",     label: "차량",        align: "left"  as const },
+    { key: "driver",      label: "운전자",      align: "left"  as const },
+    { key: "route",       label: "출발 → 도착", align: "left"  as const },
+    { key: "purpose",     label: "목적",        align: "left"  as const },
+    { key: "startTime",   label: "출발시간",    align: "center" as const },
+    { key: "endTime",     label: "도착시간",    align: "center" as const },
+    { key: "startMileage",label: "출발거리",    align: "right" as const },
+    { key: "endMileage",  label: "도착거리",    align: "right" as const },
+    { key: "distance",    label: "운행거리",    align: "right" as const },
+    { key: "fuelCost",    label: "유류비",      align: "right" as const },
+    { key: "tollCost",    label: "통행료",      align: "right" as const },
+    { key: "memo",        label: "비고",        align: "left"  as const },
+  ], []);
+
+  const colValue = useCallback((l: DrivingLog, col: string): string => {
+    switch (col) {
+      case "date":         return l.date;
+      case "vehicle":      return `${l.vehicle.name}${l.vehicle.plateNo ? ` (${l.vehicle.plateNo})` : ""}`;
+      case "driver":       return l.driver;
+      case "route":        return `${l.departure ?? "-"} → ${l.destination ?? "-"}`;
+      case "purpose":      return l.purpose ?? "";
+      case "startTime":    return l.startTime ?? "";
+      case "endTime":      return l.endTime ?? "";
+      case "startMileage": return l.startMileage != null ? String(l.startMileage) : "";
+      case "endMileage":   return l.endMileage   != null ? String(l.endMileage)   : "";
+      case "distance":     return (l.startMileage != null && l.endMileage != null && l.endMileage >= l.startMileage) ? String(l.endMileage - l.startMileage) : "";
+      case "fuelCost":     return l.fuelCost != null ? String(l.fuelCost) : "";
+      case "tollCost":     return l.tollCost != null ? String(l.tollCost) : "";
+      case "memo":         return l.memo ?? "";
+      default:             return "";
+    }
+  }, []);
+
+  const [colFilters, setColFilters] = useState<Record<string, string[]>>({});
+  const [openFilter, setOpenFilter] = useState<string | null>(null);
+  const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
+
+  // 월 바뀌면 필터 초기화 (전월 필터값이 신월 데이터에 안 맞을 수 있으므로)
+  useEffect(() => { setColFilters({}); }, [year, month]);
+
+  // 컬럼별 distinct 값 (현재 월 데이터 기준)
+  const distinctValues = useMemo(() => {
+    const result: Record<string, FilterValue[]> = {};
+    for (const c of COLUMNS) {
+      const set = new Set<string>();
+      let hasEmpty = false;
+      for (const l of logs) {
+        const v = colValue(l, c.key);
+        if (v) set.add(v);
+        else hasEmpty = true;
+      }
+      const arr: FilterValue[] = Array.from(set).sort().map(v => ({ value: v, label: v }));
+      if (hasEmpty) arr.push({ value: "__EMPTY__", label: "(값 없음)" });
+      result[c.key] = arr;
+    }
+    return result;
+  }, [COLUMNS, logs, colValue]);
+
+  // 필터 적용된 로그 (날짜 내림차순)
+  const filteredLogs = useMemo(() => {
+    const filtered = logs.filter(l =>
+      Object.entries(colFilters).every(([col, values]) => {
+        if (values.length === 0) return true;
+        const v = colValue(l, col);
+        if (values.includes("__EMPTY__") && !v) return true;
+        return values.includes(v);
+      })
+    );
+    return [...filtered].sort((a, b) => {
+      if (a.date !== b.date) return b.date.localeCompare(a.date);
+      return (b.startTime ?? "").localeCompare(a.startTime ?? "");
+    });
+  }, [logs, colFilters, colValue]);
+
+  const activeFilterCount = Object.values(colFilters).filter(v => v.length > 0).length;
 
   return (
     <div className="space-y-4">
@@ -435,109 +507,136 @@ export default function TransportDrivingLogTab({
         ))}
       </div>
 
-      {/* 운행일지 목록 */}
+      {/* 필터 적용 표시줄 */}
+      {activeFilterCount > 0 && (
+        <div className="flex items-center gap-2 text-xs text-blue-700 bg-blue-50 border border-blue-200 px-3 py-2 rounded-lg">
+          <Filter size={12} fill="currentColor" />
+          <span>필터 {activeFilterCount}개 적용 — {filteredLogs.length} / {logs.length}건</span>
+          <button onClick={() => setColFilters({})} className="ml-auto text-blue-600 hover:underline">필터 초기화</button>
+        </div>
+      )}
+
+      {/* 운행일지 — 엑셀형 단일 테이블 */}
       {loading ? (
         <div className="py-16 text-center text-gray-400 text-sm">불러오는 중…</div>
-      ) : dates.length === 0 ? (
+      ) : logs.length === 0 ? (
         <div className="py-16 text-center text-gray-400 text-sm">
           <FileText size={40} className="mx-auto mb-3 opacity-30" />
           {year}년 {month}월 운행일지가 없습니다.
         </div>
       ) : (
-        <div className="space-y-4">
-          {dates.map(date => (
-            <div key={date} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              {/* 날짜 헤더 */}
-              <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-                <span className="font-semibold text-sm text-gray-700">
-                  {new Date(date + "T00:00:00").toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "short" })}
-                </span>
-                <span className="text-xs text-gray-400">{grouped[date].length}건</span>
-              </div>
-
-              {/* 해당 날짜 로그 */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100">
-                      {["차량", "운전자", "출발지 → 도착지", "목적", "출발시간", "도착시간", "출발거리", "도착거리", "운행거리", "유류비", "통행료", "비고", ""].map(h => (
-                        <th key={h} className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {grouped[date].map(log => (
-                      editId === log.id ? (
-                        /* 수정 행 */
-                        <tr key={log.id} className="bg-blue-50">
-                          <td className="px-2 py-1.5 text-xs text-gray-500 whitespace-nowrap">
-                            {log.vehicle.name}
-                          </td>
-                          <td className="px-2 py-1.5"><Input value={editForm.driver} onChange={e => setE("driver", e.target.value)} className="h-7 text-xs w-20" /></td>
-                          <td className="px-2 py-1.5">
-                            <div className="flex items-center gap-1">
-                              <Input value={editForm.departure}   onChange={e => setE("departure",   e.target.value)} placeholder="출발" className="h-7 text-xs w-20" />
-                              <span className="text-gray-400">→</span>
-                              <Input value={editForm.destination} onChange={e => setE("destination", e.target.value)} placeholder="도착" className="h-7 text-xs w-20" />
-                            </div>
-                          </td>
-                          <td className="px-2 py-1.5"><Input value={editForm.purpose}  onChange={e => setE("purpose",  e.target.value)} className="h-7 text-xs w-24" /></td>
-                          <td className="px-2 py-1.5"><Input type="time" value={editForm.startTime} onChange={e => setE("startTime", e.target.value)} className="h-7 text-xs w-24" /></td>
-                          <td className="px-2 py-1.5"><Input type="time" value={editForm.endTime}   onChange={e => setE("endTime",   e.target.value)} className="h-7 text-xs w-24" /></td>
-                          <td className="px-2 py-1.5"><Input type="number" value={editForm.startMileage} onChange={e => setE("startMileage", e.target.value)} className="h-7 text-xs w-20" /></td>
-                          <td className="px-2 py-1.5"><Input type="number" value={editForm.endMileage}   onChange={e => setE("endMileage",   e.target.value)} className="h-7 text-xs w-20" /></td>
-                          <td className="px-2 py-1.5 text-xs text-gray-400">-</td>
-                          <td className="px-2 py-1.5"><Input type="number" value={editForm.fuelCost} onChange={e => setE("fuelCost", e.target.value)} className="h-7 text-xs w-20" /></td>
-                          <td className="px-2 py-1.5"><Input type="number" value={editForm.tollCost} onChange={e => setE("tollCost", e.target.value)} className="h-7 text-xs w-20" /></td>
-                          <td className="px-2 py-1.5"><Input value={editForm.memo} onChange={e => setE("memo", e.target.value)} className="h-7 text-xs w-28" /></td>
-                          <td className="px-2 py-1.5 whitespace-nowrap">
-                            <div className="flex gap-1">
-                              <button onClick={saveEdit} className="p-1 text-blue-600 hover:bg-blue-100 rounded" title="저장"><Save size={13} /></button>
-                              <button onClick={() => setEditId(null)} className="p-1 text-gray-400 hover:bg-gray-100 rounded" title="취소"><X size={13} /></button>
-                            </div>
-                          </td>
-                        </tr>
-                      ) : (
-                        /* 일반 행 */
-                        <tr key={log.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onDoubleClick={() => startEdit(log)}>
-                          <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
-                            <span className="font-medium">{log.vehicle.name}</span>
-                            {log.vehicle.plateNo && <span className="ml-1 text-gray-400">({log.vehicle.plateNo})</span>}
-                          </td>
-                          <td className="px-3 py-2 text-gray-800 whitespace-nowrap">{log.driver}</td>
-                          <td className="px-3 py-2 text-gray-600 whitespace-nowrap">
-                            {log.departure || log.destination
-                              ? <>{log.departure || "-"} <span className="text-gray-400">→</span> {log.destination || "-"}</>
-                              : <span className="text-gray-300">-</span>}
-                          </td>
-                          <td className="px-3 py-2 text-gray-600 max-w-[140px] truncate" title={log.purpose ?? ""}>{log.purpose || "-"}</td>
-                          <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{log.startTime || "-"}</td>
-                          <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{log.endTime   || "-"}</td>
-                          <td className="px-3 py-2 text-gray-600 whitespace-nowrap text-right">{km(log.startMileage)}</td>
-                          <td className="px-3 py-2 text-gray-600 whitespace-nowrap text-right">{km(log.endMileage)}</td>
-                          <td className="px-3 py-2 font-medium whitespace-nowrap text-right">
-                            {log.startMileage != null && log.endMileage != null
-                              ? <span className="text-blue-600">{distance(log.startMileage, log.endMileage)}</span>
-                              : <span className="text-gray-300">-</span>}
-                          </td>
-                          <td className="px-3 py-2 text-gray-600 whitespace-nowrap text-right">{won(log.fuelCost)}</td>
-                          <td className="px-3 py-2 text-gray-600 whitespace-nowrap text-right">{won(log.tollCost)}</td>
-                          <td className="px-3 py-2 text-gray-400 text-xs max-w-[120px] truncate" title={log.memo ?? ""}>{log.memo || "-"}</td>
-                          <td className="px-3 py-2">
-                            <button onClick={() => handleDelete(log.id)}
-                              className="p-1 text-gray-300 hover:text-red-500 transition-colors rounded" title="삭제">
-                              <Trash2 size={13} />
-                            </button>
-                          </td>
-                        </tr>
-                      )
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+          <table className="w-full text-sm whitespace-nowrap">
+            <thead className="bg-gray-50 border-b-2 border-gray-300">
+              <tr>
+                {COLUMNS.map(c => {
+                  const active = (colFilters[c.key]?.length ?? 0) > 0;
+                  const alignCls = c.align === "right" ? "text-right" : c.align === "center" ? "text-center" : "text-left";
+                  return (
+                    <th key={c.key} className={`px-3 py-2.5 text-xs font-semibold text-gray-600 border-r border-gray-200 ${alignCls}`}>
+                      <div className={`flex items-center gap-1 ${c.align === "right" ? "justify-end" : c.align === "center" ? "justify-center" : ""}`}>
+                        <span>{c.label}</span>
+                        <button
+                          onClick={(e) => { setOpenFilter(c.key); setFilterAnchorEl(e.currentTarget); }}
+                          className={`rounded p-0.5 hover:bg-gray-200 ${active ? "text-blue-600" : "text-gray-400"}`}
+                          title={active ? `필터 적용 (${colFilters[c.key].length}개)` : "필터"}
+                        >
+                          <Filter size={11} fill={active ? "currentColor" : "none"} />
+                        </button>
+                      </div>
+                    </th>
+                  );
+                })}
+                <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 text-center">관리</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filteredLogs.length === 0 ? (
+                <tr><td colSpan={COLUMNS.length + 1} className="px-3 py-12 text-center text-gray-400 text-sm">필터 조건에 맞는 데이터가 없습니다.</td></tr>
+              ) : filteredLogs.map(log => (
+                editId === log.id ? (
+                  /* 수정 행 */
+                  <tr key={log.id} className="bg-blue-50/60">
+                    <td className="px-2 py-1.5 text-xs text-gray-700 border-r border-gray-100">{log.date}</td>
+                    <td className="px-2 py-1.5 text-xs text-gray-700 border-r border-gray-100">{log.vehicle.name}{log.vehicle.plateNo ? ` (${log.vehicle.plateNo})` : ""}</td>
+                    <td className="px-2 py-1.5 border-r border-gray-100"><Input value={editForm.driver} onChange={e => setE("driver", e.target.value)} className="h-7 text-xs w-20" /></td>
+                    <td className="px-2 py-1.5 border-r border-gray-100">
+                      <div className="flex items-center gap-1">
+                        <Input value={editForm.departure} onChange={e => setE("departure", e.target.value)} placeholder="출발" className="h-7 text-xs w-20" />
+                        <span className="text-gray-400">→</span>
+                        <Input value={editForm.destination} onChange={e => setE("destination", e.target.value)} placeholder="도착" className="h-7 text-xs w-20" />
+                      </div>
+                    </td>
+                    <td className="px-2 py-1.5 border-r border-gray-100"><Input value={editForm.purpose} onChange={e => setE("purpose", e.target.value)} className="h-7 text-xs w-24" /></td>
+                    <td className="px-2 py-1.5 border-r border-gray-100"><Input type="time" value={editForm.startTime} onChange={e => setE("startTime", e.target.value)} className="h-7 text-xs w-24" /></td>
+                    <td className="px-2 py-1.5 border-r border-gray-100"><Input type="time" value={editForm.endTime} onChange={e => setE("endTime", e.target.value)} className="h-7 text-xs w-24" /></td>
+                    <td className="px-2 py-1.5 border-r border-gray-100"><Input type="number" value={editForm.startMileage} onChange={e => setE("startMileage", e.target.value)} className="h-7 text-xs w-20 text-right" /></td>
+                    <td className="px-2 py-1.5 border-r border-gray-100"><Input type="number" value={editForm.endMileage} onChange={e => setE("endMileage", e.target.value)} className="h-7 text-xs w-20 text-right" /></td>
+                    <td className="px-2 py-1.5 text-xs text-gray-400 text-right border-r border-gray-100">-</td>
+                    <td className="px-2 py-1.5 border-r border-gray-100"><Input type="number" value={editForm.fuelCost} onChange={e => setE("fuelCost", e.target.value)} className="h-7 text-xs w-20 text-right" /></td>
+                    <td className="px-2 py-1.5 border-r border-gray-100"><Input type="number" value={editForm.tollCost} onChange={e => setE("tollCost", e.target.value)} className="h-7 text-xs w-20 text-right" /></td>
+                    <td className="px-2 py-1.5 border-r border-gray-100"><Input value={editForm.memo} onChange={e => setE("memo", e.target.value)} className="h-7 text-xs w-28" /></td>
+                    <td className="px-2 py-1.5">
+                      <div className="flex gap-1 justify-center">
+                        <button onClick={saveEdit} className="p-1 text-blue-600 hover:bg-blue-100 rounded" title="저장"><Save size={13} /></button>
+                        <button onClick={() => setEditId(null)} className="p-1 text-gray-400 hover:bg-gray-100 rounded" title="취소"><X size={13} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  /* 일반 행 */
+                  <tr key={log.id} className="hover:bg-gray-50/70 transition-colors">
+                    <td className="px-3 py-2 text-xs text-gray-700 font-mono border-r border-gray-100">{log.date}</td>
+                    <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100">
+                      <span className="font-medium">{log.vehicle.name}</span>
+                      {log.vehicle.plateNo && <span className="ml-1 text-gray-400">({log.vehicle.plateNo})</span>}
+                    </td>
+                    <td className="px-3 py-2 text-gray-800 border-r border-gray-100">{log.driver}</td>
+                    <td className="px-3 py-2 text-gray-600 border-r border-gray-100">
+                      {log.departure || log.destination
+                        ? <>{log.departure || "-"} <span className="text-gray-400">→</span> {log.destination || "-"}</>
+                        : <span className="text-gray-300">-</span>}
+                    </td>
+                    <td className="px-3 py-2 text-gray-600 max-w-[140px] truncate border-r border-gray-100" title={log.purpose ?? ""}>{log.purpose || "-"}</td>
+                    <td className="px-3 py-2 text-gray-600 text-center border-r border-gray-100">{log.startTime || "-"}</td>
+                    <td className="px-3 py-2 text-gray-600 text-center border-r border-gray-100">{log.endTime || "-"}</td>
+                    <td className="px-3 py-2 text-gray-600 text-right border-r border-gray-100">{km(log.startMileage)}</td>
+                    <td className="px-3 py-2 text-gray-600 text-right border-r border-gray-100">{km(log.endMileage)}</td>
+                    <td className="px-3 py-2 font-medium text-right border-r border-gray-100">
+                      {log.startMileage != null && log.endMileage != null
+                        ? <span className="text-blue-600">{distance(log.startMileage, log.endMileage)}</span>
+                        : <span className="text-gray-300">-</span>}
+                    </td>
+                    <td className="px-3 py-2 text-gray-600 text-right border-r border-gray-100">{won(log.fuelCost)}</td>
+                    <td className="px-3 py-2 text-gray-600 text-right border-r border-gray-100">{won(log.tollCost)}</td>
+                    <td className="px-3 py-2 text-gray-500 text-xs max-w-[140px] truncate border-r border-gray-100" title={log.memo ?? ""}>{log.memo || "-"}</td>
+                    <td className="px-3 py-2 text-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button onClick={() => startEdit(log)} className="p-1 text-gray-400 hover:text-blue-600 rounded" title="수정"><Pencil size={13} /></button>
+                        <button onClick={() => handleDelete(log.id)} className="p-1 text-gray-300 hover:text-red-500 rounded" title="삭제"><Trash2 size={13} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              ))}
+            </tbody>
+          </table>
         </div>
+      )}
+
+      {/* 컬럼 필터 드롭다운 */}
+      {openFilter && filterAnchorEl && (
+        <ColumnFilterDropdown
+          anchorEl={filterAnchorEl}
+          values={distinctValues[openFilter] ?? []}
+          selected={colFilters[openFilter] ?? []}
+          onApply={(vals) => {
+            setColFilters(prev => ({ ...prev, [openFilter]: vals }));
+            setOpenFilter(null);
+            setFilterAnchorEl(null);
+          }}
+          onClose={() => { setOpenFilter(null); setFilterAnchorEl(null); }}
+        />
       )}
 
       {/* 등록 모달 */}
