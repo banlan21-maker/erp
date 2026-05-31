@@ -362,7 +362,13 @@ tfoot td{background:#e2e8f0;font-weight:bold}
                 <tr key={r.id} className="hover:bg-blue-50/30">
                   <td className="px-3 py-2.5 text-center border-r border-gray-200 text-gray-500">{i + 1}</td>
                   <td className="px-3 py-2.5 text-center border-r border-gray-200 font-mono">{r.usedDate.slice(5)} ({getDayStr(r.usedDate)})</td>
-                  <td className="px-3 py-2.5 text-center border-r border-gray-200"><span className="px-2 py-0.5 bg-slate-100 rounded font-mono font-semibold">{formatCard(r.cardNo)}</span></td>
+                  <td className="px-3 py-2.5 text-center border-r border-gray-200">
+                    {(() => {
+                      const owner = ownerByCardNo.get(r.cardNo);
+                      const cls = owner === "진교" ? "bg-blue-100 text-blue-700" : owner === "진동" ? "bg-red-100 text-red-700" : "bg-slate-100 text-gray-700";
+                      return <span className={`px-2 py-0.5 rounded font-mono font-semibold ${cls}`}>{formatCard(r.cardNo)}</span>;
+                    })()}
+                  </td>
                   <td className="px-3 py-2.5 text-center border-r border-gray-200">
                     {r.category ? (
                       <span className={`px-2 py-0.5 rounded text-xs font-semibold ${r.category === "사무실" ? "bg-indigo-100 text-indigo-700" : "bg-amber-100 text-amber-700"}`}>{r.category}</span>
@@ -499,7 +505,7 @@ tfoot td{background:#e2e8f0;font-weight:bold}
                       <>
                         <span className={`flex-1 text-sm font-semibold ${c.label === "사무실" || c.label ? "text-gray-700" : "text-red-400"}`}>
                           {c.label ? (
-                            <span className={`px-2 py-0.5 rounded text-xs ${c.label === "진교" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"}`}>{c.label}</span>
+                            <span className={`px-2 py-0.5 rounded text-xs ${c.label === "진교" ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-700"}`}>{c.label}</span>
                           ) : <span className="text-xs italic text-red-400">관리주체 미지정</span>}
                         </span>
                         <button onClick={() => startEditCard(c)} className="text-gray-400 hover:text-blue-600 p-1 rounded" title="관리주체 수정"><Pencil size={13} /></button>
