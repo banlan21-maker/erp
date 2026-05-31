@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import * as XLSX from "xlsx";
-import { CreditCard, Calendar, RefreshCw, Download, Printer, Plus, Pencil, Trash2, X, Save, Check } from "lucide-react";
+import { CreditCard, Calendar, RefreshCw, Download, Printer, Plus, Pencil, Trash2, X, Save, Check, Filter } from "lucide-react";
+import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
 
 const DAYS = ["일", "월", "화", "수", "목", "금", "토"];
 function getNowKST() { return new Date(Date.now() + 9 * 3600000); }
@@ -52,7 +53,70 @@ export default function PaymentMain() {
   useEffect(() => { loadRows(); }, [loadRows]);
 
   const ym = `${year}-${String(month).padStart(2, "0")}`;
-  const totalAmount = rows.reduce((s, r) => s + r.amount, 0);
+
+  /* ── 컬럼 필터 ── */
+  const COLUMNS = useMemo(() => [
+    { key: "usedDate", label: "사용일자" },
+    { key: "cardNo",   label: "카드번호" },
+    { key: "category", label: "구분" },
+    { key: "detail",   label: "사용내역" },
+    { key: "amount",   label: "금액" },
+    { key: "userName", label: "사용자" },
+    { key: "confirmed",label: "확인" },
+    { key: "memo",     label: "비고" },
+  ] as const, []);
+
+  const colValue = useCallback((r: Usage, col: string): string => {
+    switch (col) {
+      case "usedDate":  return r.usedDate;
+      case "cardNo":    return r.cardNo;
+      case "category":  return r.category ?? "";
+      case "detail":    return r.detail ?? "";
+      case "amount":    return String(r.amount);
+      case "userName":  return r.userName ?? "";
+      case "confirmed": return r.confirmed ? "확인" : "미확인";
+      case "memo":      return r.memo ?? "";
+      default: return "";
+    }
+  }, []);
+
+  const [colFilters, setColFilters] = useState<Record<string, string[]>>({});
+  const [openFilter, setOpenFilter] = useState<string | null>(null);
+  const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
+
+  // 월 바뀌면 필터 초기화
+  useEffect(() => { setColFilters({}); }, [year, month]);
+
+  const distinctValues = useMemo(() => {
+    const result: Record<string, FilterValue[]> = {};
+    for (const c of COLUMNS) {
+      const set = new Set<string>();
+      let hasEmpty = false;
+      for (const r of rows) {
+        const v = colValue(r, c.key);
+        if (v) set.add(v);
+        else hasEmpty = true;
+      }
+      const arr: FilterValue[] = Array.from(set).sort((a, b) => a.localeCompare(b, "ko")).map(v => ({ value: v, label: v }));
+      if (hasEmpty) arr.push({ value: "__EMPTY__", label: "(값 없음)" });
+      result[c.key] = arr;
+    }
+    return result;
+  }, [COLUMNS, rows, colValue]);
+
+  const filteredRows = useMemo(() => {
+    return rows.filter(r =>
+      Object.entries(colFilters).every(([col, values]) => {
+        if (values.length === 0) return true;
+        const v = colValue(r, col);
+        if (values.includes("__EMPTY__") && !v) return true;
+        return values.includes(v);
+      })
+    );
+  }, [rows, colFilters, colValue]);
+
+  const activeFilterCount = Object.values(colFilters).filter(v => v.length > 0).length;
+  const totalAmount = filteredRows.reduce((s, r) => s + r.amount, 0);
 
   /* ── 입력/수정 모달 ── */
   const [modal, setModal] = useState<{ mode: "add" | "edit"; id?: string } | null>(null);
@@ -116,24 +180,25 @@ export default function PaymentMain() {
 
   /* ── 엑셀 ── */
   const downloadExcel = () => {
-    if (rows.length === 0) { alert("다운로드할 데이터가 없습니다."); return; }
+    if (filteredRows.length === 0) { alert("다운로드할 데이터가 없습니다."); return; }
+    const filterTag = activeFilterCount > 0 ? " (필터)" : "";
     const data = [
-      [`법인카드 사용대장 ${ym}`],
+      [`법인카드 사용대장 ${ym}${filterTag}`],
       ["NO", "사용일자", "요일", "카드번호", "구분", "사용내역", "금액", "사용자", "확인", "비고"],
-      ...rows.map((r, i) => [i + 1, r.usedDate, getDayStr(r.usedDate), r.cardNo, r.category ?? "", r.detail, r.amount, r.userName ?? "", r.confirmed ? "확인" : "", r.memo ?? ""]),
+      ...filteredRows.map((r, i) => [i + 1, r.usedDate, getDayStr(r.usedDate), r.cardNo, r.category ?? "", r.detail, r.amount, r.userName ?? "", r.confirmed ? "확인" : "", r.memo ?? ""]),
       ["", "", "", "", "", "합계", totalAmount, "", "", ""],
     ];
     const ws = XLSX.utils.aoa_to_sheet(data);
     ws["!cols"] = [{ wch: 5 }, { wch: 12 }, { wch: 5 }, { wch: 10 }, { wch: 8 }, { wch: 28 }, { wch: 12 }, { wch: 10 }, { wch: 6 }, { wch: 20 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "법인카드사용대장");
-    XLSX.writeFile(wb, `법인카드사용대장_${ym}.xlsx`);
+    XLSX.writeFile(wb, `법인카드사용대장_${activeFilterCount > 0 ? "필터" : "전체"}_${ym}.xlsx`);
   };
 
   /* ── 인쇄 ── */
   const printReport = () => {
-    if (rows.length === 0) { alert("출력할 데이터가 없습니다."); return; }
-    const body = rows.map((r, i) => `
+    if (filteredRows.length === 0) { alert("출력할 데이터가 없습니다."); return; }
+    const body = filteredRows.map((r, i) => `
       <tr class="${i % 2 ? "even" : ""}">
         <td>${i + 1}</td><td>${r.usedDate}</td><td>${getDayStr(r.usedDate)}</td>
         <td>${r.cardNo}</td><td>${r.category ?? ""}</td><td class="left">${r.detail}</td>
@@ -157,7 +222,7 @@ tfoot td{background:#e2e8f0;font-weight:bold}
 @page{margin:12mm;size:A4 landscape}
 </style></head><body>
 <div class="header"><h1>법인카드 사용대장</h1>
-<p class="meta">대상 월: ${ym} | 출력일시: ${new Date().toLocaleString("ko-KR")} | 총 ${rows.length}건</p></div>
+<p class="meta">대상 월: ${ym}${activeFilterCount > 0 ? " (필터 적용)" : ""} | 출력일시: ${new Date().toLocaleString("ko-KR")} | 총 ${filteredRows.length}건</p></div>
 <table><thead><tr>
 <th style="width:4%">NO</th><th style="width:10%">사용일자</th><th style="width:4%">요일</th>
 <th style="width:8%">카드번호</th><th style="width:7%">구분</th><th style="width:26%">사용내역</th><th style="width:11%">금액</th>
@@ -199,7 +264,7 @@ tfoot td{background:#e2e8f0;font-weight:bold}
             <button onClick={loadRows} className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-500"><RefreshCw size={14} /></button>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600 mr-1">합계 <strong className="text-blue-700">{totalAmount.toLocaleString()}원</strong> ({rows.length}건)</span>
+            <span className="text-sm text-gray-600 mr-1">합계 <strong className="text-blue-700">{totalAmount.toLocaleString()}원</strong> ({filteredRows.length}{activeFilterCount > 0 ? `/${rows.length}` : ""}건)</span>
             <button onClick={openAdd} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
               <Plus size={14} /> 사용 등록
             </button>
@@ -212,20 +277,38 @@ tfoot td{background:#e2e8f0;font-weight:bold}
           </div>
         </div>
 
+        {/* 필터 적용 표시줄 */}
+        {activeFilterCount > 0 && (
+          <div className="mx-4 -mt-2 mb-3 flex items-center gap-2 text-xs text-blue-700 bg-blue-50 border border-blue-200 px-3 py-2 rounded-lg">
+            <Filter size={12} fill="currentColor" />
+            <span>필터 {activeFilterCount}개 적용 — {filteredRows.length} / {rows.length}건</span>
+            <button onClick={() => setColFilters({})} className="ml-auto text-blue-600 hover:underline">필터 초기화</button>
+          </div>
+        )}
+
         {/* 테이블 */}
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-center whitespace-nowrap">
             <thead className="bg-[#f1f5f9] border-b-2 border-gray-300 text-gray-600">
               <tr>
                 <th className="px-3 py-2.5 text-xs font-semibold border-r border-gray-300">NO</th>
-                <th className="px-3 py-2.5 text-xs font-semibold border-r border-gray-300">사용일자</th>
-                <th className="px-3 py-2.5 text-xs font-semibold border-r border-gray-300">카드번호</th>
-                <th className="px-3 py-2.5 text-xs font-semibold border-r border-gray-300">구분</th>
-                <th className="px-3 py-2.5 text-xs font-semibold border-r border-gray-300">사용내역</th>
-                <th className="px-3 py-2.5 text-xs font-semibold border-r border-gray-300">금액</th>
-                <th className="px-3 py-2.5 text-xs font-semibold border-r border-gray-300">사용자</th>
-                <th className="px-3 py-2.5 text-xs font-semibold border-r border-gray-300">확인</th>
-                <th className="px-3 py-2.5 text-xs font-semibold border-r border-gray-300">비고</th>
+                {COLUMNS.map(c => {
+                  const active = (colFilters[c.key]?.length ?? 0) > 0;
+                  return (
+                    <th key={c.key} className="px-3 py-2.5 text-xs font-semibold border-r border-gray-300">
+                      <div className="flex items-center justify-center gap-1">
+                        <span>{c.label}</span>
+                        <button
+                          onClick={(e) => { setOpenFilter(c.key); setFilterAnchorEl(e.currentTarget); }}
+                          className={`rounded p-0.5 hover:bg-gray-200 ${active ? "text-blue-600" : "text-gray-400"}`}
+                          title={active ? `필터 적용 (${colFilters[c.key].length}개)` : "필터"}
+                        >
+                          <Filter size={11} fill={active ? "currentColor" : "none"} />
+                        </button>
+                      </div>
+                    </th>
+                  );
+                })}
                 <th className="px-3 py-2.5 text-xs font-semibold">관리</th>
               </tr>
             </thead>
@@ -234,7 +317,9 @@ tfoot td{background:#e2e8f0;font-weight:bold}
                 <tr><td colSpan={10} className="py-12 text-gray-400"><RefreshCw className="animate-spin mx-auto mb-2 text-blue-500" size={24} />불러오는 중...</td></tr>
               ) : rows.length === 0 ? (
                 <tr><td colSpan={10} className="py-16 text-gray-400">{ym} 사용내역이 없습니다.</td></tr>
-              ) : rows.map((r, i) => (
+              ) : filteredRows.length === 0 ? (
+                <tr><td colSpan={10} className="py-16 text-gray-400">필터 조건에 맞는 내역이 없습니다.</td></tr>
+              ) : filteredRows.map((r, i) => (
                 <tr key={r.id} className="hover:bg-blue-50/30">
                   <td className="px-3 py-2.5 text-center border-r border-gray-200 text-gray-500">{i + 1}</td>
                   <td className="px-3 py-2.5 text-center border-r border-gray-200 font-mono">{r.usedDate.slice(5)} ({getDayStr(r.usedDate)})</td>
@@ -265,6 +350,21 @@ tfoot td{background:#e2e8f0;font-weight:bold}
             </tbody>
           </table>
         </div>
+
+        {/* 컬럼 필터 드롭다운 */}
+        {openFilter && filterAnchorEl && (
+          <ColumnFilterDropdown
+            anchorEl={filterAnchorEl}
+            values={distinctValues[openFilter] ?? []}
+            selected={colFilters[openFilter] ?? []}
+            onApply={(vals) => {
+              setColFilters(prev => ({ ...prev, [openFilter]: vals }));
+              setOpenFilter(null);
+              setFilterAnchorEl(null);
+            }}
+            onClose={() => { setOpenFilter(null); setFilterAnchorEl(null); }}
+          />
+        )}
       </div>
 
       {/* 입력/수정 모달 */}
