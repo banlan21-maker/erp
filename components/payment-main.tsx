@@ -53,6 +53,15 @@ export default function PaymentMain() {
   useEffect(() => { loadRows(); }, [loadRows]);
 
   const ym = `${year}-${String(month).padStart(2, "0")}`;
+  const ownerByCardNo = useMemo(() => {
+    const m = new Map<string, string | null>();
+    for (const c of cards) m.set(c.cardNo, c.label);
+    return m;
+  }, [cards]);
+  const formatCard = (cardNo: string) => {
+    const owner = ownerByCardNo.get(cardNo);
+    return owner ? `${cardNo}-${owner}` : cardNo;
+  };
 
   /* ── 컬럼 필터 ── */
   const COLUMNS = useMemo(() => [
@@ -69,7 +78,10 @@ export default function PaymentMain() {
   const colValue = useCallback((r: Usage, col: string): string => {
     switch (col) {
       case "usedDate":  return r.usedDate;
-      case "cardNo":    return r.cardNo;
+      case "cardNo":    {
+        const owner = ownerByCardNo.get(r.cardNo);
+        return owner ? `${r.cardNo}-${owner}` : r.cardNo;
+      }
       case "category":  return r.category ?? "";
       case "detail":    return r.detail ?? "";
       case "amount":    return String(r.amount);
@@ -78,7 +90,7 @@ export default function PaymentMain() {
       case "memo":      return r.memo ?? "";
       default: return "";
     }
-  }, []);
+  }, [ownerByCardNo]);
 
   const [colFilters, setColFilters] = useState<Record<string, string[]>>({});
   const [openFilter, setOpenFilter] = useState<string | null>(null);
@@ -156,19 +168,46 @@ export default function PaymentMain() {
   };
 
   /* ── 카드 관리 모달 ── */
+  const CARD_OWNERS = ["진교", "진동"] as const;
+  type CardOwner = (typeof CARD_OWNERS)[number];
   const [cardModal, setCardModal] = useState(false);
   const [newCardNo, setNewCardNo] = useState("");
+  const [newCardOwner, setNewCardOwner] = useState<CardOwner | "">("");
   const [cardSaving, setCardSaving] = useState(false);
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
+  const [editingCardOwner, setEditingCardOwner] = useState<CardOwner | "">("");
+
+  const cardLabel = (c: { cardNo: string; label: string | null }) => c.label ? `${c.cardNo}-${c.label}` : `${c.cardNo}-(미지정)`;
 
   const addCard = async () => {
     if (!/^\d{4}$/.test(newCardNo)) { alert("카드번호 4자리를 입력하세요."); return; }
+    if (!newCardOwner) { alert("관리주체(진교/진동)를 선택하세요."); return; }
     setCardSaving(true);
     try {
-      const r = await fetch("/api/card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cardNo: newCardNo }) });
+      const r = await fetch("/api/card", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cardNo: newCardNo, label: newCardOwner }),
+      });
       const d = await r.json();
       if (!d.success) { alert(d.error ?? "추가 실패"); return; }
-      setNewCardNo(""); loadCards();
+      setNewCardNo(""); setNewCardOwner(""); loadCards();
     } finally { setCardSaving(false); }
+  };
+
+  const startEditCard = (c: Card) => {
+    setEditingCardId(c.id);
+    setEditingCardOwner((c.label as CardOwner) ?? "");
+  };
+
+  const saveEditCard = async (cardNo: string) => {
+    if (!editingCardOwner) { alert("관리주체(진교/진동)를 선택하세요."); return; }
+    const r = await fetch("/api/card", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cardNo, label: editingCardOwner }),
+    });
+    const d = await r.json();
+    if (!d.success) { alert(d.error ?? "수정 실패"); return; }
+    setEditingCardId(null); setEditingCardOwner(""); loadCards();
   };
 
   const deleteCard = async (cardNo: string) => {
@@ -185,7 +224,7 @@ export default function PaymentMain() {
     const data = [
       [`법인카드 사용대장 ${ym}${filterTag}`],
       ["NO", "사용일자", "요일", "카드번호", "구분", "사용내역", "금액", "사용자", "확인", "비고"],
-      ...filteredRows.map((r, i) => [i + 1, r.usedDate, getDayStr(r.usedDate), r.cardNo, r.category ?? "", r.detail, r.amount, r.userName ?? "", r.confirmed ? "확인" : "", r.memo ?? ""]),
+      ...filteredRows.map((r, i) => [i + 1, r.usedDate, getDayStr(r.usedDate), formatCard(r.cardNo), r.category ?? "", r.detail, r.amount, r.userName ?? "", r.confirmed ? "확인" : "", r.memo ?? ""]),
       ["", "", "", "", "", "합계", totalAmount, "", "", ""],
     ];
     const ws = XLSX.utils.aoa_to_sheet(data);
@@ -201,7 +240,7 @@ export default function PaymentMain() {
     const body = filteredRows.map((r, i) => `
       <tr class="${i % 2 ? "even" : ""}">
         <td>${i + 1}</td><td>${r.usedDate}</td><td>${getDayStr(r.usedDate)}</td>
-        <td>${r.cardNo}</td><td>${r.category ?? ""}</td><td class="left">${r.detail}</td>
+        <td>${formatCard(r.cardNo)}</td><td>${r.category ?? ""}</td><td class="left">${r.detail}</td>
         <td class="num">${r.amount.toLocaleString()}</td>
         <td>${r.userName ?? ""}</td><td>${r.confirmed ? "✔" : ""}</td>
         <td class="left">${r.memo ?? ""}</td>
@@ -323,7 +362,7 @@ tfoot td{background:#e2e8f0;font-weight:bold}
                 <tr key={r.id} className="hover:bg-blue-50/30">
                   <td className="px-3 py-2.5 text-center border-r border-gray-200 text-gray-500">{i + 1}</td>
                   <td className="px-3 py-2.5 text-center border-r border-gray-200 font-mono">{r.usedDate.slice(5)} ({getDayStr(r.usedDate)})</td>
-                  <td className="px-3 py-2.5 text-center border-r border-gray-200"><span className="px-2 py-0.5 bg-slate-100 rounded font-mono font-semibold">{r.cardNo}</span></td>
+                  <td className="px-3 py-2.5 text-center border-r border-gray-200"><span className="px-2 py-0.5 bg-slate-100 rounded font-mono font-semibold">{formatCard(r.cardNo)}</span></td>
                   <td className="px-3 py-2.5 text-center border-r border-gray-200">
                     {r.category ? (
                       <span className={`px-2 py-0.5 rounded text-xs font-semibold ${r.category === "사무실" ? "bg-indigo-100 text-indigo-700" : "bg-amber-100 text-amber-700"}`}>{r.category}</span>
@@ -384,7 +423,7 @@ tfoot td{background:#e2e8f0;font-weight:bold}
                 <div><label className="text-xs font-semibold text-gray-600 mb-1 block">카드번호</label>
                   <select value={form.cardNo} onChange={e => setForm({ ...form, cardNo: e.target.value })} className="w-full h-9 px-3 border border-gray-300 rounded-lg text-sm bg-white">
                     <option value="">선택...</option>
-                    {cards.map(c => <option key={c.id} value={c.cardNo}>{c.cardNo}{c.label ? ` (${c.label})` : ""}</option>)}
+                    {cards.map(c => <option key={c.id} value={c.cardNo}>{cardLabel(c)}</option>)}
                   </select></div>
               </div>
               <div>
@@ -430,28 +469,61 @@ tfoot td{background:#e2e8f0;font-weight:bold}
       {/* 카드 관리 모달 */}
       {cardModal && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setCardModal(false)}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2"><CreditCard size={16} className="text-blue-500" /> 법인카드 관리</h3>
               <button onClick={() => setCardModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
             <div className="p-5 space-y-3">
-              <div className="space-y-2 max-h-60 overflow-y-auto">
+              <div className="space-y-1.5 max-h-72 overflow-y-auto">
                 {cards.length === 0 ? (
                   <p className="text-sm text-gray-400 text-center py-4">등록된 카드가 없습니다.</p>
                 ) : cards.map(c => (
-                  <div key={c.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
-                    <span className="font-mono font-bold text-gray-800">{c.cardNo}</span>
-                    <button onClick={() => deleteCard(c.cardNo)} className="text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
+                  <div key={c.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 gap-2">
+                    <span className="font-mono font-bold text-gray-800 w-14 flex-shrink-0">{c.cardNo}</span>
+                    {editingCardId === c.id ? (
+                      <>
+                        <select value={editingCardOwner} onChange={e => setEditingCardOwner(e.target.value as CardOwner | "")}
+                          className="flex-1 h-8 px-2 border border-gray-300 rounded text-sm bg-white">
+                          <option value="">관리주체 선택</option>
+                          {CARD_OWNERS.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                        <button onClick={() => saveEditCard(c.cardNo)} className="text-blue-600 hover:bg-blue-50 p-1 rounded" title="저장">
+                          <Save size={14} />
+                        </button>
+                        <button onClick={() => setEditingCardId(null)} className="text-gray-400 hover:bg-gray-100 p-1 rounded" title="취소">
+                          <X size={14} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className={`flex-1 text-sm font-semibold ${c.label === "사무실" || c.label ? "text-gray-700" : "text-red-400"}`}>
+                          {c.label ? (
+                            <span className={`px-2 py-0.5 rounded text-xs ${c.label === "진교" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"}`}>{c.label}</span>
+                          ) : <span className="text-xs italic text-red-400">관리주체 미지정</span>}
+                        </span>
+                        <button onClick={() => startEditCard(c)} className="text-gray-400 hover:text-blue-600 p-1 rounded" title="관리주체 수정"><Pencil size={13} /></button>
+                        <button onClick={() => deleteCard(c.cardNo)} className="text-gray-300 hover:text-red-500 p-1 rounded" title="삭제"><Trash2 size={14} /></button>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
-              <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
-                <input value={newCardNo} onChange={e => setNewCardNo(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                  placeholder="끝 4자리" maxLength={4} className="flex-1 h-9 px-3 border border-gray-300 rounded-lg text-sm font-mono" />
-                <button onClick={addCard} disabled={cardSaving} className="flex items-center gap-1 px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
-                  <Plus size={14} /> 추가
-                </button>
+              <div className="pt-2 border-t border-gray-100 space-y-2">
+                <p className="text-xs font-semibold text-gray-600">새 카드 추가</p>
+                <div className="flex items-center gap-2">
+                  <input value={newCardNo} onChange={e => setNewCardNo(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    placeholder="끝 4자리" maxLength={4} className="w-20 h-9 px-3 border border-gray-300 rounded-lg text-sm font-mono" />
+                  <span className="text-gray-400">-</span>
+                  <select value={newCardOwner} onChange={e => setNewCardOwner(e.target.value as CardOwner | "")}
+                    className="flex-1 h-9 px-2 border border-gray-300 rounded-lg text-sm bg-white">
+                    <option value="">관리주체 선택</option>
+                    {CARD_OWNERS.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                  <button onClick={addCard} disabled={cardSaving} className="flex items-center gap-1 px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                    <Plus size={14} /> 추가
+                  </button>
+                </div>
               </div>
             </div>
           </div>
