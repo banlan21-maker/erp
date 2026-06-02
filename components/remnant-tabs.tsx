@@ -1,13 +1,9 @@
-"use client";
+﻿"use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
-import {
-  RefreshCw, X, Save, AlertTriangle, Edit2,
-  Package, Archive, Filter, StickyNote, Trash2, Search, RotateCcw, Plus,
-} from "lucide-react";
+import { useState, useMemo } from "react";
+import { X, Save, AlertTriangle, Edit2, RotateCcw, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import ColumnFilterDropdown, { type FilterValue } from "./column-filter-dropdown";
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -17,7 +13,7 @@ interface ProjectOption {
   projectName: string;
 }
 
-interface Remnant {
+export interface Remnant {
   id: string;
   remnantNo: string;
   type: string;
@@ -39,6 +35,9 @@ interface Remnant {
   reservedFor: string | null;
   registeredBy: string;
   createdAt: string;
+  // 통합 리스트에서 사용 — 등록잔재의 발생판번호/사용호선·블록 표시용
+  heatNo?: string | null;
+  assignedToLists?: { block: string | null; project: { projectCode: string } | null }[];
 }
 
 // ─── 상수 ──────────────────────────────────────────────────────────────────
@@ -563,7 +562,7 @@ export function RemnantRegisterTab({ projects }: { projects: ProjectOption[] }) 
 
 // ─── 수정 모달 ─────────────────────────────────────────────────────────────
 
-function EditModal({ remnant, onClose, onSaved, onPermanentDeleted }: { remnant: Remnant; onClose: () => void; onSaved: () => void; onPermanentDeleted?: () => void }) {
+export function EditModal({ remnant, onClose, onSaved, onPermanentDeleted }: { remnant: Remnant; onClose: () => void; onSaved: () => void; onPermanentDeleted?: () => void }) {
   const [form, setForm] = useState({
     status:    remnant.status,
     location:  remnant.location ?? "",
@@ -677,7 +676,7 @@ function EditModal({ remnant, onClose, onSaved, onPermanentDeleted }: { remnant:
 
 // ─── 잔여분 재등록 모달 ────────────────────────────────────────────────────
 
-function ReregisterModal({ remnant, onClose, onSaved }: { remnant: Remnant; onClose: () => void; onSaved: () => void }) {
+export function ReregisterModal({ remnant, onClose, onSaved }: { remnant: Remnant; onClose: () => void; onSaved: () => void }) {
   const [weight,   setWeight]   = useState("");
   const [location, setLocation] = useState(remnant.location ?? "");
   const [saving,   setSaving]   = useState(false);
@@ -757,9 +756,9 @@ function DetailRow({ label, value, sub }: { label: string; value: string; sub?: 
   );
 }
 
-function DetailModal({
-  remnant, onClose, onEdit, onReregister, onExhaust,
-}: { remnant: Remnant; onClose: () => void; onEdit: () => void; onReregister: () => void; onExhaust: () => void }) {
+export function DetailModal({
+  remnant, onClose, onEdit, onReregister,
+}: { remnant: Remnant; onClose: () => void; onEdit: () => void; onReregister: () => void }) {
   const src = sourceInfo(remnant);
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
@@ -816,359 +815,6 @@ function DetailModal({
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-// ─── 잔재 관리 탭 (목록) ───────────────────────────────────────────────────
-
-export function RemnantManageTab({ projects: _projects, typeFilter, titleLabel }: { projects: ProjectOption[]; typeFilter?: "REMNANT" | "SURPLUS" | "REGISTERED"; titleLabel?: string }) {
-  const [remnants,    setRemnants]    = useState<Remnant[]>([]);
-  const [loading,     setLoading]     = useState(true);
-  const [search,      setSearch]      = useState("");
-  const [detailItem,  setDetailItem]  = useState<Remnant | null>(null);
-  const [editItem,    setEditItem]    = useState<Remnant | null>(null);
-  const [reregItem,   setReregItem]   = useState<Remnant | null>(null);
-
-  // 엑셀 스타일 컬럼 필터 (기본값: 재고있음만 노출)
-  const [colFilters,     setColFilters]     = useState<Record<string, string[]>>({ status: ["IN_STOCK"] });
-  const [openFilter,     setOpenFilter]     = useState<string | null>(null);
-  const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
-  const [distinctValues, setDistinctValues] = useState<Record<string, FilterValue[]>>({});
-  const [page,           setPage]           = useState(1);
-  const [total,          setTotal]          = useState(0);
-  const [totalPages,     setTotalPages]     = useState(1);
-  const PAGE_SIZE = 50;
-
-  // ─── distinct 값 로드 ────────────────────────────────────────────────────
-  const loadDistinct = useCallback(async () => {
-    const url = typeFilter ? `/api/remnants/distinct?type=${typeFilter}` : "/api/remnants/distinct";
-    const res = await fetch(url);
-    if (res.ok) setDistinctValues(await res.json());
-  }, [typeFilter]);
-
-  useEffect(() => { loadDistinct(); }, [loadDistinct]);
-
-  // ─── 서버사이드 필터 + 페이지네이션 데이터 로드 ──────────────────────────
-  const fetchRemnants = useCallback(async () => {
-    setLoading(true);
-    try {
-      const p = new URLSearchParams();
-      p.set("page", String(page));
-      if (typeFilter) p.set("type", typeFilter);
-      if (search) p.set("search", search);
-      const cf = colFilters;
-      if (cf.type?.length)        p.set("types",        cf.type.join(","));
-      if (cf.shape?.length)       p.set("shapes",       cf.shape.join(","));
-      if (cf.material?.length)    p.set("materials",    cf.material.join(","));
-      if (cf.thickness?.length)   p.set("thicknesses",  cf.thickness.join(","));
-      if (cf.width1?.length)      p.set("widths1",      cf.width1.join(","));
-      if (cf.length1?.length)     p.set("lengths1",     cf.length1.join(","));
-      if (cf.width2?.length)      p.set("widths2",      cf.width2.join(","));
-      if (cf.length2?.length)     p.set("lengths2",     cf.length2.join(","));
-      if (cf.weight?.length)      p.set("weights",      cf.weight.join(","));
-      if (cf.status?.length)      p.set("statuses",     cf.status.join(","));
-      if (cf.location?.length)    p.set("locations",    cf.location.join(","));
-      if (cf.source?.length)      p.set("sources",      cf.source.join(","));
-
-      const res  = await fetch(`/api/remnants?${p}`);
-      const data = await res.json();
-      if (data.data) {
-        setRemnants(data.data);
-        setTotal(data.total ?? data.data.length);
-        setTotalPages(data.totalPages ?? 1);
-      }
-    } catch { /* ignore */ }
-    finally { setLoading(false); }
-  }, [page, search, colFilters, typeFilter]);
-
-  useEffect(() => { fetchRemnants(); }, [fetchRemnants]);
-
-  // 필터/검색 변경 시 첫 페이지로
-  useEffect(() => { setPage(1); }, [colFilters, search]);
-
-  const hasAnyColFilter = Object.values(colFilters).some(v => v && v.length > 0);
-  const paginated = remnants; // 서버에서 이미 페이지네이션 처리됨
-
-  const handleExhaust = async (id: string, e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    if (!confirm("이 잔재를 소진(삭제) 처리하시겠습니까?")) return;
-    await fetch(`/api/remnants/${id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "EXHAUSTED" }),
-    });
-    setDetailItem(null);
-    fetchRemnants();
-  };
-
-  // ─── 컬럼 헤더 (필터 버튼 포함) ──────────────────────────────────────────
-  const ColHeader = ({ col, label, align = "left" }: { col: string; label: string; align?: "left" | "right" | "center" }) => {
-    const active = (colFilters[col]?.length ?? 0) > 0;
-    const justify = align === "right" ? "justify-end" : align === "center" ? "justify-center" : "justify-start";
-    return (
-      <th className={`px-3 py-2 font-medium text-gray-600 text-[11px] ${align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left"}`}>
-        <div className={`flex items-center gap-0.5 ${justify}`}>
-          <span>{label}</span>
-          <button
-            onClick={(e) => { setOpenFilter(col); setFilterAnchorEl(e.currentTarget); }}
-            className={`rounded hover:bg-gray-200 p-0.5 ${active ? "text-blue-500" : "text-gray-400"}`}
-          >
-            <Filter size={10} fill={active ? "currentColor" : "none"} />
-          </button>
-        </div>
-      </th>
-    );
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* 목록 카드 */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        {/* 헤더: 검색 + 필터초기화 + 새로고침 */}
-        <div className="px-4 py-3 border-b bg-gray-50 flex items-center gap-3 flex-wrap">
-          <Package size={14} className="text-blue-500 shrink-0" />
-          <span className="text-sm font-semibold text-gray-700 shrink-0">
-            {titleLabel ?? "잔재 목록"} ({total}건)
-          </span>
-          <div className="relative flex-1 max-w-xs">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="잔재번호·재질·호선·위치 검색"
-              className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-            />
-          </div>
-          {hasAnyColFilter && (
-            <button
-              onClick={() => setColFilters({})}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50"
-            >
-              <X size={12} /> 필터 전체 초기화
-            </button>
-          )}
-          <Button variant="outline" size="sm" onClick={fetchRemnants} className="text-xs shrink-0 ml-auto">
-            <RefreshCw size={12} className="mr-1" /> 새로고침
-          </Button>
-        </div>
-
-        {loading ? (
-          <div className="flex justify-center py-12 text-gray-400 gap-2">
-            <RefreshCw className="animate-spin" size={18} /> 불러오는 중...
-          </div>
-        ) : remnants.length === 0 ? (
-          <div className="text-center py-12 text-gray-400">
-            <Package size={32} className="mx-auto mb-2 opacity-30" />
-            <p className="text-sm">{search || hasAnyColFilter ? "검색 결과가 없습니다." : "해당하는 잔재가 없습니다."}</p>
-          </div>
-        ) : (
-          <>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left whitespace-nowrap">
-              <thead className="bg-gray-50 border-b text-[11px] text-gray-500 uppercase tracking-wide">
-                <tr>
-                  <th className="px-3 py-2 font-medium text-gray-600 text-[11px] text-left">잔재번호</th>
-                  {!typeFilter && <ColHeader col="type" label="종류" />}
-                  <ColHeader col="shape"     label="형태"  />
-                  <ColHeader col="material"  label="재질"  />
-                  <ColHeader col="thickness" label="두께"  align="right" />
-                  <ColHeader col="width1"    label="W1"    align="right" />
-                  <ColHeader col="length1"   label="L1"    align="right" />
-                  <ColHeader col="width2"    label="W2"    align="right" />
-                  <ColHeader col="length2"   label="L2"    align="right" />
-                  <ColHeader col="weight" label="중량" align="right" />
-                  <ColHeader col="source" label="출처" />
-                  <ColHeader col="location"  label="위치"  />
-                  <ColHeader col="status"    label="상태"  />
-                  <th className="px-3 py-2.5 text-center">메모</th>
-                  <th className="px-4 py-2.5 text-center">설정</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {paginated.map(r => {
-                  const src = sourceInfo(r);
-                  return (
-                    <tr key={r.id}
-                      onClick={() => setDetailItem(r)}
-                      className="hover:bg-blue-50/40 cursor-pointer transition-colors">
-
-                      {/* 잔재번호 */}
-                      <td className="px-4 py-3">
-                        <p className="font-mono text-xs font-bold text-gray-800">{r.remnantNo}</p>
-                        <p className="text-[10px] text-gray-400 mt-0.5">
-                          {new Date(r.createdAt).toLocaleDateString("ko-KR")} · {r.registeredBy}
-                        </p>
-                      </td>
-
-                      {/* 종류 */}
-                      {!typeFilter && (
-                        <td className="px-3 py-3">
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${TYPE_COLOR[r.type]}`}>
-                            {TYPE_LABEL[r.type]}
-                          </span>
-                        </td>
-                      )}
-
-                      {/* 형태 */}
-                      <td className="px-3 py-3 text-xs text-gray-600">{SHAPE_LABEL[r.shape] ?? r.shape}</td>
-
-                      {/* 재질 */}
-                      <td className="px-3 py-3 text-xs font-semibold text-gray-800">{r.material}</td>
-
-                      {/* 두께 (t 제거, 숫자만) */}
-                      <td className="px-3 py-3 text-xs text-gray-600 text-right font-mono">{r.thickness}</td>
-
-                      {/* W1 / L1 / W2 / L2 개별 컬럼 */}
-                      <td className="px-3 py-3 text-xs text-gray-600 text-right font-mono">{r.width1  ?? <span className="text-gray-300">-</span>}</td>
-                      <td className="px-3 py-3 text-xs text-gray-600 text-right font-mono">{r.length1 ?? <span className="text-gray-300">-</span>}</td>
-                      <td className="px-3 py-3 text-xs text-gray-600 text-right font-mono">{r.width2  ?? <span className="text-gray-300">-</span>}</td>
-                      <td className="px-3 py-3 text-xs text-gray-600 text-right font-mono">{r.length2 ?? <span className="text-gray-300">-</span>}</td>
-
-                      {/* 중량 */}
-                      <td className="px-3 py-3 text-xs font-bold text-gray-800 text-right">{r.weight.toFixed(1)} kg</td>
-
-                      {/* 출처 */}
-                      <td className="px-3 py-3 text-xs text-gray-500">
-                        <p>{src.vessel}</p>
-                        {src.block && <p className="text-[10px] text-gray-400">블록 {src.block}</p>}
-                      </td>
-
-                      {/* 위치 */}
-                      <td className="px-3 py-3 text-xs text-gray-500">{r.location || "-"}</td>
-
-                      {/* 상태 */}
-                      <td className="px-3 py-3">
-                        {(() => { const d = remnantDisp(r); return (
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold inline-flex items-center gap-1 ${d.cls}`}>
-                            {d.label}{d.reservedFor && <span className="font-mono text-[9px] opacity-80">{d.reservedFor}</span>}
-                          </span>
-                        ); })()}
-                      </td>
-
-                      {/* 메모 */}
-                      <td className="px-3 py-3 text-center">
-                        {r.memo
-                          ? (
-                            <span title={r.memo}
-                              className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-amber-100 text-amber-600 hover:bg-amber-200 transition-colors cursor-help">
-                              <StickyNote size={13} />
-                            </span>
-                          )
-                          : <span className="text-[10px] text-gray-300">없음</span>
-                        }
-                      </td>
-
-                      {/* 설정 버튼 */}
-                      <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            onClick={e => { e.stopPropagation(); setEditItem(r); }}
-                            className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors">
-                            <Edit2 size={11} /> 수정
-                          </button>
-                          {r.status !== "EXHAUSTED" && (
-                            <button
-                              onClick={e => { e.stopPropagation(); setReregItem(r); }}
-                              className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition-colors">
-                              <RotateCcw size={11} /> 잔여
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {/* 페이지네이션 */}
-
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-2.5 border-t bg-gray-50 text-xs text-gray-500">
-              <span>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} / {total}건</span>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setPage(1)}
-                  disabled={page === 1}
-                  className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
-                >«</button>
-                <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
-                >‹</button>
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  const start = Math.max(1, Math.min(page - 2, totalPages - 4));
-                  const p = start + i;
-                  return (
-                    <button
-                      key={p}
-                      onClick={() => setPage(p)}
-                      className={`px-2.5 py-1 rounded border text-xs ${p === page ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 hover:bg-gray-100"}`}
-                    >{p}</button>
-                  );
-                })}
-                <button
-                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages}
-                  className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
-                >›</button>
-                <button
-                  onClick={() => setPage(totalPages)}
-                  disabled={page === totalPages}
-                  className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
-                >»</button>
-              </div>
-            </div>
-          )}
-          </>
-        )}
-      </div>
-
-      {/* 컬럼 필터 드롭다운 */}
-      {openFilter && filterAnchorEl && (
-        <ColumnFilterDropdown
-          anchorEl={filterAnchorEl}
-          values={distinctValues[openFilter] ?? []}
-          selected={colFilters[openFilter] ?? []}
-          onApply={(vals) => {
-            setColFilters((prev) => ({ ...prev, [openFilter]: vals }));
-            setOpenFilter(null);
-            setFilterAnchorEl(null);
-          }}
-          onClose={() => { setOpenFilter(null); setFilterAnchorEl(null); }}
-        />
-      )}
-
-      {/* 상세 모달 */}
-      {detailItem && !editItem && !reregItem && (
-        <DetailModal
-          remnant={detailItem}
-          onClose={() => setDetailItem(null)}
-          onEdit={() => { setEditItem(detailItem); setDetailItem(null); }}
-          onReregister={() => { setReregItem(detailItem); setDetailItem(null); }}
-          onExhaust={() => handleExhaust(detailItem.id)}
-        />
-      )}
-
-      {/* 수정 모달 */}
-      {editItem && (
-        <EditModal
-          remnant={editItem}
-          onClose={() => setEditItem(null)}
-          onSaved={() => { setEditItem(null); fetchRemnants(); }}
-          onPermanentDeleted={() => { setEditItem(null); fetchRemnants(); }}
-        />
-      )}
-
-      {/* 잔여 재등록 모달 */}
-      {reregItem && (
-        <ReregisterModal
-          remnant={reregItem}
-          onClose={() => setReregItem(null)}
-          onSaved={() => { setReregItem(null); fetchRemnants(); }}
-        />
-      )}
     </div>
   );
 }

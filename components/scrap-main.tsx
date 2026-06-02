@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { Archive, PackagePlus, Package, Zap, Layers, Boxes } from "lucide-react";
-import { RemnantRegisterTab, RemnantManageTab } from "@/components/remnant-tabs";
-import RegisteredRemnantTab from "@/components/registered-remnant-tab";
+import { RemnantRegisterTab } from "@/components/remnant-tabs";
+import RemnantListTab from "@/components/remnant-list-tab";
 import UrgentRegisterForm from "@/components/urgent-register-form";
 
 interface ProjectOption {
@@ -68,9 +68,9 @@ export default function ScrapMain({
       </div>
 
       {tab === "register"   && <RemnantRegisterTab projects={projects} />}
-      {tab === "remnant"    && <RemnantManageTab projects={projects} typeFilter="REMNANT"    titleLabel="현장잔재 목록" />}
-      {tab === "surplus"    && <RemnantManageTab projects={projects} typeFilter="SURPLUS"    titleLabel="여유원재 목록" />}
-      {tab === "registered" && <RegisteredRemnantTab />}
+      {tab === "remnant"    && <RemnantListTab typeFilter="REMNANT"    titleLabel="현장잔재 목록" />}
+      {tab === "surplus"    && <RemnantListTab typeFilter="SURPLUS"    titleLabel="여유원재 목록" />}
+      {tab === "registered" && <RemnantListTab typeFilter="REGISTERED" titleLabel="등록잔재 목록" />}
       {tab === "urgent"     && <UrgentRegisterForm projects={projects} remnants={remnants} />}
     </div>
   );

@@ -17,6 +17,8 @@ export async function GET(request: NextRequest) {
     widths1, lengths1, widths2, lengths2, weights,
     statuses, locations, heatNos, sourceBlocks,
     projectSources, vesselSources,
+    // null 존재 여부 카운트 — 0건이면 (항목없음) 옵션 prepend 하지 않음
+    nullW1, nullL1, nullW2, nullL2, nullLoc, nullHeat, nullBlock,
   ] = await Promise.all([
     prisma.remnant.findMany({ where: base, select: { type: true },      distinct: ["type"],      orderBy: { type: "asc" } }),
     prisma.remnant.findMany({ where: base, select: { shape: true },     distinct: ["shape"],     orderBy: { shape: "asc" } }),
@@ -28,14 +30,13 @@ export async function GET(request: NextRequest) {
     prisma.remnant.findMany({ where: { ...base, length2: { not: null } }, select: { length2: true }, distinct: ["length2"], orderBy: { length2: "asc" } }),
     prisma.remnant.findMany({ where: base, select: { weight: true },    distinct: ["weight"],    orderBy: { weight: "asc" } }),
     prisma.remnant.findMany({ where: base, select: { status: true },    distinct: ["status"],    orderBy: { status: "asc" } }),
-    prisma.remnant.findMany({ where: base, select: { location: true },  distinct: ["location"],  orderBy: { location: "asc" } }),
+    prisma.remnant.findMany({ where: { ...base, location: { not: null } }, select: { location: true }, distinct: ["location"], orderBy: { location: "asc" } }),
     prisma.remnant.findMany({ where: { ...base, heatNo:      { not: null } }, select: { heatNo:      true }, distinct: ["heatNo"],      orderBy: { heatNo:      "asc" } }),
     prisma.remnant.findMany({ where: { ...base, sourceBlock: { not: null } }, select: { sourceBlock: true }, distinct: ["sourceBlock"], orderBy: { sourceBlock: "asc" } }),
     prisma.remnant.findMany({
       where:    { ...base, sourceProjectId: { not: null } },
       select:   { sourceProject: { select: { projectCode: true, projectName: true } } },
       distinct: ["sourceProjectId"],
-      orderBy:  { sourceProjectId: "asc" },
     }),
     prisma.remnant.findMany({
       where:    { ...base, sourceVesselName: { not: null }, sourceProjectId: null },
@@ -43,7 +44,24 @@ export async function GET(request: NextRequest) {
       distinct: ["sourceVesselName"],
       orderBy:  { sourceVesselName: "asc" },
     }),
+    prisma.remnant.count({ where: { ...base, width1:  null } }),
+    prisma.remnant.count({ where: { ...base, length1: null } }),
+    prisma.remnant.count({ where: { ...base, width2:  null } }),
+    prisma.remnant.count({ where: { ...base, length2: null } }),
+    prisma.remnant.count({ where: { ...base, location: null } }),
+    prisma.remnant.count({ where: { ...base, heatNo:   null } }),
+    prisma.remnant.count({ where: { ...base, sourceBlock: null } }),
   ]);
+
+  // sourceProject 는 distinct 결과를 JS 에서 projectCode 기준 정렬
+  // (Prisma 의 distinct + nested orderBy 조합 제약 회피)
+  const sortedProjects = [...projectSources]
+    .filter(r => r.sourceProject != null)
+    .sort((a, b) => (a.sourceProject!.projectCode).localeCompare(b.sourceProject!.projectCode));
+
+  // null 옵션 조건부 prepend 헬퍼
+  const withNullOption = (count: number, label: string, items: { value: string; label: string }[]) =>
+    count > 0 ? [{ value: "__NULL__", label }, ...items] : items;
 
   return NextResponse.json({
     type:     types.map(t => ({ value: t.type,     label: TYPE_LABEL[t.type]   ?? t.type })),
@@ -51,31 +69,29 @@ export async function GET(request: NextRequest) {
     material: materials.map(m => ({ value: m.material, label: m.material })),
     thickness: thicknesses.map(t => ({ value: String(t.thickness), label: String(parseFloat(t.thickness.toFixed(1))) })),
 
-    width1:  [{ value: "__NULL__", label: "(항목없음)" }, ...widths1.map(r  => ({ value: String(r.width1),  label: String(Math.round(r.width1!)) }))],
-    length1: [{ value: "__NULL__", label: "(항목없음)" }, ...lengths1.map(r => ({ value: String(r.length1), label: String(Math.round(r.length1!)) }))],
-    width2:  [{ value: "__NULL__", label: "(항목없음)" }, ...widths2.map(r  => ({ value: String(r.width2),  label: String(Math.round(r.width2!)) }))],
-    length2: [{ value: "__NULL__", label: "(항목없음)" }, ...lengths2.map(r => ({ value: String(r.length2), label: String(Math.round(r.length2!)) }))],
+    width1:  withNullOption(nullW1, "(항목없음)", widths1.map(r  => ({ value: String(r.width1),  label: String(Math.round(r.width1!)) }))),
+    length1: withNullOption(nullL1, "(항목없음)", lengths1.map(r => ({ value: String(r.length1), label: String(Math.round(r.length1!)) }))),
+    width2:  withNullOption(nullW2, "(항목없음)", widths2.map(r  => ({ value: String(r.width2),  label: String(Math.round(r.width2!)) }))),
+    length2: withNullOption(nullL2, "(항목없음)", lengths2.map(r => ({ value: String(r.length2), label: String(Math.round(r.length2!)) }))),
     weight:  weights.map(w => ({ value: String(w.weight), label: String(parseFloat(w.weight.toFixed(1))) })),
 
     status:   statuses.map(s => ({ value: s.status, label: STATUS_LABEL[s.status] ?? s.status })),
-    location: [
-      { value: "__NULL__", label: "(미지정)" },
-      ...locations.filter(l => l.location != null).map(l => ({ value: l.location!, label: l.location! })),
-    ],
-    heatNo: [
-      { value: "__NULL__", label: "(없음)" },
-      ...heatNos.map(h => ({ value: h.heatNo!, label: h.heatNo! })),
-    ],
-    sourceBlock: [
-      { value: "__NULL__", label: "(없음)" },
-      ...sourceBlocks.map(b => ({ value: b.sourceBlock!, label: b.sourceBlock! })),
-    ],
-    // P:코드 = 프로젝트 연결, V:이름 = 직접 입력
+    location: withNullOption(nullLoc, "(미지정)",
+      locations.map(l => ({ value: l.location!, label: l.location! })),
+    ),
+    heatNo: withNullOption(nullHeat, "(없음)",
+      heatNos.map(h => ({ value: h.heatNo!, label: h.heatNo! })),
+    ),
+    sourceBlock: withNullOption(nullBlock, "(없음)",
+      sourceBlocks.map(b => ({ value: b.sourceBlock!, label: b.sourceBlock! })),
+    ),
+    // P:코드 = 프로젝트 연결, V:이름 = 직접 입력 — projectCode 알파벳순 정렬
     source: [
       { value: "__NULL__", label: "(출처없음)" },
-      ...projectSources
-        .filter(r => r.sourceProject != null)
-        .map(r => ({ value: `P:${r.sourceProject!.projectCode}`, label: `[${r.sourceProject!.projectCode}] ${r.sourceProject!.projectName}` })),
+      ...sortedProjects.map(r => ({
+        value: `P:${r.sourceProject!.projectCode}`,
+        label: `[${r.sourceProject!.projectCode}] ${r.sourceProject!.projectName}`,
+      })),
       ...vesselSources
         .filter(r => r.sourceVesselName != null)
         .map(r => ({ value: `V:${r.sourceVesselName!}`, label: r.sourceVesselName! })),
