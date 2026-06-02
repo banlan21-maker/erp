@@ -716,6 +716,7 @@ model MgmtRepairLog {
   content     String // 조치 내용
   contractor  String? // 수선 업체/담당자
   cost        Int? // 비용 (레거시 — costs 합계가 우선)
+  downtimeMinutes Int? // 비가동시간 (분)
   memo        String? // 비고
 
   costs MgmtRepairCost[]

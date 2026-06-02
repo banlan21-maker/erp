@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const { repairedAt, cause, content, contractor, costs, memo } = await request.json();
+    const { repairedAt, cause, content, contractor, costs, downtimeHours, downtimeMins, memo } = await request.json();
 
     const costItems: { itemName: string; amount: number }[] = Array.isArray(costs)
       ? costs
@@ -28,6 +28,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       if (contractor !== undefined) data.contractor = contractor?.trim() || null;
       if (memo       !== undefined) data.memo = memo?.trim() || null;
       if (Array.isArray(costs))     data.cost = total || null;
+      if (downtimeHours !== undefined || downtimeMins !== undefined) {
+        const h = Number(downtimeHours) || 0;
+        const m = Number(downtimeMins)  || 0;
+        data.downtimeMinutes = (h > 0 || m > 0) ? h * 60 + m : null;
+      }
 
       await tx.mgmtRepairLog.update({ where: { id }, data });
 

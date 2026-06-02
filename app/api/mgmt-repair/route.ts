@@ -4,10 +4,10 @@ import { prisma } from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 
 // POST /api/mgmt-repair  — 수선이력 등록
-// body: { equipmentId, repairedAt, cause?, content, contractor?, costs?: [{itemName, amount}], memo? }
+// body: { equipmentId, repairedAt, cause?, content, contractor?, costs?: [{itemName, amount}], downtimeHours?, downtimeMins?, memo? }
 export async function POST(request: NextRequest) {
   try {
-    const { equipmentId, repairedAt, cause, content, contractor, costs, memo } = await request.json();
+    const { equipmentId, repairedAt, cause, content, contractor, costs, downtimeHours, downtimeMins, memo } = await request.json();
 
     if (!equipmentId) {
       return NextResponse.json({ success: false, error: "장비 ID는 필수입니다." }, { status: 400 });
@@ -29,6 +29,9 @@ export async function POST(request: NextRequest) {
       : [];
 
     const total = costItems.reduce((s, c) => s + c.amount, 0);
+    const dtH = Number(downtimeHours) || 0;
+    const dtM = Number(downtimeMins)  || 0;
+    const downtimeMinutes = dtH > 0 || dtM > 0 ? dtH * 60 + dtM : null;
 
     const log = await prisma.mgmtRepairLog.create({
       data: {
@@ -38,6 +41,7 @@ export async function POST(request: NextRequest) {
         content: content.trim(),
         contractor: contractor?.trim() || null,
         cost: total || null,
+        downtimeMinutes,
         memo: memo?.trim() || null,
         costs: {
           create: costItems.map((c, i) => ({ itemName: c.itemName, amount: c.amount, sortOrder: i })),

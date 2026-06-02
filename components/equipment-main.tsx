@@ -699,7 +699,8 @@ export default function EquipmentMain({
       type CostItem = { itemName: string; amount: number };
       type RepairRow = {
         repairedAt: string; cause: string | null; content: string;
-        contractor: string | null; cost: number | null; memo: string | null;
+        contractor: string | null; cost: number | null; downtimeMinutes: number | null;
+        memo: string | null;
         costs: CostItem[];
         equipment: { code: string; name: string; kind: string; managementNo: string | null };
       };
@@ -711,9 +712,14 @@ export default function EquipmentMain({
         "장비코드", "장비명", "관리번호", "장비종류",
         "수선일", "수선업체/담당자",
         "고장원인", "조치내용",
+        "비가동시간",
         ...allItemNames.map(n => `비용:${n}`),
         "비용합계", "비고",
       ];
+      const fmtDowntime = (mins: number | null) => {
+        if (mins == null || mins <= 0) return "";
+        return `${Math.floor(mins / 60)}시간 ${mins % 60}분`;
+      };
       const rows = list.map(r => {
         const costMap = new Map(r.costs.map(c => [c.itemName, c.amount]));
         const total = r.costs.length > 0 ? r.costs.reduce((s, c) => s + c.amount, 0) : (r.cost ?? 0);
@@ -721,6 +727,7 @@ export default function EquipmentMain({
           r.equipment.code, r.equipment.name, r.equipment.managementNo ?? "", r.equipment.kind,
           fmtDate(r.repairedAt), r.contractor ?? "",
           r.cause ?? "", r.content,
+          fmtDowntime(r.downtimeMinutes),
           ...allItemNames.map(n => costMap.get(n) ?? ""),
           total, r.memo ?? "",
         ];

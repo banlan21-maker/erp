@@ -43,6 +43,7 @@ interface RepairLog {
   content: string;
   contractor: string | null;
   cost: number | null;
+  downtimeMinutes: number | null;
   memo: string | null;
   costs?: RepairCost[];
   createdAt: string;
@@ -200,6 +201,8 @@ function RepairForm({
   const [content, setContent] = useState("");
   const [contractor, setContractor] = useState("");
   const [costs, setCosts] = useState<{ itemName: string; amount: string }[]>([]);
+  const [dtH, setDtH] = useState("");
+  const [dtM, setDtM] = useState("");
   const [memo, setMemo] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -220,12 +223,14 @@ function RepairForm({
       body: JSON.stringify({
         equipmentId, repairedAt, cause, content, contractor, memo,
         costs: costs.filter(c => c.itemName.trim() && Number(c.amount) > 0),
+        downtimeHours: Number(dtH) || 0,
+        downtimeMins:  Number(dtM) || 0,
       }),
     });
     const json = await res.json();
     if (json.success) {
       onAdded({ ...json.data, repairedAt, createdAt: json.data.createdAt });
-      setCause(""); setContent(""); setContractor(""); setCosts([]); setMemo(""); setRepairedAt(today);
+      setCause(""); setContent(""); setContractor(""); setCosts([]); setDtH(""); setDtM(""); setMemo(""); setRepairedAt(today);
     } else {
       setError(json.error || "등록 실패");
     }
@@ -254,6 +259,23 @@ function RepairForm({
           <textarea className={inputCls} rows={2} value={content} onChange={e => setContent(e.target.value)} />
         </div>
         <div className="col-span-2">
+          <label className={labelCls}>비가동시간</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="number" min={0} value={dtH} onChange={e => setDtH(e.target.value)}
+              placeholder="시간"
+              className="w-24 border border-gray-300 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+            <span className="text-sm text-gray-500">시간</span>
+            <input
+              type="number" min={0} max={59} value={dtM} onChange={e => setDtM(e.target.value)}
+              placeholder="분"
+              className="w-24 border border-gray-300 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+            <span className="text-sm text-gray-500">분</span>
+          </div>
+        </div>
+        <div className="col-span-2">
           <div className="flex items-center justify-between mb-1.5">
             <label className={labelCls + " mb-0"}>소모 비용 (항목별)</label>
             <button type="button" onClick={addCostRow} className="text-xs px-2 py-1 border border-blue-300 text-blue-600 rounded hover:bg-blue-50">+ 항목 추가</button>
@@ -264,9 +286,21 @@ function RepairForm({
             <div className="space-y-1.5">
               {costs.map((c, i) => (
                 <div key={i} className="flex gap-2 items-center">
-                  <input className={inputCls + " flex-1"} placeholder="항목명 (예: 부품비)" value={c.itemName} onChange={e => updCost(i, "itemName", e.target.value)} />
-                  <input className={inputCls + " w-32 text-right"} type="number" placeholder="금액(원)" value={c.amount} onChange={e => updCost(i, "amount", e.target.value)} />
-                  <button type="button" onClick={() => removeCostRow(i)} className="text-gray-300 hover:text-red-500 px-2">×</button>
+                  <input
+                    type="text"
+                    placeholder="항목명 (예: 부품비)"
+                    value={c.itemName}
+                    onChange={e => updCost(i, "itemName", e.target.value)}
+                    className="flex-1 min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                  <input
+                    type="number"
+                    placeholder="금액(원)"
+                    value={c.amount}
+                    onChange={e => updCost(i, "amount", e.target.value)}
+                    className="w-32 flex-shrink-0 border border-gray-300 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                  <button type="button" onClick={() => removeCostRow(i)} className="text-gray-300 hover:text-red-500 px-2 flex-shrink-0">×</button>
                 </div>
               ))}
               <p className="text-right text-xs font-semibold text-gray-700 pt-1 border-t border-gray-100">합계: {totalCost.toLocaleString()}원</p>
@@ -509,6 +543,11 @@ export default function EquipmentCard({ equipment: initial }: { equipment: Equip
                       {totalCost > 0 && (
                         <span className="text-xs font-semibold text-gray-700">
                           {totalCost.toLocaleString()}원
+                        </span>
+                      )}
+                      {r.downtimeMinutes != null && r.downtimeMinutes > 0 && (
+                        <span className="text-xs font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">
+                          비가동 {Math.floor(r.downtimeMinutes / 60)}시간 {r.downtimeMinutes % 60}분
                         </span>
                       )}
                     </div>
