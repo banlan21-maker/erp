@@ -111,23 +111,28 @@ export async function GET(request: NextRequest) {
 
       const result = [];
       for (const row of waitingRows) {
-        // 등록잔재 사용 행: SteelPlan 없이 확정 — 바로 포함
-        const rowExt = row as typeof row & { assignedRemnantId?: string | null };
+        // 등록잔재/현장잔재 사용 행 — assignedRemnantId가 있고 status=WAITING이면 이미 확정 상태
+        const rowExt = row as typeof row & { assignedRemnantId?: string | null; alternateVesselCode?: string | null };
         if (rowExt.assignedRemnantId) {
           result.push(row);
           continue;
         }
-        const projectCode = project.projectCode;
-        const blockCode   = row.block ?? "UNKNOWN";
-        const newFmt      = `${projectCode}/${blockCode}`;
-        // 신규 형식 또는 구형 형식으로 확정된 판재 확인
+        const projectCode    = project.projectCode;
+        const blockCode      = row.block ?? "UNKNOWN";
+        const newFmt         = `${projectCode}/${blockCode}`;
+        const effectiveVessel = rowExt.alternateVesselCode?.trim() || projectCode;
+
+        // 정규작업: '확정만 되어 있으면' 통과 — 출고 여부 무관
+        // - vesselCode 필터: 호선 격리 (다른 호선의 동명 블록 매칭 방지)
+        // - reservedFor 매칭: 신규 포맷("호선/블록") 또는 레거시 포맷("블록")
+        // - status 필터 없음: 확정(reservedFor) 채워졌다는 것 자체가 RECEIVED 이상 의미
         const reserved = await prisma.steelPlan.findFirst({
           where: {
-            material:   row.material,
-            thickness:  row.thickness,
-            width:      row.width,
-            length:     row.length,
-            status:     { in: ["RECEIVED", "ISSUED", "COMPLETED"] },
+            vesselCode:  effectiveVessel,
+            material:    row.material,
+            thickness:   row.thickness,
+            width:       row.width,
+            length:      row.length,
             reservedFor: { in: [newFmt, blockCode] },
           },
           select: { id: true },
