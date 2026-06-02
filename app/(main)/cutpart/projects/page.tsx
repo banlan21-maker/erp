@@ -9,8 +9,8 @@ export default async function ProjectsPage({
   searchParams: Promise<{ tab?: string; projectId?: string }>;
 }) {
   const { tab: rawTab = "vessels", projectId } = await searchParams;
-  // upload 탭은 제거됨 — vessels로 폴백
-  const tab = rawTab === "upload" ? "vessels" : rawTab;
+  // upload·remnants 탭은 제거됨 — vessels로 폴백 (remnants는 잔재관리 메뉴로 이동)
+  const tab = (rawTab === "upload" || rawTab === "remnants") ? "vessels" : rawTab;
 
   const projects = await prisma.project.findMany({
     orderBy: [{ projectCode: "asc" }, { projectName: "asc" }],
@@ -86,7 +86,7 @@ export default async function ProjectsPage({
   let drawings: Awaited<ReturnType<typeof prisma.drawingList.findMany>> = [];
   let activeProject: { id: string; projectCode: string; projectName: string; storageLocation: string | null } | null = null;
 
-  if ((tab === "list" || tab === "bom" || tab === "remnants") && projectId) {
+  if ((tab === "list" || tab === "bom") && projectId) {
     const proj = await prisma.project.findUnique({
       where: { id: projectId },
       include: { drawingLists: { orderBy: { createdAt: "asc" } } },

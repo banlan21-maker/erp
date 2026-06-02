@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Archive, PackagePlus, Package, Zap } from "lucide-react";
+import { Archive, PackagePlus, Package, Zap, Layers, Boxes } from "lucide-react";
 import { RemnantRegisterTab, RemnantManageTab } from "@/components/remnant-tabs";
+import RegisteredRemnantTab from "@/components/registered-remnant-tab";
 import UrgentRegisterForm from "@/components/urgent-register-form";
 
 interface ProjectOption {
@@ -20,6 +21,8 @@ interface RemnantOption {
   needsConsult: boolean;
 }
 
+type TabKey = "register" | "remnant" | "surplus" | "registered" | "urgent";
+
 export default function ScrapMain({
   projects,
   remnants,
@@ -27,7 +30,15 @@ export default function ScrapMain({
   projects: ProjectOption[];
   remnants: RemnantOption[];
 }) {
-  const [tab, setTab] = useState<"register" | "manage" | "urgent">("register");
+  const [tab, setTab] = useState<TabKey>("register");
+
+  const tabs: { key: TabKey; icon: React.ReactNode; label: string }[] = [
+    { key: "register",   icon: <PackagePlus size={14} />, label: "잔재등록" },
+    { key: "remnant",    icon: <Package size={14} />,     label: "현장잔재" },
+    { key: "surplus",    icon: <Layers size={14} />,      label: "여유원재" },
+    { key: "registered", icon: <Boxes size={14} />,       label: "등록잔재" },
+    { key: "urgent",     icon: <Zap size={14} />,         label: "돌발등록" },
+  ];
 
   return (
     <div className="space-y-6">
@@ -36,19 +47,15 @@ export default function ScrapMain({
           <Archive size={24} className="text-blue-600" />
           잔재관리
         </h2>
-        <p className="text-sm text-gray-500 mt-0.5">현장잔재·여유원재·등록잔재를 등록하고 현황을 관리합니다.</p>
+        <p className="text-sm text-gray-500 mt-0.5">현장잔재·여유원재·등록잔재를 종류별로 분리해서 관리합니다.</p>
       </div>
 
       {/* 탭 */}
-      <div className="flex border-b border-gray-200 gap-0">
-        {[
-          { key: "register", icon: <PackagePlus size={14} />, label: "잔재등록" },
-          { key: "manage",   icon: <Package size={14} />,     label: "잔재리스트" },
-          { key: "urgent",   icon: <Zap size={14} />,         label: "돌발등록" },
-        ].map(({ key, icon, label }) => (
+      <div className="flex border-b border-gray-200 gap-0 overflow-x-auto">
+        {tabs.map(({ key, icon, label }) => (
           <button
             key={key}
-            onClick={() => setTab(key as "register" | "manage" | "urgent")}
+            onClick={() => setTab(key)}
             className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
               tab === key
                 ? "border-blue-600 text-blue-600"
@@ -60,9 +67,11 @@ export default function ScrapMain({
         ))}
       </div>
 
-      {tab === "register" && <RemnantRegisterTab projects={projects} />}
-      {tab === "manage"   && <RemnantManageTab   projects={projects} />}
-      {tab === "urgent"   && <UrgentRegisterForm projects={projects} remnants={remnants} />}
+      {tab === "register"   && <RemnantRegisterTab projects={projects} />}
+      {tab === "remnant"    && <RemnantManageTab projects={projects} typeFilter="REMNANT"    titleLabel="현장잔재 목록" />}
+      {tab === "surplus"    && <RemnantManageTab projects={projects} typeFilter="SURPLUS"    titleLabel="여유원재 목록" />}
+      {tab === "registered" && <RegisteredRemnantTab />}
+      {tab === "urgent"     && <UrgentRegisterForm projects={projects} remnants={remnants} />}
     </div>
   );
 }

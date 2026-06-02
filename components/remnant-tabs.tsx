@@ -155,7 +155,8 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
   const [shape,   setShape]   = useState("RECTANGLE");
   const [sourceMode, setSourceMode] = useState<"project" | "direct" | "none">("project");
   const [sourceProjectId, setSourceProjectId] = useState("");
-  const [sourceDirect,    setSourceDirect]    = useState("");
+  const [sourceVesselDirect, setSourceVesselDirect] = useState(""); // 직접입력 호선 (필수)
+  const [sourceBlockDirect,  setSourceBlockDirect]  = useState(""); // 직접입력 블록 (선택)
   const [registeredBy,    setRegisteredBy]    = useState("");
 
   // ── 그리드 행 ─────────────────────────────────────────────────────────────
@@ -249,6 +250,10 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
       setError("기존 호선/블록을 선택하거나 발생출처를 '직접 입력' 또는 '없음'으로 바꿔주세요.");
       return;
     }
+    if (sourceMode === "direct" && !sourceVesselDirect.trim()) {
+      setError("직접입력 시 호선은 필수입니다.");
+      return;
+    }
 
     const valid = rows.filter(r => r.material.trim() && r.thickness && r.width1 && r.length1);
     if (valid.length === 0) {
@@ -290,8 +295,12 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
             width2:  r.width2  || null,
             length2: r.length2 || null,
             sourceProjectId:  sourceMode === "project" ? sourceProjectId : null,
-            sourceVesselName: sourceMode === "direct"  ? (sourceDirect || null) : null,
-            sourceBlock:      sourceMode === "project" ? (selectedProject?.projectName ?? null) : null,
+            sourceVesselName: sourceMode === "direct"  ? (sourceVesselDirect.trim() || null) : null,
+            sourceBlock:      sourceMode === "direct"
+              ? (sourceBlockDirect.trim() || null)
+              : sourceMode === "project"
+                ? (selectedProject?.projectName ?? null)
+                : null,
             location: r.location || null,
             registeredBy,
             memo: r.memo || null,
@@ -401,7 +410,16 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
             </select>
           )}
           {sourceMode === "direct" && (
-            <Input value={sourceDirect} onChange={e => setSourceDirect(e.target.value)} placeholder="예: 4560호 / 101-1" />
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-0.5">호선 <span className="text-red-500">*</span></label>
+                <Input value={sourceVesselDirect} onChange={e => setSourceVesselDirect(e.target.value)} placeholder="예: 4560호" />
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-0.5">블록 <span className="text-gray-400">(선택)</span></label>
+                <Input value={sourceBlockDirect} onChange={e => setSourceBlockDirect(e.target.value)} placeholder="예: 101-1" />
+              </div>
+            </div>
           )}
         </div>
 
@@ -804,7 +822,7 @@ function DetailModal({
 
 // ─── 잔재 관리 탭 (목록) ───────────────────────────────────────────────────
 
-export function RemnantManageTab({ projects: _projects }: { projects: ProjectOption[] }) {
+export function RemnantManageTab({ projects: _projects, typeFilter, titleLabel }: { projects: ProjectOption[]; typeFilter?: "REMNANT" | "SURPLUS" | "REGISTERED"; titleLabel?: string }) {
   const [remnants,    setRemnants]    = useState<Remnant[]>([]);
   const [loading,     setLoading]     = useState(true);
   const [search,      setSearch]      = useState("");
@@ -824,9 +842,10 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
 
   // ─── distinct 값 로드 ────────────────────────────────────────────────────
   const loadDistinct = useCallback(async () => {
-    const res = await fetch("/api/remnants/distinct");
+    const url = typeFilter ? `/api/remnants/distinct?type=${typeFilter}` : "/api/remnants/distinct";
+    const res = await fetch(url);
     if (res.ok) setDistinctValues(await res.json());
-  }, []);
+  }, [typeFilter]);
 
   useEffect(() => { loadDistinct(); }, [loadDistinct]);
 
@@ -836,6 +855,7 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
     try {
       const p = new URLSearchParams();
       p.set("page", String(page));
+      if (typeFilter) p.set("type", typeFilter);
       if (search) p.set("search", search);
       const cf = colFilters;
       if (cf.type?.length)        p.set("types",        cf.type.join(","));
@@ -860,7 +880,7 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
       }
     } catch { /* ignore */ }
     finally { setLoading(false); }
-  }, [page, search, colFilters]);
+  }, [page, search, colFilters, typeFilter]);
 
   useEffect(() => { fetchRemnants(); }, [fetchRemnants]);
 
@@ -908,7 +928,7 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
         <div className="px-4 py-3 border-b bg-gray-50 flex items-center gap-3 flex-wrap">
           <Package size={14} className="text-blue-500 shrink-0" />
           <span className="text-sm font-semibold text-gray-700 shrink-0">
-            잔재 목록 ({total}건)
+            {titleLabel ?? "잔재 목록"} ({total}건)
           </span>
           <div className="relative flex-1 max-w-xs">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -948,7 +968,7 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
               <thead className="bg-gray-50 border-b text-[11px] text-gray-500 uppercase tracking-wide">
                 <tr>
                   <th className="px-3 py-2 font-medium text-gray-600 text-[11px] text-left">잔재번호</th>
-                  <ColHeader col="type"      label="종류"  />
+                  {!typeFilter && <ColHeader col="type" label="종류" />}
                   <ColHeader col="shape"     label="형태"  />
                   <ColHeader col="material"  label="재질"  />
                   <ColHeader col="thickness" label="두께"  align="right" />
@@ -981,11 +1001,13 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
                       </td>
 
                       {/* 종류 */}
-                      <td className="px-3 py-3">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${TYPE_COLOR[r.type]}`}>
-                          {TYPE_LABEL[r.type]}
-                        </span>
-                      </td>
+                      {!typeFilter && (
+                        <td className="px-3 py-3">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${TYPE_COLOR[r.type]}`}>
+                            {TYPE_LABEL[r.type]}
+                          </span>
+                        </td>
+                      )}
 
                       {/* 형태 */}
                       <td className="px-3 py-3 text-xs text-gray-600">{SHAPE_LABEL[r.shape] ?? r.shape}</td>
