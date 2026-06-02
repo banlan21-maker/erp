@@ -194,8 +194,8 @@ function UploadTab({
   useEffect(() => {
     if (!previewRows) { setAvailableRemnants([]); return; }
     Promise.all([
-      fetch("/api/remnants?type=REGISTERED&status=IN_STOCK").then(r => r.json()),
-      fetch("/api/remnants?type=REMNANT&status=IN_STOCK").then(r => r.json()),
+      fetch("/api/remnants?type=REGISTERED&status=IN_STOCK&onlyAvailable=true").then(r => r.json()),
+      fetch("/api/remnants?type=REMNANT&status=IN_STOCK&onlyAvailable=true").then(r => r.json()),
     ]).then(([reg, rem]) => {
       const list: RemnantOption[] = [];
       if (reg.success) list.push(...reg.data);

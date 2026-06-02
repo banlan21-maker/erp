@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
       const ids = idsParam.split(",").filter(Boolean);
       const remnants = await prisma.remnant.findMany({
         where: { id: { in: ids } },
-        select: { id: true, remnantNo: true, type: true, shape: true, material: true, thickness: true, weight: true, width1: true, length1: true, width2: true, length2: true, status: true },
+        select: { id: true, remnantNo: true, type: true, shape: true, material: true, thickness: true, weight: true, width1: true, length1: true, width2: true, length2: true, status: true, reservedFor: true },
       });
       return NextResponse.json({ success: true, data: remnants });
     }
@@ -84,6 +84,8 @@ export async function GET(request: NextRequest) {
     const heatNos    = parseList(sp.get("heatNos"));
     const sources    = parseList(sp.get("sources"));
     const sourceBlocks = parseList(sp.get("sourceBlocks"));
+    const reservedFors = parseList(sp.get("reservedFors"));
+    const onlyAvailable = sp.get("onlyAvailable") === "true"; // 미확정(reservedFor=null)만
 
     const where: Record<string, unknown> = {
       // 단일값 파라미터 (하위 호환)
@@ -115,6 +117,8 @@ export async function GET(request: NextRequest) {
       ...nullableIn(locations,    "location"),
       ...nullableIn(heatNos,      "heatNo"),
       ...nullableIn(sourceBlocks, "sourceBlock"),
+      ...nullableIn(reservedFors, "reservedFor"),
+      ...(onlyAvailable ? { reservedFor: null } : {}),
       ...buildSourceFilter(sources),
     };
 

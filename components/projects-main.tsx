@@ -198,11 +198,20 @@ const STATUS_COLOR_R: Record<string, string> = {
   EXHAUSTED: "bg-gray-100 text-gray-500",
 };
 
+// 잔재 상태 — reservedFor 우선 (확정), 그 외에는 status 기준
+function remnantDisplayStatus(r: { status: string; reservedFor: string | null }): { label: string; cls: string; reservedFor?: string } {
+  if (r.status === "EXHAUSTED") return { label: "소진", cls: "bg-gray-100 text-gray-500" };
+  if (r.reservedFor)            return { label: "확정", cls: "bg-blue-100 text-blue-700", reservedFor: r.reservedFor };
+  if (r.status === "IN_STOCK")  return { label: "재고", cls: "bg-green-100 text-green-700" };
+  return { label: STATUS_LABEL_R[r.status] ?? r.status, cls: STATUS_COLOR_R[r.status] ?? "bg-gray-100 text-gray-500" };
+}
+
 type RemnantRow = {
   id: string; remnantNo: string; shape: string; material: string;
   thickness: number; width1: number | null; length1: number | null;
   width2: number | null; length2: number | null; weight: number;
   sourceBlock: string | null; sourceVesselName: string | null; status: string;
+  reservedFor: string | null;
   heatNo: string | null;
   sourceProject: { projectCode: string } | null;
   assignedToLists: { block: string | null; project: { projectCode: string } | null }[];
@@ -222,7 +231,7 @@ function colVal(r: RemnantRow, col: string): string {
     case "length1":     return r.length1 != null ? String(r.length1) : "-";
     case "length2":     return r.length2 != null ? String(r.length2) : "-";
     case "weight":      return r.weight.toFixed(1);
-    case "status":      return STATUS_LABEL_R[r.status] ?? r.status;
+    case "status":      return remnantDisplayStatus(r).label;
     case "usedVessel": {
       if (r.status !== "EXHAUSTED" || !r.assignedToLists?.length) return "-";
       const first = r.assignedToLists[0];
@@ -379,9 +388,15 @@ function ProjectRemnantTab({ projectOptions: _p }: { projectOptions: ProjectOpti
                   <td className="px-3 py-2 text-right">{r.length2?.toLocaleString() ?? "-"}</td>
                   <td className="px-3 py-2 text-right font-semibold">{r.weight.toFixed(1)}</td>
                   <td className="px-3 py-2 text-center">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${STATUS_COLOR_R[r.status] ?? "bg-gray-100 text-gray-500"}`}>
-                      {STATUS_LABEL_R[r.status] ?? r.status}
-                    </span>
+                    {(() => {
+                      const ds = remnantDisplayStatus(r);
+                      return (
+                        <div className="inline-flex flex-col items-center gap-0.5">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${ds.cls}`}>{ds.label}</span>
+                          {ds.reservedFor && <span className="text-[9px] text-blue-600 font-mono">{ds.reservedFor}</span>}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="px-3 py-2 text-gray-700">
                     {r.status === "EXHAUSTED" && r.assignedToLists?.length > 0

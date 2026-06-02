@@ -36,6 +36,7 @@ interface Remnant {
   location: string | null;
   memo: string | null;
   status: string;
+  reservedFor: string | null;
   registeredBy: string;
   createdAt: string;
 }
@@ -49,12 +50,19 @@ const TYPE_COLOR: Record<string, string>  = {
   REGISTERED: "bg-purple-100 text-purple-700",
 };
 const SHAPE_LABEL: Record<string, string> = { RECTANGLE: "사각형", L_SHAPE: "L자형", IRREGULAR: "불규칙형" };
-const STATUS_LABEL: Record<string, string>= { IN_STOCK: "재고있음", IN_USE: "사용중", EXHAUSTED: "소진" };
+const STATUS_LABEL: Record<string, string>= { IN_STOCK: "재고", IN_USE: "사용중", EXHAUSTED: "소진" };
 const STATUS_COLOR: Record<string, string>= {
   IN_STOCK:  "bg-emerald-100 text-emerald-700",
   IN_USE:    "bg-yellow-100 text-yellow-700",
   EXHAUSTED: "bg-gray-100 text-gray-500",
 };
+// reservedFor 가 있으면 '확정', 그 외 status 기준
+function remnantDisp(r: { status: string; reservedFor?: string | null }): { label: string; cls: string; reservedFor?: string } {
+  if (r.status === "EXHAUSTED") return { label: "소진", cls: "bg-gray-100 text-gray-500" };
+  if (r.reservedFor)            return { label: "확정", cls: "bg-blue-100 text-blue-700", reservedFor: r.reservedFor };
+  if (r.status === "IN_STOCK")  return { label: "재고", cls: "bg-emerald-100 text-emerald-700" };
+  return { label: STATUS_LABEL[r.status] ?? r.status, cls: STATUS_COLOR[r.status] ?? "bg-gray-100 text-gray-500" };
+}
 
 // ─── 표시 헬퍼 ────────────────────────────────────────────────────────────
 
@@ -743,7 +751,11 @@ function DetailModal({
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-mono font-bold text-gray-800 text-base">{remnant.remnantNo}</span>
             <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-semibold ${TYPE_COLOR[remnant.type]}`}>{TYPE_LABEL[remnant.type]}</span>
-            <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-semibold ${STATUS_COLOR[remnant.status]}`}>{STATUS_LABEL[remnant.status]}</span>
+            {(() => { const d = remnantDisp(remnant); return (
+              <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-semibold inline-flex items-center gap-1.5 ${d.cls}`}>
+                {d.label}{d.reservedFor && <span className="font-mono text-[10px] opacity-80">{d.reservedFor}</span>}
+              </span>
+            ); })()}
           </div>
           <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-full ml-2"><X size={16} /></button>
         </div>
@@ -1004,9 +1016,11 @@ export function RemnantManageTab({ projects: _projects }: { projects: ProjectOpt
 
                       {/* 상태 */}
                       <td className="px-3 py-3">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${STATUS_COLOR[r.status]}`}>
-                          {STATUS_LABEL[r.status]}
-                        </span>
+                        {(() => { const d = remnantDisp(r); return (
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold inline-flex items-center gap-1 ${d.cls}`}>
+                            {d.label}{d.reservedFor && <span className="font-mono text-[9px] opacity-80">{d.reservedFor}</span>}
+                          </span>
+                        ); })()}
                       </td>
 
                       {/* 메모 */}

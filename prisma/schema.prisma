@@ -1131,6 +1131,7 @@ model Remnant {
   photoUrl     String? // 사진
   memo         String? // 메모사항
   status       RemnantStatus @default(PENDING)
+  reservedFor  String? // 확정된 호선/블록 (예: "RS01/F50P") — 일괄확정 시 채워지면 선점됨
   registeredBy String // 등록자
 
   // 레거시 필드 (미사용, 데이터 보존용)

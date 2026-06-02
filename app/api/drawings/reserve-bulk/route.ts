@@ -42,6 +42,22 @@ export async function POST(request: NextRequest) {
         where: { id: { in: assignedRowIds } },
         data: { status: "WAITING" },
       });
+
+      // 잔재(Remnant)에도 "호선/블록" 확정 표식 — reservedFor 채움
+      // 이미 다른 블록에 reservedFor 있는 잔재는 덮어쓰지 않음(선점 보호)
+      const assignedRows = await prisma.drawingList.findMany({
+        where: { id: { in: assignedRowIds } },
+        select: { block: true, assignedRemnantId: true },
+      });
+      for (const row of assignedRows) {
+        if (!row.assignedRemnantId) continue;
+        const blockCode = row.block ?? "UNKNOWN";
+        const reservedFor = `${vesselCode}/${blockCode}`;
+        await prisma.remnant.updateMany({
+          where: { id: row.assignedRemnantId, reservedFor: null },
+          data: { reservedFor },
+        });
+      }
     }
 
     // 규격+블록+대체호선별 그룹화
@@ -185,8 +201,8 @@ export async function DELETE(request: NextRequest) {
     }
 
     // 등록잔재 사용 행 확정 취소: WAITING → REGISTERED (raw SQL로 Prisma 버전 무관)
-    const assignedWaitingRaw = await prisma.$queryRaw<{ id: string }[]>`
-      SELECT id FROM "DrawingList"
+    const assignedWaitingRaw = await prisma.$queryRaw<{ id: string; assignedRemnantId: string | null }[]>`
+      SELECT id, "assignedRemnantId" FROM "DrawingList"
       WHERE "projectId" = ${projectId} AND status = 'WAITING' AND "assignedRemnantId" IS NOT NULL
     `;
     if (assignedWaitingRaw.length > 0) {
@@ -194,6 +210,16 @@ export async function DELETE(request: NextRequest) {
         where: { id: { in: assignedWaitingRaw.map(r => r.id) } },
         data: { status: "REGISTERED" },
       });
+
+      // 잔재(Remnant) reservedFor 도 해제 — 본 프로젝트 호선/블록 매칭하는 것만
+      const remnantIds = Array.from(new Set(assignedWaitingRaw.map(r => r.assignedRemnantId).filter((x): x is string => !!x)));
+      const ownReservedFors = [...newFmtCodes, ...blockCodes];
+      if (remnantIds.length > 0) {
+        await prisma.remnant.updateMany({
+          where: { id: { in: remnantIds }, reservedFor: { in: ownReservedFors } },
+          data: { reservedFor: null },
+        });
+      }
     }
 
     // 원재사용 행: SteelPlan 예약 해제 (RECEIVED만)
