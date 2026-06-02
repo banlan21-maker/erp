@@ -23,7 +23,10 @@ export async function GET(
             logs: { orderBy: { completedAt: "desc" } },
           },
         },
-        repairs: { orderBy: { repairedAt: "desc" } },
+        repairs: {
+          orderBy: { repairedAt: "desc" },
+          include: { costs: { orderBy: { sortOrder: "asc" } } },
+        },
       },
     });
     if (!equipment) {

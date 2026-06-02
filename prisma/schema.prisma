@@ -712,10 +712,25 @@ model MgmtRepairLog {
   equipmentId String
   equipment   MgmtEquipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
   repairedAt  DateTime // 수선일
-  content     String // 수선 내용
+  cause       String? // 고장 원인
+  content     String // 조치 내용
   contractor  String? // 수선 업체/담당자
-  cost        Int? // 비용
+  cost        Int? // 비용 (레거시 — costs 합계가 우선)
   memo        String? // 비고
+
+  costs MgmtRepairCost[]
+
+  createdAt DateTime @default(now())
+}
+
+// 수선 소모비용 라인 아이템 (한 수선이력에 여러 비용 항목)
+model MgmtRepairCost {
+  id        String        @id @default(cuid())
+  repairId  String
+  repair    MgmtRepairLog @relation(fields: [repairId], references: [id], onDelete: Cascade)
+  itemName  String // 항목명 (예: 부품비, 인건비)
+  amount    Int // 금액
+  sortOrder Int           @default(0)
 
   createdAt DateTime @default(now())
 }

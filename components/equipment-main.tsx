@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import {
   Plus, Trash2, ChevronRight, Wrench,
   CheckCircle, AlertTriangle, Clock, XCircle, MinusCircle,
-  Search, Pencil, X, Save,
+  Search, Pencil, X, Save, Download, Calendar,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 
 // ── 타입 ────────────────────────────────────────────────────
 
@@ -679,6 +680,98 @@ export default function EquipmentMain({
   const handleSaved = (updated: Equipment) =>
     setEquipments(prev => prev.map(eq => eq.id === updated.id ? updated : eq));
 
+  // ── 월별 엑셀 다운로드 ────────────────────────────────────
+  const today = new Date();
+  const [dlYear, setDlYear]   = useState(String(today.getFullYear()));
+  const [dlMonth, setDlMonth] = useState(String(today.getMonth() + 1));
+  const [dlBusy, setDlBusy]   = useState<"repair" | "inspection" | null>(null);
+
+  const ymTag = () => `${dlYear}-${String(dlMonth).padStart(2, "0")}`;
+  const fmtDate = (iso: string | null | undefined) => iso ? new Date(iso).toISOString().slice(0, 10) : "";
+
+  const downloadRepairsMonthly = async () => {
+    setDlBusy("repair");
+    try {
+      const ym = ymTag();
+      const res = await fetch(`/api/mgmt-repair?year=${dlYear}&month=${dlMonth}`);
+      const json = await res.json();
+      if (!json.success) { alert(json.error ?? "조회 실패"); return; }
+      type CostItem = { itemName: string; amount: number };
+      type RepairRow = {
+        repairedAt: string; cause: string | null; content: string;
+        contractor: string | null; cost: number | null; memo: string | null;
+        costs: CostItem[];
+        equipment: { code: string; name: string; kind: string; managementNo: string | null };
+      };
+      const list: RepairRow[] = json.data ?? [];
+      if (list.length === 0) { alert(`${ym} 수선이력이 없습니다.`); return; }
+
+      const allItemNames = Array.from(new Set(list.flatMap(r => r.costs.map(c => c.itemName)))).sort();
+      const header = [
+        "장비코드", "장비명", "관리번호", "장비종류",
+        "수선일", "수선업체/담당자",
+        "고장원인", "조치내용",
+        ...allItemNames.map(n => `비용:${n}`),
+        "비용합계", "비고",
+      ];
+      const rows = list.map(r => {
+        const costMap = new Map(r.costs.map(c => [c.itemName, c.amount]));
+        const total = r.costs.length > 0 ? r.costs.reduce((s, c) => s + c.amount, 0) : (r.cost ?? 0);
+        return [
+          r.equipment.code, r.equipment.name, r.equipment.managementNo ?? "", r.equipment.kind,
+          fmtDate(r.repairedAt), r.contractor ?? "",
+          r.cause ?? "", r.content,
+          ...allItemNames.map(n => costMap.get(n) ?? ""),
+          total, r.memo ?? "",
+        ];
+      });
+      const data = [
+        [`수선이력 (${ym}) — 총 ${list.length}건`],
+        header,
+        ...rows,
+      ];
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      ws["!cols"] = header.map((h) => ({ wch: h.includes("내용") || h.includes("원인") ? 30 : h.includes("비용") ? 12 : 12 }));
+      XLSX.utils.book_append_sheet(wb, ws, "수선이력");
+      XLSX.writeFile(wb, `장비_수선이력_${ym}.xlsx`);
+    } finally { setDlBusy(null); }
+  };
+
+  const downloadInspectionsMonthly = async () => {
+    setDlBusy("inspection");
+    try {
+      const ym = ymTag();
+      const res = await fetch(`/api/mgmt-inspection?year=${dlYear}&month=${dlMonth}`);
+      const json = await res.json();
+      if (!json.success) { alert(json.error ?? "조회 실패"); return; }
+      type InspRow = {
+        itemName: string; periodMonth: number; lastInspectedAt: string | null; nextInspectAt: string | null; inspector: string | null;
+        equipment: { code: string; name: string; kind: string; managementNo: string | null };
+      };
+      const list: InspRow[] = json.data ?? [];
+      if (list.length === 0) { alert(`${ym}에 예정된 검사 항목이 없습니다.`); return; }
+
+      const data: (string | number)[][] = [
+        [`검사이력 (${ym}) — 다음 검사 예정 총 ${list.length}건`],
+        ["장비명", "검사항목", "최종검사", "검사주기(개월)", "다음검사", "담당기관"],
+        ...list.map(r => [
+          r.equipment.name + (r.equipment.code ? ` [${r.equipment.code}]` : ""),
+          r.itemName,
+          fmtDate(r.lastInspectedAt),
+          r.periodMonth,
+          fmtDate(r.nextInspectAt),
+          r.inspector ?? "",
+        ]),
+      ];
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      ws["!cols"] = [{ wch: 20 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }];
+      XLSX.utils.book_append_sheet(wb, ws, "검사이력");
+      XLSX.writeFile(wb, `장비_검사이력_${ym}.xlsx`);
+    } finally { setDlBusy(null); }
+  };
+
   const filtered = equipments.filter(eq => {
     if (search) {
       const q = search.toLowerCase();
@@ -737,6 +830,27 @@ export default function EquipmentMain({
 
         {tab === "list" && (
           <div className="space-y-3">
+            {/* 월별 이력 다운로드 바 */}
+            <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-3 flex-wrap">
+              <Calendar size={15} className="text-gray-400" />
+              <input type="number" value={dlYear} onChange={e => setDlYear(e.target.value)}
+                className="w-20 h-8 px-2 border border-gray-200 rounded text-sm" />
+              <span className="text-sm text-gray-500">년</span>
+              <select value={dlMonth} onChange={e => setDlMonth(e.target.value)}
+                className="h-8 px-2 border border-gray-200 rounded text-sm bg-white">
+                {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}월</option>)}
+              </select>
+              <button onClick={downloadRepairsMonthly} disabled={dlBusy !== null}
+                className="flex items-center gap-1.5 px-3 h-8 text-sm bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50">
+                <Download size={13} /> {dlBusy === "repair" ? "다운로드 중..." : "수선이력 엑셀"}
+              </button>
+              <button onClick={downloadInspectionsMonthly} disabled={dlBusy !== null}
+                className="flex items-center gap-1.5 px-3 h-8 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+                <Download size={13} /> {dlBusy === "inspection" ? "다운로드 중..." : "검사이력 엑셀"}
+              </button>
+              <span className="text-xs text-gray-400 ml-auto">전체 장비 이력 일괄 다운로드</span>
+            </div>
+
             {/* 검색창 */}
             <div className="relative">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />

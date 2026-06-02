@@ -30,13 +30,21 @@ interface InspectionItem {
   logs: InspLog[];
 }
 
+interface RepairCost {
+  id?: string;
+  itemName: string;
+  amount: number;
+  sortOrder?: number;
+}
 interface RepairLog {
   id: string;
   repairedAt: string;
+  cause: string | null;
   content: string;
   contractor: string | null;
   cost: number | null;
   memo: string | null;
+  costs?: RepairCost[];
   createdAt: string;
 }
 
@@ -188,26 +196,36 @@ function RepairForm({
 }) {
   const today = new Date().toISOString().split("T")[0];
   const [repairedAt, setRepairedAt] = useState(today);
+  const [cause, setCause] = useState("");
   const [content, setContent] = useState("");
   const [contractor, setContractor] = useState("");
-  const [cost, setCost] = useState("");
+  const [costs, setCosts] = useState<{ itemName: string; amount: string }[]>([]);
   const [memo, setMemo] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  const addCostRow = () => setCosts(prev => [...prev, { itemName: "", amount: "" }]);
+  const removeCostRow = (i: number) => setCosts(prev => prev.filter((_, idx) => idx !== i));
+  const updCost = (i: number, field: "itemName" | "amount", v: string) =>
+    setCosts(prev => prev.map((c, idx) => (idx === i ? { ...c, [field]: v } : c)));
+  const totalCost = costs.reduce((s, c) => s + (Number(c.amount) || 0), 0);
+
   const handleSave = async () => {
     setError("");
-    if (!content.trim()) { setError("수선 내용을 입력하세요."); return; }
+    if (!content.trim()) { setError("조치 내용을 입력하세요."); return; }
     setSaving(true);
     const res = await fetch("/api/mgmt-repair", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ equipmentId, repairedAt, content, contractor, cost: cost || null, memo }),
+      body: JSON.stringify({
+        equipmentId, repairedAt, cause, content, contractor, memo,
+        costs: costs.filter(c => c.itemName.trim() && Number(c.amount) > 0),
+      }),
     });
     const json = await res.json();
     if (json.success) {
       onAdded({ ...json.data, repairedAt, createdAt: json.data.createdAt });
-      setContent(""); setContractor(""); setCost(""); setMemo(""); setRepairedAt(today);
+      setCause(""); setContent(""); setContractor(""); setCosts([]); setMemo(""); setRepairedAt(today);
     } else {
       setError(json.error || "등록 실패");
     }
@@ -228,14 +246,34 @@ function RepairForm({
           <input className={inputCls} value={contractor} onChange={e => setContractor(e.target.value)} />
         </div>
         <div className="col-span-2">
-          <label className={labelCls}>수선 내용 *</label>
+          <label className={labelCls}>고장 원인</label>
+          <textarea className={inputCls} rows={2} value={cause} onChange={e => setCause(e.target.value)} placeholder="예: 모터 베어링 마모로 진동 발생" />
+        </div>
+        <div className="col-span-2">
+          <label className={labelCls}>조치 내용 *</label>
           <textarea className={inputCls} rows={2} value={content} onChange={e => setContent(e.target.value)} />
         </div>
-        <div>
-          <label className={labelCls}>비용 (원)</label>
-          <input className={inputCls} type="number" value={cost} onChange={e => setCost(e.target.value)} />
+        <div className="col-span-2">
+          <div className="flex items-center justify-between mb-1.5">
+            <label className={labelCls + " mb-0"}>소모 비용 (항목별)</label>
+            <button type="button" onClick={addCostRow} className="text-xs px-2 py-1 border border-blue-300 text-blue-600 rounded hover:bg-blue-50">+ 항목 추가</button>
+          </div>
+          {costs.length === 0 ? (
+            <p className="text-xs text-gray-400 text-center py-2 border border-dashed border-gray-200 rounded">+ 항목 추가 버튼으로 부품비·인건비 등 비용 항목을 입력</p>
+          ) : (
+            <div className="space-y-1.5">
+              {costs.map((c, i) => (
+                <div key={i} className="flex gap-2 items-center">
+                  <input className={inputCls + " flex-1"} placeholder="항목명 (예: 부품비)" value={c.itemName} onChange={e => updCost(i, "itemName", e.target.value)} />
+                  <input className={inputCls + " w-32 text-right"} type="number" placeholder="금액(원)" value={c.amount} onChange={e => updCost(i, "amount", e.target.value)} />
+                  <button type="button" onClick={() => removeCostRow(i)} className="text-gray-300 hover:text-red-500 px-2">×</button>
+                </div>
+              ))}
+              <p className="text-right text-xs font-semibold text-gray-700 pt-1 border-t border-gray-100">합계: {totalCost.toLocaleString()}원</p>
+            </div>
+          )}
         </div>
-        <div>
+        <div className="col-span-2">
           <label className={labelCls}>비고</label>
           <input className={inputCls} value={memo} onChange={e => setMemo(e.target.value)} />
         </div>
@@ -459,23 +497,54 @@ export default function EquipmentCard({ equipment: initial }: { equipment: Equip
             <div className="py-10 text-center text-gray-400 text-sm">수선 이력이 없습니다.</div>
           ) : (
             <div className="divide-y divide-gray-50">
-              {eq.repairs.map(r => (
-                <div key={r.id} className="px-5 py-4 flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs font-mono text-gray-500">{r.repairedAt}</span>
+              {eq.repairs.map(r => {
+                const totalCost = r.costs && r.costs.length > 0
+                  ? r.costs.reduce((s, c) => s + c.amount, 0)
+                  : (r.cost ?? 0);
+                return (
+                  <div key={r.id} className="px-5 py-4">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="text-xs font-mono text-gray-500">{(r.repairedAt ?? "").slice(0, 10)}</span>
                       {r.contractor && <span className="text-xs text-gray-500">{r.contractor}</span>}
-                      {r.cost != null && (
+                      {totalCost > 0 && (
                         <span className="text-xs font-semibold text-gray-700">
-                          {r.cost.toLocaleString()}원
+                          {totalCost.toLocaleString()}원
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-gray-800 mt-1">{r.content}</p>
-                    {r.memo && <p className="text-xs text-gray-400 mt-0.5">{r.memo}</p>}
+                    {r.cause && (
+                      <div className="mt-1.5">
+                        <span className="text-[10px] font-semibold text-red-600 bg-red-50 px-1.5 py-0.5 rounded mr-2">고장원인</span>
+                        <span className="text-sm text-gray-700">{r.cause}</span>
+                      </div>
+                    )}
+                    <div className="mt-1">
+                      <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded mr-2">조치내용</span>
+                      <span className="text-sm text-gray-800">{r.content}</span>
+                    </div>
+                    {r.costs && r.costs.length > 0 && (
+                      <div className="mt-2 bg-gray-50 rounded-lg px-3 py-2">
+                        <p className="text-[10px] font-semibold text-gray-500 mb-1">소모비용 내역</p>
+                        <table className="text-xs w-full">
+                          <tbody>
+                            {r.costs.map((c, i) => (
+                              <tr key={i}>
+                                <td className="text-gray-600 py-0.5">{c.itemName}</td>
+                                <td className="text-right font-semibold text-gray-800 py-0.5">{c.amount.toLocaleString()}원</td>
+                              </tr>
+                            ))}
+                            <tr className="border-t border-gray-200">
+                              <td className="text-gray-600 font-semibold pt-1">합계</td>
+                              <td className="text-right font-bold text-gray-900 pt-1">{totalCost.toLocaleString()}원</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    {r.memo && <p className="text-xs text-gray-400 mt-1">비고: {r.memo}</p>}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
