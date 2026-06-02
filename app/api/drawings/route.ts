@@ -177,38 +177,51 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, error: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
       }
 
-      // 강재입고관리 스펙 조회 (매칭 여부 확인용 — 수량은 syncSpecsAfterUpload에서 처리)
-      const steelPlans = await prisma.steelPlan.findMany({
-        where: { vesselCode: project.projectCode },
-        select: { material: true, thickness: true, width: true, length: true },
+      // 행 정규화 (대체호선 포함) — 같은 시점에 effective vessel 결정
+      type IncomingRow = {
+        block?: string; drawingNo?: string; heatNo?: string;
+        material: string; thickness: number; width: number; length: number;
+        qty: number; steelWeight?: number | null; useWeight?: number | null;
+        alternateVesselCode?: string | null;
+      };
+      const normalized = (rows as IncomingRow[]).map((r) => {
+        const t = Number(r.thickness), w = Number(r.width), l = Number(r.length);
+        const mat = r.material.trim().toUpperCase();
+        const altVessel = r.alternateVesselCode?.trim() || null;
+        const effectiveVessel = altVessel || project.projectCode;
+        return { ...r, t, w, l, mat, altVessel, effectiveVessel };
       });
-      const hasMatch = (material: string, thickness: number, width: number, length: number) =>
+
+      // 강재입고관리 스펙 조회 — 본 호선 + 대체호선 전부 한 번에
+      const vesselSet = new Set<string>([project.projectCode]);
+      normalized.forEach(n => vesselSet.add(n.effectiveVessel));
+      const steelPlans = await prisma.steelPlan.findMany({
+        where: { vesselCode: { in: Array.from(vesselSet) } },
+        select: { vesselCode: true, material: true, thickness: true, width: true, length: true },
+      });
+      const hasMatch = (vessel: string, material: string, thickness: number, width: number, length: number) =>
         steelPlans.some(
           (sp) =>
+            sp.vesselCode === vessel &&
             sp.material.trim().toLowerCase() === material.trim().toLowerCase() &&
             sp.thickness === thickness && sp.width === width && sp.length === length
         );
 
-      const rowsToInsert = rows.map((r: {
-        block?: string; drawingNo?: string; heatNo?: string;
-        material: string; thickness: number; width: number; length: number;
-        qty: number; steelWeight?: number | null; useWeight?: number | null;
-      }) => {
-        const t = Number(r.thickness), w = Number(r.width), l = Number(r.length);
-        const mat = r.material.trim().toUpperCase();
-        // 초기 상태: 강재입고관리에 규격 존재 → 미입고(REGISTERED), 없음 → 경고(CAUTION)
+      const rowsToInsert = normalized.map((n) => {
+        // 초기 상태: 행별 effectiveVessel 기준으로 매칭
         // 정확한 입고/미입고 구분은 아래 syncSpecsAfterUpload에서 재조정
-        const status: "REGISTERED" | "CAUTION" = hasMatch(mat, t, w, l) ? "REGISTERED" : "CAUTION";
+        const status: "REGISTERED" | "CAUTION" = hasMatch(n.effectiveVessel, n.mat, n.t, n.w, n.l) ? "REGISTERED" : "CAUTION";
         return {
           projectId,
-          block: r.block?.trim() || null,
-          drawingNo: r.drawingNo?.trim() || null,
-          heatNo: r.heatNo?.trim() || null,
-          material: mat,
-          thickness: t, width: w, length: l,
-          qty: Math.round(Number(r.qty)),
-          steelWeight: r.steelWeight != null && r.steelWeight !== 0 ? Number(r.steelWeight) : null,
-          useWeight: r.useWeight != null && r.useWeight !== 0 ? Number(r.useWeight) : null,
+          block: n.block?.trim() || null,
+          drawingNo: n.drawingNo?.trim() || null,
+          heatNo: n.heatNo?.trim() || null,
+          material: n.mat,
+          thickness: n.t, width: n.w, length: n.l,
+          qty: Math.round(Number(n.qty)),
+          steelWeight: n.steelWeight != null && n.steelWeight !== 0 ? Number(n.steelWeight) : null,
+          useWeight: n.useWeight != null && n.useWeight !== 0 ? Number(n.useWeight) : null,
+          alternateVesselCode: n.altVessel,
           sourceFile: null,
           status,
         };

@@ -336,6 +336,7 @@ export default function DrawingTable({
             qty: 1,
             steelWeight: calcSteelWeight(addForm.thickness, addForm.width, addForm.length),
             useWeight: addForm.useWeight ? Number(addForm.useWeight) : null,
+            alternateVesselCode: addForm.alternateVesselCode || null,
           }],
         }),
       });

@@ -123,18 +123,33 @@ export async function PATCH(
     });
 
     // 새 스펙·대체호선 기준으로 status 재계산
+    // CAUTION   — 사용 가능한 입고 판재가 0
+    // REGISTERED — 사용 가능한 입고 판재가 있고(=availability "N장 입고") 아직 이 블록 확정 없음
+    // WAITING   — 이 블록으로 확정된 판재가 1장 이상
     if (specChanged || altVesselChanged || blockChanged) {
       const effectiveVessel = newAltVessel || projectCode;
       const blockCode       = newBlock ?? "UNKNOWN";
       const newFmt          = `${projectCode}/${blockCode}`;
 
-      // 이 행의 스펙이 대상 호선에 존재하는지
-      const specExists = await prisma.steelPlan.count({
-        where: { vesselCode: effectiveVessel, material: newMaterial, thickness: newThickness, width: newWidth, length: newLength },
+      // 사용 가능한 입고 판재 = RECEIVED + (미선점 OR 이 블록으로 선점)
+      // availability API와 의미 일치 — 이게 0이면 '0장 입고' 표시가 뜨므로 사실상 CAUTION
+      const usableCount = await prisma.steelPlan.count({
+        where: {
+          vesselCode:  effectiveVessel,
+          material:    newMaterial,
+          thickness:   newThickness,
+          width:       newWidth,
+          length:      newLength,
+          status:      "RECEIVED",
+          OR: [
+            { reservedFor: null },
+            { reservedFor: { in: [newFmt, blockCode] } },
+          ],
+        },
       });
 
-      let newStatus: string;
-      if (specExists === 0) {
+      let newStatus: "CAUTION" | "REGISTERED" | "WAITING";
+      if (usableCount === 0) {
         newStatus = "CAUTION";
       } else {
         // 이 블록으로 이미 확정된 판재가 있으면 WAITING
@@ -152,7 +167,7 @@ export async function PATCH(
         newStatus = reserved > 0 ? "WAITING" : "REGISTERED";
       }
 
-      await prisma.drawingList.update({ where: { id }, data: { status: newStatus as "CAUTION" | "REGISTERED" | "WAITING" } });
+      await prisma.drawingList.update({ where: { id }, data: { status: newStatus } });
     }
 
     const updated = await prisma.drawingList.findUnique({ where: { id } });
