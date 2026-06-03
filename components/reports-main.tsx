@@ -19,6 +19,17 @@ import { Button } from "@/components/ui/button";
 import { Input }  from "@/components/ui/input";
 import * as XLSX  from "xlsx";
 import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
+import dynamic from "next/dynamic";
+
+// 통계 탭은 jspdf/recharts/html2canvas 클라이언트 전용 라이브러리 사용 — SSR 비활성화
+const ReportsStatsTab = dynamic(() => import("@/components/reports-stats-tab"), {
+  ssr: false,
+  loading: () => (
+    <div className="bg-white border rounded-xl p-12 text-center text-gray-400 text-sm">
+      통계 로딩 중...
+    </div>
+  ),
+});
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 interface CuttingLog {
@@ -58,7 +69,7 @@ interface CuttingLog {
   pauses:      { reason: string; pausedAt: string; resumedAt: string | null }[];
 }
 
-type WorkTypeFilter = "all" | "normal" | "urgent";
+type WorkTypeFilter = "all" | "normal" | "urgent" | "stats";
 
 // ─── 유틸 ──────────────────────────────────────────────────────────────────────
 function eqShort(name: string): string {
@@ -244,9 +255,14 @@ export default function ReportsMain({
             <p className="text-sm text-gray-500 mt-0.5">완료된 절단 작업 내역 조회 및 출력</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={downloadExcel} className="flex items-center gap-2">
-              <FileDown size={15} /> 엑셀 다운로드
-            </Button>
+            {workType !== "stats" && (
+              <Button variant="outline" onClick={downloadExcel} className="flex items-center gap-2">
+                <FileDown size={15} /> 엑셀 다운로드
+                <span className="text-xs text-gray-500">
+                  ({workType === "all" ? "전체" : workType === "normal" ? "정규" : "돌발"})
+                </span>
+              </Button>
+            )}
             <Button onClick={() => window.print()} className="flex items-center gap-2">
               <Printer size={15} /> 인쇄
             </Button>
@@ -266,12 +282,13 @@ export default function ReportsMain({
           </div>
         </div>
 
-        {/* 정규 / 돌발 구분 탭 */}
-        <div className="flex gap-2 no-print">
+        {/* 정규 / 돌발 / 통계 구분 탭 */}
+        <div className="flex gap-2 no-print flex-wrap">
           {([
             ["all",    "전체",   logs.length,        "bg-gray-800 text-white",   "border-gray-300 text-gray-700"],
             ["normal", "정규작업", normalLogs.length, "bg-blue-600 text-white",   "border-blue-200 text-blue-700"],
             ["urgent", "돌발작업", urgentLogs.length, "bg-orange-500 text-white", "border-orange-200 text-orange-700"],
+            ["stats",  "통계",    logs.length,        "bg-emerald-600 text-white", "border-emerald-200 text-emerald-700"],
           ] as const).map(([type, label, count, activeClass, inactiveClass]) => (
             <button
               key={type}
@@ -288,6 +305,14 @@ export default function ReportsMain({
           ))}
         </div>
 
+        {/* ── 통계 탭 ── 통계만 표시하고 다른 컨텐츠는 안 보임 ── */}
+        {workType === "stats" && (
+          <ReportsStatsTab logs={logs} fromStr={fromStr} toStr={toStr} />
+        )}
+
+        {/* ── 통계 외 탭: 요약 / 장비별 / 호선별 / 상세 ── */}
+        {workType !== "stats" && (
+        <>
         {/* 요약 카드 */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 no-print">
           {[
@@ -482,6 +507,8 @@ export default function ReportsMain({
               <UrgentDetailTable logs={filteredLogs} />
             )}
           </div>
+        )}
+        </>
         )}
       </div>
     </>
