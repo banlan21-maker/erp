@@ -28,6 +28,8 @@ export async function POST(request: NextRequest) {
     const assignedRowIds = assignedRaw.map(r => r.id);
 
     // 원재 사용 행 (assignedRemnantId IS NULL)
+    // ORDER BY createdAt, id — 강재 부족 시 블록별 분배가 결정적이도록 보장
+    // (PostgreSQL heap 스캔 순서에 의존하면 호출마다 다른 결과 가능)
     const pendingRows = await prisma.$queryRaw<{
       id: string; material: string; thickness: number; width: number; length: number;
       block: string | null; alternateVesselCode: string | null;
@@ -35,6 +37,7 @@ export async function POST(request: NextRequest) {
       SELECT id, material, thickness, width, length, block, "alternateVesselCode"
       FROM "DrawingList"
       WHERE "projectId" = ${projectId} AND status = 'REGISTERED' AND "assignedRemnantId" IS NULL
+      ORDER BY "createdAt" ASC, id ASC
     `;
 
     if (assignedRowIds.length > 0) {
@@ -85,22 +88,17 @@ export async function POST(request: NextRequest) {
       const { material, thickness, width, length, block: blockCode, steelVessel, needed } = spec;
       const reservedFor = `${vesselCode}/${blockCode}`;
 
-      // 이미 이 호선 재고에서 이 블록으로 확정된 수량 (호선별로 구분)
-      const alreadyNew = await prisma.steelPlan.count({
-        where: { vesselCode: steelVessel, material, thickness, width, length, status: "RECEIVED", reservedFor },
-      });
-      const alreadyOld = alreadyNew === 0 ? await prisma.steelPlan.count({
-        where: { vesselCode: steelVessel, material, thickness, width, length, status: "RECEIVED", reservedFor: blockCode },
-      }) : 0;
-      const alreadyCount = alreadyNew + alreadyOld;
-
-      const toConfirm = needed - alreadyCount;
-      if (toConfirm <= 0) { skipped += needed; continue; }
+      // pendingRows 는 이미 status='REGISTERED' 만 필터링했으므로 needed 자체가
+      // "추가로 확정해야 하는 도면 수". alreadyCount 를 다시 빼면 이중 차감되어
+      // 1차에 부분확정된 후 2차 일괄확정 시 부족분이 정확히 안 채워짐.
+      // (예: 도면 5장, 1차 1장만 확정 → 2차에 4장 확정되어야 하는데 3장만 확정되던 버그)
+      const toConfirm = needed;
+      if (toConfirm <= 0) continue;
 
       const plans = await prisma.steelPlan.findMany({
         where: { vesselCode: steelVessel, material, thickness, width, length, status: "RECEIVED", reservedFor: null },
         take: toConfirm,
-        orderBy: { createdAt: "asc" },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       });
 
       for (const plan of plans) {
