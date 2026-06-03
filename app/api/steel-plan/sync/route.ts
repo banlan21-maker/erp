@@ -20,6 +20,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { syncDrawingListBySpecs } from "@/lib/sync-drawing-spec";
 
 export async function POST() {
   try {
@@ -33,14 +34,22 @@ export async function POST() {
 
     // ── SteelPlan 동기화 ────────────────────────────────────────────────────
     // COMPLETED 상태인데 actualHeatNo가 활성 작업일보에 없으면 → RECEIVED 복원
+    // sync 호출용 spec 도 함께 수집
     const orphanedPlans = await prisma.steelPlan.findMany({
       where:  { status: "COMPLETED", actualHeatNo: { not: null } },
-      select: { id: true, actualHeatNo: true },
+      select: {
+        id: true, actualHeatNo: true,
+        vesselCode: true, material: true, thickness: true, width: true, length: true,
+      },
     });
 
-    const planIdsToRevert = orphanedPlans
-      .filter(p => p.actualHeatNo && !activeHeatNos.has(p.actualHeatNo.trim()))
-      .map(p => p.id);
+    const toRevert = orphanedPlans
+      .filter(p => p.actualHeatNo && !activeHeatNos.has(p.actualHeatNo.trim()));
+    const planIdsToRevert = toRevert.map(p => p.id);
+    const revertedSpecs = toRevert.map(p => ({
+      vesselCode: p.vesselCode, material: p.material,
+      thickness:  p.thickness, width: p.width, length: p.length,
+    }));
 
     let revertedPlans = 0;
     if (planIdsToRevert.length > 0) {
@@ -56,7 +65,12 @@ export async function POST() {
       revertedPlans = result.count;
     }
 
-    // actualHeatNo가 null인데 COMPLETED인 이상한 케이스도 복원
+    // actualHeatNo가 null인데 COMPLETED인 이상한 케이스도 복원 + spec 수집
+    const noHeatPlanRecords = await prisma.steelPlan.findMany({
+      where: { status: "COMPLETED", actualHeatNo: null },
+      select: { vesselCode: true, material: true, thickness: true, width: true, length: true },
+    });
+    revertedSpecs.push(...noHeatPlanRecords);
     const noHeatPlans = await prisma.steelPlan.updateMany({
       where: { status: "COMPLETED", actualHeatNo: null },
       data:  { status: "RECEIVED" },
@@ -80,6 +94,13 @@ export async function POST() {
         data:  { status: "WAITING", cutAt: null },
       });
       revertedHeats = result.count;
+    }
+
+    // ── DrawingList 자동 재계산 — 복원된 spec 들에 대해 sync ──────────────
+    // SteelPlan 풀이 늘어났으므로 동일 spec DrawingList 가 REGISTERED → WAITING
+    // 으로 자동 승격되어야 함
+    if (revertedSpecs.length > 0) {
+      await syncDrawingListBySpecs(revertedSpecs);
     }
 
     return NextResponse.json({

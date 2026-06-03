@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { syncDrawingListBySpec } from "@/lib/sync-drawing-spec";
+import { syncDrawingListBySpecs } from "@/lib/sync-drawing-spec";
 
 // PATCH /api/drawings/[id] - 강재리스트 행 수정 또는 상태 변경
 export async function PATCH(
@@ -11,7 +11,16 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
 
-    // 상태 변경 전용
+    // ── 상태 강제 변경 (관리자 비상 도구) ──────────────────────────────────
+    // 단순 status 표시 변경만 수행. SteelPlan / SteelPlanHeat 차감 안 함.
+    // 정규 절단완료는 cutting-logs API 를 사용해야 SteelPlan COMPLETED 전환 +
+    // actualHeatNo 기록 등 풀 정합성 유지. 본 액션은 잘못된 표시만 교정하는 용도.
+    //
+    // ⚠️  주의: 본 분기는 즉시 sync 를 호출하지 않으나, 다른 endpoint 의 sync
+    //     트리거(steel-plan 변경 / drawings 다른 행 수정 / reserve-bulk / cutting-logs 등)
+    //     가 동일 (effectiveVessel, spec) 으로 sync 를 발동시키면 본 행도 candidate
+    //     에 포함되어 자연 status (usable RECEIVED 기반) 으로 재계산될 수 있음.
+    //     영구 고정이 필요하면 추가 manualOverride 플래그 도입 필요 (Phase 3).
     if (body.action === "status") {
       const { status } = body;
       const validStatuses = ["REGISTERED", "WAITING", "CUT"];
@@ -22,10 +31,11 @@ export async function PATCH(
         where: { id },
         data: {
           status,
-          // 입고(WAITING)로 변경 시 입고일 기록, 등록으로 되돌리면 초기화
           receivedAt: status === "WAITING" ? new Date() : status === "REGISTERED" ? null : undefined,
         },
-        include: { remnants: { where: { parentRemnantId: null } } },
+        include: {
+          remnants: { where: { parentRemnantId: null } },
+        },
       });
 
       // 절단완료(CUT) 시: 자식 등록잔재에 heatNo 자동부여 + PENDING→IN_STOCK
@@ -34,7 +44,7 @@ export async function PATCH(
         if (childIds.length > 0) {
           await prisma.remnant.updateMany({
             where: { id: { in: childIds }, status: "PENDING" },
-            data: { heatNo: updated.heatNo, status: "IN_STOCK" },
+            data:  { heatNo: updated.heatNo, status: "IN_STOCK" },
           });
         }
       }
@@ -42,7 +52,7 @@ export async function PATCH(
       return NextResponse.json({ success: true, data: updated });
     }
 
-    // 필드 수정
+    // ── 필드 수정 ──────────────────────────────────────────────────────────
     const { block, drawingNo, heatNo, material, thickness, width, length, qty, steelWeight, useWeight, alternateVesselCode } = body;
 
     if (!material || !thickness || !width || !length || !qty) {
@@ -52,7 +62,7 @@ export async function PATCH(
       );
     }
 
-    // 현재 row 조회 (SteelPlan 확정 해제 여부 판단)
+    // 현재 row 조회
     const current = await prisma.drawingList.findUnique({
       where: { id },
       include: { project: { select: { projectCode: true } } },
@@ -61,26 +71,26 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: "항목을 찾을 수 없습니다." }, { status: 404 });
     }
 
-    const projectCode       = current.project.projectCode;
-    const newBlock          = block?.trim() || null;
-    const newMaterial       = material.trim().toUpperCase();
-    const newThickness      = Number(thickness);
-    const newWidth          = Number(width);
-    const newLength         = Number(length);
-    const newAltVessel      = (alternateVesselCode ?? "").trim() || null;
+    const projectCode  = current.project.projectCode;
+    const newBlock     = block?.trim() || null;
+    const newMaterial  = material.trim().toUpperCase();
+    const newThickness = Number(thickness);
+    const newWidth     = Number(width);
+    const newLength    = Number(length);
+    const newAltVessel = (alternateVesselCode ?? "").trim() || null;
 
-    const blockChanged      = (current.block ?? null) !== newBlock;
-    const specChanged       = current.material !== newMaterial
-      || current.thickness !== newThickness
-      || current.width     !== newWidth
-      || current.length    !== newLength;
-    const altVesselChanged  = (current.alternateVesselCode ?? null) !== newAltVessel;
+    const blockChanged     = (current.block ?? null) !== newBlock;
+    const specChanged      = current.material !== newMaterial
+                          || current.thickness !== newThickness
+                          || current.width     !== newWidth
+                          || current.length    !== newLength;
+    const altVesselChanged = (current.alternateVesselCode ?? null) !== newAltVessel;
 
-    // 블록·스펙·대체호선이 바뀐 경우 → WAITING이면 기존 SteelPlan 예약 해제
+    // 블록·스펙·대체호선이 바뀐 경우 → WAITING 이면 기존 SteelPlan 예약 해제
     if ((blockChanged || specChanged || altVesselChanged) && current.status === "WAITING") {
-      const oldVessel  = current.alternateVesselCode?.trim() || projectCode;
-      const oldBlock   = current.block ?? "UNKNOWN";
-      const oldFmt     = `${projectCode}/${oldBlock}`;
+      const oldVessel = current.alternateVesselCode?.trim() || projectCode;
+      const oldBlock  = current.block ?? "UNKNOWN";
+      const oldFmt    = `${projectCode}/${oldBlock}`;
 
       const toRelease = await prisma.steelPlan.findFirst({
         where: {
@@ -97,11 +107,6 @@ export async function PATCH(
       if (toRelease) {
         await prisma.steelPlan.update({ where: { id: toRelease.id }, data: { reservedFor: null } });
       }
-    }
-
-    // 기존 스펙 DrawingList 상태 동기화 (변경 전 스펙 기준)
-    if (blockChanged || specChanged || altVesselChanged) {
-      await syncDrawingListBySpec(projectCode, current.material, current.thickness, current.width, current.length);
     }
 
     // DrawingList row 업데이트
@@ -122,52 +127,17 @@ export async function PATCH(
       },
     });
 
-    // 새 스펙·대체호선 기준으로 status 재계산
-    // CAUTION   — 사용 가능한 입고 판재가 0
-    // REGISTERED — 사용 가능한 입고 판재가 있고(=availability "N장 입고") 아직 이 블록 확정 없음
-    // WAITING   — 이 블록으로 확정된 판재가 1장 이상
+    // ── 통합 sync — 옛 spec + 새 spec (변경됐으면 둘 다) ─────────────────
+    // status 는 sync 가 결정. PATCH 가 직접 newStatus 계산하지 않음.
     if (specChanged || altVesselChanged || blockChanged) {
-      const effectiveVessel = newAltVessel || projectCode;
-      const blockCode       = newBlock ?? "UNKNOWN";
-      const newFmt          = `${projectCode}/${blockCode}`;
-
-      // 사용 가능한 입고 판재 = RECEIVED + (미선점 OR 이 블록으로 선점)
-      // availability API와 의미 일치 — 이게 0이면 '0장 입고' 표시가 뜨므로 사실상 CAUTION
-      const usableCount = await prisma.steelPlan.count({
-        where: {
-          vesselCode:  effectiveVessel,
-          material:    newMaterial,
-          thickness:   newThickness,
-          width:       newWidth,
-          length:      newLength,
-          status:      "RECEIVED",
-          OR: [
-            { reservedFor: null },
-            { reservedFor: { in: [newFmt, blockCode] } },
-          ],
-        },
-      });
-
-      let newStatus: "CAUTION" | "REGISTERED" | "WAITING";
-      if (usableCount === 0) {
-        newStatus = "CAUTION";
-      } else {
-        // 이 블록으로 이미 확정된 판재가 있으면 WAITING
-        const reserved = await prisma.steelPlan.count({
-          where: {
-            vesselCode:  effectiveVessel,
-            material:    newMaterial,
-            thickness:   newThickness,
-            width:       newWidth,
-            length:      newLength,
-            status:      "RECEIVED",
-            reservedFor: { in: [newFmt, blockCode] },
-          },
-        });
-        newStatus = reserved > 0 ? "WAITING" : "REGISTERED";
-      }
-
-      await prisma.drawingList.update({ where: { id }, data: { status: newStatus } });
+      const oldVessel = current.alternateVesselCode?.trim() || projectCode;
+      const newVessel = newAltVessel || projectCode;
+      await syncDrawingListBySpecs([
+        { vesselCode: oldVessel, material: current.material, thickness: current.thickness, width: current.width, length: current.length },
+        { vesselCode: newVessel, material: newMaterial,      thickness: newThickness,      width: newWidth,      length: newLength },
+      ]);
+    } else {
+      // 스펙 미변경이라도 heatNo 등만 바뀐 경우엔 status 재계산 불필요
     }
 
     const updated = await prisma.drawingList.findUnique({ where: { id } });
@@ -197,12 +167,12 @@ export async function DELETE(
 
     await prisma.drawingList.delete({ where: { id } });
 
-    // SteelPlan 확정 예약 해제 및 동기화
+    // SteelPlan 확정 예약 해제 및 sync
     if (current) {
-      const projectCode   = current.project.projectCode;
+      const projectCode     = current.project.projectCode;
       const effectiveVessel = current.alternateVesselCode?.trim() || projectCode;
-      const oldBlock      = current.block ?? "UNKNOWN";
-      const oldFmt        = `${projectCode}/${oldBlock}`;
+      const oldBlock        = current.block ?? "UNKNOWN";
+      const oldFmt          = `${projectCode}/${oldBlock}`;
 
       const toRelease = await prisma.steelPlan.findFirst({
         where: {
@@ -221,7 +191,13 @@ export async function DELETE(
         await prisma.steelPlan.update({ where: { id: toRelease.id }, data: { reservedFor: null } });
       }
 
-      await syncDrawingListBySpec(projectCode, current.material, current.thickness, current.width, current.length);
+      await syncDrawingListBySpecs([{
+        vesselCode: effectiveVessel,
+        material:   current.material,
+        thickness:  current.thickness,
+        width:      current.width,
+        length:     current.length,
+      }]);
     }
 
     return NextResponse.json({ success: true });

@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { syncDrawingListBySpecs } from "@/lib/sync-drawing-spec";
 
 const PAGE_SIZE = 50;
 
@@ -162,6 +163,13 @@ export async function POST(req: NextRequest) {
 
   if (heatData.length > 0) await prisma.steelPlanHeat.createMany({ data: heatData });
 
+  // ── 신규 등록 spec 별 DrawingList 자동 동기화 ─────────────────────────
+  // CAUTION 으로 떠있던 도면이 새 강재 등록으로 REGISTERED 로 자동 승격되어야 함
+  await syncDrawingListBySpecs(planData.map(p => ({
+    vesselCode: p.vesselCode, material: p.material,
+    thickness:  p.thickness,  width:    p.width, length: p.length,
+  })));
+
   return NextResponse.json({ count: created.count, uploadBatchNo }, { status: 201 });
 }
 
@@ -173,23 +181,39 @@ export async function DELETE(req: NextRequest) {
   const body = await req.json();
 
   if (Array.isArray(body.ids) && body.ids.length > 0) {
+    // 삭제 전 spec 수집 → 삭제 후 sync
+    const affected = await prisma.steelPlan.findMany({
+      where: { id: { in: body.ids } },
+      select: { vesselCode: true, material: true, thickness: true, width: true, length: true },
+    });
     const { count } = await prisma.steelPlan.deleteMany({ where: { id: { in: body.ids } } });
+    await syncDrawingListBySpecs(affected);
     return NextResponse.json({ planCount: count });
   }
 
   if (body.uploadBatchNo) {
+    const affected = await prisma.steelPlan.findMany({
+      where: { uploadBatchNo: body.uploadBatchNo },
+      select: { vesselCode: true, material: true, thickness: true, width: true, length: true },
+    });
     const [plan, heat] = await Promise.all([
       prisma.steelPlan.deleteMany({ where: { uploadBatchNo: body.uploadBatchNo } }),
       prisma.steelPlanHeat.deleteMany({ where: { uploadBatchNo: body.uploadBatchNo } }),
     ]);
+    await syncDrawingListBySpecs(affected);
     return NextResponse.json({ planCount: plan.count, heatCount: heat.count });
   }
 
   if (body.vesselCode) {
+    const affected = await prisma.steelPlan.findMany({
+      where: { vesselCode: body.vesselCode },
+      select: { vesselCode: true, material: true, thickness: true, width: true, length: true },
+    });
     const [plan, heat] = await Promise.all([
       prisma.steelPlan.deleteMany({ where: { vesselCode: body.vesselCode } }),
       prisma.steelPlanHeat.deleteMany({ where: { vesselCode: body.vesselCode } }),
     ]);
+    await syncDrawingListBySpecs(affected);
     return NextResponse.json({ planCount: plan.count, heatCount: heat.count });
   }
 

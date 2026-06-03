@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { syncDrawingListBySpec } from "@/lib/sync-drawing-spec";
 
 export async function POST(req: NextRequest) {
   const { vesselCode, material, thickness, width, length, qty } = await req.json();
@@ -36,8 +37,11 @@ export async function POST(req: NextRequest) {
   const ids = targets.map((t) => t.id);
   const { count } = await prisma.steelPlan.updateMany({
     where: { id: { in: ids } },
-    data: { status: "RECEIVED" },
+    data: { status: "RECEIVED", receivedAt: new Date() },
   });
+
+  // DrawingList 자동 동기화 — receive-bulk 와 동일 동작
+  await syncDrawingListBySpec(vesselCode, material, Number(thickness), Number(width), Number(length));
 
   return NextResponse.json({ matched: count });
 }

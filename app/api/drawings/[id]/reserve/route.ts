@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { syncDrawingListBySpec } from "@/lib/sync-drawing-spec";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,9 @@ export async function POST(
       data: { reservedFor },
     });
 
+    // 동일 spec 의 다른 블록 도면 매칭 영향 → sync
+    await syncDrawingListBySpec(steelVesselCode, material, thickness, width, length);
+
     return NextResponse.json({ success: true, reservedSteelPlanId: steelPlan.id, block: reservedFor });
   } catch (error) {
     console.error("[POST /api/drawings/[id]/reserve]", error);
@@ -102,6 +106,9 @@ export async function DELETE(
       where: { id: steelPlan.id },
       data: { reservedFor: null },
     });
+
+    // 확정 해제 → 미예약 풀 증가, 동일 spec 다른 행 매칭 영향 → sync
+    await syncDrawingListBySpec(steelVesselCode, material, thickness, width, length);
 
     return NextResponse.json({ success: true });
   } catch (error) {

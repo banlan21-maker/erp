@@ -35,7 +35,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { syncDrawingListBySpec } from "@/lib/sync-drawing-spec";
+import { syncDrawingListBySpec, syncDrawingListBySpecs } from "@/lib/sync-drawing-spec";
 import { syncProjectStatus } from "@/lib/sync-project-status";
 
 // ─── PATCH ─────────────────────────────────────────────────────────────────────
@@ -81,28 +81,58 @@ export async function PATCH(
     }
 
     if (action === "complete") {
-      // 혹시 PAUSED 상태에서 완료 누른 경우 열린 pause 자동 닫기
-      await prisma.cuttingPause.updateMany({
-        where: { cuttingLogId: id, resumedAt: null },
-        data:  { resumedAt: new Date() },
-      });
-
-      // 절단 종료 처리 (endAt/startAt 명시 시 관리자 지정값 사용)
+      // ── 멱등성 가드 (R4 + R9 CAS) ─────────────────────────────────────
+      // 더블탭 / 빠른 재호출 / 동시 더블탭 모두 SteelPlan 추가 소비 (재고 영구
+      // 손실) 방지. findUnique+update 비원자(TOCTOU) 대신 updateMany 의
+      // where-기반 compare-and-swap 으로 atomic 보호.
+      //
+      // ⚠️ Phase 3 노트: cuttingLog 외 DrawingList/SteelPlanHeat/SteelPlan
+      //    여러 update 가 트랜잭션 없이 순차 실행됨. 중간 실패 시 cuttingLog 만
+      //    COMPLETED 인 half-synced 상태 가능 + R4 가드로 인해 재시도 차단.
+      //    근본 해결은 prisma.$transaction 으로 전체 묶기.
       const { endAt: completeEndAt, startAt: completeStartAt } = body;
-      const log = await prisma.cuttingLog.update({
-        where: { id },
+      const casResult = await prisma.cuttingLog.updateMany({
+        where: { id, status: { not: "COMPLETED" } },
         data: {
           status: "COMPLETED",
           endAt: completeEndAt ? new Date(completeEndAt) : new Date(),
           ...(completeStartAt ? { startAt: new Date(completeStartAt) } : {}),
           ...(memo !== undefined ? { memo: memo?.trim() || null } : {}),
         },
-        include: { equipment: { select: { name: true } } },
+      });
+      if (casResult.count === 0) {
+        // 이미 COMPLETED 거나 ID 없음 — 부작용 모두 스킵
+        const found = await prisma.cuttingLog.findUnique({ where: { id }, select: { status: true } });
+        if (!found) {
+          return NextResponse.json({ success: false, error: "기록을 찾을 수 없습니다." }, { status: 404 });
+        }
+        return NextResponse.json({ success: true, data: { id, status: "COMPLETED", alreadyCompleted: true } });
+      }
+
+      // 혹시 PAUSED 상태에서 완료 누른 경우 열린 pause 자동 닫기
+      await prisma.cuttingPause.updateMany({
+        where: { cuttingLogId: id, resumedAt: null },
+        data:  { resumedAt: new Date() },
       });
 
-      // ── DrawingList 상태 CUT으로 변경 ─────────────────────────────────────
+      // CAS 로 status 가 이미 COMPLETED 됐으므로 후속 조회로 데이터 확보
+      const log = await prisma.cuttingLog.findUnique({
+        where: { id },
+        include: { equipment: { select: { name: true } } },
+      });
+      if (!log) {
+        return NextResponse.json({ success: false, error: "기록 조회 실패" }, { status: 500 });
+      }
+
+      // ── DrawingList 상태 CUT으로 변경 + 사용 정보 추출 ────────────────────
       // 같은 프로젝트+도면번호의 WAITING 상태 첫 항목을 CUT으로
-      let drawingListId: string | null = null;
+      // alt vessel 도면도 정상 매칭되도록 alternateVesselCode 까지 select
+      let targetDrawing: {
+        id: string;
+        block: string | null;
+        alternateVesselCode: string | null;
+        assignedRemnantId: string | null;
+      } | null = null;
       if (log.drawingNo && log.projectId) {
         const target = await prisma.drawingList.findFirst({
           where: {
@@ -111,8 +141,12 @@ export async function PATCH(
             status:     "WAITING",
           },
           orderBy: { createdAt: "asc" },
+          select: {
+            id: true, block: true, alternateVesselCode: true, assignedRemnantId: true,
+          },
         });
         if (target) {
+          targetDrawing = target;
           await prisma.drawingList.update({
             where: { id: target.id },
             data: {
@@ -120,7 +154,6 @@ export async function PATCH(
               ...(log.heatNo?.trim() ? { heatNo: log.heatNo.trim() } : {}),
             },
           });
-          drawingListId = target.id;
           await prisma.cuttingLog.update({
             where: { id },
             data: { drawingListId: target.id },
@@ -144,13 +177,78 @@ export async function PATCH(
         });
       }
 
-      // ── SteelPlanHeat 상태 → CUT (없으면 신규 등록) ───────────────────────
-      if (log.heatNo?.trim()) {
+      // ── SteelPlanHeat 상태 → CUT ───────────────────────────────────────
+      // 동일 heatNo 가 여러 호선에 있을 수 있으므로 effectiveVessel + spec 필터 필수
+      // 정보 부족 시 무차별 매칭 안 함 (다른 호선/스펙 CUT 처리 방지)
+      // R8: SteelPlan 측 갱신 조건과 대칭 — drawingNo 도 필수
+      //     (drawingNo 없으면 SteelPlan/SteelPlanHeat 둘 다 갱신 스킵 → 모순 상태 방지)
+      const effectiveVessel = targetDrawing?.alternateVesselCode?.trim() || project?.projectCode;
+      if (log.drawingNo && log.heatNo?.trim() && effectiveVessel && log.material && log.thickness && log.width && log.length) {
         await prisma.steelPlanHeat.updateMany({
-          where: { heatNo: log.heatNo.trim(), status: "WAITING" },
+          where: {
+            heatNo: log.heatNo.trim(),
+            status: "WAITING",
+            vesselCode: effectiveVessel,
+            material: { equals: log.material.trim().toUpperCase(), mode: "insensitive" },
+            thickness: log.thickness, width: log.width, length: log.length,
+          },
           data:  { status: "CUT", cutAt: log.endAt ?? new Date() },
         });
-        // 판번호 목록에 없는 경우: 자동 등록 안 함 (강재입고관리에서 사전 등록 필수)
+      }
+
+      // ── SteelPlan: 사용된 강재 1장 RECEIVED/ISSUED → COMPLETED ────────────
+      // 우선순위 매칭:
+      //   1차) 이 블록 reservedFor 매칭 (신규 "호선/블록" + 구형 "블록")
+      //   2차) 미예약 (reservedFor=null)
+      //   다른 블록 예약된 강재는 절대 선택 안 함 (데이터 손상 방지)
+      // alt vessel: targetDrawing.alternateVesselCode 우선
+      // R5: log.drawingNo 필수 — DELETE 의 복원 가드(line 353)가 drawingNo 기반이라
+      //     비대칭 방지 위해 complete 측도 drawingNo 없으면 SteelPlan 갱신 스킵
+      if (log.drawingNo && log.material && log.thickness && log.width && log.length && effectiveVessel) {
+        const blockCode = targetDrawing?.block ?? "UNKNOWN";
+        const newFmt    = project ? `${project.projectCode}/${blockCode}` : null;
+        const allowedReservedFor = [
+          ...(newFmt ? [newFmt] : []),
+          blockCode,
+          // null 도 허용 — Prisma OR 절로 표현
+        ];
+        const matchBase = {
+          vesselCode: effectiveVessel,
+          material:   { equals: log.material.trim().toUpperCase(), mode: "insensitive" } as const,
+          thickness:  log.thickness,
+          width:      log.width,
+          length:     log.length,
+          status:     { in: ["RECEIVED", "ISSUED"] as ("RECEIVED" | "ISSUED")[] },
+          actualHeatNo: null,
+        };
+        // 1차: 이 블록 예약 매칭
+        let targetPlan = await prisma.steelPlan.findFirst({
+          where: { ...matchBase, reservedFor: { in: allowedReservedFor } },
+          orderBy: { createdAt: "asc" },
+        });
+        // 2차: 미예약 폴백
+        if (!targetPlan) {
+          targetPlan = await prisma.steelPlan.findFirst({
+            where: { ...matchBase, reservedFor: null },
+            orderBy: { createdAt: "asc" },
+          });
+        }
+        if (targetPlan) {
+          await prisma.steelPlan.update({
+            where: { id: targetPlan.id },
+            data: {
+              status:           "COMPLETED",
+              actualHeatNo:     log.heatNo?.trim() || null,
+              actualVesselCode: effectiveVessel,
+              actualDrawingNo:  log.drawingNo,
+            },
+          });
+          // 동일 spec DrawingList 재계산 (alt vessel 기준)
+          await syncDrawingListBySpec(
+            effectiveVessel, log.material, log.thickness, log.width, log.length,
+          );
+        }
+        // 매칭 실패 시: SteelPlan 갱신 스킵 (관리자 수동 매칭 필요)
       }
 
       // ── 블록(Project) 완료 상태 자동 동기화 ──────────────────────────────
@@ -209,8 +307,19 @@ export async function DELETE(
     }
 
     // drawingListId가 있으면 해당 강재를 CUT → WAITING으로 복원 (heatNo도 초기화)
+    // drawing.alternateVesselCode 까지 select 해서 effectiveVessel 계산에 사용
+    let drawingSyncSpec: {
+      vesselCode: string; material: string; thickness: number; width: number; length: number;
+    } | null = null;
+    let drawingAltVessel: string | null = null; // drawingList 살아있을 때 alt 정보
     if (log.drawingListId) {
-      const drawing = await prisma.drawingList.findUnique({ where: { id: log.drawingListId } });
+      const drawing = await prisma.drawingList.findUnique({
+        where: { id: log.drawingListId },
+        include: { project: { select: { projectCode: true } } },
+      });
+      if (drawing) {
+        drawingAltVessel = drawing.alternateVesselCode?.trim() || null;
+      }
       if (drawing && drawing.status === "CUT") {
         await prisma.drawingList.update({
           where: { id: log.drawingListId },
@@ -223,18 +332,128 @@ export async function DELETE(
             data:  { status: "IN_STOCK" },
           });
         }
+        // sync 대상 spec 기록 (SteelPlan 복원 실패 여부와 무관하게 sync 필요)
+        const effectiveVessel = drawing.alternateVesselCode?.trim() || drawing.project.projectCode;
+        drawingSyncSpec = {
+          vesselCode: effectiveVessel,
+          material:   drawing.material,
+          thickness:  drawing.thickness, width: drawing.width, length: drawing.length,
+        };
       }
     }
 
-    // SteelPlanHeat 상태 복원 CUT → WAITING
-    if (log.heatNo?.trim()) {
+    // ── effectiveVessel 폴백 추론 ──────────────────────────────────────────
+    // drawingSyncSpec 가 null 이어도 (drawing.status!='CUT' 또는 drawing 삭제됨) 호선 추론:
+    //   1) drawingAltVessel (도면 살아있음)
+    //   2) log.projectId → project.projectCode
+    let effectiveVesselForLog: string | null = drawingSyncSpec?.vesselCode ?? null;
+    if (!effectiveVesselForLog) {
+      if (drawingAltVessel) {
+        effectiveVesselForLog = drawingAltVessel;
+      } else if (log.projectId) {
+        const project = await prisma.project.findUnique({
+          where: { id: log.projectId },
+          select: { projectCode: true },
+        });
+        effectiveVesselForLog = project?.projectCode ?? null;
+      }
+    }
+
+    // SteelPlanHeat 상태 복원 CUT → WAITING — effectiveVessel + spec 매칭 필수
+    // 무차별 폴백 제거: heatNo 만으로 매칭하면 다른 호선/스펙 CUT 까지 복원 위험
+    if (log.heatNo?.trim() && effectiveVesselForLog && log.material && log.thickness && log.width && log.length) {
       await prisma.steelPlanHeat.updateMany({
-        where: { heatNo: log.heatNo.trim(), status: "CUT" },
+        where: {
+          heatNo: log.heatNo.trim(),
+          status: "CUT",
+          vesselCode: effectiveVesselForLog,
+          material: { equals: log.material.trim().toUpperCase(), mode: "insensitive" },
+          thickness: log.thickness, width: log.width, length: log.length,
+        },
         data:  { status: "WAITING", cutAt: null },
       });
     }
+    // effectiveVessel/spec 없으면 스킵 — 무차별 복원하지 않음
+
+    // ── SteelPlan 복원: 이 작업으로 COMPLETED 됐던 강재 → RECEIVED ──────────
+    // 복원 식별 단서 3단계 폴백:
+    //   1차) actualVesselCode = effectiveVesselForLog (가장 정확)
+    //   2차) vesselCode = effectiveVesselForLog (구형 데이터 호환)
+    //   3차) vessel 제약 없이 actualHeatNo + actualDrawingNo + spec (alt vessel 도면이 삭제된 케이스 보호)
+    //        — 후보 정확히 1건일 때만 복원 (모호하면 안전하게 스킵)
+    // R5 와 동기화: complete 측이 drawingNo 필수 → DELETE 도 drawingNo 필수 유지 (대칭)
+    let restoredSpec: typeof drawingSyncSpec = null;
+    if (log.drawingNo && log.material && log.thickness && log.width && log.length) {
+      const matMatch = { equals: log.material.trim().toUpperCase(), mode: "insensitive" as const };
+      const specBase = {
+        material:        matMatch,
+        thickness:       log.thickness,
+        width:           log.width,
+        length:          log.length,
+        status:          "COMPLETED" as const,
+        actualDrawingNo: log.drawingNo,
+        ...(log.heatNo?.trim() ? { actualHeatNo: log.heatNo.trim() } : {}),
+      };
+
+      let target = null;
+      if (effectiveVesselForLog) {
+        // 1차: actualVesselCode 정확 매칭
+        target = await prisma.steelPlan.findFirst({
+          where: { ...specBase, actualVesselCode: effectiveVesselForLog },
+          orderBy: { createdAt: "desc" },
+        });
+        // 2차: vesselCode 폴백 (구형 데이터)
+        if (!target) {
+          target = await prisma.steelPlan.findFirst({
+            where: { ...specBase, vesselCode: effectiveVesselForLog },
+            orderBy: { createdAt: "desc" },
+          });
+        }
+      }
+
+      // 3차: vessel 제약 없이 — alt vessel + 도면 삭제 케이스 보호
+      // (단, heatNo 가 있어야 식별력 충분. 후보 정확히 1건일 때만 복원)
+      if (!target && log.heatNo?.trim()) {
+        const candidates = await prisma.steelPlan.findMany({
+          where: specBase,
+          orderBy: { createdAt: "desc" },
+          take: 2, // 모호성 검사용
+        });
+        if (candidates.length === 1) {
+          target = candidates[0];
+        }
+      }
+
+      if (target) {
+        await prisma.steelPlan.update({
+          where: { id: target.id },
+          data: {
+            status:           "RECEIVED",
+            actualHeatNo:     null,
+            actualVesselCode: null,
+            actualDrawingNo:  null,
+          },
+        });
+        // 복원된 SteelPlan 의 vesselCode 기준 sync (alt 호선이면 그쪽 도면 영향)
+        restoredSpec = {
+          vesselCode: target.vesselCode,
+          material:   log.material,
+          thickness:  log.thickness, width: log.width, length: log.length,
+        };
+      }
+    }
 
     await prisma.cuttingLog.delete({ where: { id } });
+
+    // ── 통합 sync — DrawingList 복원 spec + SteelPlan 복원 spec ───────────
+    // SteelPlan 복원 실패해도 DrawingList sync 는 무조건 수행 (가드 완화)
+    const syncSpecs = [
+      ...(drawingSyncSpec ? [drawingSyncSpec] : []),
+      ...(restoredSpec ? [restoredSpec] : []),
+    ];
+    if (syncSpecs.length > 0) {
+      await syncDrawingListBySpecs(syncSpecs);
+    }
 
     // ── 블록(Project) 완료 상태 자동 동기화 (복원 시 ACTIVE로 되돌림) ──────
     if (log.projectId) await syncProjectStatus(log.projectId);

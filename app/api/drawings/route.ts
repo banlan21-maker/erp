@@ -1,66 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseExcelBuffer, parseExcelBufferWithPreset } from "@/lib/excel-parser";
+import { syncDrawingListBySpecs } from "@/lib/sync-drawing-spec";
 
-// ── 업로드/입고 후 스펙·블록별 확정(reservedFor) 수량 기준으로 상태 동기화 ──
-// 확정된 블록만 WAITING, 미확정 블록은 REGISTERED
-async function syncSpecsAfterUpload(
-  vesselCode: string,
-  specs: { material: string; thickness: number; width: number; length: number }[]
-) {
-  const projects = await prisma.project.findMany({
-    where: { projectCode: vesselCode },
-    select: { id: true },
-  });
-  if (projects.length === 0) return;
-  const projectIds = projects.map((p) => p.id);
-
-  const uniqueSpecs = [
-    ...new Map(
-      specs.map((s) => [`${s.material}|${s.thickness}|${s.width}|${s.length}`, s])
-    ).values(),
-  ];
-
-  for (const spec of uniqueSpecs) {
-    const { material, thickness, width, length } = spec;
-
-    const rows = await prisma.drawingList.findMany({
-      where: {
-        projectId: { in: projectIds },
-        material, thickness, width, length,
-        NOT: { status: { in: ["CAUTION", "CUT"] } },
-      },
-      orderBy: { createdAt: "asc" },
-      select: { id: true, block: true },
-    });
-
-    // 블록별 그룹화 → 각 블록의 확정 수량만큼 WAITING
-    const byBlock = new Map<string, string[]>();
-    for (const row of rows) {
-      const blockCode = row.block ?? "UNKNOWN";
-      if (!byBlock.has(blockCode)) byBlock.set(blockCode, []);
-      byBlock.get(blockCode)!.push(row.id);
-    }
-
-    const toWaiting: string[] = [];
-    const toRegistered: string[] = [];
-
-    for (const [blockCode, ids] of byBlock) {
-      const confirmedCount = await prisma.steelPlan.count({
-        where: { vesselCode, material, thickness, width, length, status: "RECEIVED", reservedFor: blockCode },
-      });
-      toWaiting.push(...ids.slice(0, confirmedCount));
-      toRegistered.push(...ids.slice(confirmedCount));
-    }
-
-    if (toWaiting.length > 0) {
-      await prisma.drawingList.updateMany({ where: { id: { in: toWaiting } }, data: { status: "WAITING" } });
-    }
-    if (toRegistered.length > 0) {
-      await prisma.drawingList.updateMany({ where: { id: { in: toRegistered } }, data: { status: "REGISTERED" } });
-    }
-  }
-}
+// syncSpecsAfterUpload 함수는 통합 syncDrawingListBySpecs 로 대체됨 (lib/sync-drawing-spec.ts)
 
 // GET /api/drawings?projectId=xxx&status=WAITING — 강재리스트 조회
 // GET /api/drawings?projectId=xxx&confirmed=true  — 확정된 항목만 조회 (현장 작업일보용)
@@ -234,12 +177,15 @@ export async function POST(request: NextRequest) {
 
       const created = await prisma.drawingList.createMany({ data: rowsToInsert });
 
-      // 입고 수량 기준으로 정확히 재조정
-      const matchedSpecs = rowsToInsert
-        .filter((r) => r.status === "REGISTERED")
-        .map((r) => ({ material: r.material, thickness: r.thickness, width: r.width, length: r.length }));
-      if (matchedSpecs.length > 0) {
-        await syncSpecsAfterUpload(project.projectCode, matchedSpecs);
+      // 통합 sync — 신규 행의 spec 별로 재계산
+      // alt vessel 사용한 행은 그 호선 기준으로, 일반 행은 본 호선 기준
+      const specsToSync = rowsToInsert.map(r => ({
+        vesselCode: r.alternateVesselCode || project.projectCode,
+        material:   r.material,
+        thickness:  r.thickness, width: r.width, length: r.length,
+      }));
+      if (specsToSync.length > 0) {
+        await syncDrawingListBySpecs(specsToSync);
       }
 
       return NextResponse.json({ success: true, data: { count: created.count } }, { status: 201 });
@@ -372,12 +318,14 @@ export async function POST(request: NextRequest) {
       createdCount = created.count;
     }
 
-    // 입고 수량 기준으로 정확히 재조정
-    const matchedSpecs = rowsToInsert
-      .filter((r) => r.status === "REGISTERED")
-      .map((r) => ({ material: r.material, thickness: r.thickness, width: r.width, length: r.length }));
-    if (matchedSpecs.length > 0) {
-      await syncSpecsAfterUpload(project.projectCode, matchedSpecs);
+    // 통합 sync — multipart 업로드는 alternateVesselCode 미지원이라 본 호선 기준
+    const specsToSync = rowsToInsert.map(r => ({
+      vesselCode: project.projectCode,
+      material:   r.material,
+      thickness:  r.thickness, width: r.width, length: r.length,
+    }));
+    if (specsToSync.length > 0) {
+      await syncDrawingListBySpecs(specsToSync);
     }
 
     // 잔재 레코드 생성
@@ -460,7 +408,55 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    // 삭제 전: 1) 영향받는 spec 수집 2) SteelPlan reservedFor 해제 위한 블록 수집
+    const project = await prisma.project.findUnique({ where: { id: projectId } });
+    const allRows = await prisma.drawingList.findMany({
+      where: { projectId },
+      select: {
+        material: true, thickness: true, width: true, length: true,
+        block: true, alternateVesselCode: true, assignedRemnantId: true,
+      },
+    });
+
+    if (project && allRows.length > 0) {
+      const projectCode = project.projectCode;
+      const blockCodes  = [...new Set(allRows.map(r => r.block ?? "UNKNOWN"))];
+      const newFmtCodes = blockCodes.map(b => `${projectCode}/${b}`);
+
+      // SteelPlan reservedFor 해제 — 본 프로젝트 호선/블록 매칭하는 것만
+      await prisma.steelPlan.updateMany({
+        where: {
+          OR: [
+            { reservedFor: { in: newFmtCodes } },
+            { vesselCode: projectCode, reservedFor: { in: blockCodes } },
+          ],
+        },
+        data: { reservedFor: null },
+      });
+      // Remnant reservedFor 도 해제
+      const remnantIds = Array.from(new Set(
+        allRows.map(r => r.assignedRemnantId).filter((x): x is string => !!x)
+      ));
+      if (remnantIds.length > 0) {
+        await prisma.remnant.updateMany({
+          where: { id: { in: remnantIds }, reservedFor: { in: [...newFmtCodes, ...blockCodes] } },
+          data: { reservedFor: null },
+        });
+      }
+    }
+
     const deleted = await prisma.drawingList.deleteMany({ where: { projectId } });
+
+    // 삭제 후 sync — 영향받은 spec 전체
+    if (project && allRows.length > 0) {
+      const specs = allRows.map(r => ({
+        vesselCode: r.alternateVesselCode?.trim() || project.projectCode,
+        material:   r.material,
+        thickness:  r.thickness, width: r.width, length: r.length,
+      }));
+      await syncDrawingListBySpecs(specs);
+    }
+
     return NextResponse.json({ success: true, data: { count: deleted.count } });
   } catch (error) {
     console.error("[DELETE /api/drawings]", error);

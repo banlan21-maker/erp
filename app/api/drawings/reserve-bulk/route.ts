@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { syncDrawingListBySpec } from "@/lib/sync-drawing-spec";
+import { syncDrawingListBySpecs } from "@/lib/sync-drawing-spec";
 
 export const dynamic = "force-dynamic";
 
@@ -76,8 +76,10 @@ export async function POST(request: NextRequest) {
 
     let confirmed = 0;
     let skipped = 0;
-    // 동기화할 스펙 수집 (예약 완료 후 일괄 sync)
-    const specsToSync = new Map<string, { material: string; thickness: number; width: number; length: number }>();
+    // 동기화할 스펙 수집 (steelVessel 별로 구분 — alt vessel 도면 누락 방지)
+    const specsToSync = new Map<string, {
+      vesselCode: string; material: string; thickness: number; width: number; length: number;
+    }>();
 
     for (const spec of grouped.values()) {
       const { material, thickness, width, length, block: blockCode, steelVessel, needed } = spec;
@@ -110,17 +112,15 @@ export async function POST(request: NextRequest) {
       }
       skipped += toConfirm - plans.length;
 
-      // sync 대상 스펙 수집 (예약이 모두 끝난 후 실행)
-      const specKey = `${material}|${thickness}|${width}|${length}`;
+      // sync 대상: steelVessel + spec 키 (alt vessel 도 sync 대상)
+      const specKey = `${steelVessel}|${material}|${thickness}|${width}|${length}`;
       if (!specsToSync.has(specKey)) {
-        specsToSync.set(specKey, { material, thickness, width, length });
+        specsToSync.set(specKey, { vesselCode: steelVessel, material, thickness, width, length });
       }
     }
 
-    // 모든 예약 완료 후 스펙별 DrawingList 상태 동기화
-    for (const spec of specsToSync.values()) {
-      await syncDrawingListBySpec(vesselCode, spec.material, spec.thickness, spec.width, spec.length);
-    }
+    // 모든 예약 완료 후 스펙별 DrawingList 상태 동기화 (steelVessel 기준)
+    await syncDrawingListBySpecs([...specsToSync.values()]);
 
     // sync가 assigned 행을 덮어쓸 수 있으므로 다시 WAITING으로 복원
     if (assignedRowIds.length > 0) {
@@ -152,10 +152,10 @@ export async function DELETE(request: NextRequest) {
     }
     const vesselCode = project.projectCode;
 
-    // 이 프로젝트의 고유 블록코드 + 스펙 목록
+    // 이 프로젝트의 고유 블록코드 + 스펙 목록 (alt vessel 도 sync 대상)
     const allRows = await prisma.drawingList.findMany({
       where: { projectId },
-      select: { material: true, thickness: true, width: true, length: true, block: true },
+      select: { material: true, thickness: true, width: true, length: true, block: true, alternateVesselCode: true },
     });
 
     const blockCodes = [...new Set(allRows.map((r) => r.block ?? "UNKNOWN"))];
@@ -233,15 +233,21 @@ export async function DELETE(request: NextRequest) {
     });
     const cancelled = cancelledNew + cancelledOld;
 
-    // 고유 스펙별 DrawingList 상태 동기화
-    const uniqueSpecs = new Map<string, { material: string; thickness: number; width: number; length: number }>();
+    // 고유 (steelVessel, 스펙) 별 DrawingList 상태 동기화 — alt vessel 누락 방지
+    const uniqueSpecs = new Map<string, {
+      vesselCode: string; material: string; thickness: number; width: number; length: number;
+    }>();
     for (const row of allRows) {
-      const key = `${row.material}|${row.thickness}|${row.width}|${row.length}`;
-      if (!uniqueSpecs.has(key)) uniqueSpecs.set(key, { material: row.material, thickness: row.thickness, width: row.width, length: row.length });
+      const steelVessel = row.alternateVesselCode?.trim() || vesselCode;
+      const key = `${steelVessel}|${row.material}|${row.thickness}|${row.width}|${row.length}`;
+      if (!uniqueSpecs.has(key)) {
+        uniqueSpecs.set(key, {
+          vesselCode: steelVessel,
+          material: row.material, thickness: row.thickness, width: row.width, length: row.length,
+        });
+      }
     }
-    for (const spec of uniqueSpecs.values()) {
-      await syncDrawingListBySpec(vesselCode, spec.material, spec.thickness, spec.width, spec.length);
-    }
+    await syncDrawingListBySpecs([...uniqueSpecs.values()]);
 
     return NextResponse.json({ success: true, data: { cancelled } });
   } catch (error) {
