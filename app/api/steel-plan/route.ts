@@ -180,7 +180,23 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const body = await req.json();
 
+  // 역순 취소 가드 헬퍼 — COMPLETED 강재 포함 시 차단
+  async function blockIfCompleted(filter: { id?: { in: string[] }; uploadBatchNo?: string; vesselCode?: string }) {
+    const completedCount = await prisma.steelPlan.count({
+      where: { ...filter, status: "COMPLETED" },
+    });
+    if (completedCount > 0) {
+      return NextResponse.json(
+        { error: `절단완료된 강재 ${completedCount}건이 포함되어 있습니다. 작업일보에서 절단취소 후 다시 시도하세요.` },
+        { status: 409 }
+      );
+    }
+    return null;
+  }
+
   if (Array.isArray(body.ids) && body.ids.length > 0) {
+    const blocked = await blockIfCompleted({ id: { in: body.ids } });
+    if (blocked) return blocked;
     // 삭제 전 spec 수집 → 삭제 후 sync
     const affected = await prisma.steelPlan.findMany({
       where: { id: { in: body.ids } },
@@ -192,6 +208,8 @@ export async function DELETE(req: NextRequest) {
   }
 
   if (body.uploadBatchNo) {
+    const blocked = await blockIfCompleted({ uploadBatchNo: body.uploadBatchNo });
+    if (blocked) return blocked;
     const affected = await prisma.steelPlan.findMany({
       where: { uploadBatchNo: body.uploadBatchNo },
       select: { vesselCode: true, material: true, thickness: true, width: true, length: true },
@@ -205,6 +223,8 @@ export async function DELETE(req: NextRequest) {
   }
 
   if (body.vesselCode) {
+    const blocked = await blockIfCompleted({ vesselCode: body.vesselCode });
+    if (blocked) return blocked;
     const affected = await prisma.steelPlan.findMany({
       where: { vesselCode: body.vesselCode },
       select: { vesselCode: true, material: true, thickness: true, width: true, length: true },

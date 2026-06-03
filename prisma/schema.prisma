@@ -125,7 +125,7 @@ enum SteelPlanStatus {
   REGISTERED // 등록 (계획 등록)
   RECEIVED // 입고완료
   ISSUED // 출고완료 (절단장 투입)
-  COMPLETED // 레거시 - 더 이상 사용 안 함
+  COMPLETED // 절단완료 (cutting-logs complete 시 자동 전환, 역순 취소 가드 대상)
 }
 
 enum SteelPlanHeatStatus {

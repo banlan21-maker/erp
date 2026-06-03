@@ -82,6 +82,14 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: "항목을 찾을 수 없습니다." }, { status: 404 });
     }
 
+    // 역순 취소 가드 — 절단완료된 도면은 확정취소 불가
+    if (drawing.status === "CUT") {
+      return NextResponse.json(
+        { success: false, error: "절단완료된 도면입니다. 작업일보에서 절단취소 후 다시 시도하세요." },
+        { status: 409 }
+      );
+    }
+
     const { material, thickness, width, length } = drawing;
     const projectCode = drawing.project.projectCode;
     const block = drawing.block ?? "UNKNOWN";

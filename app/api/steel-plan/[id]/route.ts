@@ -17,6 +17,27 @@ export async function PATCH(
   const { id } = await params;
   const body = await req.json();
 
+  // ── 역순 취소 가드 ─────────────────────────────────────────────────
+  // 절단완료(COMPLETED) 강재는 작업일보 절단취소로 RECEIVED 복원 먼저 해야 함.
+  // 직접 입고취소/출고취소/spec 변경 등이 들어오면 actual* 추적 단서 영구 손실 위험.
+  if (
+    body.status === "REGISTERED" ||                                        // 입고취소
+    (body.status === "RECEIVED" && body.cancelIssue) ||                    // 출고취소
+    body.vesselCode !== undefined ||                                       // 호선 변경
+    body.material   !== undefined ||                                       // 규격 변경
+    body.thickness  !== undefined ||
+    body.width      !== undefined ||
+    body.length     !== undefined
+  ) {
+    const cur = await prisma.steelPlan.findUnique({ where: { id }, select: { status: true } });
+    if (cur?.status === "COMPLETED") {
+      return NextResponse.json(
+        { error: "절단완료된 강재입니다. 작업일보에서 절단취소 후 다시 시도하세요." },
+        { status: 409 }
+      );
+    }
+  }
+
   // 출고 처리 시 블록 확정 여부 체크
   if (body.status === "ISSUED") {
     const plan = await prisma.steelPlan.findUnique({ where: { id }, select: { reservedFor: true } });
@@ -86,11 +107,22 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  // 삭제 전 spec 보존
+  // 삭제 전 spec + status 보존
   const plan = await prisma.steelPlan.findUnique({
     where: { id },
-    select: { vesselCode: true, material: true, thickness: true, width: true, length: true },
+    select: {
+      vesselCode: true, material: true, thickness: true, width: true, length: true,
+      status: true,
+    },
   });
+  // 역순 취소 가드 — COMPLETED(절단완료) 강재 삭제 차단
+  // 삭제하면 cutting-logs DELETE 의 SteelPlan 복원이 불가능 → 재고 영구 손실
+  if (plan?.status === "COMPLETED") {
+    return NextResponse.json(
+      { error: "절단완료된 강재입니다. 작업일보에서 절단취소 후 다시 시도하세요." },
+      { status: 409 }
+    );
+  }
   await prisma.steelPlan.delete({ where: { id } });
 
   // DrawingList 자동 동기화 — 강재가 사라졌으므로 매칭 카운트 변동
