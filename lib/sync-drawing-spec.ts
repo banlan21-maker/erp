@@ -1,31 +1,41 @@
 /**
  * DrawingList 상태 동기화 — 단일 진실 함수
  *
- * ── 상태 모델 (사용자 확인된 규칙) ─────────────────────────────────────────
+ * ── 상태 모델 (사용자 확정) ────────────────────────────────────────────────
  *   CAUTION    : 매칭 SteelPlan 0장 (이 호선·이 규격 강재 자체 없음)
  *                매칭 풀 status: REGISTERED + RECEIVED + ISSUED (COMPLETED 제외)
- *   REGISTERED : 매칭 SteelPlan 있지만 사용 가능한 입고 강재 0장 (등록만 됨, 미입고)
- *                "사용 가능한 입고" = status RECEIVED 또는 ISSUED 이고
- *                                    (reservedFor=null OR reservedFor가 이 블록)
- *                ISSUED 도 가용에 포함하는 이유: 절단장에 투입됐지만 아직 절단 안 됨
- *   WAITING    : 이 블록에 사용 가능한 RECEIVED+ISSUED ≥ 1장 (입고됨)
+ *
+ *   REGISTERED : SteelPlan 있지만 이 블록에 확정(reservedFor)된 강재 0장
+ *                · 등록만 됐든, 입고만 됐든, 다른 블록에 예약됐든 모두 REGISTERED
+ *                · 가용 입고 수량은 별도 availability API 가 계산해 UI 에 "N장 입고"
+ *                  형태로 표시 (DrawingList.status 와 무관)
+ *
+ *   WAITING    : 이 블록에 reservedFor 매칭된 강재로 확정된 도면 (1:1 매칭)
+ *                · 같은 블록 도면 N장 + reservedFor 매칭 강재 M장이면 createdAt asc
+ *                  순서로 첫 M장만 WAITING. 나머지는 REGISTERED.
+ *                · 사용자가 일괄확정 버튼을 눌렀을 때만 발생
+ *                · reservedFor 형식: 신규 "호선/블록" 또는 구형 "블록"
+ *
  *   CUT        : 절단완료 (sync 대상 아님)
  *
- *   확정(reservedFor) 자체는 status 결정에 영향 X. 단, 매칭 풀에서
- *   "이 블록에 사용 가능"한 강재는 (reservedFor=null OR reservedFor가 이 블록) 인 것만.
- *   다른 블록에 예약된 강재는 이 블록의 매칭 풀에 들어가지 않음.
+ * ── 운영 흐름 ────────────────────────────────────────────────────────────
+ *   1. 강재 등록 → SteelPlan(REGISTERED) → DrawingList: CAUTION → REGISTERED
+ *   2. 강재 입고처리 → SteelPlan(RECEIVED) → DrawingList: 여전히 REGISTERED
+ *      (availability API 가 가용 카운트 늘려 UI 에 "N장 입고" 표시)
+ *   3. 일괄확정 → SteelPlan.reservedFor 채움 → DrawingList: REGISTERED → WAITING
+ *      ("확정" 표시 + 강재전체목록의 확정호선/블록 컬럼 채워짐)
+ *   4. 절단완료 → SteelPlan(COMPLETED) → 매칭 풀에서 빠짐 → 다른 도면은 sync 영향
  *
  * ── 대체호선(alternateVesselCode) 처리 ───────────────────────────────────
- *   호출 인자는 "effectiveVessel" (강재 기준 호선).
- *   대상 DrawingList:
- *     - alternateVesselCode = effectiveVessel  (대체호선 명시)
- *     - OR alternateVesselCode = null AND project.projectCode = effectiveVessel
+ *   호출 인자 effectiveVessel 은 "강재 기준 호선".
+ *   대상 DrawingList: alternateVesselCode = effectiveVessel
+ *                    OR alternateVesselCode IS NULL AND project.projectCode = effectiveVessel
  *
  * ── 호출 시점 ────────────────────────────────────────────────────────────
- *   - 강재 등록 / 입고 / 입고취소 / 출고 / 출고취소 / 삭제 / spec 변경
- *   - 도면 업로드 / 행 수정 (스펙·블록·대체호선) / 행 삭제 / 행 강제 상태변경
- *   - 단건/일괄 확정 / 확정취소
- *   - 절단 완료 / 절단 취소
+ *   강재 등록/입고/입고취소/출고/출고취소/삭제/spec 변경
+ *   도면 업로드/행 수정/행 삭제
+ *   단건/일괄 확정/확정취소
+ *   절단 완료/절단 취소
  */
 
 import { prisma } from "@/lib/prisma";
@@ -64,7 +74,9 @@ export async function syncDrawingListBySpec(
           project:             { projectCode: effectiveVessel } },
       ],
     },
-    orderBy: { createdAt: "asc" },
+    // createdAt 동률(createMany 로 일괄 삽입된 경우 흔함) 시 비결정적 분배 방지 —
+    // id 를 secondary tiebreaker 로 추가해 안정 정렬 보장 (sync 호출마다 동일 결과)
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     select: {
       id:     true,
       block:  true,
@@ -94,31 +106,42 @@ export async function syncDrawingListBySpec(
     return;
   }
 
-  // 4. 각 행 status 결정 — 블록별로 "사용 가능" 카운트
-  const receivedPool = plans.filter(p => p.status === "RECEIVED" || p.status === "ISSUED");
+  // 4. 각 행 status 결정 — 블록별 카운트 분배 (도면 1장 : 강재 1장)
+  //    한 블록에 확정된 강재 N장이면, 그 블록 도면 중 createdAt asc 첫 N장만 WAITING.
+  //    over-count 방지: 강재 1장 확정인데 도면 5장 모두 WAITING 되는 결함 해결.
+  const reservedPool = plans.filter(p =>
+    (p.status === "RECEIVED" || p.status === "ISSUED") && p.reservedFor !== null
+  );
+
+  // (projectCode, blockCode) 키로 그룹화 — 다른 프로젝트의 동명 블록과 분리
+  const byBlock = new Map<string, typeof candidates>();
+  for (const row of candidates) {
+    const key = `${row.project.projectCode}|${row.block ?? "UNKNOWN"}`;
+    if (!byBlock.has(key)) byBlock.set(key, []);
+    byBlock.get(key)!.push(row);
+  }
 
   const toRegistered: string[] = [];
   const toWaiting:    string[] = [];
 
-  for (const row of candidates) {
-    const projectCode = row.project.projectCode;
-    const blockCode   = row.block ?? "UNKNOWN";
+  for (const rows of byBlock.values()) {
+    const projectCode = rows[0].project.projectCode;
+    const blockCode   = rows[0].block ?? "UNKNOWN";
     const newFmt      = `${projectCode}/${blockCode}`;
 
-    // 이 블록에 사용 가능한 입고 강재
-    //   - reservedFor = null  → 미예약 (모든 블록 공유)
-    //   - reservedFor = "호선/블록" 또는 "블록" → 이 블록 전용
-    //   - reservedFor = 다른 블록 → 이 블록 매칭 불가 (제외)
-    const usable = receivedPool.filter(p =>
-      p.reservedFor === null
-      || p.reservedFor === newFmt
-      || p.reservedFor === blockCode
+    // 이 블록에 확정된 강재 수 (신규 "호선/블록" + 구형 "블록")
+    const confirmedCount = reservedPool.filter(p =>
+      p.reservedFor === newFmt || p.reservedFor === blockCode
     ).length;
 
-    const newStatus = usable >= 1 ? "WAITING" : "REGISTERED";
-    if (row.status === newStatus) continue;
-    if (newStatus === "WAITING") toWaiting.push(row.id);
-    else                          toRegistered.push(row.id);
+    // createdAt asc 앞에서부터 confirmedCount 개만 WAITING, 나머지 REGISTERED
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const newStatus = i < confirmedCount ? "WAITING" : "REGISTERED";
+      if (row.status === newStatus) continue;
+      if (newStatus === "WAITING") toWaiting.push(row.id);
+      else                          toRegistered.push(row.id);
+    }
   }
 
   if (toWaiting.length > 0) {
