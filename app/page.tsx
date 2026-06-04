@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import {
   Scissors, Package, Settings,
-  AlertTriangle, XCircle, Clock, ChevronRight,
+  AlertTriangle, XCircle, Clock, ChevronRight, HardHat,
 } from "lucide-react";
 import NoticeSection from "@/components/notice-section";
 import WeatherBar from "@/components/weather-bar";
@@ -121,6 +121,23 @@ export default async function LandingPage() {
 
         {/* ── 진교·진동 현재 날씨 ── */}
         <WeatherBar />
+
+        {/* ── 현장용 링크모음 버튼 ── */}
+        <Link
+          href="/field"
+          className="group flex items-center justify-between bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-2xl px-5 py-4 hover:from-slate-800 hover:to-slate-700 transition-all shadow-sm"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-amber-500/20 flex items-center justify-center">
+              <HardHat size={22} className="text-amber-300" />
+            </div>
+            <div>
+              <p className="font-bold text-base">현장용 링크모음</p>
+              <p className="text-xs text-slate-300 mt-0.5">입출고 · 운행일지 · 시설관리 · 결제관리</p>
+            </div>
+          </div>
+          <ChevronRight size={18} className="text-slate-400 group-hover:text-white group-hover:translate-x-1 transition-all" />
+        </Link>
 
         {/* ── 파트 바로가기 카드 ── */}
         <div className="grid grid-cols-3 gap-4">
