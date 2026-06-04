@@ -74,41 +74,43 @@ export default function VendorsPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-            <div className="overflow-x-auto min-h-[400px]">
-              <table className="w-full text-sm text-left whitespace-nowrap">
-                <thead className="bg-gray-50 border-b border-gray-200 text-gray-600">
+          <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+            <table className="w-full text-sm text-left whitespace-nowrap">
+              <thead className="bg-gray-50 border-b-2 border-gray-300">
+                <tr>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 border-r border-gray-200">업체명</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 border-r border-gray-200">담당자명</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 border-r border-gray-200">연락처</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 border-r border-gray-200">이메일</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 border-r border-gray-200">사업자등록번호</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 border-r border-gray-200">취급품목 카테고리</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-gray-600">비고</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredVendors.length === 0 ? (
                   <tr>
-                    <th className="px-5 py-3 font-semibold">거래처명</th>
-                    <th className="px-5 py-3 font-semibold">담당자</th>
-                    <th className="px-5 py-3 font-semibold">연락처</th>
-                    <th className="px-5 py-3 font-semibold">취급품목 카테고리</th>
-                    <th className="px-5 py-3 font-semibold">비고</th>
+                    <td colSpan={7} className="px-3 py-12 text-center text-gray-400 text-sm">등록된 거래처가 없습니다.</td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {filteredVendors.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-5 py-12 text-center text-gray-400">등록된 거래처가 없습니다.</td>
+                ) : (
+                  filteredVendors.map((vendor) => (
+                    <tr
+                      key={vendor.id}
+                      onClick={() => router.push(`/management/vendors/${vendor.id}`)}
+                      className="cursor-pointer hover:bg-gray-50/70 transition-colors group"
+                    >
+                      <td className="px-3 py-2 text-xs font-bold text-gray-900 border-r border-gray-100 group-hover:text-blue-700 transition-colors">{vendor.name}</td>
+                      <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100">{vendor.contact || <span className="text-gray-300">-</span>}</td>
+                      <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100 font-mono">{vendor.phone || <span className="text-gray-300">-</span>}</td>
+                      <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100">{vendor.email || <span className="text-gray-300">-</span>}</td>
+                      <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100 font-mono">{vendor.businessNumber || <span className="text-gray-300">-</span>}</td>
+                      <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100">{vendor.category || <span className="text-gray-300">-</span>}</td>
+                      <td className="px-3 py-2 text-xs text-gray-500 truncate max-w-[200px]" title={vendor.memo ?? ""}>{vendor.memo || <span className="text-gray-300">-</span>}</td>
                     </tr>
-                  ) : (
-                    filteredVendors.map((vendor) => (
-                      <tr
-                        key={vendor.id}
-                        onClick={() => router.push(`/management/vendors/${vendor.id}`)}
-                        className="cursor-pointer transition-colors hover:bg-blue-50/50 group"
-                      >
-                        <td className="px-5 py-4 font-bold text-gray-900 group-hover:text-blue-700 transition-colors">{vendor.name}</td>
-                        <td className="px-5 py-4 text-gray-700">{vendor.contact || "-"}</td>
-                        <td className="px-5 py-4 text-gray-600 font-mono text-xs">{vendor.phone || "-"}</td>
-                        <td className="px-5 py-4 text-gray-600">{vendor.category || "-"}</td>
-                        <td className="px-5 py-4 text-gray-500 truncate max-w-[200px]">{vendor.memo || "-"}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

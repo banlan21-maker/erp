@@ -260,8 +260,8 @@ export default function FacilityMain() {
         {/* 테이블 */}
         <div className="overflow-x-auto">
           {tab === "gas" ? (
-            <table className="w-full text-sm text-center whitespace-nowrap">
-              <thead className="bg-[#f1f5f9] border-b-2 border-gray-300 text-gray-600">
+            <table className="w-full text-xs text-center whitespace-nowrap">
+              <thead className="bg-gray-50 border-b-2 border-gray-300 text-gray-600">
                 <tr>
                   <th rowSpan={2} className="px-3 py-2 text-xs font-semibold text-center border-r border-gray-300">날짜</th>
                   <th rowSpan={2} className="px-2 py-2 text-xs font-semibold text-center border-r border-gray-300">요일</th>
@@ -279,13 +279,13 @@ export default function FacilityMain() {
                   <th className="px-2 py-1 font-medium text-center border-r border-gray-200">압력</th><th className="px-2 py-1 font-medium text-center border-r border-gray-300">충전량</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-100">
                 {loading ? (
                   <tr><td colSpan={12} className="py-12 text-gray-400"><RefreshCw className="animate-spin mx-auto mb-2 text-blue-500" size={24} />불러오는 중...</td></tr>
                 ) : gasRows.length === 0 ? (
                   <tr><td colSpan={12} className="py-16 text-gray-400">{ym} 점검 기록이 없습니다.</td></tr>
                 ) : gasRows.map(r => (
-                  <tr key={r.id} className={isWeekend(r.date) ? "bg-red-50/40 text-red-700" : "hover:bg-blue-50/30"}>
+                  <tr key={r.id} className={isWeekend(r.date) ? "bg-red-50/40 text-red-700" : "hover:bg-gray-50/70 transition-colors"}>
                     <td className="px-3 py-2.5 font-mono text-center border-r border-gray-200">{r.date.slice(5)}</td>
                     <td className="px-2 py-2.5 font-semibold text-center border-r border-gray-200">{getDayStr(r.date)}</td>
                     <td className="px-3 py-2.5 font-mono text-center border-r border-gray-300">{r.time}</td>
@@ -305,8 +305,8 @@ export default function FacilityMain() {
               </tbody>
             </table>
           ) : (
-            <table className="w-full text-sm text-center whitespace-nowrap">
-              <thead className="bg-[#f1f5f9] border-b-2 border-gray-300 text-gray-600">
+            <table className="w-full text-xs text-center whitespace-nowrap">
+              <thead className="bg-gray-50 border-b-2 border-gray-300 text-gray-600">
                 <tr>
                   <th rowSpan={2} className="px-3 py-2 text-xs font-semibold text-center border-r border-gray-300">날짜</th>
                   <th rowSpan={2} className="px-2 py-2 text-xs font-semibold text-center border-r border-gray-300">요일</th>
@@ -324,13 +324,13 @@ export default function FacilityMain() {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-100">
                 {loading ? (
                   <tr><td colSpan={18} className="py-12 text-gray-400"><RefreshCw className="animate-spin mx-auto mb-2 text-blue-500" size={24} />불러오는 중...</td></tr>
                 ) : compRows.length === 0 ? (
                   <tr><td colSpan={18} className="py-16 text-gray-400">{ym} 점검 기록이 없습니다.</td></tr>
                 ) : compRows.map(r => (
-                  <tr key={r.id} className={isWeekend(r.date) ? "bg-red-50/40 text-red-700" : "hover:bg-blue-50/30"}>
+                  <tr key={r.id} className={isWeekend(r.date) ? "bg-red-50/40 text-red-700" : "hover:bg-gray-50/70 transition-colors"}>
                     <td className="px-3 py-2.5 font-mono text-center border-r border-gray-200">{r.date.slice(5)}</td>
                     <td className="px-2 py-2.5 font-semibold text-center border-r border-gray-200">{getDayStr(r.date)}</td>
                     <td className="px-3 py-2.5 font-mono text-center border-r border-gray-300">{r.time}</td>

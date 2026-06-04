@@ -327,8 +327,8 @@ tfoot td{background:#e2e8f0;font-weight:bold}
 
         {/* 테이블 */}
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-center whitespace-nowrap">
-            <thead className="bg-[#f1f5f9] border-b-2 border-gray-300 text-gray-600">
+          <table className="w-full text-xs text-center whitespace-nowrap">
+            <thead className="bg-gray-50 border-b-2 border-gray-300 text-gray-600">
               <tr>
                 <th className="px-3 py-2.5 text-xs font-semibold border-r border-gray-300">NO</th>
                 {COLUMNS.map(c => {
@@ -351,7 +351,7 @@ tfoot td{background:#e2e8f0;font-weight:bold}
                 <th className="px-3 py-2.5 text-xs font-semibold">관리</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr><td colSpan={10} className="py-12 text-gray-400"><RefreshCw className="animate-spin mx-auto mb-2 text-blue-500" size={24} />불러오는 중...</td></tr>
               ) : rows.length === 0 ? (
@@ -359,25 +359,25 @@ tfoot td{background:#e2e8f0;font-weight:bold}
               ) : filteredRows.length === 0 ? (
                 <tr><td colSpan={10} className="py-16 text-gray-400">필터 조건에 맞는 내역이 없습니다.</td></tr>
               ) : filteredRows.map((r, i) => (
-                <tr key={r.id} className="hover:bg-blue-50/30">
-                  <td className="px-3 py-2.5 text-center border-r border-gray-200 text-gray-500">{i + 1}</td>
-                  <td className="px-3 py-2.5 text-center border-r border-gray-200 font-mono">{r.usedDate.slice(5)} ({getDayStr(r.usedDate)})</td>
-                  <td className="px-3 py-2.5 text-center border-r border-gray-200">
+                <tr key={r.id} className="hover:bg-gray-50/70 transition-colors">
+                  <td className="px-3 py-2 text-center border-r border-gray-100 text-gray-500">{i + 1}</td>
+                  <td className="px-3 py-2 text-center border-r border-gray-100 font-mono">{r.usedDate.slice(5)} ({getDayStr(r.usedDate)})</td>
+                  <td className="px-3 py-2 text-center border-r border-gray-100">
                     {(() => {
                       const owner = ownerByCardNo.get(r.cardNo);
                       const cls = owner === "진교" ? "bg-blue-100 text-blue-700" : owner === "진동" ? "bg-red-100 text-red-700" : "bg-slate-100 text-gray-700";
                       return <span className={`px-2 py-0.5 rounded font-mono font-semibold ${cls}`}>{formatCard(r.cardNo)}</span>;
                     })()}
                   </td>
-                  <td className="px-3 py-2.5 text-center border-r border-gray-200">
+                  <td className="px-3 py-2 text-center border-r border-gray-100">
                     {r.category ? (
                       <span className={`px-2 py-0.5 rounded text-xs font-semibold ${r.category === "사무실" ? "bg-indigo-100 text-indigo-700" : "bg-amber-100 text-amber-700"}`}>{r.category}</span>
                     ) : <span className="text-gray-300">-</span>}
                   </td>
-                  <td className="px-3 py-2.5 text-center border-r border-gray-200">{r.detail || "-"}</td>
-                  <td className="px-3 py-2.5 text-center border-r border-gray-200 font-semibold text-blue-700">{r.amount.toLocaleString()}원</td>
-                  <td className="px-3 py-2.5 text-center border-r border-gray-200">{r.userName ?? "-"}</td>
-                  <td className="px-3 py-2.5 text-center border-r border-gray-200">
+                  <td className="px-3 py-2 text-center border-r border-gray-100">{r.detail || "-"}</td>
+                  <td className="px-3 py-2 text-center border-r border-gray-100 font-semibold text-blue-700">{r.amount.toLocaleString()}원</td>
+                  <td className="px-3 py-2 text-center border-r border-gray-100">{r.userName ?? "-"}</td>
+                  <td className="px-3 py-2 text-center border-r border-gray-100">
                     {r.confirmed ? (
                       <button onClick={() => toggleConfirm(r)} title="온라인 사용 해제"
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 text-xs font-semibold hover:bg-blue-200">
@@ -390,8 +390,8 @@ tfoot td{background:#e2e8f0;font-weight:bold}
                       </button>
                     )}
                   </td>
-                  <td className="px-3 py-2.5 text-center border-r border-gray-200 text-xs text-gray-500">{r.memo ?? ""}</td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-2 text-center border-r border-gray-100 text-xs text-gray-500">{r.memo ?? ""}</td>
+                  <td className="px-3 py-2">
                     <div className="flex items-center justify-center gap-1.5">
                       <button onClick={() => openEdit(r)} className="text-gray-400 hover:text-blue-600" title="수정"><Pencil size={14} /></button>
                       <button onClick={() => deleteRow(r.id)} className="text-gray-300 hover:text-red-500" title="삭제"><Trash2 size={14} /></button>

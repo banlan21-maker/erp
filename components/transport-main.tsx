@@ -690,48 +690,48 @@ export default function TransportMain({ initialVehicles }: Props) {
                 : "검색 결과가 없습니다."}
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs text-gray-500 bg-gray-50 border-b">
-                    <th className="px-4 py-3 font-medium">코드</th>
-                    <th className="px-4 py-3 font-medium">차량번호</th>
-                    <th className="px-4 py-3 font-medium">명칭</th>
-                    <th className="px-4 py-3 font-medium">종류</th>
-                    <th className="px-4 py-3 font-medium">보관공장</th>
-                    <th className="px-4 py-3 font-medium">담당자</th>
-                    <th className="px-4 py-3 font-medium">사용여부</th>
-                    <th className="px-4 py-3 font-medium">알림</th>
-                    <th className="px-4 py-3 font-medium"></th>
+            <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+              <table className="w-full text-sm whitespace-nowrap">
+                <thead className="bg-gray-50 border-b-2 border-gray-300">
+                  <tr>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 border-r border-gray-200">코드</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 border-r border-gray-200">차량번호</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 border-r border-gray-200">명칭</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 border-r border-gray-200">종류</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 border-r border-gray-200">보관공장</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 border-r border-gray-200">담당자</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 border-r border-gray-200">사용여부</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 border-r border-gray-200">알림</th>
+                    <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-600"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-gray-100">
                   {filtered.map(v => {
                     const worst = getVehicleWorstStatus(v);
                     const badge = STATUS_BADGE[worst];
                     return (
-                      <tr key={v.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => router.push(`/management/transport/${v.id}`)}>
-                        <td className="px-4 py-3 font-mono text-xs text-gray-500">{v.code}</td>
-                        <td className="px-4 py-3 text-gray-700">{v.plateNo || "-"}</td>
-                        <td className="px-4 py-3 font-semibold text-gray-900">{v.name}</td>
-                        <td className="px-4 py-3">
+                      <tr key={v.id} className="hover:bg-gray-50/70 transition-colors cursor-pointer" onClick={() => router.push(`/management/transport/${v.id}`)}>
+                        <td className="px-3 py-2 text-xs font-mono text-gray-500 border-r border-gray-100">{v.code}</td>
+                        <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100">{v.plateNo || <span className="text-gray-300">-</span>}</td>
+                        <td className="px-3 py-2 text-xs font-semibold text-gray-900 border-r border-gray-100">{v.name}</td>
+                        <td className="px-3 py-2 border-r border-gray-100">
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${v.vehicleType === "VEHICLE" ? "bg-blue-50 text-blue-700" : "bg-purple-50 text-purple-700"}`}>
                             {v.vehicleType === "VEHICLE" ? "일반차량" : "운송장비"}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-gray-600">{FACTORY_LABELS[v.factory]}</td>
-                        <td className="px-4 py-3 text-gray-600">{v.manager || "-"}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-2 text-xs text-gray-600 border-r border-gray-100">{FACTORY_LABELS[v.factory]}</td>
+                        <td className="px-3 py-2 text-xs text-gray-600 border-r border-gray-100">{v.manager || <span className="text-gray-300">-</span>}</td>
+                        <td className="px-3 py-2 border-r border-gray-100">
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${USAGE_COLORS[v.usage]}`}>
                             {USAGE_LABELS[v.usage]}
                           </span>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-2 border-r border-gray-100">
                           <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${badge.color}`}>
                             {badge.icon}{badge.label}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-gray-400"><ChevronRight size={16} /></td>
+                        <td className="px-3 py-2 text-center text-gray-400"><ChevronRight size={14} /></td>
                       </tr>
                     );
                   })}

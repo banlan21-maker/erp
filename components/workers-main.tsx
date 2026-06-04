@@ -519,7 +519,7 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
 
             <div className="overflow-x-auto min-h-[400px]">
               <table className="w-full text-sm text-left whitespace-nowrap">
-                <thead className="bg-[#f1f5f9] border-b-2 border-gray-300">
+                <thead className="bg-gray-50 border-b-2 border-gray-300">
                   <tr>
                     {COLUMNS.map(c => {
                       const filterActive = (colFilters[c.key]?.length ?? 0) > 0;
@@ -568,36 +568,36 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
                     const visaUrgent = daysToExpiry !== null && daysToExpiry <= 90;
                     return (
                       <tr key={w.id} onClick={() => openEditModal(w)}
-                        className={`hover:bg-blue-50/50 transition-colors group cursor-pointer ${isDeleting ? "opacity-30" : ""}`}>
-                        <td className="px-4 py-3 font-bold text-gray-900">
+                        className={`hover:bg-gray-50/70 transition-colors group cursor-pointer ${isDeleting ? "opacity-30" : ""}`}>
+                        <td className="px-3 py-2 text-xs font-bold text-gray-900">
                           {w.name}
                           {w.nickname && <span className="ml-1 text-xs text-gray-400">({w.nickname})</span>}
                         </td>
-                        <td className="px-4 py-3 text-xs">
+                        <td className="px-3 py-2 text-xs text-xs">
                           {w.nationality ? (
                             <span className={`px-2 py-0.5 rounded-full font-semibold ${w.nationality === "한국" ? "bg-blue-50 text-blue-700" : "bg-orange-50 text-orange-700"}`}>
                               {w.nationality}
                             </span>
                           ) : <span className="text-gray-300">-</span>}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-2 text-xs">
                           {w.role ? <span className="py-0.5 px-2 bg-gray-100 text-gray-600 rounded-md text-xs font-semibold">{w.role}</span> : <span className="text-gray-300">-</span>}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-2 text-xs">
                           {w.position ? <span className="py-0.5 px-2 bg-blue-50 text-blue-700 rounded-md text-xs font-semibold">{w.position}</span> : <span className="text-gray-300">-</span>}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-2 text-xs">
                           {w.worksite ? (
                             <span className="inline-flex items-center gap-1 py-0.5 px-2 bg-green-50 text-green-700 rounded-md text-xs font-semibold">
                               <MapPin size={10} />{w.worksite}
                             </span>
                           ) : <span className="text-gray-300">-</span>}
                         </td>
-                        <td className="px-4 py-3 text-gray-600 font-mono text-sm">{w.carNumber || "-"}</td>
-                        <td className="px-4 py-3 text-gray-600 font-mono text-sm">{w.phone || "-"}</td>
-                        <td className="px-4 py-3 text-gray-600 font-mono text-sm">{formatDate(w.joinDate)}</td>
-                        <td className="px-4 py-3 text-gray-500 font-mono text-sm">{formatDate(w.birthDate)}</td>
-                        <td className="px-4 py-3 text-sm">
+                        <td className="px-3 py-2 text-xs text-gray-600 font-mono">{w.carNumber || "-"}</td>
+                        <td className="px-3 py-2 text-xs text-gray-600 font-mono">{w.phone || "-"}</td>
+                        <td className="px-3 py-2 text-xs text-gray-600 font-mono">{formatDate(w.joinDate)}</td>
+                        <td className="px-3 py-2 text-xs text-gray-500 font-mono">{formatDate(w.birthDate)}</td>
+                        <td className="px-3 py-2 text-xs text-sm">
                           {visaExpiryDate ? (
                             <span className={`font-mono ${visaUrgent ? "text-red-600 font-bold" : "text-gray-500"}`}>
                               {formatDate(w.visaExpiry)}
@@ -605,18 +605,18 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
                             </span>
                           ) : <span className="text-gray-300">-</span>}
                         </td>
-                        <td className="px-4 py-3 text-center">
+                        <td className="px-3 py-2 text-xs text-center">
                           {w.isCncOp
                             ? <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">CNC OP</span>
                             : <span className="text-gray-300 text-xs">—</span>}
                         </td>
-                        <td className="px-4 py-3 text-gray-500 text-sm font-semibold">{w.bloodType || "-"}</td>
-                        <td className="px-4 py-3 text-gray-500 font-mono text-sm">{w.shoeSize || "-"}</td>
-                        <td className="px-4 py-3 text-gray-500 font-mono text-sm text-center">{w.winterTop || "-"}</td>
-                        <td className="px-4 py-3 text-gray-500 font-mono text-sm text-center">{w.winterBottom || "-"}</td>
-                        <td className="px-4 py-3 text-gray-500 font-mono text-sm text-center">{w.summerTop || "-"}</td>
-                        <td className="px-4 py-3 text-gray-500 font-mono text-sm text-center">{w.summerBottom || "-"}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-2 text-xs text-gray-500 text-sm font-semibold">{w.bloodType || "-"}</td>
+                        <td className="px-3 py-2 text-xs text-gray-500 font-mono">{w.shoeSize || "-"}</td>
+                        <td className="px-3 py-2 text-xs text-gray-500 font-mono text-center">{w.winterTop || "-"}</td>
+                        <td className="px-3 py-2 text-xs text-gray-500 font-mono text-center">{w.winterBottom || "-"}</td>
+                        <td className="px-3 py-2 text-xs text-gray-500 font-mono text-center">{w.summerTop || "-"}</td>
+                        <td className="px-3 py-2 text-xs text-gray-500 font-mono text-center">{w.summerBottom || "-"}</td>
+                        <td className="px-3 py-2 text-xs">
                           <div className="flex gap-2 justify-center opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                             <button onClick={() => openEditModal(w)} className="p-1.5 text-gray-500 hover:text-blue-600 rounded transition-colors">
                               <Pencil size={14} />
