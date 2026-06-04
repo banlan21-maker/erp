@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import * as XLSX from "xlsx";
-import { CreditCard, Calendar, RefreshCw, Download, Printer, Plus, Pencil, Trash2, X, Save, Check, Filter } from "lucide-react";
+import { CreditCard, Calendar, RefreshCw, Download, Printer, Plus, Pencil, Trash2, X, Save, Filter, Globe } from "lucide-react";
 import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
 
 const DAYS = ["일", "월", "화", "수", "목", "금", "토"];
@@ -71,7 +71,7 @@ export default function PaymentMain() {
     { key: "detail",   label: "사용내역" },
     { key: "amount",   label: "금액" },
     { key: "userName", label: "사용자" },
-    { key: "confirmed",label: "확인" },
+    { key: "confirmed",label: "온라인" },
     { key: "memo",     label: "비고" },
   ] as const, []);
 
@@ -86,7 +86,7 @@ export default function PaymentMain() {
       case "detail":    return r.detail ?? "";
       case "amount":    return String(r.amount);
       case "userName":  return r.userName ?? "";
-      case "confirmed": return r.confirmed ? "확인" : "미확인";
+      case "confirmed": return r.confirmed ? "온라인" : "";
       case "memo":      return r.memo ?? "";
       default: return "";
     }
@@ -223,8 +223,8 @@ export default function PaymentMain() {
     const filterTag = activeFilterCount > 0 ? " (필터)" : "";
     const data = [
       [`법인카드 사용대장 ${ym}${filterTag}`],
-      ["NO", "사용일자", "요일", "카드번호", "구분", "사용내역", "금액", "사용자", "확인", "비고"],
-      ...filteredRows.map((r, i) => [i + 1, r.usedDate, getDayStr(r.usedDate), formatCard(r.cardNo), r.category ?? "", r.detail, r.amount, r.userName ?? "", r.confirmed ? "확인" : "", r.memo ?? ""]),
+      ["NO", "사용일자", "요일", "카드번호", "구분", "사용내역", "금액", "사용자", "온라인", "비고"],
+      ...filteredRows.map((r, i) => [i + 1, r.usedDate, getDayStr(r.usedDate), formatCard(r.cardNo), r.category ?? "", r.detail, r.amount, r.userName ?? "", r.confirmed ? "온라인" : "", r.memo ?? ""]),
       ["", "", "", "", "", "합계", totalAmount, "", "", ""],
     ];
     const ws = XLSX.utils.aoa_to_sheet(data);
@@ -242,7 +242,7 @@ export default function PaymentMain() {
         <td>${i + 1}</td><td>${r.usedDate}</td><td>${getDayStr(r.usedDate)}</td>
         <td>${formatCard(r.cardNo)}</td><td>${r.category ?? ""}</td><td class="left">${r.detail}</td>
         <td class="num">${r.amount.toLocaleString()}</td>
-        <td>${r.userName ?? ""}</td><td>${r.confirmed ? "✔" : ""}</td>
+        <td>${r.userName ?? ""}</td><td>${r.confirmed ? "온라인" : ""}</td>
         <td class="left">${r.memo ?? ""}</td>
       </tr>`).join("");
     const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"/>
@@ -265,7 +265,7 @@ tfoot td{background:#e2e8f0;font-weight:bold}
 <table><thead><tr>
 <th style="width:4%">NO</th><th style="width:10%">사용일자</th><th style="width:4%">요일</th>
 <th style="width:8%">카드번호</th><th style="width:7%">구분</th><th style="width:26%">사용내역</th><th style="width:11%">금액</th>
-<th style="width:8%">사용자</th><th style="width:5%">확인</th><th>비고</th>
+<th style="width:8%">사용자</th><th style="width:6%">온라인</th><th>비고</th>
 </tr></thead><tbody>${body}</tbody>
 <tfoot><tr><td colspan="6">합계</td><td class="num">${totalAmount.toLocaleString()}원</td><td colspan="3"></td></tr></tfoot>
 </table>
@@ -378,10 +378,17 @@ tfoot td{background:#e2e8f0;font-weight:bold}
                   <td className="px-3 py-2.5 text-center border-r border-gray-200 font-semibold text-blue-700">{r.amount.toLocaleString()}원</td>
                   <td className="px-3 py-2.5 text-center border-r border-gray-200">{r.userName ?? "-"}</td>
                   <td className="px-3 py-2.5 text-center border-r border-gray-200">
-                    <button onClick={() => toggleConfirm(r)} title="확인 토글"
-                      className={`inline-flex items-center justify-center w-6 h-6 rounded-full ${r.confirmed ? "bg-green-100 text-green-600" : "bg-gray-100 text-gray-300 hover:text-gray-400"}`}>
-                      <Check size={14} />
-                    </button>
+                    {r.confirmed ? (
+                      <button onClick={() => toggleConfirm(r)} title="온라인 사용 해제"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 text-xs font-semibold hover:bg-blue-200">
+                        <Globe size={11} /> 온라인
+                      </button>
+                    ) : (
+                      <button onClick={() => toggleConfirm(r)} title="온라인 사용으로 표시"
+                        className="text-gray-200 hover:text-gray-400">
+                        <Globe size={14} />
+                      </button>
+                    )}
                   </td>
                   <td className="px-3 py-2.5 text-center border-r border-gray-200 text-xs text-gray-500">{r.memo ?? ""}</td>
                   <td className="px-3 py-2.5">
@@ -449,6 +456,18 @@ tfoot td{background:#e2e8f0;font-weight:bold}
               </div>
               <div><label className="text-xs font-semibold text-gray-600 mb-1 block">사용내역</label>
                 <input value={form.detail} onChange={e => setForm({ ...form, detail: e.target.value })} placeholder="예: 사무용품 구매" className="w-full h-9 px-3 border border-gray-300 rounded-lg text-sm" /></div>
+
+              {/* 온라인 사용 체크박스 — 사용내역 바로 아래, 강조 박스 */}
+              <label className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border-2 cursor-pointer transition-colors ${
+                form.confirmed
+                  ? "bg-blue-50 border-blue-400 text-blue-700"
+                  : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100"
+              }`}>
+                <input type="checkbox" checked={form.confirmed} onChange={e => setForm({ ...form, confirmed: e.target.checked })} className="w-4 h-4 accent-blue-600" />
+                <Globe size={15} className={form.confirmed ? "text-blue-600" : "text-gray-400"} />
+                <span className="text-sm font-semibold">온라인 사용</span>
+              </label>
+
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-xs font-semibold text-gray-600 mb-1 block">금액</label>
                   <input type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} placeholder="원" className="w-full h-9 px-3 border border-gray-300 rounded-lg text-sm text-right" /></div>
@@ -457,10 +476,6 @@ tfoot td{background:#e2e8f0;font-weight:bold}
               </div>
               <div><label className="text-xs font-semibold text-gray-600 mb-1 block">비고</label>
                 <input value={form.memo} onChange={e => setForm({ ...form, memo: e.target.value })} className="w-full h-9 px-3 border border-gray-300 rounded-lg text-sm" /></div>
-              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                <input type="checkbox" checked={form.confirmed} onChange={e => setForm({ ...form, confirmed: e.target.checked })} className="w-4 h-4" />
-                확인 완료
-              </label>
             </div>
             <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
               <button onClick={() => setModal(null)} disabled={saving} className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">취소</button>

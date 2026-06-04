@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { CreditCard, CheckCircle2, Loader2 } from "lucide-react";
+import { CreditCard, CheckCircle2, Loader2, Globe } from "lucide-react";
 
 function nowKST() { return new Date(Date.now() + 9 * 3600000); }
 function todayStr() { return nowKST().toISOString().slice(0, 10); }
@@ -18,6 +18,7 @@ export default function FieldPayment() {
 
   const [form, setForm] = useState({
     usedDate: todayStr(), cardNo: "", category: "", detail: "", amount: "", userName: "", memo: "",
+    confirmed: false, // 온라인 사용 여부
   });
 
   useEffect(() => {
@@ -29,7 +30,7 @@ export default function FieldPayment() {
     });
   }, []);
 
-  const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }));
+  const set = (k: keyof typeof form, v: string | boolean) => setForm(p => ({ ...p, [k]: v }));
 
   const submit = async () => {
     if (!form.cardNo) { alert("카드를 선택하세요."); return; }
@@ -42,7 +43,7 @@ export default function FieldPayment() {
       });
       const d = await r.json();
       if (!d.success) { alert(d.error ?? "저장 실패"); return; }
-      setForm(f => ({ ...f, detail: "", amount: "", memo: "" }));
+      setForm(f => ({ ...f, detail: "", amount: "", memo: "", confirmed: false }));
       setDone(true); setTimeout(() => setDone(false), 2000);
     } catch { alert("서버 오류"); } finally { setLoading(false); }
   };
@@ -89,6 +90,17 @@ export default function FieldPayment() {
           <label className={labelCls}>사용내역</label>
           <input value={form.detail} onChange={e => set("detail", e.target.value)} placeholder="예: 자재 구매, 식대" className={fieldCls} />
         </div>
+
+        {/* 온라인 사용 체크박스 — 사용내역 바로 아래, 강조 박스 */}
+        <label className={`flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 cursor-pointer transition-colors ${
+          form.confirmed
+            ? "bg-blue-900/40 border-blue-500 text-blue-200"
+            : "bg-gray-800 border-gray-700 text-gray-400"
+        }`}>
+          <input type="checkbox" checked={form.confirmed} onChange={e => set("confirmed", e.target.checked)} className="w-5 h-5 accent-blue-500" />
+          <Globe size={18} className={form.confirmed ? "text-blue-400" : "text-gray-500"} />
+          <span className="text-base font-bold">온라인 사용</span>
+        </label>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
