@@ -10,6 +10,9 @@ services:
     environment:
       - DATABASE_URL=postgresql://cnc_user:cnc_password@db:5432/cnc_erp
       - NODE_ENV=production
+    volumes:
+      # 사용자 업로드 영구화 — 컨테이너 재빌드해도 사진 유지
+      - ./public/uploads:/app/public/uploads
     depends_on:
       db:
         condition: service_healthy

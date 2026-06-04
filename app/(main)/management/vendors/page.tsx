@@ -81,6 +81,8 @@ export default function VendorsPage() {
                   <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 border-r border-gray-200">업체명</th>
                   <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 border-r border-gray-200">담당자명</th>
                   <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 border-r border-gray-200">연락처</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 border-r border-gray-200">일반전화</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 border-r border-gray-200">FAX</th>
                   <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 border-r border-gray-200">이메일</th>
                   <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 border-r border-gray-200">사업자등록번호</th>
                   <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 border-r border-gray-200">취급품목 카테고리</th>
@@ -90,7 +92,7 @@ export default function VendorsPage() {
               <tbody className="divide-y divide-gray-100">
                 {filteredVendors.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-12 text-center text-gray-400 text-sm">등록된 거래처가 없습니다.</td>
+                    <td colSpan={9} className="px-3 py-12 text-center text-gray-400 text-sm">등록된 거래처가 없습니다.</td>
                   </tr>
                 ) : (
                   filteredVendors.map((vendor) => (
@@ -102,6 +104,8 @@ export default function VendorsPage() {
                       <td className="px-3 py-2 text-xs font-bold text-gray-900 border-r border-gray-100 group-hover:text-blue-700 transition-colors">{vendor.name}</td>
                       <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100">{vendor.contact || <span className="text-gray-300">-</span>}</td>
                       <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100 font-mono">{vendor.phone || <span className="text-gray-300">-</span>}</td>
+                      <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100 font-mono">{vendor.landline || <span className="text-gray-300">-</span>}</td>
+                      <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100 font-mono">{vendor.fax || <span className="text-gray-300">-</span>}</td>
                       <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100">{vendor.email || <span className="text-gray-300">-</span>}</td>
                       <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100 font-mono">{vendor.businessNumber || <span className="text-gray-300">-</span>}</td>
                       <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100">{vendor.category || <span className="text-gray-300">-</span>}</td>

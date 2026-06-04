@@ -12,6 +12,8 @@ export default function NewVendorPage() {
     name: "",
     contact: "",
     phone: "",
+    landline: "",
+    fax: "",
     email: "",
     businessNumber: "",
     category: "",
@@ -89,8 +91,18 @@ export default function NewVendorPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">연락처</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">연락처 (휴대폰)</label>
               <Input name="phone" value={formData.phone} onChange={handleChange} placeholder="예: 010-1234-5678" className="w-full" />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">일반전화 (사무실)</label>
+              <Input name="landline" value={formData.landline} onChange={handleChange} placeholder="예: 02-1234-5678" className="w-full" />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">FAX</label>
+              <Input name="fax" value={formData.fax} onChange={handleChange} placeholder="예: 02-1234-5679" className="w-full" />
             </div>
 
             <div>

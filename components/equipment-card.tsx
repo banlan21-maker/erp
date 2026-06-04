@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import EquipmentPhotoSlot from "@/components/equipment-photo-slot";
 import {
   ArrowLeft, Wrench, CheckCircle, AlertTriangle, Clock,
   XCircle, MinusCircle, Plus, ChevronDown, ChevronUp,
@@ -69,6 +70,8 @@ interface Equipment {
   location: string | null;
   usage: MgmtEquipmentUsage;
   memo: string | null;
+  photoUrl1: string | null;
+  photoUrl2: string | null;
   specs: SpecItem[];
   inspections: InspectionItem[];
   repairs: RepairLog[];
@@ -384,6 +387,27 @@ export default function EquipmentCard({ equipment: initial }: { equipment: Equip
               <Wrench size={15} className="text-blue-600" /> 장비 기본정보
             </p>
           </div>
+
+          {/* 장비 사진 (2장) — 없으면 등록 슬롯이 표시됨 */}
+          <div className="px-5 pt-5">
+            <div className="grid grid-cols-2 gap-3 max-w-md">
+              <EquipmentPhotoSlot
+                mode="immediate"
+                equipmentId={eq.id}
+                slot={1}
+                photoUrl={eq.photoUrl1}
+                onChange={(url) => setEq(e => ({ ...e, photoUrl1: url }))}
+              />
+              <EquipmentPhotoSlot
+                mode="immediate"
+                equipmentId={eq.id}
+                slot={2}
+                photoUrl={eq.photoUrl2}
+                onChange={(url) => setEq(e => ({ ...e, photoUrl2: url }))}
+              />
+            </div>
+          </div>
+
           <div className="p-5 grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
             {[
               ["관리번호", eq.managementNo],

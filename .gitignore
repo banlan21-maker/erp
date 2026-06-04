@@ -41,3 +41,6 @@ yarn-error.log*
 next-env.d.ts
 
 /lib/generated/prisma
+
+# 사용자 업로드 — git 추적 안 함 (NAS 볼륨 마운트로 영구화)
+/public/uploads/

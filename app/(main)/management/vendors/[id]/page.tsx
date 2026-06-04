@@ -140,8 +140,15 @@ export default function VendorDetailPage() {
             <div className="flex gap-3">
               <span className="mt-0.5 text-gray-400"><Phone size={16} /></span>
               <div>
-                <p className="text-xs font-semibold text-gray-500 mb-0.5">담당자 / 연락처</p>
+                <p className="text-xs font-semibold text-gray-500 mb-0.5">담당자 / 휴대폰</p>
                 <p className="text-sm text-gray-900 font-medium">{vendor.contact || "-"} <span className="text-gray-400 font-normal">|</span> <span className="font-mono text-blue-700">{vendor.phone || "-"}</span></p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <span className="mt-0.5 text-gray-400"><Phone size={16} /></span>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 mb-0.5">일반전화 / FAX</p>
+                <p className="text-sm text-gray-900 font-mono">{vendor.landline || "-"} <span className="text-gray-400 font-normal">|</span> {vendor.fax || "-"}</p>
               </div>
             </div>
             <div className="flex gap-3">
@@ -247,8 +254,16 @@ export default function VendorDetailPage() {
                   <Input name="contact" value={editingData.contact || ""} onChange={handleEditChange} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">연락처</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">연락처 (휴대폰)</label>
                   <Input name="phone" value={editingData.phone || ""} onChange={handleEditChange} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">일반전화 (사무실)</label>
+                  <Input name="landline" value={editingData.landline || ""} onChange={handleEditChange} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">FAX</label>
+                  <Input name="fax" value={editingData.fax || ""} onChange={handleEditChange} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">사업자등록번호</label>

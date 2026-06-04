@@ -548,7 +548,9 @@ model Vendor {
   id             Int     @id @default(autoincrement())
   name           String // 업체명
   contact        String? // 담당자명
-  phone          String? // 연락처
+  phone          String? // 연락처 (휴대폰)
+  landline       String? // 일반전화 (사무실)
+  fax            String? // FAX 번호
   email          String? // 이메일
   businessNumber String? // 사업자번호
   category       String? // 주요 취급 품목 카테고리
@@ -661,6 +663,8 @@ model MgmtEquipment {
   location     String? // 설치 위치
   usage        MgmtEquipmentUsage @default(IN_USE)
   memo         String? // 비고
+  photoUrl1    String? // 장비 사진 1 (클라이언트 압축 후 /uploads/equipment/{id}/1.jpg)
+  photoUrl2    String? // 장비 사진 2
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

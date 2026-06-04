@@ -8,6 +8,7 @@ import {
   Search, Pencil, X, Save, Download, Calendar,
 } from "lucide-react";
 import * as XLSX from "xlsx";
+import EquipmentPhotoSlot from "@/components/equipment-photo-slot";
 
 // ── 타입 ────────────────────────────────────────────────────
 
@@ -49,6 +50,8 @@ export interface Equipment {
   location: string | null;
   usage: MgmtEquipmentUsage;
   memo: string | null;
+  photoUrl1: string | null;
+  photoUrl2: string | null;
   specs: SpecItem[];
   inspections: InspectionItem[];
   createdAt: string;
@@ -345,6 +348,9 @@ function EditModal({
   const [saving,   setSaving]   = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
+  // 사진 URL — DB 즉시 반영, 모달 닫혀도 유지
+  const [photoUrl1, setPhotoUrl1] = useState<string | null>(eq.photoUrl1 ?? null);
+  const [photoUrl2, setPhotoUrl2] = useState<string | null>(eq.photoUrl2 ?? null);
 
   const handleDelete = async () => {
     if (!confirm(`"${eq.name}" 장비를 목록에서 완전히 제거하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
@@ -406,6 +412,8 @@ function EditModal({
         location: form.location.trim() || null,
         usage: form.usage,
         memo: form.memo.trim() || null,
+        photoUrl1,
+        photoUrl2,
         specs: form.specs.filter(s => s.specKey.trim()),
         inspections: form.inspections.filter(ins => ins.itemName.trim()).map(ins => ({
           ...ins,
@@ -442,6 +450,25 @@ function EditModal({
           {/* 기본 정보 */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <p className="text-sm font-bold text-gray-800 mb-4">기본 정보</p>
+
+            {/* 사진 2장 — 즉시 업로드 */}
+            <div className="grid grid-cols-2 gap-3 max-w-md mb-5">
+              <EquipmentPhotoSlot
+                mode="immediate"
+                equipmentId={eq.id}
+                slot={1}
+                photoUrl={photoUrl1}
+                onChange={setPhotoUrl1}
+              />
+              <EquipmentPhotoSlot
+                mode="immediate"
+                equipmentId={eq.id}
+                slot={2}
+                photoUrl={photoUrl2}
+                onChange={setPhotoUrl2}
+              />
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className={labelCls}>장비명 *</label>
@@ -531,6 +558,9 @@ function RegisterForm({
   const [form, setForm] = useState<FormState>(emptyForm());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // 등록 시점에는 ID 가 없으므로 압축된 File 만 들고 있다가 POST 후 photo API 호출
+  const [pendingPhoto1, setPendingPhoto1] = useState<File | null>(null);
+  const [pendingPhoto2, setPendingPhoto2] = useState<File | null>(null);
 
   const setField = (name: string, value: string) => setForm(f => ({ ...f, [name]: value }));
 
@@ -565,7 +595,27 @@ function RegisterForm({
       });
       const json = await res.json();
       if (!json.success) { setError(json.error || "등록 실패"); return; }
+
+      // 등록 성공 후, 펜딩 사진이 있으면 photo API 로 업로드
+      const newId: string | undefined = json.data?.id;
+      if (newId) {
+        const uploads: Promise<unknown>[] = [];
+        if (pendingPhoto1) {
+          const fd = new FormData();
+          fd.append("file", pendingPhoto1);
+          uploads.push(fetch(`/api/mgmt-equipment/${newId}/photo?slot=1`, { method: "POST", body: fd }));
+        }
+        if (pendingPhoto2) {
+          const fd = new FormData();
+          fd.append("file", pendingPhoto2);
+          uploads.push(fetch(`/api/mgmt-equipment/${newId}/photo?slot=2`, { method: "POST", body: fd }));
+        }
+        if (uploads.length > 0) await Promise.all(uploads);
+      }
+
       setForm(emptyForm());
+      setPendingPhoto1(null);
+      setPendingPhoto2(null);
       onCreated();
     } catch {
       setError("네트워크 오류");
@@ -580,6 +630,25 @@ function RegisterForm({
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
         <p className="text-sm font-bold text-gray-800 mb-4">기본 정보</p>
+
+        {/* 사진 2장 — 등록 후 업로드 (펜딩) */}
+        <div className="grid grid-cols-2 gap-3 max-w-md mb-5">
+          <EquipmentPhotoSlot
+            mode="pending"
+            slot={1}
+            photoUrl={null}
+            pendingFile={pendingPhoto1}
+            onPending={setPendingPhoto1}
+          />
+          <EquipmentPhotoSlot
+            mode="pending"
+            slot={2}
+            photoUrl={null}
+            pendingFile={pendingPhoto2}
+            onPending={setPendingPhoto2}
+          />
+        </div>
+
         <div className="grid grid-cols-2 gap-4">
           <div className="col-span-2 sm:col-span-1">
             <label className={labelCls}>장비명 *</label>
