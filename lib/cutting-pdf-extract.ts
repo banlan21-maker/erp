@@ -23,10 +23,12 @@ export interface TextItem {
 export interface FieldRule {
   label:        string;
   valuePattern: string; // 정규식
+  transform?:   { type: "tail"; length: number }; // 추출된 값에서 끝 N자리만 유지 (예: KY1037-B16C-CNX01 → CNX01)
 }
 
 export interface PresetRules {
-  detectKeywords?: string[];
+  detectKeywords?:  string[]; // 페이지에 1개라도 있으면 이 프리셋 후보
+  negativeKeywords?: string[]; // 페이지에 1개라도 있으면 이 프리셋 제외 (예: 양식3의 PART WEIGHT 가 양식2 TOTAL PART WEIGHT 도 매칭하는 것 방지)
   drawingNo:  FieldRule;
   partWeight: FieldRule;
   markingLen: FieldRule;
@@ -118,21 +120,32 @@ function toNumber(s: string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function applyTransform(value: string | null, rule: FieldRule): string | null {
+  if (!value || !rule.transform) return value;
+  if (rule.transform.type === "tail") {
+    return value.slice(-rule.transform.length);
+  }
+  return value;
+}
+
 export function extractPage(items: TextItem[], rules: PresetRules): PageExtraction {
   const fullText = items.map(it => it.str).join(" ");
-  const drawingNoStr  = extractField(items, rules.drawingNo,  fullText);
+  const drawingNoRaw  = extractField(items, rules.drawingNo,  fullText);
   const partWeightStr = extractField(items, rules.partWeight, fullText);
   const markingLenStr = extractField(items, rules.markingLen, fullText);
   const cuttingLenStr = extractField(items, rules.cuttingLen, fullText);
 
+  // 도면번호 transform (끝 N자리 등) 적용
+  const drawingNo = applyTransform(drawingNoRaw, rules.drawingNo);
+
   return {
-    drawingNo:  drawingNoStr,
+    drawingNo,
     partWeight: toNumber(partWeightStr),
     markingLen: toNumber(markingLenStr),
     cuttingLen: toNumber(cuttingLenStr),
     rawText:    fullText.slice(0, 2000),
     matched: {
-      drawingNo:  drawingNoStr  !== null,
+      drawingNo:  drawingNo  !== null,
       partWeight: partWeightStr !== null,
       markingLen: markingLenStr !== null,
       cuttingLen: cuttingLenStr !== null,
@@ -141,6 +154,7 @@ export function extractPage(items: TextItem[], rules: PresetRules): PageExtracti
 }
 
 // 자동 매칭: 페이지 fullText 에 가장 많은 detectKeyword 가 나오는 프리셋
+// + negativeKeywords 매칭되면 그 프리셋 제외 (양식2 TOTAL PART WEIGHT 있는데 양식3 PART WEIGHT 도 매칭되는 케이스 방지)
 export function detectPreset(
   fullText: string,
   presets: Array<{ id: string; rules: PresetRules }>,
@@ -149,9 +163,11 @@ export function detectPreset(
   let bestId: string | null = null;
   let bestScore = 0;
   for (const p of presets) {
-    const kws = p.rules.detectKeywords ?? [];
+    const negKws = (p.rules.negativeKeywords ?? []).map(k => k.toUpperCase());
+    if (negKws.some(k => upper.includes(k))) continue; // negative 매칭 — 제외
+    const kws = (p.rules.detectKeywords ?? []).map(k => k.toUpperCase());
     let score = 0;
-    for (const kw of kws) if (upper.includes(kw.toUpperCase())) score++;
+    for (const kw of kws) if (upper.includes(kw)) score++;
     if (score > bestScore) { bestScore = score; bestId = p.id; }
   }
   return bestScore > 0 ? bestId : null;
