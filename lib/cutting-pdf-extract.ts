@@ -52,12 +52,17 @@ const Y_BELOW_MIN = 5;
 const Y_BELOW_MAX = 60;
 const Y_SAME_TOL  = 6;
 
-// 라벨 텍스트에 일치하는 첫 아이템 찾기 — 정확 일치 우선, 포함 차선
+// 공백 정규화 + 대문자 — OCR 결과의 다중 공백/대소문자 차이 흡수
+function normalize(s: string): string {
+  return s.replace(/\s+/g, " ").trim().toUpperCase();
+}
+
+// 라벨 텍스트에 일치하는 첫 아이템 찾기 — 정규화 후 정확 일치 우선, 포함 차선
 function findLabelItem(items: TextItem[], label: string): TextItem | null {
-  const exact = items.find(it => it.str.trim() === label);
+  const normLabel = normalize(label);
+  const exact = items.find(it => normalize(it.str) === normLabel);
   if (exact) return exact;
-  const contains = items.find(it => it.str.includes(label));
-  return contains ?? null;
+  return items.find(it => normalize(it.str).includes(normLabel)) ?? null;
 }
 
 function extractField(items: TextItem[], rule: FieldRule, fullText: string): string | null {
@@ -92,10 +97,12 @@ function extractField(items: TextItem[], rule: FieldRule, fullText: string): str
     }
   }
 
-  // 3) fullText fallback — 라벨 직후 100자 내
-  const idx = fullText.indexOf(rule.label);
+  // 3) fullText fallback — normalize 후 라벨 직후 100자 내
+  const normText  = normalize(fullText);
+  const normLabel = normalize(rule.label);
+  const idx = normText.indexOf(normLabel);
   if (idx >= 0) {
-    const slice = fullText.slice(idx + rule.label.length, idx + rule.label.length + 100);
+    const slice = normText.slice(idx + normLabel.length, idx + normLabel.length + 100);
     const m = slice.match(re);
     if (m) return m[0];
   }

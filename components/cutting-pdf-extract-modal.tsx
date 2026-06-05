@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { X, RefreshCw, Loader2, Save, Trash2, FileSearch, StopCircle } from "lucide-react";
+import { X, RefreshCw, Loader2, Save, Trash2, FileSearch, StopCircle, Eye } from "lucide-react";
 import { createOcrWorker, terminateOcrWorker, ocrPdfPage } from "@/lib/cutting-pdf-ocr-client";
 import type { Worker as TesseractWorker } from "tesseract.js";
 
@@ -25,6 +25,7 @@ interface ExtractItem {
   method:      string;
   matched?:    { drawingNo: boolean; partWeight: boolean; markingLen: boolean; cuttingLen: boolean };
   confidence?: number | null;
+  rawText?:    string | null;
 }
 
 interface PresetOption { id: string; name: string; method: string }
@@ -52,6 +53,7 @@ export default function CuttingPdfExtractModal({
   const [rows,           setRows]           = useState<ExtractItem[]>([]);
   const [error,          setError]          = useState<string | null>(null);
   const [savingIds,      setSavingIds]      = useState<Set<string>>(new Set());
+  const [rawTextPage,    setRawTextPage]    = useState<number | null>(null); // 디버그 — raw OCR/텍스트 보기
 
   // OCR 상태
   const [ocrPresetId,    setOcrPresetId]    = useState<string>("");
@@ -317,6 +319,10 @@ export default function CuttingPdfExtractModal({
                     </td>
                     <td className="px-2 py-1 text-center">
                       <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => setRawTextPage(rawTextPage === r.pageNumber ? null : r.pageNumber)}
+                          className="p-1 text-gray-400 hover:text-blue-600" title="OCR/추출 원본 텍스트 보기">
+                          <Eye size={11} />
+                        </button>
                         <button onClick={() => saveRow(r)} disabled={!r.id || savingIds.has(r.id)}
                           className="p-1 text-gray-500 hover:text-emerald-600 disabled:opacity-30" title="저장">
                           {r.id && savingIds.has(r.id) ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
@@ -332,10 +338,32 @@ export default function CuttingPdfExtractModal({
               </tbody>
             </table>
           )}
+
+          {/* 원본 텍스트 디버그 패널 */}
+          {rawTextPage !== null && (() => {
+            const row = rows.find(r => r.pageNumber === rawTextPage);
+            if (!row) return null;
+            return (
+              <div className="mt-3 border border-blue-200 rounded bg-blue-50 p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-blue-900">📄 페이지 {rawTextPage} 원본 텍스트 (라벨 매칭 디버그용)</span>
+                  <button onClick={() => setRawTextPage(null)} className="text-blue-600 hover:text-blue-800">
+                    <X size={12} />
+                  </button>
+                </div>
+                <pre className="text-[10px] font-mono whitespace-pre-wrap break-all text-gray-700 max-h-60 overflow-auto bg-white p-2 rounded border border-blue-100">
+                  {row.rawText || "(원본 텍스트 없음 — OCR 결과가 비어있거나 저장되지 않음)"}
+                </pre>
+                <div className="text-[10px] text-blue-700 mt-1.5">
+                  라벨이 정확히 보이는지 확인 (예: "TOTAL PART WEIGHT 1459.5"). 라벨이 다르게 OCR 되었으면 프리셋 룰 수정 필요.
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         <div className="px-5 py-2.5 border-t bg-gray-50 rounded-b-xl text-xs text-gray-500 flex items-center justify-between">
-          <span>셀 직접 수정 후 행별 저장 · OCR 은 사용자 PC 에서 처리됩니다 (NAS 부담 0)</span>
+          <span>셀 직접 수정 후 행별 저장 · 👁 버튼으로 원본 텍스트 확인 · OCR 은 사용자 PC 에서 처리</span>
           <button onClick={onClose} disabled={ocrRunning}
             className="px-4 py-1.5 text-xs bg-gray-700 text-white rounded hover:bg-gray-800 disabled:opacity-50">닫기</button>
         </div>
