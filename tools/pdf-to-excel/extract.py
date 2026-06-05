@@ -37,11 +37,18 @@ except ImportError:
     print("[ERROR] PyMuPDF 가 설치되지 않았습니다. install.bat 을 먼저 실행하세요.")
     sys.exit(1)
 
+# OCR 엔진 — rapidocr-onnxruntime (Python 3.14 호환, PaddleOCR 모델을 ONNX 로 실행)
 try:
-    from paddleocr import PaddleOCR
+    from rapidocr_onnxruntime import RapidOCR
+    OCR_BACKEND = "rapidocr"
 except ImportError:
-    print("[ERROR] PaddleOCR 가 설치되지 않았습니다. install.bat 을 먼저 실행하세요.")
-    sys.exit(1)
+    # fallback — pytesseract (Tesseract 바이너리 별도 설치 필요)
+    try:
+        import pytesseract
+        OCR_BACKEND = "pytesseract"
+    except ImportError:
+        print("[ERROR] OCR 라이브러리가 설치되지 않았습니다. install.bat 을 먼저 실행하세요.")
+        sys.exit(1)
 
 try:
     from openpyxl import Workbook
@@ -172,24 +179,31 @@ def render_page_to_image(page, scale: float = 2.5) -> bytes:
     return pix.tobytes("png")
 
 
-def ocr_image_bytes(ocr: PaddleOCR, img_bytes: bytes) -> str:
-    """PaddleOCR 로 이미지 → 전체 텍스트"""
-    import numpy as np
-    from PIL import Image
+def ocr_image_bytes(ocr, img_bytes: bytes) -> str:
+    """이미지 → 전체 텍스트. OCR_BACKEND 에 따라 rapidocr 또는 pytesseract 사용."""
     import io
+    from PIL import Image
 
-    img = Image.open(io.BytesIO(img_bytes))
-    arr = np.array(img)
-    result = ocr.ocr(arr, cls=True)
-    if not result or not result[0]:
-        return ""
-    parts = []
-    for line in result[0]:
-        if len(line) >= 2:
-            txt_conf = line[1]
-            if isinstance(txt_conf, (tuple, list)) and len(txt_conf) >= 1:
-                parts.append(str(txt_conf[0]))
-    return " ".join(parts)
+    img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+
+    if OCR_BACKEND == "rapidocr":
+        import numpy as np
+        arr = np.array(img)
+        result, _ = ocr(arr)
+        if not result:
+            return ""
+        parts = []
+        for item in result:
+            # item = [bbox, text, confidence]
+            if len(item) >= 2 and isinstance(item[1], str):
+                parts.append(item[1])
+        return " ".join(parts)
+
+    elif OCR_BACKEND == "pytesseract":
+        # 영문 모드 (양식 2/3 키워드 모두 영문). 한글 데이터 있으면 'kor+eng' 가능
+        return pytesseract.image_to_string(img, lang="eng")
+
+    return ""
 
 
 def get_page_text(page) -> str:
@@ -238,7 +252,7 @@ def save_excel(results, output_path):
     meta = wb.create_sheet("메타")
     meta.append(["항목", "값"])
     meta.append(["변환 행수", len(results)])
-    meta.append(["변환 도구", "PaddleOCR + PyMuPDF (Phase B-5)"])
+    meta.append(["변환 도구", "RapidOCR (ONNX) / pytesseract + PyMuPDF (Phase B-5)"])
     meta.append(["호환", "ERP cnc-erp 의 [엑셀] 업로드 버튼"])
 
     wb.save(output_path)
@@ -286,8 +300,15 @@ def main():
 
     if needs_ocr:
         print("  → 일부 페이지는 OCR 필요 (path-outlined PDF)")
-        print("  → PaddleOCR 초기화 중... (처음 1회만 모델 다운로드 ~500MB)")
-        ocr = PaddleOCR(use_angle_cls=True, lang='en', show_log=False)
+        if OCR_BACKEND == "rapidocr":
+            print("  → RapidOCR (ONNX runtime) 초기화 중... 처음 1회만 모델 다운로드")
+            ocr = RapidOCR()
+        elif OCR_BACKEND == "pytesseract":
+            print("  → pytesseract 모드 (Tesseract 바이너리 필요)")
+            ocr = None  # pytesseract 는 함수 호출, 인스턴스 X
+        else:
+            print(f"  [ERROR] 알 수 없는 OCR backend: {OCR_BACKEND}")
+            sys.exit(1)
         print("  → OCR 준비 완료")
     else:
         print("  → 모든 페이지가 텍스트 PDF (OCR 불필요, 빠름)")

@@ -7,14 +7,22 @@ ERP 의 [엑셀] 업로드 기능과 호환되는 엑셀을 PC 에서 자동 생
 ```
 PDF 파일
    ↓
-[1] PyMuPDF (PDF → 이미지 또는 텍스트)
+[1] PyMuPDF (PDF → 텍스트 또는 이미지)
    ↓
-[2] PaddleOCR (이미지 → 텍스트, 영문 모드)
+[2] OCR (RapidOCR-ONNX 기본, pytesseract fallback)
    ↓
 [3] 라벨 매칭 (ERP 와 동일 알고리즘)
    ↓
 output.xlsx  ← ERP 의 [엑셀] 버튼으로 업로드
 ```
+
+### OCR 엔진 선택
+
+| 엔진 | Python 3.14 호환 | 정확도 | 설치 부담 | 비고 |
+|---|---|---|---|---|
+| **RapidOCR-ONNX** (기본) | ✓ (onnxruntime 1.26+) | 96~98% | pip 한 줄 | PaddleOCR 모델 → ONNX 변환, PaddlePaddle 불필요 |
+| **pytesseract** (fallback) | ✓ | 90~95% | Tesseract 바이너리 별도 설치 | 안정적, 한글 지원 |
+| ~~PaddleOCR~~ | ✗ (PaddlePaddle 미지원) | 96~98% | — | Python 3.13 까지만 |
 
 ## 첫 사용 (1회만)
 
@@ -71,36 +79,51 @@ run.bat "C:\path\to\file.pdf"
 - python.org 에서 3.9 이상 설치
 - 설치 시 "Add Python to PATH" 체크
 
-### paddlepaddle 설치 실패
-가상환경 사용 권장:
-```
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-```
+### RapidOCR 설치 실패 (onnxruntime wheel 없음)
 
-또는 GPU 있으면:
+Python 버전 확인:
 ```
-pip install paddlepaddle-gpu
+python --version
 ```
+- Python 3.10 ~ 3.14: 정상 동작 예상
+- Python 3.15+ : onnxruntime wheel 대기 필요
+
+대안 — **pytesseract + Tesseract 바이너리** (Python 무관):
+
+1. **Tesseract 설치**: https://github.com/UB-Mannheim/tesseract/wiki 에서 installer 다운로드
+   - 설치 중 "Korean" 언어 데이터 체크
+   - "Add to PATH" 옵션 체크
+2. **Python 패키지**:
+   ```
+   pip install pytesseract pymupdf openpyxl pillow
+   ```
+3. `extract.py` 가 자동으로 rapidocr → pytesseract fallback (코드 수정 불필요)
 
 ### 더 정확한 결과 원함 — 대안 OCR 엔진
 
-**옵션 A: MinerU (도면 표 인식 강력, 단 무거움)**
+**옵션 A: PaddleOCR (Python 3.13 이하 필요, 정확도 최고)**
+```
+py -3.11 -m venv venv
+venv\Scripts\activate
+pip install paddlepaddle paddleocr pymupdf openpyxl pillow numpy
+```
+`extract.py` 수정 — `rapidocr_onnxruntime.RapidOCR` → `paddleocr.PaddleOCR(use_angle_cls=True, lang='en')`.
+
+**옵션 B: MinerU (도면 표 인식 강력, 무거움)**
 ```
 pip install -U "magic-pdf[full]"
 ```
-PaddleOCR 대신 MinerU 사용은 별도 스크립트 작성 필요.
+별도 통합 스크립트 작성 필요.
 
-**옵션 B: EasyOCR (PyTorch 기반, 설치 단순)**
+**옵션 C: EasyOCR (PyTorch 기반)**
 ```
 pip install easyocr
 ```
-`extract.py` 수정 필요 — `PaddleOCR` → `easyocr.Reader(['en'])`.
+`extract.py` 수정 — `RapidOCR` → `easyocr.Reader(['en'])`.
 
 ### OCR 가 너무 느림
 - `extract.py` 의 `scale=2.5` 를 `scale=2.0` 으로 낮추기 (정확도 약간 ↓)
-- GPU 사용 시 빠름 — paddlepaddle-gpu 설치
+- RapidOCR: GPU 사용 시 `rapidocr-paddle` 또는 `rapidocr-openvino` 변형 사용
 
 ## 파일 구조
 

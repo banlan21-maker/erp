@@ -33,21 +33,21 @@ echo.
 
 REM --- 3. Install packages ---
 echo [STEP 2/2] Installing packages from requirements.txt
-echo (This may take several minutes - paddlepaddle is large)
 echo.
 python -m pip install -r requirements.txt
 if errorlevel 1 (
     echo.
     echo ============================================================
-    echo [ERROR] Installation failed.
+    echo [ERROR] rapidocr-onnxruntime installation failed.
     echo ============================================================
     echo.
-    echo Common cause: paddlepaddle requires Python 3.8 - 3.12 on Windows.
-    echo If your Python is 3.13+, install Python 3.11 separately and try:
+    echo Common cause: onnxruntime wheel missing for your Python version.
+    echo Supported Python: 3.10 - 3.14 ^(via onnxruntime 1.26+^)
     echo.
-    echo     py -3.11 -m venv venv
-    echo     venv\Scripts\activate
-    echo     install.bat
+    echo Fallback: install pytesseract instead ^(needs Tesseract binary^)
+    echo     1^) Install Tesseract: https://github.com/UB-Mannheim/tesseract/wiki
+    echo     2^) Add C:\Program Files\Tesseract-OCR to PATH
+    echo     3^) Run: pip install pytesseract pymupdf openpyxl pillow
     echo.
     echo See README.md for more troubleshooting.
     echo.
@@ -62,6 +62,6 @@ echo ============================================================
 echo.
 echo Next: Drag any PDF file onto run.bat
 echo.
-echo (First PDF run will download PaddleOCR models ~500MB once)
+echo (First PDF run will download RapidOCR ONNX models ~10MB once)
 echo.
 pause
