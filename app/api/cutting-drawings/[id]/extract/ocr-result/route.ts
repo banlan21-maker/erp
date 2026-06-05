@@ -39,7 +39,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const preset = await prisma.cuttingDrawingPreset.findUnique({ where: { id: body.presetId } });
     if (!preset) return NextResponse.json({ success: false, error: "Preset not found" }, { status: 404 });
 
-    const result = extractPage(body.items, preset.rules as unknown as PresetRules);
+    const rules = preset.rules as unknown as PresetRules;
+
+    // detectKeywords 매칭 안 됨 → 저장 안 함 (양식과 무관한 페이지)
+    const upper = (body.fullText ?? body.items.map(i => i.str).join(" ")).toUpperCase();
+    const detectKws = (rules.detectKeywords ?? []).map(k => k.toUpperCase());
+    const negKws    = (rules.negativeKeywords ?? []).map(k => k.toUpperCase());
+    if (negKws.some(k => upper.includes(k))) {
+      return NextResponse.json({ success: true, skipped: true, reason: "negative keyword matched" });
+    }
+    if (detectKws.length > 0 && !detectKws.some(k => upper.includes(k))) {
+      return NextResponse.json({ success: true, skipped: true, reason: "detect keyword not found" });
+    }
+
+    const result = extractPage(body.items, rules);
+
+    // 4개 필드 모두 null → 빈 행 만들지 않고 skip
+    if (!result.drawingNo && result.partWeight === null && result.markingLen === null && result.cuttingLen === null) {
+      return NextResponse.json({ success: true, skipped: true, reason: "no fields extracted" });
+    }
 
     const saved = await prisma.cuttingDrawingExtraction.upsert({
       where: { pdfId_pageNumber: { pdfId: id, pageNumber: body.pageNumber } },
