@@ -11,7 +11,7 @@
  * 저장 시 POST /api/cutting-drawings/[id]/extractions (upsert, method="MANUAL")
  */
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -48,9 +48,11 @@ export default function CuttingPdfManualInputModal({
   const [loadingPage, setLoadingPage] = useState(false);
   const [saving,      setSaving]      = useState(false);
   const [error,       setError]       = useState<string | null>(null);
+  const [pdfError,    setPdfError]    = useState<string | null>(null);
   const pdfContainerRef = useRef<HTMLDivElement>(null);
 
-  const fileUrl = `/api/cutting-drawings/${pdfId}/file`;
+  // file prop 을 useMemo 로 안정화 — 매 렌더 같은 object reference 가 react-pdf 의 재요청 트리거 안 함
+  const pdfFile = useMemo(() => ({ url: `/api/cutting-drawings/${pdfId}/file` }), [pdfId]);
 
   // 페이지 진입 시 기존 추출 결과 prefill
   const loadCurrentPage = useCallback(async () => {
@@ -167,12 +169,20 @@ export default function CuttingPdfManualInputModal({
                 className="p-1.5 border border-gray-200 rounded hover:bg-gray-50"><RotateCw size={14} /></button>
             </div>
             <div ref={pdfContainerRef} className="flex-1 overflow-auto flex justify-center items-start p-3">
-              <Document file={fileUrl}
-                onLoadSuccess={({ numPages }) => setNumPages(numPages)}
-                loading={<div className="text-gray-500 text-sm p-8">PDF 로딩 중...</div>}>
-                <Page pageNumber={currentPage} scale={scale} rotate={rotation}
-                  renderTextLayer={false} renderAnnotationLayer={false} />
-              </Document>
+              {pdfError ? (
+                <div className="text-red-600 text-xs p-4 bg-red-50 rounded border border-red-200 max-w-md">
+                  PDF 로드 실패: {pdfError}
+                  <div className="text-gray-500 text-[10px] mt-2 break-all">URL: {pdfFile.url}</div>
+                </div>
+              ) : (
+                <Document file={pdfFile}
+                  onLoadSuccess={({ numPages }) => { setNumPages(numPages); setPdfError(null); }}
+                  onLoadError={e => { setPdfError(e.message); console.error("[manual-input PDF error]", e); }}
+                  loading={<div className="text-gray-500 text-sm p-8">PDF 로딩 중...</div>}>
+                  <Page pageNumber={currentPage} scale={scale} rotate={rotation}
+                    renderTextLayer={false} renderAnnotationLayer={false} />
+                </Document>
+              )}
             </div>
           </div>
 
