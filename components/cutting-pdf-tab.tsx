@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
-import { Upload, Trash2, RefreshCw, FileText, Eye, Loader2, Download, FileSearch, Pencil } from "lucide-react";
+import { Upload, Trash2, RefreshCw, FileText, Eye, Loader2, Download, FileSearch, Pencil, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 // SSR 비활성화 — react-pdf 의 DOMMatrix 등 브라우저 API 의존
@@ -19,6 +19,7 @@ const CuttingPdfViewer = dynamic(() => import("@/components/cutting-pdf-viewer")
 
 const CuttingPdfExtractModal = dynamic(() => import("@/components/cutting-pdf-extract-modal"), { ssr: false });
 const CuttingPdfManualInputModal = dynamic(() => import("@/components/cutting-pdf-manual-input-modal"), { ssr: false });
+const CuttingPdfExcelUploadModal = dynamic(() => import("@/components/cutting-pdf-excel-upload-modal"), { ssr: false });
 
 interface ProjectOption { id: string; projectCode: string; projectName: string }
 
@@ -67,6 +68,7 @@ export default function CuttingPdfTab({
   const [viewer,            setViewer]            = useState<{ id: string; filename: string } | null>(null);
   const [extractor,         setExtractor]         = useState<{ id: string; filename: string } | null>(null);
   const [manualInput,       setManualInput]       = useState<{ id: string; filename: string; pageCount: number } | null>(null);
+  const [excelUpload,       setExcelUpload]       = useState<{ id: string; filename: string } | null>(null);
   const [extractions,       setExtractions]       = useState<ExtractionRow[]>([]);
   const [loadingExtr,       setLoadingExtr]       = useState(false);
 
@@ -207,6 +209,10 @@ export default function CuttingPdfTab({
                         className="px-2 py-1 text-[11px] font-semibold text-white bg-violet-600 hover:bg-violet-700 rounded flex items-center gap-1" title="수동 입력 (PDF 보면서 직접 입력)">
                         <Pencil size={11} /> 수동
                       </button>
+                      <button onClick={() => setExcelUpload({ id: p.id, filename: p.filename })}
+                        className="px-2 py-1 text-[11px] font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded flex items-center gap-1" title="엑셀 일괄 업로드 (PC 변환 결과)">
+                        <FileSpreadsheet size={11} /> 엑셀
+                      </button>
                       <button onClick={() => setViewer({ id: p.id, filename: p.filename })}
                         className="p-1.5 text-gray-500 hover:text-blue-600 rounded" title="미리보기">
                         <Eye size={13} />
@@ -307,6 +313,15 @@ export default function CuttingPdfTab({
         <CuttingPdfManualInputModal
           pdfId={manualInput.id} filename={manualInput.filename} pageCount={manualInput.pageCount}
           onClose={() => { setManualInput(null); loadExtractions(); }}
+          onSaved={loadExtractions}
+        />
+      )}
+
+      {/* 엑셀 일괄 업로드 모달 */}
+      {excelUpload && (
+        <CuttingPdfExcelUploadModal
+          pdfId={excelUpload.id} filename={excelUpload.filename}
+          onClose={() => { setExcelUpload(null); loadExtractions(); }}
           onSaved={loadExtractions}
         />
       )}
