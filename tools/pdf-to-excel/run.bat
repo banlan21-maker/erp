@@ -1,36 +1,54 @@
 @echo off
-chcp 65001 > nul
+chcp 65001 >nul
+setlocal
+title PDF Extractor - Run
 cd /d "%~dp0"
 
-echo ============================================================
-echo  PDF -> Excel 변환 도구
-echo ============================================================
-echo.
-
-REM PDF 인자 확인
 if "%~1"=="" (
-    echo 사용법:
-    echo   PDF 파일을 이 bat 파일 위로 드래그앤드롭 하세요.
-    echo   또는 명령창에서: run.bat "C:\path\to\file.pdf"
+    echo ============================================================
+    echo  PDF Extractor
+    echo ============================================================
     echo.
-    echo 처음 사용 시 install.bat 을 먼저 실행하세요.
+    echo Usage:
+    echo   1^) Drag and drop a PDF file onto run.bat
+    echo   2^) Or run from cmd: run.bat "C:\path\to\file.pdf"
+    echo.
+    echo If you haven't installed dependencies yet, run install.bat first.
+    echo See README.md for details.
     echo.
     pause
-    exit /b 1
+    exit /b 0
 )
 
-REM Python 확인
-python --version >nul 2>&1
+REM Check Python
+where python >nul 2>nul
 if errorlevel 1 (
-    echo [ERROR] Python 이 설치되지 않았습니다.
-    echo install.bat 을 먼저 실행하세요.
+    echo [ERROR] Python not found. Run install.bat first.
     pause
     exit /b 1
 )
 
-REM 실행
-python extract.py "%~1"
+REM Check file
+if not exist "%~1" (
+    echo [ERROR] File not found: %~1
+    pause
+    exit /b 1
+)
+
+echo [INFO] Input: %~nx1
+echo.
+python "%~dp0extract.py" "%~1"
+set EXITCODE=%errorlevel%
 
 echo.
-echo ============================================================
+if %EXITCODE% neq 0 (
+    echo ============================================================
+    echo [ERROR] Extraction failed (exit code %EXITCODE%).
+    echo ============================================================
+) else (
+    echo ============================================================
+    echo [OK] Done. Excel file saved next to the PDF.
+    echo ============================================================
+)
 pause
+exit /b %EXITCODE%

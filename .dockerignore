@@ -5,3 +5,10 @@ node_modules
 .env
 .env.*
 npm-debug.log*
+
+# PC 변환 도구 — 사용자 PC 에서만 실행, NAS 빌드 불필요
+tools/
+sample/
+scripts/dump-*.mjs
+scripts/inspect-*.mjs
+scripts/test-*.mjs

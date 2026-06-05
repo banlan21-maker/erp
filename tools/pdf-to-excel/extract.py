@@ -24,9 +24,10 @@ import sys
 import os
 import re
 
-# Windows 콘솔 한글 출력
+# Windows 콘솔 한글 출력 안전 (errors=replace — 깨져도 crash 방지)
 try:
-    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 except Exception:
     pass
 
@@ -166,12 +167,8 @@ def extract_page(text: str, preset: dict):
 # ────────────────────────────────────────────────────────────────
 
 def render_page_to_image(page, scale: float = 2.5) -> bytes:
-    """PDF 페이지를 PNG bytes 로 렌더 (회전 정규화)"""
-    # 회전된 페이지도 정방향으로
-    mat = fitz.Matrix(scale, scale)
-    if page.rotation != 0:
-        mat = mat * fitz.Matrix(0, 0).prerotate(-page.rotation)
-    pix = page.get_pixmap(matrix=mat, alpha=False)
+    """PDF 페이지를 PNG bytes 로 렌더. fitz 가 page.rotation 자동 적용 → 항상 정방향."""
+    pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
     return pix.tobytes("png")
 
 

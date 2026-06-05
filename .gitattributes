@@ -1,0 +1,20 @@
+# Windows .bat 파일은 항상 CRLF 로 체크아웃 — cmd.exe 가 LF 만 있는 경우 일부 문법 깨짐
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Python / 텍스트는 LF (개발자 OS 무관)
+*.py text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+
+# 바이너리 — 변환 금지
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.xlsx binary
+*.xls binary
