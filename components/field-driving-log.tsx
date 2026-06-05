@@ -167,9 +167,11 @@ function LocationPicker({
 export default function FieldDrivingLog({
   vehicles,
   workers,
+  embedded = false,
 }: {
   vehicles: Vehicle[];
   workers: Worker[];
+  embedded?: boolean; // true=상위 탭 wrapper 안에서 헤더/min-h-screen 생략
 }) {
   const [form, setForm] = useState({ ...INIT });
   const [saving, setSaving] = useState(false);
@@ -331,15 +333,17 @@ export default function FieldDrivingLog({
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 pb-10">
-      {/* 헤더 */}
-      <div className="sticky top-0 z-10 bg-gray-950/95 backdrop-blur border-b border-gray-800 px-5 py-4 flex items-center gap-3">
-        <Car size={22} className="text-blue-400 shrink-0" />
-        <div>
-          <h1 className="text-base font-bold text-white leading-tight">현장 운행일지</h1>
-          <p className="text-xs text-gray-500">차량 운행 기록 입력</p>
+    <div className={embedded ? "pb-10" : "min-h-screen bg-gray-950 pb-10"}>
+      {/* 헤더 — embedded 모드에서는 상위 wrapper 가 헤더 제공 */}
+      {!embedded && (
+        <div className="sticky top-0 z-10 bg-gray-950/95 backdrop-blur border-b border-gray-800 px-5 py-4 flex items-center gap-3">
+          <Car size={22} className="text-blue-400 shrink-0" />
+          <div>
+            <h1 className="text-base font-bold text-white leading-tight">현장 운행일지</h1>
+            <p className="text-xs text-gray-500">차량 운행 기록 입력</p>
+          </div>
         </div>
-      </div>
+      )}
 
       <form onSubmit={handleSubmit} className="px-5 pt-6 space-y-5">
 

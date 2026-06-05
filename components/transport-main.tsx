@@ -8,6 +8,7 @@ import {
   Filter,
 } from "lucide-react";
 import TransportDrivingLogTab from "@/components/transport-driving-log-tab";
+import CharterUsageTab from "@/components/charter-usage-tab";
 
 // ── 타입 ─────────────────────────────────────────────────────
 
@@ -243,7 +244,7 @@ interface Props {
 
 export default function TransportMain({ initialVehicles }: Props) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"manage" | "drivingLog">("drivingLog");
+  const [activeTab, setActiveTab] = useState<"manage" | "drivingLog" | "charterUsage">("drivingLog");
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [vehicles, setVehicles] = useState<TransportVehicle[]>(initialVehicles);
 
@@ -341,8 +342,9 @@ export default function TransportMain({ initialVehicles }: Props) {
       <div className="border-b border-gray-200 flex items-end justify-between">
         <div className="flex gap-0">
           {([
-            { key: "drivingLog", label: "차량운행일지" },
-            { key: "manage",     label: "운송장비 관리" },
+            { key: "drivingLog",   label: "차량운행일지" },
+            { key: "charterUsage", label: "용차사용대장" },
+            { key: "manage",       label: "운송장비 관리" },
           ] as const).map(({ key, label }) => (
             <button
               key={key}
@@ -745,6 +747,11 @@ export default function TransportMain({ initialVehicles }: Props) {
       {/* ── 차량운행일지 탭 ── */}
       {activeTab === "drivingLog" && (
         <TransportDrivingLogTab vehicles={vehicles} />
+      )}
+
+      {/* ── 용차사용대장 탭 ── */}
+      {activeTab === "charterUsage" && (
+        <CharterUsageTab />
       )}
     </div>
   );

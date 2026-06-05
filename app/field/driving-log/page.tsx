@@ -2,9 +2,9 @@ export const dynamic = "force-dynamic";
 
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
-import FieldDrivingLog from "@/components/field-driving-log";
+import FieldTransportTabs from "@/components/field-transport-tabs";
 
-export const metadata: Metadata = { title: "현장 운행일지" };
+export const metadata: Metadata = { title: "현장 운송 등록" };
 
 export default async function FieldDrivingLogPage() {
   const [vehicles, workers] = await Promise.all([
@@ -19,5 +19,5 @@ export default async function FieldDrivingLogPage() {
     }),
   ]);
 
-  return <FieldDrivingLog vehicles={vehicles} workers={workers} />;
+  return <FieldTransportTabs vehicles={vehicles} workers={workers} />;
 }

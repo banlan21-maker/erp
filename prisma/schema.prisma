@@ -973,6 +973,23 @@ model TransportRepairLog {
   createdAt DateTime @default(now())
 }
 
+// 용차 사용대장 (외부 차량 임대 사용 내역)
+model CharterUsage {
+  id          String   @id @default(cuid())
+  date        DateTime // 사용일자
+  driverName  String // 운전자 이름
+  driverPhone String? // 전화번호
+  vehicleNo   String? // 차량번호
+  items       String? // 출고품목
+  departure   String? // 출발지 (DrivingLocation 프리셋 또는 직접입력)
+  destination String? // 도착지
+  departTime  String? // 출발시간 HH:MM
+  cost        Int? // 용차비용 (원)
+  memo        String? // 비고
+
+  createdAt DateTime @default(now())
+}
+
 // 차량 운행일지
 model TransportDrivingLog {
   id           String           @id @default(cuid())
