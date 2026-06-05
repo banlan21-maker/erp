@@ -32,10 +32,9 @@ export async function terminateOcrWorker(worker: Worker | null) {
   try { await worker.terminate(); } catch { /* noop */ }
 }
 
-// PDF 페이지를 canvas 로 렌더 (회전 정상화)
+// PDF 페이지를 canvas 로 렌더 (회전 정상화 + 흰색 배경 — OCR 인식률 향상)
 async function renderPdfPageToCanvas(pdfUrl: string, pageNumber: number, scale: number): Promise<HTMLCanvasElement> {
   const pdfjs = await import("pdfjs-dist");
-  // worker 는 cutting-pdf-viewer 와 동일 경로
   if (!pdfjs.GlobalWorkerOptions.workerSrc) {
     pdfjs.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
   }
@@ -43,13 +42,15 @@ async function renderPdfPageToCanvas(pdfUrl: string, pageNumber: number, scale: 
   const doc = await loadingTask.promise;
   try {
     const page = await doc.getPage(pageNumber);
-    // rotation: 0 강제 → 회전된 페이지도 정방향 canvas 로
     const viewport = page.getViewport({ scale, rotation: 0 });
     const canvas = document.createElement("canvas");
     canvas.width  = Math.ceil(viewport.width);
     canvas.height = Math.ceil(viewport.height);
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas 2D context 생성 실패");
+    // 흰색 배경 — vector path 만 있는 PDF 의 transparent 배경 방지 (OCR 핵심)
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     await page.render({ canvasContext: ctx, viewport, canvas }).promise;
     return canvas;
   } finally {
@@ -73,31 +74,54 @@ export async function ocrPdfPage(
   onProgress?.({ stage: "rendering", progress: 1 });
 
   onProgress?.({ stage: "ocr", progress: 0 });
-  const { data } = await worker.recognize(canvas);
+  // Tesseract.js v6+ 부터 lines/words 가 기본 출력에서 빠짐. output 옵션으로 명시 활성화.
+  const { data } = await worker.recognize(
+    canvas,
+    {},
+    { blocks: true } as unknown as Record<string, unknown>,
+  );
   onProgress?.({ stage: "ocr", progress: 1 });
 
-  // line 단위로 TextItem 만들기 — 라벨+값 함께 들어있어 정규식 매칭이 더 안정적
-  const lines = (data as unknown as { lines?: Array<{ text: string; bbox?: { x0: number; y0: number; x1: number; y1: number }; confidence?: number }> }).lines ?? [];
-  const items: TextItem[] = lines
+  // v6+ 의 lines 위치: data.blocks[].paragraphs[].lines[]  또는  data.lines (옵션에 따라)
+  type LineLike = { text: string; bbox?: { x0: number; y0: number; x1: number; y1: number }; confidence?: number };
+  const flatLines: LineLike[] = [];
+  const root = data as unknown as {
+    lines?:  LineLike[];
+    blocks?: Array<{ paragraphs?: Array<{ lines?: LineLike[] }> }>;
+  };
+  if (Array.isArray(root.lines) && root.lines.length > 0) {
+    flatLines.push(...root.lines);
+  } else if (Array.isArray(root.blocks)) {
+    for (const b of root.blocks) for (const p of b.paragraphs ?? []) for (const l of p.lines ?? []) flatLines.push(l);
+  }
+
+  const items: TextItem[] = flatLines
     .filter(l => l.text?.trim() && l.bbox)
     .map(l => {
       const bbox = l.bbox!;
       return {
         x: Math.round(bbox.x0),
-        y: Math.round(canvas.height - bbox.y1), // 좌상단(canvas) → 좌하단(PDF point) 좌표 변환
+        y: Math.round(canvas.height - bbox.y1),
         w: Math.round(bbox.x1 - bbox.x0),
         str: l.text.trim(),
       };
     });
 
-  const wordsArr = (data as unknown as { words?: Array<{ confidence?: number }> }).words ?? [];
-  const confidences = wordsArr.map(w => w.confidence ?? 0);
+  const confidences = flatLines.map(l => l.confidence ?? 0).filter(c => c > 0);
   const avgConfidence = confidences.length ? confidences.reduce((a, b) => a + b, 0) / confidences.length : 0;
+
+  // 디버그용 콘솔 로그 (사용자가 F12 콘솔에서 OCR 결과 직접 확인)
+  if (typeof window !== "undefined" && window.console) {
+    console.log(`[OCR p${pageNumber}] text length=${(data.text ?? "").length}, lines=${flatLines.length}, conf=${avgConfidence.toFixed(0)}%`);
+    if (flatLines.length === 0 || (data.text ?? "").length < 20) {
+      console.warn(`[OCR p${pageNumber}] NEAR-EMPTY RESULT — canvas ${canvas.width}x${canvas.height}, text head:`, (data.text ?? "").slice(0, 200));
+    }
+  }
 
   return {
     items,
     fullText: data.text ?? "",
-    avgConfidence: avgConfidence / 100, // 0~1 로 정규화
+    avgConfidence: avgConfidence / 100,
     canvasWidth:  canvas.width,
     canvasHeight: canvas.height,
   };
