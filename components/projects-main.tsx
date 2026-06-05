@@ -2,13 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Anchor, List, FileSpreadsheet, Plus, ClipboardList, X } from "lucide-react";
+import { Anchor, List, FileSpreadsheet, Plus, ClipboardList, X, FileText } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import ProjectTree from "@/components/project-tree";
 import DrawingsMain from "@/components/drawings-main";
 import BomMain from "@/components/bom-main";
 import BomUpload from "@/components/bom-upload";
+import CuttingPdfTab from "@/components/cutting-pdf-tab";
 import type { DrawingList } from "@prisma/client";
 
 interface VesselBlock {
@@ -72,6 +73,7 @@ export default function ProjectsMain({
     { key: "vessels",  icon: <List size={14} />,           label: "호선/블록" },
     { key: "list",     icon: <FileSpreadsheet size={14} />, label: "블록강재리스트" },
     { key: "bom",      icon: <ClipboardList size={14} />,   label: "블록BOM리스트" },
+    { key: "pdf",      icon: <FileText size={14} />,        label: "절단도면 PDF" },
   ];
 
   return (
@@ -126,6 +128,9 @@ export default function ProjectsMain({
 
       {/* BOM리스트 탭 */}
       {tab === "bom" && <BomMain projectOptions={projectOptions} projectId={projectId} />}
+
+      {/* 절단도면 PDF 탭 */}
+      {tab === "pdf" && <CuttingPdfTab projectOptions={projectOptions} projectId={projectId} />}
 
       {/* 강재/BOM 등록 모달 */}
       {uploadModal && (

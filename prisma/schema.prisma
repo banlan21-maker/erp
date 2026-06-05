@@ -172,8 +172,44 @@ model Project {
   urgentWorks  UrgentWork[]
   remnants     Remnant[]
   bomItems     BomItem[]
+  cuttingPdfs  CuttingDrawingPdf[]
 
   @@unique([projectCode, projectName])
+}
+
+// 블록별 절단도면 PDF (Phase A — 보관/미리보기/인쇄/다운로드)
+model CuttingDrawingPdf {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  block       String? // 업로드 시 사용자가 지정한 블록 (null = 미지정)
+  filename    String // 원본 파일명
+  storedName  String // 디스크 저장명 (cuid.pdf)
+  pageCount   Int      @default(1)
+  fileSize    Int // bytes
+  presetId    String? // Phase B: 어느 프리셋으로 추출했는지
+  preset      CuttingDrawingPreset? @relation(fields: [presetId], references: [id], onDelete: SetNull)
+  extracted   Json? // Phase B: 마지막 추출 결과 스냅샷
+  uploadedBy  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([projectId, block])
+}
+
+// 절단도면 PDF 추출 프리셋 (Phase B — 설계업체별 양식)
+model CuttingDrawingPreset {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  vendor      String?
+  description String?
+  layoutMode  String   @default("SINGLE") // "SINGLE" | "TABLE"
+  rules       Json // 좌표·정규식·필드 매핑
+  sampleUrl   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  pdfs CuttingDrawingPdf[]
 }
 
 // BOM 업체 프리셋 (업체별 엑셀 컬럼 매핑 설정)
@@ -227,6 +263,10 @@ model DrawingList {
   qty                 Int
   steelWeight         Float?
   useWeight           Float?
+  cutLength           Float?  // 절단길이 (mm) — 절단도면 PDF 추출
+  markingLength       Float?  // 마킹길이 (mm) — 절단도면 PDF 추출
+  sourcePdfId         String? // 출처 CuttingDrawingPdf.id (역참조)
+  sourcePdfPage       Int?    // 멀티페이지 PDF 중 어느 페이지
   sourceFile          String?
   status              DrawingStatus @default(REGISTERED)
   receivedAt          DateTime? // 입고일 (대기 상태로 변경 시 자동 기록)
