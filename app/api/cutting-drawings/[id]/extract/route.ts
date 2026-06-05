@@ -86,11 +86,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     const preset = presetId ? presets.find(p => p.id === presetId) : null;
 
+    // 자동 매칭 실패 — 텍스트 PDF 가 거의 없는 경우 (OCR 필요 PDF) 발생.
+    // OCR_NEEDED 페이지 목록 + 가용 프리셋만 반환 → 클라이언트가 사용자에게 프리셋 선택 받고 OCR 진행.
     if (!preset) {
+      const ocrPages = pages.filter(p => p.items.length < 5).map(p => p.pageNumber);
       return NextResponse.json({
-        success: false,
-        error: "프리셋 매칭 실패 — 양식이 등록된 프리셋과 일치하지 않습니다. presetId 를 명시하거나 프리셋을 추가하세요.",
-      }, { status: 400 });
+        success: true,
+        preset: null,
+        summary: { totalPages: doc.numPages, extracted: 0, skipped: 0, ocrNeeded: ocrPages.length },
+        items: ocrPages.map(pn => ({
+          pageNumber: pn,
+          drawingNo:  null, partWeight: null, markingLen: null, cuttingLen: null,
+          method:     "OCR_NEEDED" as const,
+          matched:    { drawingNo: false, partWeight: false, markingLen: false, cuttingLen: false },
+        })),
+        availablePresets: presets.map(p => ({ id: p.id, name: p.name, method: p.method })),
+      });
     }
 
     // 기존 추출 결과 클리어 (같은 PDF 재추출)
