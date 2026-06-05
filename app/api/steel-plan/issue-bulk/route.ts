@@ -35,7 +35,8 @@ export async function POST(req: NextRequest) {
 
     const { count } = await prisma.steelPlan.updateMany({
       where: { id: { in: ids }, status: "RECEIVED" },
-      data:  { status: "ISSUED", issuedAt: issuedDate },
+      // 출고 처리 시 보관위치도 자동 미지정(null) — 적치장을 떠났으므로
+      data:  { status: "ISSUED", issuedAt: issuedDate, storageLocation: null },
     });
 
     return NextResponse.json({ success: true, count });

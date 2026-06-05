@@ -68,8 +68,9 @@ export async function PATCH(
       ...(body.status === "REGISTERED" ? { reservedFor: null, receivedAt: null, issuedAt: null } : {}),
       // 입고 처리 시 receivedAt 자동 기록
       ...(body.status === "RECEIVED" && body.receivedAt === undefined ? { receivedAt: new Date() } : {}),
-      // 출고 처리 시 issuedAt 자동 기록
-      ...(body.status === "ISSUED" ? { issuedAt: new Date() } : {}),
+      // 출고 처리 시 issuedAt 자동 기록 + 보관위치 자동 미지정(null)으로
+      // (출고된 강재는 적치장을 떠나 절단장에 있으므로 보관위치 의미 없음)
+      ...(body.status === "ISSUED" ? { issuedAt: new Date(), storageLocation: null } : {}),
       // 출고 취소(RECEIVED로 되돌리기) 시 issuedAt 초기화
       ...(body.status === "RECEIVED" && body.cancelIssue ? { issuedAt: null } : {}),
       ...(body.receivedAt !== undefined ? { receivedAt: body.receivedAt ? new Date(body.receivedAt) : null } : {}),
