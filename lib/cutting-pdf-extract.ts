@@ -24,6 +24,7 @@ export interface FieldRule {
   label:        string;
   valuePattern: string; // 정규식
   transform?:   { type: "tail"; length: number }; // 추출된 값에서 끝 N자리만 유지 (예: KY1037-B16C-CNX01 → CNX01)
+  searchRange?: number; // fullText fallback 시 라벨 직후 검색 범위 (기본 100). 짧을수록 라벨 가까운 값만 — 단위 깨졌을 때 유용
 }
 
 export interface PresetRules {
@@ -107,14 +108,14 @@ function extractField(items: TextItem[], rule: FieldRule, fullText: string): str
     }
   }
 
-  // 3) fullText fallback — normalize(공백/대소문자/O0I1) 후 라벨 직후 100자 내
+  // 3) fullText fallback — normalize(공백/대소문자/O0I1) 후 라벨 직후 N자 내 (기본 100, rule.searchRange 로 조정)
   // 단 값 매칭은 정규화 안 된 원본에서 — 숫자가 영문으로 변환되면 안 되니까
   const normText  = normalize(fullText);
   const normLabel = normalize(rule.label);
   const normIdx = normText.indexOf(normLabel);
+  const range = rule.searchRange ?? 100;
   if (normIdx >= 0) {
-    // normText 의 인덱스 = fullText 의 인덱스 (length 동일)
-    const slice = fullText.slice(normIdx + normLabel.length, normIdx + normLabel.length + 100);
+    const slice = fullText.slice(normIdx + normLabel.length, normIdx + normLabel.length + range);
     const m = slice.match(re);
     if (m) return pickMatch(m);
   }
