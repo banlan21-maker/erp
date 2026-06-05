@@ -71,8 +71,9 @@ export async function POST(
   const buffer = Buffer.from(await file.arrayBuffer());
   await writeFile(filepath, buffer);
 
-  // 캐시버스터 — 같은 URL이어도 업데이트 즉시 반영
-  const photoUrl = `/uploads/equipment/${id}/${filename}?t=${Date.now()}`;
+  // 동적 API route 로 서빙 — standalone 모드 정적 파일 서빙 이슈 우회
+  // 캐시버스터 ?t=... 로 업데이트 즉시 반영
+  const photoUrl = `/api/mgmt-equipment/${id}/photo/${slot}?t=${Date.now()}`;
 
   const updated = await prisma.mgmtEquipment.update({
     where: { id },
