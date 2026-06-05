@@ -26,7 +26,8 @@ function sanitizeSegment(s: string): string {
 // pdfjs-dist legacy build 로 페이지 수 계산 — 서버측 가벼움
 async function getPdfPageCount(buffer: Buffer): Promise<number> {
   try {
-    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const { getServerPdfjs } = await import("@/lib/pdfjs-server");
+    const pdfjs = await getServerPdfjs();
     const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer) });
     const doc = await loadingTask.promise;
     const n = doc.numPages;

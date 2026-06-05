@@ -17,6 +17,7 @@ import { prisma } from "@/lib/prisma";
 import { readFile } from "fs/promises";
 import path from "path";
 import { extractPage, detectPreset, type PresetRules, type TextItem } from "@/lib/cutting-pdf-extract";
+import { getServerPdfjs } from "@/lib/pdfjs-server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -53,8 +54,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       id: p.id, name: p.name, method: p.method, rules: p.rules as unknown as PresetRules,
     }));
 
-    // PDF 열기
-    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    // PDF 열기 (worker 경로 설정된 헬퍼 사용)
+    const pdfjs = await getServerPdfjs();
     const doc = await pdfjs.getDocument({ data: new Uint8Array(buf), verbosity: 0 }).promise;
 
     // 페이지 textContent 모두 미리 수집
