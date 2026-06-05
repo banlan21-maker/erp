@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
-import { Upload, Trash2, RefreshCw, FileText, Eye, Loader2, Download } from "lucide-react";
+import { Upload, Trash2, RefreshCw, FileText, Eye, Loader2, Download, FileSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 // SSR 비활성화 — react-pdf 의 DOMMatrix 등 브라우저 API 의존
@@ -16,6 +16,8 @@ const CuttingPdfViewer = dynamic(() => import("@/components/cutting-pdf-viewer")
   ssr: false,
   loading: () => <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center text-white text-sm">뷰어 로딩 중...</div>,
 });
+
+const CuttingPdfExtractModal = dynamic(() => import("@/components/cutting-pdf-extract-modal"), { ssr: false });
 
 interface ProjectOption { id: string; projectCode: string; projectName: string }
 
@@ -28,6 +30,20 @@ interface PdfItem {
   fileSize:   number;
   uploadedBy: string | null;
   createdAt:  string;
+}
+
+interface ExtractionRow {
+  id:           string;
+  pdfId:        string;
+  pdfFilename:  string;
+  hosin:        string;
+  block:        string;
+  pageNumber:   number;
+  drawingNo:    string | null;
+  partWeight:   number | null;
+  markingLen:   number | null;
+  cuttingLen:   number | null;
+  method:       string;
 }
 
 const formatBytes = (n: number) =>
@@ -48,6 +64,9 @@ export default function CuttingPdfTab({
   const [loading,           setLoading]           = useState(false);
   const [uploading,         setUploading]         = useState(false);
   const [viewer,            setViewer]            = useState<{ id: string; filename: string } | null>(null);
+  const [extractor,         setExtractor]         = useState<{ id: string; filename: string } | null>(null);
+  const [extractions,       setExtractions]       = useState<ExtractionRow[]>([]);
+  const [loadingExtr,       setLoadingExtr]       = useState(false);
 
   // PDF 목록 로드 — 호선/블록(=프로젝트) 단위
   const loadPdfs = useCallback(async () => {
@@ -60,7 +79,19 @@ export default function CuttingPdfTab({
     } finally { setLoading(false); }
   }, [selectedProjectId]);
 
+  // 블록도면정보 리스트 로드 (해당 호선/블록의 모든 추출 결과)
+  const loadExtractions = useCallback(async () => {
+    if (!selectedProjectId) { setExtractions([]); return; }
+    setLoadingExtr(true);
+    try {
+      const r = await fetch(`/api/cutting-drawings/extractions?projectId=${selectedProjectId}`);
+      const d = await r.json();
+      if (d.success) setExtractions(d.data);
+    } finally { setLoadingExtr(false); }
+  }, [selectedProjectId]);
+
   useEffect(() => { loadPdfs(); }, [loadPdfs]);
+  useEffect(() => { loadExtractions(); }, [loadExtractions]);
 
   /* 업로드 */
   const handleUpload = async (file: File) => {
@@ -166,6 +197,10 @@ export default function CuttingPdfTab({
                   </td>
                   <td className="px-3 py-2 text-center">
                     <div className="flex items-center justify-center gap-1">
+                      <button onClick={() => setExtractor({ id: p.id, filename: p.filename })}
+                        className="px-2 py-1 text-[11px] font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded flex items-center gap-1" title="데이터 추출">
+                        <FileSearch size={11} /> 추출
+                      </button>
                       <button onClick={() => setViewer({ id: p.id, filename: p.filename })}
                         className="p-1.5 text-gray-500 hover:text-blue-600 rounded" title="미리보기">
                         <Eye size={13} />
@@ -187,9 +222,78 @@ export default function CuttingPdfTab({
         </div>
       </div>
 
+      {/* 블록도면정보 리스트 — 추출 결과 */}
+      {selectedProjectId && (
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-gray-200 bg-gray-50 flex items-center justify-between text-xs">
+            <span className="font-semibold text-gray-700">
+              📋 블록도면정보 — {extractions.length}건
+            </span>
+            <Button variant="outline" size="sm" onClick={loadExtractions} className="h-7 text-xs">
+              <RefreshCw size={11} className="mr-1" /> 새로고침
+            </Button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm whitespace-nowrap">
+              <thead className="bg-gray-50 border-b-2 border-gray-300">
+                <tr>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 border-r border-gray-200">호선</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 border-r border-gray-200">블록</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 border-r border-gray-200">도면번호</th>
+                  <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-600 border-r border-gray-200">부재중량 (Kg)</th>
+                  <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-600 border-r border-gray-200">마킹길이 (M)</th>
+                  <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-600 border-r border-gray-200">절단길이 (M)</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600">출처</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {loadingExtr ? (
+                  <tr><td colSpan={7} className="px-3 py-10 text-center text-gray-400 text-sm">
+                    <RefreshCw size={12} className="animate-spin inline mr-2" /> 불러오는 중...
+                  </td></tr>
+                ) : extractions.length === 0 ? (
+                  <tr><td colSpan={7} className="px-3 py-10 text-center text-gray-400 text-sm">
+                    추출된 데이터가 없습니다. PDF 목록의 [추출] 버튼을 누르세요.
+                  </td></tr>
+                ) : extractions.map(e => (
+                  <tr key={e.id} className="hover:bg-emerald-50/30">
+                    <td className="px-3 py-1.5 text-xs text-gray-700 font-mono border-r border-gray-100">{e.hosin}</td>
+                    <td className="px-3 py-1.5 text-xs text-gray-700 border-r border-gray-100">{e.block}</td>
+                    <td className="px-3 py-1.5 text-xs text-gray-800 font-mono border-r border-gray-100">
+                      {e.drawingNo || <span className="text-gray-300">-</span>}
+                    </td>
+                    <td className="px-3 py-1.5 text-xs text-gray-700 text-right font-mono border-r border-gray-100">
+                      {e.partWeight !== null ? e.partWeight.toLocaleString() : <span className="text-gray-300">-</span>}
+                    </td>
+                    <td className="px-3 py-1.5 text-xs text-gray-700 text-right font-mono border-r border-gray-100">
+                      {e.markingLen !== null ? e.markingLen.toLocaleString() : <span className="text-gray-300">-</span>}
+                    </td>
+                    <td className="px-3 py-1.5 text-xs text-gray-700 text-right font-mono border-r border-gray-100">
+                      {e.cuttingLen !== null ? e.cuttingLen.toLocaleString() : <span className="text-gray-300">-</span>}
+                    </td>
+                    <td className="px-3 py-1.5 text-xs text-gray-400 truncate max-w-[250px]" title={`${e.pdfFilename} · p${e.pageNumber}`}>
+                      {e.pdfFilename} · p{e.pageNumber}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* 뷰어 모달 */}
       {viewer && (
         <CuttingPdfViewer pdfId={viewer.id} filename={viewer.filename} onClose={() => setViewer(null)} />
+      )}
+
+      {/* 추출 모달 */}
+      {extractor && (
+        <CuttingPdfExtractModal
+          pdfId={extractor.id} filename={extractor.filename}
+          onClose={() => { setExtractor(null); loadExtractions(); }}
+          onSaved={loadExtractions}
+        />
       )}
     </div>
   );

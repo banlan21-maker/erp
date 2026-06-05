@@ -194,6 +194,8 @@ model CuttingDrawingPdf {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  extractions CuttingDrawingExtraction[]
+
   @@index([projectId, block])
 }
 
@@ -203,13 +205,37 @@ model CuttingDrawingPreset {
   name        String   @unique
   vendor      String?
   description String?
-  layoutMode  String   @default("SINGLE") // "SINGLE" | "TABLE"
-  rules       Json // 좌표·정규식·필드 매핑
+  method      String   @default("TEXT") // "TEXT" (pdfjs textContent) | "OCR" (Tesseract.js)
+  rules       Json // { detectKeywords: [...], drawingNo: {label,valuePattern}, partWeight: {...}, markingLen: {...}, cuttingLen: {...} }
   sampleUrl   String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  pdfs CuttingDrawingPdf[]
+  pdfs        CuttingDrawingPdf[]
+  extractions CuttingDrawingExtraction[]
+}
+
+// 절단도면 PDF 페이지별 추출 결과 (Phase B — 별도 보관, DrawingList 와 분리)
+model CuttingDrawingExtraction {
+  id         String   @id @default(cuid())
+  pdfId      String
+  pdf        CuttingDrawingPdf @relation(fields: [pdfId], references: [id], onDelete: Cascade)
+  presetId   String?
+  preset     CuttingDrawingPreset? @relation(fields: [presetId], references: [id], onDelete: SetNull)
+  pageNumber Int
+  drawingNo  String? // 도면번호 (예: F11CNCP01, B16C-CNX01)
+  partWeight Float? // 부재중량 (Kg)
+  markingLen Float? // 마킹길이 (M)
+  cuttingLen Float? // 절단길이 (M)
+  method     String // "TEXT" | "OCR" | "MANUAL"
+  confidence Float? // OCR 평균 신뢰도 (0~1)
+  rawText    String? // 추출 디버그용 페이지 raw text (앞부분 일부)
+  notes      String? // 사용자 메모/수정 사유
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([pdfId, pageNumber])
+  @@index([pdfId])
 }
 
 // BOM 업체 프리셋 (업체별 엑셀 컬럼 매핑 설정)
