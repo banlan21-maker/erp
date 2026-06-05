@@ -54,9 +54,12 @@ const Y_BELOW_MIN = 5;
 const Y_BELOW_MAX = 60;
 const Y_SAME_TOL  = 6;
 
-// 공백 정규화 + 대문자 — OCR 결과의 다중 공백/대소문자 차이 흡수
+// 공백 정규화 + 대문자 + OCR 자주 혼동되는 글자 통일 (0↔O, 1↔I)
+// label 매칭 전용 — value 매칭(숫자)에는 사용 안 함
 function normalize(s: string): string {
-  return s.replace(/\s+/g, " ").trim().toUpperCase();
+  return s.replace(/\s+/g, " ").trim().toUpperCase()
+    .replace(/0/g, "O")
+    .replace(/1/g, "I");
 }
 
 // 라벨 텍스트에 일치하는 첫 아이템 찾기 — 정규화 후 정확 일치 우선, 포함 차선
@@ -65,6 +68,11 @@ function findLabelItem(items: TextItem[], label: string): TextItem | null {
   const exact = items.find(it => normalize(it.str) === normLabel);
   if (exact) return exact;
   return items.find(it => normalize(it.str).includes(normLabel)) ?? null;
+}
+
+// 정규식 매칭 결과에서 그룹 1 이 있으면 그것을, 없으면 전체 매치를 반환 (값만 캡처용)
+function pickMatch(m: RegExpMatchArray): string {
+  return m[1] ?? m[0];
 }
 
 function extractField(items: TextItem[], rule: FieldRule, fullText: string): string | null {
@@ -83,7 +91,7 @@ function extractField(items: TextItem[], rule: FieldRule, fullText: string): str
       .sort((a, b) => a.dy - b.dy);
     for (const { it } of below) {
       const m = it.str.match(re);
-      if (m) return m[0];
+      if (m) return pickMatch(m);
     }
 
     // 2) 같은 행, 우측 (라벨 : 값 형태)
@@ -95,18 +103,20 @@ function extractField(items: TextItem[], rule: FieldRule, fullText: string): str
       .sort((a, b) => a.dx - b.dx);
     for (const { it } of right) {
       const m = it.str.match(re);
-      if (m) return m[0];
+      if (m) return pickMatch(m);
     }
   }
 
-  // 3) fullText fallback — normalize 후 라벨 직후 100자 내
+  // 3) fullText fallback — normalize(공백/대소문자/O0I1) 후 라벨 직후 100자 내
+  // 단 값 매칭은 정규화 안 된 원본에서 — 숫자가 영문으로 변환되면 안 되니까
   const normText  = normalize(fullText);
   const normLabel = normalize(rule.label);
-  const idx = normText.indexOf(normLabel);
-  if (idx >= 0) {
-    const slice = normText.slice(idx + normLabel.length, idx + normLabel.length + 100);
+  const normIdx = normText.indexOf(normLabel);
+  if (normIdx >= 0) {
+    // normText 의 인덱스 = fullText 의 인덱스 (length 동일)
+    const slice = fullText.slice(normIdx + normLabel.length, normIdx + normLabel.length + 100);
     const m = slice.match(re);
-    if (m) return m[0];
+    if (m) return pickMatch(m);
   }
 
   return null;
