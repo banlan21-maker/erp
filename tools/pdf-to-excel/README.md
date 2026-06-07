@@ -16,22 +16,30 @@ PDF 파일
 output.xlsx  ← ERP 의 [엑셀] 버튼으로 업로드
 ```
 
-### OCR 엔진 선택
+### OCR 엔진 선택 — **PaddleOCR (Python 3.11 venv) 가 기본**
 
-| 엔진 | Python 3.14 호환 | 정확도 | 설치 부담 | 비고 |
-|---|---|---|---|---|
-| **RapidOCR-ONNX** (기본) | ✓ (onnxruntime 1.26+) | 96~98% | pip 한 줄 | PaddleOCR 모델 → ONNX 변환, PaddlePaddle 불필요 |
-| **pytesseract** (fallback) | ✓ | 90~95% | Tesseract 바이너리 별도 설치 | 안정적, 한글 지원 |
-| ~~PaddleOCR~~ | ✗ (PaddlePaddle 미지원) | 96~98% | — | Python 3.13 까지만 |
+| 엔진 | 정확도 | 설치 부담 | 비고 |
+|---|---|---|---|
+| **PaddleOCR** (기본) | **96~98%** | Python 3.11 별도 설치 + install.bat | 자동 venv 생성, 가장 정확 |
+| **RapidOCR-ONNX** (대안) | 96~98% | pip install rapidocr-onnxruntime | Python 3.12-3.13 만 지원 (3.14 X) |
+| **pytesseract** (fallback) | 90~95% | Tesseract 바이너리 별도 설치 | Python 무관, 가장 안정 |
+
+`extract.py` 가 자동으로 사용 가능한 엔진을 감지 — 우선순위 paddleocr → rapidocr → pytesseract.
 
 ## 첫 사용 (1회만)
 
-1. **Python 3.9 이상 설치** — https://www.python.org/downloads/
-   - 설치 시 "Add Python to PATH" 체크박스 반드시 선택
+1. **Python 3.11 설치** ← **필수** (PaddleOCR 가 Python 3.13/3.14 미지원)
+   - https://www.python.org/downloads/release/python-3119/
+   - Files 섹션에서 "Windows installer (64-bit)" 다운로드
+   - 설치 시 다음 두 가지 체크박스 반드시 선택:
+     - ☑ Add python.exe to PATH
+     - ☑ py launcher
+   - 메인 Python (예: 3.14) 이 따로 있어도 OK — 3.11 은 venv 안에서만 쓰임
 
-2. **install.bat 더블클릭** — 의존성 자동 설치
-   - PyMuPDF / PaddleOCR / openpyxl 등 자동 설치
-   - 수 분 소요 (네트워크 속도에 따라)
+2. **install.bat 더블클릭** — 자동 진행
+   - py -3.11 launcher 로 venv\ 폴더 자동 생성
+   - venv 안에 PyMuPDF / PaddleOCR / PaddlePaddle / openpyxl 설치
+   - 수 분 소요 (PaddlePaddle 이 ~200MB)
 
 ## 사용
 
@@ -75,9 +83,17 @@ run.bat "C:\path\to\file.pdf"
 
 ## 문제 해결
 
-### Python 이 설치 안 됐다고 뜸
-- python.org 에서 3.9 이상 설치
-- 설치 시 "Add Python to PATH" 체크
+### "Python 3.11 not found via py -3.11 launcher" 뜸
+- Python 3.11 별도 설치 (메인 Python 과 별개로 가능)
+- https://www.python.org/downloads/release/python-3119/
+- 설치 시 "py launcher" 체크박스 반드시 선택 (이게 py -3.11 명령 활성화)
+
+### paddlepaddle 설치 실패 (Visual C++ Redistributable)
+- https://aka.ms/vs/17/release/vc_redist.x64.exe 설치
+- 재부팅 후 install.bat 재실행
+
+### venv 새로 만들기
+- 기존 venv\ 폴더 삭제 후 install.bat 재실행
 
 ### RapidOCR 설치 실패 (onnxruntime wheel 없음)
 

@@ -20,15 +20,19 @@ if "%~1"=="" (
     exit /b 0
 )
 
-REM Check Python
-where python >nul 2>nul
-if errorlevel 1 (
-    echo [ERROR] Python not found. Run install.bat first.
+REM --- Check venv ---
+if not exist "venv\Scripts\python.exe" (
+    echo ============================================================
+    echo [ERROR] Python venv not found ^(venv\Scripts\python.exe missing^)
+    echo ============================================================
+    echo.
+    echo Run install.bat first to set up Python 3.11 + PaddleOCR.
+    echo.
     pause
     exit /b 1
 )
 
-REM Check file
+REM --- Check input file ---
 if not exist "%~1" (
     echo [ERROR] File not found: %~1
     pause
@@ -36,14 +40,16 @@ if not exist "%~1" (
 )
 
 echo [INFO] Input: %~nx1
+echo [INFO] Python: .\venv\Scripts\python.exe
 echo.
-python "%~dp0extract.py" "%~1"
+
+"venv\Scripts\python.exe" "%~dp0extract.py" "%~1"
 set EXITCODE=%errorlevel%
 
 echo.
 if %EXITCODE% neq 0 (
     echo ============================================================
-    echo [ERROR] Extraction failed (exit code %EXITCODE%).
+    echo [ERROR] Extraction failed ^(exit code %EXITCODE%^).
     echo ============================================================
 ) else (
     echo ============================================================

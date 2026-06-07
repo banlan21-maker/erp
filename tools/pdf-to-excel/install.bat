@@ -1,55 +1,85 @@
 @echo off
 setlocal enabledelayedexpansion
-title PDF Extractor - Install
+title PDF Extractor - Install (Python 3.11 + PaddleOCR venv)
 cd /d "%~dp0"
 
 echo ============================================================
 echo  PDF Extractor - Dependency Installer
+echo  (Python 3.11 venv + PaddleOCR)
 echo ============================================================
 echo.
 
-REM --- 1. Check Python ---
-where python >nul 2>nul
+REM --- 1. Check py -3.11 launcher ---
+py -3.11 --version >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Python is not installed or not in PATH.
+    echo [ERROR] Python 3.11 not found via "py -3.11" launcher.
     echo.
-    echo Please install Python 3.9+ from:
-    echo   https://www.python.org/downloads/
+    echo This tool requires Python 3.11 because PaddleOCR does not
+    echo support Python 3.13 or 3.14 on Windows.
     echo.
-    echo IMPORTANT: Check "Add Python to PATH" during installation.
+    echo Steps to fix:
+    echo   1) Download Python 3.11 installer:
+    echo      https://www.python.org/downloads/release/python-3119/
+    echo      (scroll to "Files" - pick "Windows installer (64-bit)")
+    echo.
+    echo   2) During installation, check BOTH:
+    echo      [v] Add python.exe to PATH
+    echo      [v] py launcher
+    echo.
+    echo   3) Close this window and re-run install.bat
+    echo.
+    echo Alternative (no Python 3.11): use pytesseract instead.
+    echo   See README.md "Troubleshooting" section.
     echo.
     pause
     exit /b 1
 )
 
-for /f "tokens=2" %%v in ('python --version 2^>^&1') do set PYVER=%%v
-echo [OK] Python !PYVER! found
+for /f "tokens=2" %%v in ('py -3.11 --version 2^>^&1') do set PYVER=%%v
+echo [OK] Python 3.11 found: !PYVER!
 echo.
 
-REM --- 2. Upgrade pip ---
-echo [STEP 1/2] Upgrading pip...
-python -m pip install --upgrade pip
+REM --- 2. Create venv if not exists ---
+if not exist "venv\Scripts\python.exe" (
+    echo [STEP 1/3] Creating Python 3.11 virtual environment in .\venv ...
+    py -3.11 -m venv venv
+    if errorlevel 1 (
+        echo [ERROR] venv creation failed.
+        pause
+        exit /b 1
+    )
+    echo [OK] venv created.
+    echo.
+) else (
+    echo [INFO] Existing venv detected at .\venv (skipping creation)
+    echo.
+)
+
+REM --- 3. Upgrade pip in venv ---
+echo [STEP 2/3] Upgrading pip in venv...
+"venv\Scripts\python.exe" -m pip install --upgrade pip
 echo.
 
-REM --- 3. Install packages ---
-echo [STEP 2/2] Installing packages from requirements.txt
+REM --- 4. Install packages in venv ---
+echo [STEP 3/3] Installing packages from requirements.txt
+echo (PaddleOCR + paddlepaddle is large, several minutes...)
 echo.
-python -m pip install -r requirements.txt
+"venv\Scripts\python.exe" -m pip install -r requirements.txt
 if errorlevel 1 (
     echo.
     echo ============================================================
-    echo [ERROR] rapidocr-onnxruntime installation failed.
+    echo [ERROR] Package installation failed.
     echo ============================================================
     echo.
-    echo Common cause: onnxruntime wheel missing for your Python version.
-    echo Supported Python: 3.10 - 3.14 ^(via onnxruntime 1.26+^)
+    echo Common causes:
+    echo   1) paddlepaddle requires Visual C++ Redistributable:
+    echo      https://aka.ms/vs/17/release/vc_redist.x64.exe
     echo.
-    echo Fallback: install pytesseract instead ^(needs Tesseract binary^)
-    echo     1^) Install Tesseract: https://github.com/UB-Mannheim/tesseract/wiki
-    echo     2^) Add C:\Program Files\Tesseract-OCR to PATH
-    echo     3^) Run: pip install pytesseract pymupdf openpyxl pillow
+    echo   2) Network/proxy issue - retry: install.bat
     echo.
-    echo See README.md for more troubleshooting.
+    echo   3) Disk space - paddlepaddle is ~200 MB + paddleocr models
+    echo.
+    echo See README.md for more help.
     echo.
     pause
     exit /b 1
@@ -61,7 +91,6 @@ echo  Installation completed successfully.
 echo ============================================================
 echo.
 echo Next: Drag any PDF file onto run.bat
-echo.
-echo (First PDF run will download RapidOCR ONNX models ~10MB once)
+echo (First PDF run will download PaddleOCR models ~10MB once)
 echo.
 pause

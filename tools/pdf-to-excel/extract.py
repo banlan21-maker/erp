@@ -37,18 +37,23 @@ except ImportError:
     print("[ERROR] PyMuPDF 가 설치되지 않았습니다. install.bat 을 먼저 실행하세요.")
     sys.exit(1)
 
-# OCR 엔진 — rapidocr-onnxruntime (Python 3.14 호환, PaddleOCR 모델을 ONNX 로 실행)
+# OCR 엔진 선택 — 우선순위: paddleocr → rapidocr_onnxruntime → pytesseract
+# Python 3.11 venv + PaddleOCR 가 기본 구성 (install.bat 참고)
+OCR_BACKEND = None
 try:
-    from rapidocr_onnxruntime import RapidOCR
-    OCR_BACKEND = "rapidocr"
+    from paddleocr import PaddleOCR
+    OCR_BACKEND = "paddleocr"
 except ImportError:
-    # fallback — pytesseract (Tesseract 바이너리 별도 설치 필요)
     try:
-        import pytesseract
-        OCR_BACKEND = "pytesseract"
+        from rapidocr_onnxruntime import RapidOCR
+        OCR_BACKEND = "rapidocr"
     except ImportError:
-        print("[ERROR] OCR 라이브러리가 설치되지 않았습니다. install.bat 을 먼저 실행하세요.")
-        sys.exit(1)
+        try:
+            import pytesseract
+            OCR_BACKEND = "pytesseract"
+        except ImportError:
+            print("[ERROR] OCR 라이브러리가 설치되지 않았습니다. install.bat 을 먼저 실행하세요.")
+            sys.exit(1)
 
 try:
     from openpyxl import Workbook
@@ -180,13 +185,36 @@ def render_page_to_image(page, scale: float = 2.5) -> bytes:
 
 
 def ocr_image_bytes(ocr, img_bytes: bytes) -> str:
-    """이미지 → 전체 텍스트. OCR_BACKEND 에 따라 rapidocr 또는 pytesseract 사용."""
+    """이미지 → 전체 텍스트. OCR_BACKEND 에 따라 paddleocr / rapidocr / pytesseract 사용."""
     import io
     from PIL import Image
 
     img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
 
-    if OCR_BACKEND == "rapidocr":
+    if OCR_BACKEND == "paddleocr":
+        # PaddleOCR.ocr() 결과 형식:
+        #   [[ [bbox, (text, conf)], [bbox, (text, conf)], ... ]]  ← 페이지별 wrapping
+        # cls=True 면 각도 분류기 사용 (회전된 텍스트도 인식)
+        import numpy as np
+        arr = np.array(img)
+        # PaddleOCR 신/구 버전 호환: 신버전은 predict(), 구버전은 ocr()
+        try:
+            result = ocr.ocr(arr, cls=True)
+        except TypeError:
+            # cls 인자가 없는 신버전 (PaddleOCR 3.x)
+            result = ocr.ocr(arr)
+        if not result or not result[0]:
+            return ""
+        parts = []
+        for line in result[0]:
+            # line = [bbox, (text, confidence)]
+            if len(line) >= 2 and isinstance(line[1], (tuple, list)) and len(line[1]) >= 1:
+                txt = line[1][0]
+                if isinstance(txt, str):
+                    parts.append(txt)
+        return " ".join(parts)
+
+    elif OCR_BACKEND == "rapidocr":
         import numpy as np
         arr = np.array(img)
         result, _ = ocr(arr)
@@ -252,7 +280,7 @@ def save_excel(results, output_path):
     meta = wb.create_sheet("메타")
     meta.append(["항목", "값"])
     meta.append(["변환 행수", len(results)])
-    meta.append(["변환 도구", "RapidOCR (ONNX) / pytesseract + PyMuPDF (Phase B-5)"])
+    meta.append(["변환 도구", "PaddleOCR / RapidOCR / pytesseract + PyMuPDF (Phase B-5)"])
     meta.append(["호환", "ERP cnc-erp 의 [엑셀] 업로드 버튼"])
 
     wb.save(output_path)
@@ -300,7 +328,17 @@ def main():
 
     if needs_ocr:
         print("  → 일부 페이지는 OCR 필요 (path-outlined PDF)")
-        if OCR_BACKEND == "rapidocr":
+        if OCR_BACKEND == "paddleocr":
+            print("  → PaddleOCR 초기화 중... 처음 1회만 모델 다운로드 (~10MB)")
+            # use_angle_cls=True → 회전 텍스트 인식
+            # lang='en' → 영문 모드 (도면번호/라벨 모두 영문)
+            # show_log=False → 진행 로그 억제
+            try:
+                ocr = PaddleOCR(use_angle_cls=True, lang='en', show_log=False)
+            except TypeError:
+                # PaddleOCR 3.x 는 show_log 인자 제거됨
+                ocr = PaddleOCR(use_angle_cls=True, lang='en')
+        elif OCR_BACKEND == "rapidocr":
             print("  → RapidOCR (ONNX runtime) 초기화 중... 처음 1회만 모델 다운로드")
             ocr = RapidOCR()
         elif OCR_BACKEND == "pytesseract":
@@ -309,7 +347,7 @@ def main():
         else:
             print(f"  [ERROR] 알 수 없는 OCR backend: {OCR_BACKEND}")
             sys.exit(1)
-        print("  → OCR 준비 완료")
+        print(f"  → OCR 준비 완료 (backend: {OCR_BACKEND})")
     else:
         print("  → 모든 페이지가 텍스트 PDF (OCR 불필요, 빠름)")
 
