@@ -95,6 +95,17 @@ run.bat "C:\path\to\file.pdf"
 ### venv 새로 만들기
 - 기존 venv\ 폴더 삭제 후 install.bat 재실행
 
+### "Unknown argument: show_log" 또는 PaddleOCR 3.x API 비호환
+
+PaddleOCR 3.x 가 2.x 와 API 가 다름. requirements.txt 가 2.x 로 제한했지만 이미 3.x 가 설치된 경우 다음 명령:
+
+```
+cd tools\pdf-to-excel
+venv\Scripts\python -m pip install "paddleocr>=2.7,<3.0" "paddlepaddle>=2.6,<3.0" --force-reinstall
+```
+
+또는 venv 새로 만들기 (`venv\` 폴더 삭제 후 install.bat 재실행).
+
 ### RapidOCR 설치 실패 (onnxruntime wheel 없음)
 
 Python 버전 확인:

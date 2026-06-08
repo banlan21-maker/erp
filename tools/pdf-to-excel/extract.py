@@ -330,14 +330,20 @@ def main():
         print("  → 일부 페이지는 OCR 필요 (path-outlined PDF)")
         if OCR_BACKEND == "paddleocr":
             print("  → PaddleOCR 초기화 중... 처음 1회만 모델 다운로드 (~10MB)")
+            print("  → (PaddleOCR 2.x 권장. 3.x 면 API 비호환 — README 트러블슈팅 참조)")
             # use_angle_cls=True → 회전 텍스트 인식
             # lang='en' → 영문 모드 (도면번호/라벨 모두 영문)
             # show_log=False → 진행 로그 억제
             try:
                 ocr = PaddleOCR(use_angle_cls=True, lang='en', show_log=False)
-            except TypeError:
-                # PaddleOCR 3.x 는 show_log 인자 제거됨
-                ocr = PaddleOCR(use_angle_cls=True, lang='en')
+            except (TypeError, ValueError):
+                try:
+                    # PaddleOCR 3.x 는 show_log 인자 ValueError 로 거부
+                    ocr = PaddleOCR(use_angle_cls=True, lang='en')
+                except (TypeError, ValueError):
+                    # PaddleOCR 3.x 의 새 인자 (use_textline_orientation)
+                    # 단 .ocr() 메서드 시그니처도 변경되어 호환성 제한적 — README 참조
+                    ocr = PaddleOCR(use_textline_orientation=True, lang='en')
         elif OCR_BACKEND == "rapidocr":
             print("  → RapidOCR (ONNX runtime) 초기화 중... 처음 1회만 모델 다운로드")
             ocr = RapidOCR()

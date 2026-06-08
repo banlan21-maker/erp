@@ -44,3 +44,9 @@ next-env.d.ts
 
 # 사용자 업로드 — git 추적 안 함 (NAS 볼륨 마운트로 영구화)
 /public/uploads/
+
+# PC 변환 도구 — venv 와 사용자 PDF/출력 엑셀은 추적 안 함
+tools/pdf-to-excel/venv/
+tools/pdf-to-excel/*.pdf
+tools/pdf-to-excel/*_output.xlsx
+tools/pdf-to-excel/__pycache__/
