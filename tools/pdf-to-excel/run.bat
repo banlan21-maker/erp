@@ -13,19 +13,19 @@ if "%~1"=="" (
     echo   1. Drag and drop a PDF file onto run.bat
     echo   2. Or run from cmd: run.bat "C:\path\to\file.pdf"
     echo.
-    echo If you haven't installed dependencies yet, run install.bat first.
+    echo Run install.bat first if dependencies are not installed yet.
     echo See README.md for details.
     echo.
     pause
     exit /b 0
 )
 
-REM Save PDF path/name as variables BEFORE any if-block expansion
-REM (필수: 파일명에 괄호 포함 시 if 블록 파싱 깨짐 방지)
+REM Save args as variables BEFORE if-block expansion
+REM This prevents cmd from breaking when filename contains parens like (NC)
 set "PDF_PATH=%~1"
 set "PDF_NAME=%~nx1"
 
-REM --- Check venv ---
+REM Check venv
 if not exist "venv\Scripts\python.exe" (
     echo ============================================================
     echo [ERROR] Python venv not found
@@ -37,7 +37,7 @@ if not exist "venv\Scripts\python.exe" (
     exit /b 1
 )
 
-REM --- Check input file ---
+REM Check input file
 if not exist "!PDF_PATH!" (
     echo [ERROR] File not found.
     echo.
