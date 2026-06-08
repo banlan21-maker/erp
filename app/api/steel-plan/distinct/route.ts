@@ -1,7 +1,8 @@
 export const dynamic = "force-dynamic";
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { parseList, buildCascadingWhere, nullableInBuilder, dateRangeBuilder } from "@/lib/server-cascading";
 
 const STATUS_LABEL: Record<string, string> = {
   REGISTERED: "등록",
@@ -10,32 +11,85 @@ const STATUS_LABEL: Record<string, string> = {
   COMPLETED:  "절단완료",
 };
 
+// 컬럼 key → 쿼리스트링 파라미터 이름
+const QS_KEY: Record<string, string> = {
+  vesselCode:         "vesselCodes",
+  material:           "materials",
+  thickness:          "thicknesses",
+  width:              "widths",
+  length:             "lengths",
+  status:             "statuses",
+  storageLocation:    "storageLocations",
+  reservedFor:        "reservedFors",
+  receivedAt:         "receivedDates",
+  uploadBatchNo:      "uploadBatchNos",
+  selectionPrintedAt: "selectionPrintedDates",
+  issuedAt:           "issuedDates",
+  actualHeatNo:       "actualHeatNos",
+  actualVesselCode:   "actualVesselCodes",
+  actualDrawingNo:    "actualDrawingNos",
+};
+
+// 컬럼별 Prisma WHERE 조각 빌더 — cascading where 절 구성용
+const BUILDERS: Record<string, (vs: string[]) => Record<string, unknown>> = {
+  vesselCode:         vs => ({ vesselCode: { in: vs } }),
+  material:           vs => ({ material:   { in: vs } }),
+  thickness:          vs => ({ thickness:  { in: vs.map(Number) } }),
+  width:              vs => ({ width:      { in: vs.map(Number) } }),
+  length:             vs => ({ length:     { in: vs.map(Number) } }),
+  status:             vs => ({ status:     { in: vs } }),
+  storageLocation:    nullableInBuilder("storageLocation"),
+  reservedFor:        nullableInBuilder("reservedFor"),
+  receivedAt:         dateRangeBuilder("receivedAt"),
+  uploadBatchNo:      nullableInBuilder("uploadBatchNo"),
+  selectionPrintedAt: dateRangeBuilder("selectionPrintedAt"),
+  issuedAt:           dateRangeBuilder("issuedAt"),
+  actualHeatNo:       nullableInBuilder("actualHeatNo"),
+  actualVesselCode:   nullableInBuilder("actualVesselCode"),
+  actualDrawingNo:    nullableInBuilder("actualDrawingNo"),
+};
+
 const toUniqueDates = (rows: { toISOString: () => string }[]) =>
   [...new Set(rows.map((d) => d.toISOString().split("T")[0]))].sort();
 
-export async function GET() {
-  const [vessels, materials, thicknesses, widths, lengths, statuses, locations, reservedFors, allDates, heatNos, actualVessels, drawingNos, batchNos, allSelectionDates, allIssuedDates] =
-    await Promise.all([
-      prisma.steelPlan.findMany({ select: { vesselCode: true },       distinct: ["vesselCode"],       orderBy: { vesselCode: "asc" } }),
-      prisma.steelPlan.findMany({ select: { material: true },         distinct: ["material"],         orderBy: { material: "asc" } }),
-      prisma.steelPlan.findMany({ select: { thickness: true },        distinct: ["thickness"],        orderBy: { thickness: "asc" } }),
-      prisma.steelPlan.findMany({ select: { width: true },            distinct: ["width"],            orderBy: { width: "asc" } }),
-      prisma.steelPlan.findMany({ select: { length: true },           distinct: ["length"],           orderBy: { length: "asc" } }),
-      prisma.steelPlan.findMany({ select: { status: true },           distinct: ["status"],           orderBy: { status: "asc" } }),
-      prisma.steelPlan.findMany({ select: { storageLocation: true },  distinct: ["storageLocation"],  orderBy: { storageLocation: "asc" } }),
-      prisma.steelPlan.findMany({ select: { reservedFor: true },      distinct: ["reservedFor"],      orderBy: { reservedFor: "asc" } }),
-      prisma.steelPlan.findMany({
-        select:  { receivedAt: true },
-        where:   { receivedAt: { not: null } },
-        orderBy: { receivedAt: "asc" },
-      }),
-      prisma.steelPlan.findMany({ select: { actualHeatNo: true },     distinct: ["actualHeatNo"],     where: { actualHeatNo:     { not: null } }, orderBy: { actualHeatNo:     "asc" } }),
-      prisma.steelPlan.findMany({ select: { actualVesselCode: true }, distinct: ["actualVesselCode"], where: { actualVesselCode: { not: null } }, orderBy: { actualVesselCode: "asc" } }),
-      prisma.steelPlan.findMany({ select: { actualDrawingNo: true },  distinct: ["actualDrawingNo"],  where: { actualDrawingNo:  { not: null } }, orderBy: { actualDrawingNo:  "asc" } }),
-      prisma.steelPlan.findMany({ select: { uploadBatchNo: true },    distinct: ["uploadBatchNo"],    orderBy: { uploadBatchNo: "asc" } }),
-      prisma.steelPlan.findMany({ select: { selectionPrintedAt: true }, where: { selectionPrintedAt: { not: null } }, orderBy: { selectionPrintedAt: "asc" } }),
-      prisma.steelPlan.findMany({ select: { issuedAt: true },           where: { issuedAt:           { not: null } }, orderBy: { issuedAt: "asc" } }),
-    ]);
+export async function GET(req: NextRequest) {
+  const sp = new URL(req.url).searchParams;
+
+  // 1) 쿼리스트링 → filters
+  const filters: Record<string, string[]> = {};
+  for (const [colKey, qsKey] of Object.entries(QS_KEY)) {
+    filters[colKey] = parseList(sp.get(qsKey));
+  }
+
+  // 2) cascading where 빌더 — 자기 자신 컬럼 제외
+  const where = (excludeKey: string) => buildCascadingWhere(BUILDERS, filters, excludeKey);
+
+  // 3) 15개 distinct 쿼리 병렬
+  const [
+    vessels, materials, thicknesses, widths, lengths, statuses,
+    locations, reservedFors, allDates, heatNos, actualVessels, drawingNos,
+    batchNos, allSelectionDates, allIssuedDates,
+  ] = await Promise.all([
+    prisma.steelPlan.findMany({ where: where("vesselCode"),         select: { vesselCode: true },       distinct: ["vesselCode"],         orderBy: { vesselCode: "asc" } }),
+    prisma.steelPlan.findMany({ where: where("material"),           select: { material: true },         distinct: ["material"],           orderBy: { material: "asc" } }),
+    prisma.steelPlan.findMany({ where: where("thickness"),          select: { thickness: true },        distinct: ["thickness"],          orderBy: { thickness: "asc" } }),
+    prisma.steelPlan.findMany({ where: where("width"),              select: { width: true },            distinct: ["width"],              orderBy: { width: "asc" } }),
+    prisma.steelPlan.findMany({ where: where("length"),             select: { length: true },           distinct: ["length"],             orderBy: { length: "asc" } }),
+    prisma.steelPlan.findMany({ where: where("status"),             select: { status: true },           distinct: ["status"],             orderBy: { status: "asc" } }),
+    prisma.steelPlan.findMany({ where: where("storageLocation"),    select: { storageLocation: true },  distinct: ["storageLocation"],    orderBy: { storageLocation: "asc" } }),
+    prisma.steelPlan.findMany({ where: where("reservedFor"),        select: { reservedFor: true },      distinct: ["reservedFor"],        orderBy: { reservedFor: "asc" } }),
+    prisma.steelPlan.findMany({
+      where:   { ...where("receivedAt"), receivedAt: { not: null } },
+      select:  { receivedAt: true },
+      orderBy: { receivedAt: "asc" },
+    }),
+    prisma.steelPlan.findMany({ where: { ...where("actualHeatNo"),     actualHeatNo:     { not: null } }, select: { actualHeatNo: true },     distinct: ["actualHeatNo"],     orderBy: { actualHeatNo:     "asc" } }),
+    prisma.steelPlan.findMany({ where: { ...where("actualVesselCode"), actualVesselCode: { not: null } }, select: { actualVesselCode: true }, distinct: ["actualVesselCode"], orderBy: { actualVesselCode: "asc" } }),
+    prisma.steelPlan.findMany({ where: { ...where("actualDrawingNo"),  actualDrawingNo:  { not: null } }, select: { actualDrawingNo: true },  distinct: ["actualDrawingNo"],  orderBy: { actualDrawingNo:  "asc" } }),
+    prisma.steelPlan.findMany({ where: where("uploadBatchNo"),      select: { uploadBatchNo: true },    distinct: ["uploadBatchNo"],      orderBy: { uploadBatchNo: "asc" } }),
+    prisma.steelPlan.findMany({ where: { ...where("selectionPrintedAt"), selectionPrintedAt: { not: null } }, select: { selectionPrintedAt: true }, orderBy: { selectionPrintedAt: "asc" } }),
+    prisma.steelPlan.findMany({ where: { ...where("issuedAt"),           issuedAt:           { not: null } }, select: { issuedAt: true },           orderBy: { issuedAt:           "asc" } }),
+  ]);
 
   const uniqueDates          = toUniqueDates(allDates.map((d)  => d.receivedAt!));
   const uniqueSelectionDates = toUniqueDates(allSelectionDates.map((d) => d.selectionPrintedAt!));

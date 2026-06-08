@@ -8,6 +8,37 @@ import {
   ArrowUp, ArrowDown, ArrowUpDown,
 } from "lucide-react";
 import ColumnFilterDropdown, { type FilterValue } from "./column-filter-dropdown";
+import { serializeColFilters } from "@/lib/client-cascading";
+
+/* ── 컬럼 key → 쿼리스트링 param 이름 (distinct API 와 일치) ── */
+const STEEL_PLAN_QS_KEY: Record<string, string> = {
+  vesselCode:         "vesselCodes",
+  material:           "materials",
+  thickness:          "thicknesses",
+  width:              "widths",
+  length:             "lengths",
+  status:             "statuses",
+  storageLocation:    "storageLocations",
+  reservedFor:        "reservedFors",
+  receivedAt:         "receivedDates",
+  uploadBatchNo:      "uploadBatchNos",
+  selectionPrintedAt: "selectionPrintedDates",
+  issuedAt:           "issuedDates",
+  actualHeatNo:       "actualHeatNos",
+  actualVesselCode:   "actualVesselCodes",
+  actualDrawingNo:    "actualDrawingNos",
+};
+
+const STEEL_PLAN_HEAT_QS_KEY: Record<string, string> = {
+  vesselCode:    "vesselCodes",
+  material:      "materials",
+  thickness:     "thicknesses",
+  width:         "widths",
+  length:        "lengths",
+  heatNo:        "heatNos",
+  status:        "statuses",
+  uploadBatchNo: "uploadBatchNos",
+};
 
 /* ── 헬퍼 ─────────────────────────────────────────────────────────────────── */
 // 부동소수점 오차 제거: 두께는 소수점 1자리, 폭/길이는 정수
@@ -174,11 +205,12 @@ export default function SteelPlanMain() {
   const [formSaving, setFormSaving] = useState(false);
 
   /* ── 데이터 로드 ─────────────────────────────────────────────────────── */
-  /* ── 고유값 로드 (컬럼 필터 목록) ── */
+  /* ── 고유값 로드 (컬럼 필터 목록) — colFilters 변경 시 cascading 재계산 ── */
   const loadDistinct = useCallback(async () => {
-    const res = await fetch("/api/steel-plan/distinct");
+    const qs = serializeColFilters(colFilters, STEEL_PLAN_QS_KEY);
+    const res = await fetch(`/api/steel-plan/distinct${qs ? `?${qs}` : ""}`);
     if (res.ok) setDistinctValues(await res.json());
-  }, []);
+  }, [colFilters]);
 
   const loadPlan = useCallback(async () => {
     setLoading(true);
@@ -213,9 +245,10 @@ export default function SteelPlanMain() {
   }, [search, page, colFilters, sortKeys]);
 
   const loadHeatDistinct = useCallback(async () => {
-    const res = await fetch("/api/steel-plan/heat/distinct");
+    const qs = serializeColFilters(heatColFilters, STEEL_PLAN_HEAT_QS_KEY);
+    const res = await fetch(`/api/steel-plan/heat/distinct${qs ? `?${qs}` : ""}`);
     if (res.ok) setHeatDistinctValues(await res.json());
-  }, []);
+  }, [heatColFilters]);
 
   const loadHeat = useCallback(async () => {
     setHeatLoading(true);

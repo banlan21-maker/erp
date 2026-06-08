@@ -1,24 +1,56 @@
 export const dynamic = "force-dynamic";
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { parseList, buildCascadingWhere, nullableInBuilder } from "@/lib/server-cascading";
 
 const HEAT_STATUS_LABEL: Record<string, string> = {
   WAITING: "대기",
   CUT:     "절단",
 };
 
-export async function GET() {
+const QS_KEY: Record<string, string> = {
+  vesselCode:    "vesselCodes",
+  material:      "materials",
+  thickness:     "thicknesses",
+  width:         "widths",
+  length:        "lengths",
+  heatNo:        "heatNos",
+  status:        "statuses",
+  uploadBatchNo: "uploadBatchNos",
+};
+
+const BUILDERS: Record<string, (vs: string[]) => Record<string, unknown>> = {
+  vesselCode:    vs => ({ vesselCode: { in: vs } }),
+  material:      vs => ({ material:   { in: vs } }),
+  thickness:     vs => ({ thickness:  { in: vs.map(Number) } }),
+  width:         vs => ({ width:      { in: vs.map(Number) } }),
+  length:        vs => ({ length:     { in: vs.map(Number) } }),
+  heatNo:        vs => ({ heatNo:     { in: vs } }),
+  status:        vs => ({ status:     { in: vs } }),
+  uploadBatchNo: nullableInBuilder("uploadBatchNo"),
+};
+
+export async function GET(req: NextRequest) {
+  const sp = new URL(req.url).searchParams;
+
+  const filters: Record<string, string[]> = {};
+  for (const [colKey, qsKey] of Object.entries(QS_KEY)) {
+    filters[colKey] = parseList(sp.get(qsKey));
+  }
+
+  const where = (excludeKey: string) => buildCascadingWhere(BUILDERS, filters, excludeKey);
+
   const [vessels, materials, thicknesses, widths, lengths, heatNos, statuses, batchNos] =
     await Promise.all([
-      prisma.steelPlanHeat.findMany({ select: { vesselCode: true },    distinct: ["vesselCode"],    orderBy: { vesselCode: "asc" } }),
-      prisma.steelPlanHeat.findMany({ select: { material: true },      distinct: ["material"],      orderBy: { material: "asc" } }),
-      prisma.steelPlanHeat.findMany({ select: { thickness: true },     distinct: ["thickness"],     orderBy: { thickness: "asc" } }),
-      prisma.steelPlanHeat.findMany({ select: { width: true },         distinct: ["width"],         orderBy: { width: "asc" } }),
-      prisma.steelPlanHeat.findMany({ select: { length: true },        distinct: ["length"],        orderBy: { length: "asc" } }),
-      prisma.steelPlanHeat.findMany({ select: { heatNo: true },        distinct: ["heatNo"],        orderBy: { heatNo: "asc" } }),
-      prisma.steelPlanHeat.findMany({ select: { status: true },        distinct: ["status"],        orderBy: { status: "asc" } }),
-      prisma.steelPlanHeat.findMany({ select: { uploadBatchNo: true }, distinct: ["uploadBatchNo"], orderBy: { uploadBatchNo: "asc" } }),
+      prisma.steelPlanHeat.findMany({ where: where("vesselCode"),    select: { vesselCode: true },    distinct: ["vesselCode"],    orderBy: { vesselCode: "asc" } }),
+      prisma.steelPlanHeat.findMany({ where: where("material"),      select: { material: true },      distinct: ["material"],      orderBy: { material: "asc" } }),
+      prisma.steelPlanHeat.findMany({ where: where("thickness"),     select: { thickness: true },     distinct: ["thickness"],     orderBy: { thickness: "asc" } }),
+      prisma.steelPlanHeat.findMany({ where: where("width"),         select: { width: true },         distinct: ["width"],         orderBy: { width: "asc" } }),
+      prisma.steelPlanHeat.findMany({ where: where("length"),        select: { length: true },        distinct: ["length"],        orderBy: { length: "asc" } }),
+      prisma.steelPlanHeat.findMany({ where: where("heatNo"),        select: { heatNo: true },        distinct: ["heatNo"],        orderBy: { heatNo: "asc" } }),
+      prisma.steelPlanHeat.findMany({ where: where("status"),        select: { status: true },        distinct: ["status"],        orderBy: { status: "asc" } }),
+      prisma.steelPlanHeat.findMany({ where: where("uploadBatchNo"), select: { uploadBatchNo: true }, distinct: ["uploadBatchNo"], orderBy: { uploadBatchNo: "asc" } }),
     ]);
 
   return NextResponse.json({

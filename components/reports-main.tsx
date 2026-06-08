@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Input }  from "@/components/ui/input";
 import * as XLSX  from "xlsx";
 import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
+import { getCascadedFilteredRows, getAllCascadedOptions, type ColumnAccessorMap } from "@/lib/cascading-filters";
 import dynamic from "next/dynamic";
 
 // 통계 탭은 jspdf/recharts/html2canvas 클라이언트 전용 라이브러리 사용 — SSR 비활성화
@@ -635,28 +636,23 @@ function useTableFilter(logs: CuttingLog[], cols: { key: string; getVal: (l: Cut
   const [openCol,  setOpenCol]  = useState<string | null>(null);
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
 
-  const allValues = (key: string): FilterValue[] => {
-    const col = cols.find(c => c.key === key)!;
-    const set = new Set<string>();
-    let hasEmpty = false;
-    for (const l of logs) {
-      const v = col.getVal(l);
-      if (v) set.add(v);
-      else hasEmpty = true;
-    }
-    const result: FilterValue[] = Array.from(set).sort().map(v => ({ value: v, label: v }));
-    if (hasEmpty) result.push({ value: "__EMPTY__", label: "항목없음" });
-    return result;
-  };
+  // cascading: 한 컬럼 필터 적용 후 다른 컬럼 드롭다운은 그 결과 안에서 unique
+  const accessors = useMemo<ColumnAccessorMap<CuttingLog>>(() => {
+    const m: ColumnAccessorMap<CuttingLog> = {};
+    for (const c of cols) m[c.key] = (l: CuttingLog) => c.getVal(l);
+    return m;
+  }, [cols]);
 
-  const filteredLogs = useMemo(() => logs.filter(l =>
-    cols.every(col => {
-      const sel = filters[col.key];
-      if (!sel || sel.length === 0) return true;
-      const v = col.getVal(l);
-      return sel.includes(v || "__EMPTY__");
-    })
-  ), [logs, filters]); // eslint-disable-line react-hooks/exhaustive-deps
+  const allOptions = useMemo(
+    () => getAllCascadedOptions(logs, filters, accessors),
+    [logs, filters, accessors],
+  );
+  const allValues = (key: string): FilterValue[] => allOptions[key] ?? [];
+
+  const filteredLogs = useMemo(
+    () => getCascadedFilteredRows(logs, filters, accessors),
+    [logs, filters, accessors],
+  );
 
   const filterCount = Object.keys(filters).length;
 

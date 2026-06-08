@@ -5,6 +5,24 @@ import { Filter, X, Search, RefreshCw, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
 import { DetailModal, EditModal, ReregisterModal, type Remnant } from "@/components/remnant-tabs";
+import { serializeColFilters } from "@/lib/client-cascading";
+
+/* ── filters key (클라이언트) → distinct API 쿼리스트링 param ── */
+const REMNANT_QS_KEY: Record<string, string> = {
+  shape:      "shapes",
+  material:   "materials",
+  thickness:  "thicknesses",
+  width1:     "width1s",
+  length1:    "length1s",
+  width2:     "width2s",
+  length2:    "length2s",
+  weight:     "weights",
+  status:     "statuses",
+  location:   "locations",
+  heatNo:     "heatNos",
+  vessel:     "sources",        // client: vessel → server: source
+  block:      "sourceBlocks",   // client: block  → server: sourceBlock
+};
 
 // ─── 통합 잔재 리스트 탭 ────────────────────────────────────────────────────
 // 등록잔재 컬럼 레이아웃 기준 — 현장잔재/여유원재/등록잔재 3종 모두 동일하게 사용
@@ -84,12 +102,14 @@ export default function RemnantListTab({
   const [editItem,   setEditItem]   = useState<RemnantRow | null>(null);
   const [reregItem,  setReregItem]  = useState<RemnantRow | null>(null);
 
-  // distinct 값 로드 (typeFilter 기준)
+  // distinct 값 로드 (typeFilter + cascading filters 기준)
   useEffect(() => {
-    fetch(`/api/remnants/distinct?type=${typeFilter}`)
+    const qs = serializeColFilters(filters, REMNANT_QS_KEY);
+    const url = `/api/remnants/distinct?type=${typeFilter}${qs ? `&${qs}` : ""}`;
+    fetch(url)
       .then(r => r.ok ? r.json() : {})
       .then(d => setDistinctValues(d));
-  }, [typeFilter]);
+  }, [typeFilter, filters]);
 
   // 서버사이드 필터 + 페이지네이션
   const fetchData = useCallback(async () => {
