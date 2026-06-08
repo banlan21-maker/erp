@@ -80,13 +80,16 @@ PRESETS = [
     },
     {
         "name": "NC 가공도 (TOTAL PART WEIGHT)",
-        "detect_keywords":  ["TOTAL PART WEIGHT"],
+        # PLATE N/C CUTTING PLAN 제목만 있어도 데이터 페이지로 인식 (TOTAL PART WEIGHT 가 OCR 깨졌을 때 보강)
+        "detect_keywords":  ["TOTAL PART WEIGHT", "PLATE N/C CUTTING PLAN"],
         "negative_keywords": [],
         "fields": {
-            "drawing_no":  {"label": "DRAWING NO",        "value_pattern": r"[A-Z]+\d+(?:[-\s][A-Z0-9]+)*", "tail": 5,  "search_range": 30},
-            "part_weight": {"label": "TOTAL PART WEIGHT", "value_pattern": r"([0-9]+(?:\.[0-9]+)?)(?:\s*[Kk][Gg])?",  "search_range": 20},
-            "marking_len": {"label": "MARKING LEN",       "value_pattern": r"([0-9]+(?:\.[0-9]+)?)(?:\s*M)?\b",        "search_range": 20},
-            "cutting_len": {"label": "CUTTING LEN",       "value_pattern": r"([0-9]+(?:\.[0-9]+)?)(?:\s*M)?\b",        "search_range": 20},
+            # 도면번호: 두 번째 "-" 와 "(" 사이만 캡처 (예: KY1037-B16C-CNX01 (1/2) → CNX01)
+            "drawing_no":  {"label": "DRAWING NO",        "value_pattern": r"-[^-]+-([^-(]+?)\s*\(",                  "search_range": 35},
+            # 단위 필수: 첫 숫자 ~ Kg 사이만 (다른 페이지 번호/날짜 등 무관 숫자 자동 제외)
+            "part_weight": {"label": "TOTAL PART WEIGHT", "value_pattern": r"([0-9]+(?:\.[0-9]+)?)\s*[Kk][Gg]",       "search_range": 20},
+            "marking_len": {"label": "MARKING LEN",       "value_pattern": r"([0-9]+(?:\.[0-9]+)?)\s*M\b",            "search_range": 20},
+            "cutting_len": {"label": "CUTTING LEN",       "value_pattern": r"([0-9]+(?:\.[0-9]+)?)\s*M\b",            "search_range": 20},
         },
     },
     {
