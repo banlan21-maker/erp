@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import dynamic from "next/dynamic";
 import EmergencyTab from "@/components/emergency-tab";
 import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
+import { getCascadedFilteredRows, getAllCascadedOptions, type ColumnAccessorMap } from "@/lib/cascading-filters";
 
 const OrgChartTab = dynamic(() => import("@/components/org-chart-tab"), { ssr: false });
 
@@ -226,36 +227,26 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
     });
   }, []);
 
-  // 컬럼별 distinct (필터 드롭다운용)
-  const distinctValues = useMemo(() => {
-    const result: Record<string, FilterValue[]> = {};
-    for (const c of COLUMNS) {
-      const set = new Set<string>();
-      let hasEmpty = false;
-      for (const w of workers) {
-        const v = colValue(w, c.key);
-        if (v) set.add(v);
-        else hasEmpty = true;
-      }
-      const arr: FilterValue[] = Array.from(set).sort((a, b) => a.localeCompare(b, "ko")).map(v => ({ value: v, label: v }));
-      if (hasEmpty) arr.push({ value: "__EMPTY__", label: "(값 없음)" });
-      result[c.key] = arr;
-    }
-    return result;
-  }, [COLUMNS, workers, colValue]);
+  // cascading filter accessors
+  const accessors = useMemo<ColumnAccessorMap<typeof workers[number]>>(() => {
+    const m: ColumnAccessorMap<typeof workers[number]> = {};
+    for (const c of COLUMNS) m[c.key] = (row) => colValue(row, c.key);
+    return m;
+  }, [COLUMNS, colValue]);
+
+  // 컬럼별 distinct (필터 드롭다운용 — cascading)
+  const distinctValues = useMemo(
+    () => getAllCascadedOptions(workers, colFilters, accessors),
+    [workers, colFilters, accessors],
+  );
 
   const filteredWorkers = useMemo(() => {
-    const filtered = workers.filter((w) => {
-      // 검색
-      if (searchTerm && !w.name.includes(searchTerm) && !(w.phone && w.phone.includes(searchTerm))) return false;
-      // 컬럼 필터
-      return Object.entries(colFilters).every(([col, values]) => {
-        if (values.length === 0) return true;
-        const v = colValue(w, col);
-        if (values.includes("__EMPTY__") && !v) return true;
-        return values.includes(v);
-      });
-    });
+    // 1) 검색어 적용
+    const searched = searchTerm
+      ? workers.filter(w => w.name.includes(searchTerm) || (w.phone && w.phone.includes(searchTerm)))
+      : workers;
+    // 2) cascading 컬럼 필터 적용
+    const filtered = getCascadedFilteredRows(searched, colFilters, accessors);
     if (sortKeys.length === 0) return filtered;
     return [...filtered].sort((a, b) => {
       for (const { col, dir } of sortKeys) {

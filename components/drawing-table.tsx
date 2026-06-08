@@ -125,13 +125,21 @@ function FilterHeader({
   onFilterChange, openCol, anchorEl, onOpen, onClose,
   sortKeys, onSort,
 }: FilterHeaderProps) {
+  // cascading filter — 자기 자신 컬럼 제외 다른 모든 필터 적용 후 unique
   const allValues = useMemo(() => {
-    const vals = [...new Set(drawings.map(d => colValue(d, col)))];
+    const filtered = drawings.filter(d =>
+      Object.entries(filters).every(([k, vs]) => {
+        if (k === col || !vs || vs.length === 0) return true;
+        const v = colValue(d, k);
+        return vs.includes(v);
+      })
+    );
+    const vals = [...new Set(filtered.map(d => colValue(d, col)))];
     const nonEmpty = vals.filter(v => v !== "__EMPTY__").sort().map(v => ({ value: v, label: v }));
     const hasEmpty = vals.includes("__EMPTY__");
     if (hasEmpty) nonEmpty.push({ value: "__EMPTY__", label: "항목없음" });
     return nonEmpty;
-  }, [drawings, col]);
+  }, [drawings, filters, col]);
   const selected = filters[col] ?? [];
   const isActive = selected.length > 0;
 

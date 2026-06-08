@@ -12,6 +12,7 @@ import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ColumnFilterDropdown, { type FilterValue } from "./column-filter-dropdown";
+import { getCascadedFilteredRows, getAllCascadedOptions, type ColumnAccessorMap } from "@/lib/cascading-filters";
 
 interface CharterUsage {
   id:          string;
@@ -202,23 +203,6 @@ export default function CharterUsageTab() {
     }
   };
 
-  const distinctValues = useMemo(() => {
-    const m: Record<string, Set<string>> = {};
-    for (const c of COLUMNS) m[c.key] = new Set();
-    for (const l of logs) for (const c of COLUMNS) {
-      const v = colValue(l, c.key);
-      m[c.key].add(v === "" ? "__EMPTY__" : v);
-    }
-    const out: Record<string, FilterValue[]> = {};
-    for (const k of Object.keys(m)) {
-      out[k] = Array.from(m[k]).sort().map(v => ({
-        value: v,
-        label: v === "__EMPTY__" ? "(값 없음)" : v,
-      }));
-    }
-    return out;
-  }, [logs, COLUMNS]);
-
   const [colFilters, setColFilters] = useState<Record<string, string[]>>({});
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
@@ -226,13 +210,22 @@ export default function CharterUsageTab() {
   // 월 변경 시 필터 리셋
   useEffect(() => { setColFilters({}); }, [year, month]);
 
-  const filteredLogs = useMemo(() => logs.filter(l => {
-    return Object.entries(colFilters).every(([k, vs]) => {
-      if (!vs.length) return true;
-      const v = colValue(l, k);
-      return vs.includes(v === "" ? "__EMPTY__" : v);
-    });
-  }), [logs, colFilters]);
+  // cascading filter accessors
+  const accessors = useMemo<ColumnAccessorMap<CharterUsage>>(() => {
+    const m: ColumnAccessorMap<CharterUsage> = {};
+    for (const c of COLUMNS) m[c.key] = (row) => colValue(row, c.key);
+    return m;
+  }, [COLUMNS, colValue]);
+
+  const distinctValues = useMemo(
+    () => getAllCascadedOptions(logs, colFilters, accessors),
+    [logs, colFilters, accessors],
+  );
+
+  const filteredLogs = useMemo(
+    () => getCascadedFilteredRows(logs, colFilters, accessors),
+    [logs, colFilters, accessors],
+  );
 
   const activeFilterCount = Object.values(colFilters).filter(v => v.length).length;
 

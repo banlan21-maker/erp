@@ -6,11 +6,12 @@
  * - 블록 선택 후: 해당 블록의 BOM 항목 테이블
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ClipboardList, FolderOpen, ArrowLeft, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
+import { getCascadedFilteredRows, getAllCascadedOptions, type ColumnAccessorMap } from "@/lib/cascading-filters";
 import { Filter, XCircle } from "lucide-react";
 
 const STATUS_LABEL: Record<string, string> = { ACTIVE: "진행중", COMPLETED: "완료" };
@@ -82,28 +83,25 @@ export default function BomMain({
   const handleFilterOpen  = (col: string, el: HTMLElement) => { setOpenCol(col); setAnchorEl(el); };
   const handleFilterClose = () => { setOpenCol(null); setAnchorEl(null); };
 
-  // Unique values per column (for dropdown)
-  const allValues = (col: ColKey): FilterValue[] => {
-    const set = new Set<string>();
-    let hasEmpty = false;
-    for (const item of items) {
-      const v = String(item[col as keyof BomItem] ?? "");
-      if (v) set.add(v);
-      else hasEmpty = true;
-    }
-    const result: FilterValue[] = Array.from(set).sort().map(v => ({ value: v, label: v }));
-    if (hasEmpty) result.push({ value: "__EMPTY__", label: "항목없음" });
-    return result;
-  };
+  // cascading filter accessors
+  const accessors = useMemo<ColumnAccessorMap<BomItem>>(() => {
+    const m: ColumnAccessorMap<BomItem> = {};
+    for (const c of COLUMNS) m[c.key] = (row) => row[c.key as keyof BomItem] as string | number | null | undefined;
+    return m;
+  }, []);
 
-  const filtered = items.filter(item =>
-    COLUMNS.every(col => {
-      const sel = filters[col.key];
-      if (!sel || sel.length === 0) return true;
-      const v = String(item[col.key as keyof BomItem] ?? "");
-      return sel.includes(v || "__EMPTY__");
-    })
+  const distinctValues = useMemo(
+    () => getAllCascadedOptions(items, filters, accessors),
+    [items, filters, accessors],
   );
+
+  const filtered = useMemo(
+    () => getCascadedFilteredRows(items, filters, accessors),
+    [items, filters, accessors],
+  );
+
+  // 기존 호출 시그니처 유지용 — distinctValues[col] 반환
+  const allValues = (col: ColKey): FilterValue[] => distinctValues[col] ?? [];
 
   const activeProject = projectOptions.find(p => p.id === projectId) ?? null;
 

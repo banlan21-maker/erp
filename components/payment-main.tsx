@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import * as XLSX from "xlsx";
 import { CreditCard, Calendar, RefreshCw, Download, Printer, Plus, Pencil, Trash2, X, Save, Filter, Globe } from "lucide-react";
 import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
+import { getCascadedFilteredRows, getAllCascadedOptions, type ColumnAccessorMap } from "@/lib/cascading-filters";
 
 const DAYS = ["일", "월", "화", "수", "목", "금", "토"];
 function getNowKST() { return new Date(Date.now() + 9 * 3600000); }
@@ -99,33 +100,21 @@ export default function PaymentMain() {
   // 월 바뀌면 필터 초기화
   useEffect(() => { setColFilters({}); }, [year, month]);
 
-  const distinctValues = useMemo(() => {
-    const result: Record<string, FilterValue[]> = {};
-    for (const c of COLUMNS) {
-      const set = new Set<string>();
-      let hasEmpty = false;
-      for (const r of rows) {
-        const v = colValue(r, c.key);
-        if (v) set.add(v);
-        else hasEmpty = true;
-      }
-      const arr: FilterValue[] = Array.from(set).sort((a, b) => a.localeCompare(b, "ko")).map(v => ({ value: v, label: v }));
-      if (hasEmpty) arr.push({ value: "__EMPTY__", label: "(값 없음)" });
-      result[c.key] = arr;
-    }
-    return result;
-  }, [COLUMNS, rows, colValue]);
+  const accessors = useMemo<ColumnAccessorMap<typeof rows[number]>>(() => {
+    const m: ColumnAccessorMap<typeof rows[number]> = {};
+    for (const c of COLUMNS) m[c.key] = (row) => colValue(row, c.key);
+    return m;
+  }, [COLUMNS, colValue]);
 
-  const filteredRows = useMemo(() => {
-    return rows.filter(r =>
-      Object.entries(colFilters).every(([col, values]) => {
-        if (values.length === 0) return true;
-        const v = colValue(r, col);
-        if (values.includes("__EMPTY__") && !v) return true;
-        return values.includes(v);
-      })
-    );
-  }, [rows, colFilters, colValue]);
+  const distinctValues = useMemo(
+    () => getAllCascadedOptions(rows, colFilters, accessors),
+    [rows, colFilters, accessors],
+  );
+
+  const filteredRows = useMemo(
+    () => getCascadedFilteredRows(rows, colFilters, accessors),
+    [rows, colFilters, accessors],
+  );
 
   const activeFilterCount = Object.values(colFilters).filter(v => v.length > 0).length;
   const totalAmount = filteredRows.reduce((s, r) => s + r.amount, 0);

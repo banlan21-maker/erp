@@ -6,6 +6,7 @@ import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ColumnFilterDropdown, { type FilterValue } from "./column-filter-dropdown";
+import { getCascadedFilteredRows, getAllCascadedOptions, type ColumnAccessorMap } from "@/lib/cascading-filters";
 import type { TransportVehicle } from "@/components/transport-main";
 
 /* ── 타입 ── */
@@ -387,39 +388,27 @@ export default function TransportDrivingLogTab({
   // 월 바뀌면 필터 초기화 (전월 필터값이 신월 데이터에 안 맞을 수 있으므로)
   useEffect(() => { setColFilters({}); }, [year, month]);
 
-  // 컬럼별 distinct 값 (현재 월 데이터 기준)
-  const distinctValues = useMemo(() => {
-    const result: Record<string, FilterValue[]> = {};
-    for (const c of COLUMNS) {
-      const set = new Set<string>();
-      let hasEmpty = false;
-      for (const l of logs) {
-        const v = colValue(l, c.key);
-        if (v) set.add(v);
-        else hasEmpty = true;
-      }
-      const arr: FilterValue[] = Array.from(set).sort().map(v => ({ value: v, label: v }));
-      if (hasEmpty) arr.push({ value: "__EMPTY__", label: "(값 없음)" });
-      result[c.key] = arr;
-    }
-    return result;
-  }, [COLUMNS, logs, colValue]);
+  // 컬럼 accessor 맵 — cascading filter 헬퍼용
+  const accessors = useMemo<ColumnAccessorMap<DrivingLog>>(() => {
+    const m: ColumnAccessorMap<DrivingLog> = {};
+    for (const c of COLUMNS) m[c.key] = (row) => colValue(row, c.key);
+    return m;
+  }, [COLUMNS, colValue]);
+
+  // 컬럼별 distinct 값 (cascading — 자기 자신 컬럼 제외 다른 필터 적용 후 unique)
+  const distinctValues = useMemo(
+    () => getAllCascadedOptions(logs, colFilters, accessors),
+    [logs, colFilters, accessors],
+  );
 
   // 필터 적용된 로그 (날짜 내림차순)
   const filteredLogs = useMemo(() => {
-    const filtered = logs.filter(l =>
-      Object.entries(colFilters).every(([col, values]) => {
-        if (values.length === 0) return true;
-        const v = colValue(l, col);
-        if (values.includes("__EMPTY__") && !v) return true;
-        return values.includes(v);
-      })
-    );
+    const filtered = getCascadedFilteredRows(logs, colFilters, accessors);
     return [...filtered].sort((a, b) => {
       if (a.date !== b.date) return b.date.localeCompare(a.date);
       return (b.startTime ?? "").localeCompare(a.startTime ?? "");
     });
-  }, [logs, colFilters, colValue]);
+  }, [logs, colFilters, accessors]);
 
   const activeFilterCount = Object.values(colFilters).filter(v => v.length > 0).length;
 
