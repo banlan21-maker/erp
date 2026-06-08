@@ -72,10 +72,10 @@ PRESETS = [
         "detect_keywords":  ["사용중량(Kg)", "사용중량(KG)"],
         "negative_keywords": [],
         "fields": {
-            "drawing_no":  {"label": "DWG NO",       "value_pattern": r"[A-Z0-9]+NC[A-Z]\d+", "tail": 5,  "search_range": 50},
-            "part_weight": {"label": "사용중량(Kg)",  "value_pattern": r"([0-9]+(?:\.[0-9]+)?)(?:\s*[Kk][Gg])?",  "search_range": 40},
-            "marking_len": {"label": "Mark-Len(M)",  "value_pattern": r"([0-9]+(?:\.[0-9]+)?)(?:\s*M)?\b",        "search_range": 40},
-            "cutting_len": {"label": "Cut-Len(M)",   "value_pattern": r"([0-9]+(?:\.[0-9]+)?)(?:\s*M)?\b",        "search_range": 40},
+            "drawing_no":  {"label": "DWG NO",       "value_pattern": r"[A-Z0-9]+NC[A-Z]\d+", "tail": 5,  "search_range": 30},
+            "part_weight": {"label": "사용중량(Kg)",  "value_pattern": r"([0-9]+(?:\.[0-9]+)?)(?:\s*[Kk][Gg])?",  "search_range": 20},
+            "marking_len": {"label": "Mark-Len(M)",  "value_pattern": r"([0-9]+(?:\.[0-9]+)?)(?:\s*M)?\b",        "search_range": 20},
+            "cutting_len": {"label": "Cut-Len(M)",   "value_pattern": r"([0-9]+(?:\.[0-9]+)?)(?:\s*M)?\b",        "search_range": 20},
         },
     },
     {
@@ -83,10 +83,10 @@ PRESETS = [
         "detect_keywords":  ["TOTAL PART WEIGHT"],
         "negative_keywords": [],
         "fields": {
-            "drawing_no":  {"label": "DRAWING NO",        "value_pattern": r"[A-Z]+\d+(?:[-\s][A-Z0-9]+)*", "tail": 5,  "search_range": 50},
-            "part_weight": {"label": "TOTAL PART WEIGHT", "value_pattern": r"([0-9]+(?:\.[0-9]+)?)(?:\s*[Kk][Gg])?",  "search_range": 40},
-            "marking_len": {"label": "MARKING LEN",       "value_pattern": r"([0-9]+(?:\.[0-9]+)?)(?:\s*M)?\b",        "search_range": 40},
-            "cutting_len": {"label": "CUTTING LEN",       "value_pattern": r"([0-9]+(?:\.[0-9]+)?)(?:\s*M)?\b",        "search_range": 40},
+            "drawing_no":  {"label": "DRAWING NO",        "value_pattern": r"[A-Z]+\d+(?:[-\s][A-Z0-9]+)*", "tail": 5,  "search_range": 30},
+            "part_weight": {"label": "TOTAL PART WEIGHT", "value_pattern": r"([0-9]+(?:\.[0-9]+)?)(?:\s*[Kk][Gg])?",  "search_range": 20},
+            "marking_len": {"label": "MARKING LEN",       "value_pattern": r"([0-9]+(?:\.[0-9]+)?)(?:\s*M)?\b",        "search_range": 20},
+            "cutting_len": {"label": "CUTTING LEN",       "value_pattern": r"([0-9]+(?:\.[0-9]+)?)(?:\s*M)?\b",        "search_range": 20},
         },
     },
     {
@@ -94,10 +94,10 @@ PRESETS = [
         "detect_keywords":  ["PART WEIGHT"],
         "negative_keywords": ["TOTAL PART WEIGHT"],
         "fields": {
-            "drawing_no":  {"label": "DRAWING NO",  "value_pattern": r"[A-Z0-9]+", "tail": 6, "search_range": 50},
-            "part_weight": {"label": "PART WEIGHT", "value_pattern": r"([0-9]+(?:\.[0-9]+)?)(?:\s*[Kk][Gg])?",  "search_range": 40},
-            "marking_len": {"label": "MARKING LEN", "value_pattern": r"([0-9]+(?:\.[0-9]+)?)(?:\s*M)?\b",        "search_range": 40},
-            "cutting_len": {"label": "CUTTING LEN", "value_pattern": r"([0-9]+(?:\.[0-9]+)?)(?:\s*M)?\b",        "search_range": 40},
+            "drawing_no":  {"label": "DRAWING NO",  "value_pattern": r"[A-Z0-9]+", "tail": 6, "search_range": 30},
+            "part_weight": {"label": "PART WEIGHT", "value_pattern": r"([0-9]+(?:\.[0-9]+)?)(?:\s*[Kk][Gg])?",  "search_range": 20},
+            "marking_len": {"label": "MARKING LEN", "value_pattern": r"([0-9]+(?:\.[0-9]+)?)(?:\s*M)?\b",        "search_range": 20},
+            "cutting_len": {"label": "CUTTING LEN", "value_pattern": r"([0-9]+(?:\.[0-9]+)?)(?:\s*M)?\b",        "search_range": 20},
         },
     },
 ]
