@@ -297,11 +297,13 @@ export default function CharterUsageTab() {
         <Button variant="outline" size="sm" onClick={load} className="h-8 text-xs">
           <RefreshCw size={12} className="mr-1" /> 새로고침
         </Button>
-        <Button variant="outline" size="sm" onClick={downloadExcel} className="h-8 text-xs">
-          <Download size={12} className="mr-1" /> 월별 엑셀
-        </Button>
 
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <Button onClick={downloadExcel} variant="outline" size="sm"
+            className="h-8 text-xs text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+            title="해당 월 전체를 엑셀로 다운로드">
+            <Download size={12} className="mr-1" /> 월별 엑셀
+          </Button>
           <Button onClick={openForm} className="h-8 text-xs bg-blue-600 hover:bg-blue-700">
             <Plus size={13} className="mr-1" /> 용차사용 등록
           </Button>
