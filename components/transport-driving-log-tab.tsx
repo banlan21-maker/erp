@@ -501,8 +501,8 @@ export default function TransportDrivingLogTab({
           { label: "총 통행료", value: `${summary.toll.toLocaleString()}원` },
         ].map(item => (
           <div key={item.label} className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-500 font-medium">{item.label}</p>
-            <p className="text-lg font-bold text-gray-800 mt-0.5">{item.value}</p>
+            <p className="text-xs text-gray-500 font-semibold">{item.label}</p>
+            <p className="text-xl font-bold text-gray-800 mt-0.5">{item.value}</p>
           </div>
         ))}
       </div>
@@ -588,7 +588,7 @@ export default function TransportDrivingLogTab({
                   <tr key={log.id} className="hover:bg-gray-50/70 transition-colors">
                     <td className="px-3 py-2 text-xs text-gray-700 font-mono border-r border-gray-100">{log.date}</td>
                     <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100">
-                      <span className="font-medium">{log.vehicle.name}</span>
+                      <span className="font-semibold">{log.vehicle.name}</span>
                       {log.vehicle.plateNo && <span className="ml-1 text-gray-400">({log.vehicle.plateNo})</span>}
                     </td>
                     <td className="px-3 py-2 text-gray-800 border-r border-gray-100">{log.driver}</td>
@@ -602,7 +602,7 @@ export default function TransportDrivingLogTab({
                     <td className="px-3 py-2 text-gray-600 text-center border-r border-gray-100">{log.endTime || "-"}</td>
                     <td className="px-3 py-2 text-gray-600 text-right border-r border-gray-100">{km(log.startMileage)}</td>
                     <td className="px-3 py-2 text-gray-600 text-right border-r border-gray-100">{km(log.endMileage)}</td>
-                    <td className="px-3 py-2 font-medium text-right border-r border-gray-100">
+                    <td className="px-3 py-2 font-semibold text-right border-r border-gray-100">
                       {log.startMileage != null && log.endMileage != null
                         ? <span className="text-blue-600">{distance(log.startMileage, log.endMileage)}</span>
                         : <span className="text-gray-300">-</span>}
@@ -645,7 +645,7 @@ export default function TransportDrivingLogTab({
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-4">
             {/* 헤더 */}
             <div className="px-6 py-4 border-b flex items-center justify-between">
-              <h3 className="font-bold text-lg text-gray-800">운행일지 등록</h3>
+              <h3 className="font-bold text-xl text-gray-800">운행일지 등록</h3>
               <button onClick={() => setShowForm(false)} className="p-1 hover:bg-gray-100 rounded-full">
                 <X size={18} />
               </button>
@@ -684,7 +684,7 @@ export default function TransportDrivingLogTab({
               {/* 운전자 + 목적 */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">운전자 <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">운전자 <span className="text-red-500">*</span></label>
                   <Input
                     list="driver-suggestions"
                     value={form.driver}
@@ -703,13 +703,13 @@ export default function TransportDrivingLogTab({
                   )}
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">목적/용무</label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">목적/용무</label>
                   <div className="flex flex-wrap gap-1.5 mb-1.5">
                     {PURPOSE_PRESETS.map(p => (
                       <button
                         key={p} type="button"
                         onClick={() => set("purpose", p)}
-                        className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                        className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${
                           form.purpose === p
                             ? "bg-blue-600 border-blue-600 text-white"
                             : "border-gray-300 text-gray-600 hover:border-blue-400 hover:text-blue-600"
@@ -730,7 +730,7 @@ export default function TransportDrivingLogTab({
               {/* 출발지 / 도착지 — 위치 프리셋 (DB 기반, 추가·삭제 가능) */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-gray-600">위치 (출발·도착 공용)</span>
+                  <span className="text-xs font-semibold text-gray-600">위치 (출발·도착 공용)</span>
                   <button
                     type="button"
                     onClick={() => setLocEditMode(m => !m)}
@@ -759,7 +759,7 @@ export default function TransportDrivingLogTab({
                   const value = form[field];
                   return (
                     <div key={field}>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">{label}</label>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">{label}</label>
                       <div className="flex flex-wrap gap-1.5 mb-1.5">
                         {locations.map(loc => (
                           <div key={loc.id} className="relative">
@@ -795,11 +795,11 @@ export default function TransportDrivingLogTab({
               {/* 출발·도착 시간 */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">출발시간</label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">출발시간</label>
                   <Input type="time" value={form.startTime} onChange={e => set("startTime", e.target.value)} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">도착시간</label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">도착시간</label>
                   <Input type="time" value={form.endTime} onChange={e => set("endTime", e.target.value)} />
                 </div>
               </div>
@@ -807,7 +807,7 @@ export default function TransportDrivingLogTab({
               {/* 주행거리 */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
                     출발 전 주행거리 (km)
                     {form.vehicleId && inUsedVehicles.find(v => v.id === form.vehicleId)?.mileage != null && (
                       <span className="ml-1.5 text-blue-500 font-normal">
@@ -818,12 +818,12 @@ export default function TransportDrivingLogTab({
                   <Input type="number" value={form.startMileage} onChange={e => set("startMileage", e.target.value)} placeholder="0" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">도착 후 주행거리 (km)</label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">도착 후 주행거리 (km)</label>
                   <Input type="number" value={form.endMileage} onChange={e => set("endMileage", e.target.value)} placeholder="0" />
                 </div>
               </div>
               {form.startMileage && form.endMileage && Number(form.endMileage) >= Number(form.startMileage) && (
-                <p className="text-sm text-blue-600 font-medium -mt-2">
+                <p className="text-sm text-blue-600 font-semibold -mt-2">
                   운행거리: {(Number(form.endMileage) - Number(form.startMileage)).toLocaleString()}km
                 </p>
               )}
@@ -831,18 +831,18 @@ export default function TransportDrivingLogTab({
               {/* 비용 */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">유류비 (원)</label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">유류비 (원)</label>
                   <Input type="number" value={form.fuelCost} onChange={e => set("fuelCost", e.target.value)} placeholder="0" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">통행료 (원)</label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">통행료 (원)</label>
                   <Input type="number" value={form.tollCost} onChange={e => set("tollCost", e.target.value)} placeholder="0" />
                 </div>
               </div>
 
               {/* 비고 */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">비고</label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">비고</label>
                 <textarea value={form.memo} onChange={e => set("memo", e.target.value)} rows={2}
                   className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
