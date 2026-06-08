@@ -526,7 +526,7 @@ export default function TransportDrivingLogTab({
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
-          <table className="w-full text-sm whitespace-nowrap">
+          <table className="w-full text-xs whitespace-nowrap">
             <thead className="bg-gray-50 border-b-2 border-gray-300">
               <tr>
                 {COLUMNS.map(c => {
