@@ -186,6 +186,22 @@ export default async function LandingPage() {
       {/* ── 본문 ── */}
       <main className="flex-1 max-w-6xl mx-auto w-full px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
 
+        {/* 공지사항 + 경영진 — 최상단 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+          <NoticeSection
+            category="NOTICE"
+            initialNotices={serializedNotices}
+            title="공지사항"
+            accentColor="blue"
+          />
+          <NoticeSection
+            category="MANAGEMENT"
+            initialNotices={serializedMgmt}
+            title="경영진 · 관리자 전달사항"
+            accentColor="purple"
+          />
+        </div>
+
         {/* 진교·진동 현재 날씨 */}
         <WeatherBar />
 
@@ -369,21 +385,6 @@ export default async function LandingPage() {
           </div>
         )}
 
-        {/* ── 공지사항 + 경영진 — 모바일 1열 · lg↑ 2열 ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-          <NoticeSection
-            category="NOTICE"
-            initialNotices={serializedNotices}
-            title="공지사항"
-            accentColor="blue"
-          />
-          <NoticeSection
-            category="MANAGEMENT"
-            initialNotices={serializedMgmt}
-            title="경영진 · 관리자 전달사항"
-            accentColor="purple"
-          />
-        </div>
       </main>
 
       {/* ── 푸터 ── */}
