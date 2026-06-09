@@ -14,7 +14,7 @@
 
 import { useRouter, usePathname } from "next/navigation";
 import { useState, useMemo } from "react";
-import { Printer, Search, FileDown, BarChart2, Zap, ClipboardList, ChevronRight, ChevronDown, Filter, XCircle } from "lucide-react";
+import { Printer, Search, FileDown, BarChart2, Zap, ClipboardList, ChevronRight, ChevronDown, Filter, XCircle, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input }  from "@/components/ui/input";
 import * as XLSX  from "xlsx";
@@ -548,7 +548,7 @@ function AllDetailTable({
             ["W1", "right"], ["L1", "right"], ["W2", "right"], ["L2", "right"],
             ["강재중량(kg)", "right"], ["사용중량(kg)", "right"],
           ].map(([l, a]) => (
-            <th key={l} className={`px-3 py-2 text-gray-500 font-semibold text-${a} whitespace-nowrap`}>{l}</th>
+            <th key={l} className={`px-3 py-1 text-gray-500 font-semibold text-${a} whitespace-nowrap`}>{l}</th>
           ))}
 
         </tr>
@@ -556,7 +556,7 @@ function AllDetailTable({
       <tbody className="divide-y">
         {logs.map((log) => (
           <tr key={log.id} className={`hover:bg-gray-50 ${log.isUrgent ? "bg-orange-50/30" : ""}`}>
-            <td className="px-3 py-2 text-center whitespace-nowrap">
+            <td className="px-3 py-1 text-center whitespace-nowrap">
               {log.isUrgent ? (
                 <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 text-[10px] font-bold">
                   <Zap size={9} />돌발
@@ -567,25 +567,25 @@ function AllDetailTable({
                 </span>
               )}
             </td>
-            <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{formatDate(log.startAt)}</td>
-            <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">{eqShort(log.equipment.name)}</td>
-            <td className="px-3 py-2 text-gray-700">{log.operator}</td>
-            <td className="px-3 py-2 text-gray-600 text-[11px] whitespace-nowrap">
+            <td className="px-3 py-1 text-gray-500 whitespace-nowrap">{formatDate(log.startAt)}</td>
+            <td className="px-3 py-1 font-medium text-gray-800 whitespace-nowrap">{eqShort(log.equipment.name)}</td>
+            <td className="px-3 py-1 text-gray-700">{log.operator}</td>
+            <td className="px-3 py-1 text-gray-600 text-[11px] whitespace-nowrap">
               {log.project
                 ? `[${log.project.projectCode}] ${log.project.projectName}`
                 : log.urgentTitle ?? <span className="text-gray-400">-</span>}
             </td>
-            <td className="px-3 py-2 font-mono text-gray-800">{log.drawingNo ?? "-"}</td>
-            <td className="px-3 py-2">
+            <td className="px-3 py-1 font-mono text-gray-800">{log.drawingNo ?? "-"}</td>
+            <td className="px-3 py-1">
               {log.material ? <span className="px-1.5 py-0.5 bg-slate-100 rounded font-medium">{log.material}</span> : <span className="text-gray-400">-</span>}
             </td>
-            <td className="px-3 py-2 text-right text-gray-700">{log.thickness ?? "-"}</td>
-            <td className="px-3 py-2 text-right text-gray-700 font-mono"><DashIfNull v={log.dimW1} /></td>
-            <td className="px-3 py-2 text-right text-gray-700 font-mono"><DashIfNull v={log.dimL1} /></td>
-            <td className="px-3 py-2 text-right text-gray-700 font-mono"><DashIfNull v={log.dimW2} /></td>
-            <td className="px-3 py-2 text-right text-gray-700 font-mono"><DashIfNull v={log.dimL2} /></td>
-            <td className="px-3 py-2 text-right text-gray-700">{numCell(log.steelWeight)}</td>
-            <td className="px-3 py-2 text-right text-gray-700">{numCell(log.useWeight)}</td>
+            <td className="px-3 py-1 text-right text-gray-700">{log.thickness ?? "-"}</td>
+            <td className="px-3 py-1 text-right text-gray-700 font-mono"><DashIfNull v={log.dimW1} /></td>
+            <td className="px-3 py-1 text-right text-gray-700 font-mono"><DashIfNull v={log.dimL1} /></td>
+            <td className="px-3 py-1 text-right text-gray-700 font-mono"><DashIfNull v={log.dimW2} /></td>
+            <td className="px-3 py-1 text-right text-gray-700 font-mono"><DashIfNull v={log.dimL2} /></td>
+            <td className="px-3 py-1 text-right text-gray-700">{numCell(log.steelWeight)}</td>
+            <td className="px-3 py-1 text-right text-gray-700">{numCell(log.useWeight)}</td>
           </tr>
         ))}
       </tbody>
@@ -638,11 +638,13 @@ const URGENT_COLS = [
   { key: "activeTime",    label: "실가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(durationMs(l.startAt, l.endAt, l.pauseMs, l.nightOffMs)) },
 ];
 
-// ─── 공통 필터 훅 ──────────────────────────────────────────────────────────────
+// ─── 공통 필터 + 정렬 훅 ─────────────────────────────────────────────────────
 function useTableFilter(logs: CuttingLog[], cols: { key: string; getVal: (l: CuttingLog) => string }[]) {
   const [filters,  setFilters]  = useState<Record<string, string[]>>({});
   const [openCol,  setOpenCol]  = useState<string | null>(null);
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  const [sortKey,  setSortKey]  = useState<string | null>(null);
+  const [sortDir,  setSortDir]  = useState<"asc" | "desc">("asc");
 
   // cascading: 한 컬럼 필터 적용 후 다른 컬럼 드롭다운은 그 결과 안에서 unique
   const accessors = useMemo<ColumnAccessorMap<CuttingLog>>(() => {
@@ -657,10 +659,28 @@ function useTableFilter(logs: CuttingLog[], cols: { key: string; getVal: (l: Cut
   );
   const allValues = (key: string): FilterValue[] => allOptions[key] ?? [];
 
-  const filteredLogs = useMemo(
+  const cascadedLogs = useMemo(
     () => getCascadedFilteredRows(logs, filters, accessors),
     [logs, filters, accessors],
   );
+
+  // 정렬 — 컬럼 헤더 클릭 시 asc → desc → 해제 토글
+  const filteredLogs = useMemo(() => {
+    if (!sortKey) return cascadedLogs;
+    const acc = accessors[sortKey];
+    if (!acc) return cascadedLogs;
+    const arr = [...cascadedLogs];
+    arr.sort((a, b) => {
+      const av = acc(a); const bv = acc(b);
+      const an = parseFloat(av as string); const bn = parseFloat(bv as string);
+      const bothNum = !isNaN(an) && !isNaN(bn) && String(an) === av && String(bn) === bv;
+      const cmp = bothNum
+        ? an - bn
+        : String(av).localeCompare(String(bv), "ko", { numeric: true });
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return arr;
+  }, [cascadedLogs, sortKey, sortDir, accessors]);
 
   const filterCount = Object.keys(filters).length;
 
@@ -672,7 +692,20 @@ function useTableFilter(logs: CuttingLog[], cols: { key: string; getVal: (l: Cut
   const handleFilterClose  = () => { setOpenCol(null); setAnchorEl(null); };
   const resetAllFilters    = () => setFilters({});
 
-  return { filters, openCol, anchorEl, filteredLogs, filterCount, allValues, handleFilterChange, handleFilterOpen, handleFilterClose, resetAllFilters };
+  const handleSort = (col: string) => {
+    if (sortKey === col) {
+      if (sortDir === "asc") setSortDir("desc");
+      else { setSortKey(null); setSortDir("asc"); }
+    } else {
+      setSortKey(col); setSortDir("asc");
+    }
+  };
+
+  return {
+    filters, openCol, anchorEl, filteredLogs, filterCount,
+    allValues, handleFilterChange, handleFilterOpen, handleFilterClose, resetAllFilters,
+    sortKey, sortDir, handleSort,
+  };
 }
 
 // ─── 정규작업 탭: Heat NO + 폭×길이 + 수량 + 작업시간 + 특이사항 ──────────────
@@ -680,6 +713,7 @@ function NormalDetailTable({ logs }: { logs: CuttingLog[] }) {
   const {
     filters, openCol, anchorEl, filteredLogs, filterCount,
     allValues, handleFilterChange, handleFilterOpen, handleFilterClose, resetAllFilters,
+    sortKey, sortDir, handleSort,
   } = useTableFilter(logs, NORMAL_COLS);
 
   const totalQty   = filteredLogs.length;
@@ -703,10 +737,15 @@ function NormalDetailTable({ logs }: { logs: CuttingLog[] }) {
         <tr>
           {NORMAL_COLS.map(col => {
             const isActive = (filters[col.key]?.length ?? 0) > 0;
+            const isSort   = sortKey === col.key;
+            const SortI    = isSort ? (sortDir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
             return (
-              <th key={col.key} className={`px-3 py-2 text-gray-500 font-semibold whitespace-nowrap text-${col.align}`}>
+              <th key={col.key} className={`px-3 py-1 text-gray-500 font-semibold text-[11px] whitespace-nowrap text-${col.align}`}>
                 <div className={`flex items-center gap-1 ${col.align === "right" ? "justify-end" : col.align === "center" ? "justify-center" : ""}`}>
-                  <span>{col.label}</span>
+                  <button onClick={() => handleSort(col.key)} className="inline-flex items-center gap-1 hover:text-gray-700">
+                    {col.label}
+                    <SortI size={11} className={isSort ? "text-blue-500" : "text-gray-300"} />
+                  </button>
                   <button
                     onClick={e => { e.stopPropagation(); openCol === col.key ? handleFilterClose() : handleFilterOpen(col.key, e.currentTarget); }}
                     className={`p-0.5 rounded hover:bg-gray-200 transition-colors ${isActive ? "text-blue-600" : "text-gray-400"}`}
@@ -735,29 +774,29 @@ function NormalDetailTable({ logs }: { logs: CuttingLog[] }) {
           const actMs  = durationMs(log.startAt, log.endAt, log.pauseMs, log.nightOffMs);
           return (
           <tr key={log.id} className="hover:bg-gray-50">
-            <td className="px-3 py-2 text-gray-600 text-[11px] whitespace-nowrap">
+            <td className="px-3 py-1 text-gray-600 text-[11px] whitespace-nowrap">
               {log.project ? `[${log.project.projectCode}]` : <span className="text-gray-400">-</span>}
             </td>
-            <td className="px-3 py-2 text-gray-700 font-medium whitespace-nowrap">{log.block ?? <span className="text-gray-300">-</span>}</td>
-            <td className="px-3 py-2 font-mono text-gray-800">{log.drawingNo ?? "-"}</td>
-            <td className="px-3 py-2">
+            <td className="px-3 py-1 text-gray-700 font-medium whitespace-nowrap">{log.block ?? <span className="text-gray-300">-</span>}</td>
+            <td className="px-3 py-1 font-mono text-gray-800">{log.drawingNo ?? "-"}</td>
+            <td className="px-3 py-1">
               {log.material ? <span className="px-1.5 py-0.5 bg-slate-100 rounded font-medium">{log.material}</span> : <span className="text-gray-400">-</span>}
             </td>
-            <td className="px-3 py-2 text-right text-gray-700">{log.thickness ?? "-"}</td>
-            <td className="px-3 py-2 text-right tabular-nums text-gray-700">{log.dimW1?.toLocaleString() ?? "-"}</td>
-            <td className="px-3 py-2 text-right tabular-nums text-gray-400">{log.dimW2?.toLocaleString() ?? "-"}</td>
-            <td className="px-3 py-2 text-right tabular-nums text-gray-700">{log.dimL1?.toLocaleString() ?? "-"}</td>
-            <td className="px-3 py-2 text-right tabular-nums text-gray-400">{log.dimL2?.toLocaleString() ?? "-"}</td>
-            <td className="px-3 py-2 text-right text-gray-700">{numCell(log.steelWeight)}</td>
-            <td className="px-3 py-2 text-right text-gray-700">{numCell(log.useWeight)}</td>
-            <td className="px-3 py-2 font-mono text-blue-700">{log.heatNo || "-"}</td>
-            <td className="px-3 py-2 text-gray-700">{log.operator}</td>
-            <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">{eqShort(log.equipment.name)}</td>
-            <td className="px-3 py-2 text-gray-500 whitespace-nowrap font-mono text-[11px]">{formatDate(log.startAt)}</td>
-            <td className="px-3 py-2 text-center text-gray-500 whitespace-nowrap">{formatDurationMs(totMs)}</td>
-            <td className="px-3 py-2 text-center text-orange-500 whitespace-nowrap">{formatPauseMin(log.pauseMs)}</td>
-            <td className="px-3 py-2 text-center text-green-700 font-semibold whitespace-nowrap">{formatDurationMs(actMs)}</td>
-            <td className="px-3 py-2 text-gray-400 max-w-[120px] truncate">{log.memo ?? "-"}</td>
+            <td className="px-3 py-1 text-right text-gray-700">{log.thickness ?? "-"}</td>
+            <td className="px-3 py-1 text-right tabular-nums text-gray-700">{log.dimW1?.toLocaleString() ?? "-"}</td>
+            <td className="px-3 py-1 text-right tabular-nums text-gray-400">{log.dimW2?.toLocaleString() ?? "-"}</td>
+            <td className="px-3 py-1 text-right tabular-nums text-gray-700">{log.dimL1?.toLocaleString() ?? "-"}</td>
+            <td className="px-3 py-1 text-right tabular-nums text-gray-400">{log.dimL2?.toLocaleString() ?? "-"}</td>
+            <td className="px-3 py-1 text-right text-gray-700">{numCell(log.steelWeight)}</td>
+            <td className="px-3 py-1 text-right text-gray-700">{numCell(log.useWeight)}</td>
+            <td className="px-3 py-1 font-mono text-blue-700">{log.heatNo || "-"}</td>
+            <td className="px-3 py-1 text-gray-700">{log.operator}</td>
+            <td className="px-3 py-1 font-medium text-gray-800 whitespace-nowrap">{eqShort(log.equipment.name)}</td>
+            <td className="px-3 py-1 text-gray-500 whitespace-nowrap font-mono text-[11px]">{formatDate(log.startAt)}</td>
+            <td className="px-3 py-1 text-center text-gray-500 whitespace-nowrap">{formatDurationMs(totMs)}</td>
+            <td className="px-3 py-1 text-center text-orange-500 whitespace-nowrap">{formatPauseMin(log.pauseMs)}</td>
+            <td className="px-3 py-1 text-center text-green-700 font-semibold whitespace-nowrap">{formatDurationMs(actMs)}</td>
+            <td className="px-3 py-1 text-gray-400 max-w-[120px] truncate">{log.memo ?? "-"}</td>
           </tr>
           );
         })}
@@ -773,6 +812,7 @@ function UrgentDetailTable({ logs }: { logs: CuttingLog[] }) {
   const {
     filters, openCol, anchorEl, filteredLogs, filterCount,
     allValues, handleFilterChange, handleFilterOpen, handleFilterClose, resetAllFilters,
+    sortKey, sortDir, handleSort,
   } = useTableFilter(logs, URGENT_COLS);
 
   const totalQty   = filteredLogs.length;
@@ -796,10 +836,15 @@ function UrgentDetailTable({ logs }: { logs: CuttingLog[] }) {
         <tr>
           {URGENT_COLS.map(col => {
             const isActive = (filters[col.key]?.length ?? 0) > 0;
+            const isSort   = sortKey === col.key;
+            const SortI    = isSort ? (sortDir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
             return (
-              <th key={col.key} className={`px-3 py-2 text-gray-500 font-semibold whitespace-nowrap text-${col.align}`}>
+              <th key={col.key} className={`px-3 py-1 text-gray-500 font-semibold text-[11px] whitespace-nowrap text-${col.align}`}>
                 <div className={`flex items-center gap-1 ${col.align === "right" ? "justify-end" : col.align === "center" ? "justify-center" : ""}`}>
-                  <span>{col.label}</span>
+                  <button onClick={() => handleSort(col.key)} className="inline-flex items-center gap-1 hover:text-gray-700">
+                    {col.label}
+                    <SortI size={11} className={isSort ? "text-orange-500" : "text-gray-300"} />
+                  </button>
                   <button
                     onClick={e => { e.stopPropagation(); openCol === col.key ? handleFilterClose() : handleFilterOpen(col.key, e.currentTarget); }}
                     className={`p-0.5 rounded hover:bg-orange-100 transition-colors ${isActive ? "text-orange-600" : "text-gray-400"}`}
@@ -828,35 +873,35 @@ function UrgentDetailTable({ logs }: { logs: CuttingLog[] }) {
           const actMs  = durationMs(log.startAt, log.endAt, log.pauseMs, log.nightOffMs);
           return (
             <tr key={log.id} className="hover:bg-orange-50/40">
-              <td className="px-3 py-2 font-semibold text-gray-900 max-w-[180px] truncate">
+              <td className="px-3 py-1 font-semibold text-gray-900 max-w-[180px] truncate">
                 {log.urgentTitle ?? <span className="text-gray-400">-</span>}
               </td>
-              <td className="px-3 py-2 text-gray-700">{log.requester ?? "-"}</td>
-              <td className="px-3 py-2 text-gray-500">{log.department ?? "-"}</td>
-              <td className="px-3 py-2 text-gray-600 text-[11px] whitespace-nowrap">
+              <td className="px-3 py-1 text-gray-700">{log.requester ?? "-"}</td>
+              <td className="px-3 py-1 text-gray-500">{log.department ?? "-"}</td>
+              <td className="px-3 py-1 text-gray-600 text-[11px] whitespace-nowrap">
                 {log.project
                   ? `[${log.project.projectCode}] ${log.project.projectName}`
                   : <span className="text-gray-400">-</span>}
               </td>
-              <td className="px-3 py-2 font-mono text-orange-700">
+              <td className="px-3 py-1 font-mono text-orange-700">
                 {log.urgentRemnantNo ?? <span className="text-gray-400">-</span>}
               </td>
-              <td className="px-3 py-2">
+              <td className="px-3 py-1">
                 {log.material
                   ? <span className="px-1.5 py-0.5 bg-slate-100 rounded font-medium">{log.material}</span>
                   : <span className="text-gray-400">-</span>}
               </td>
-              <td className="px-3 py-2 text-right text-gray-700">{log.thickness ?? "-"}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-gray-700">{log.dimW1?.toLocaleString() ?? "-"}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-gray-400">{log.dimW2?.toLocaleString() ?? "-"}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-gray-700">{log.dimL1?.toLocaleString() ?? "-"}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-gray-400">{log.dimL2?.toLocaleString() ?? "-"}</td>
-              <td className="px-3 py-2 text-right text-gray-700">{numCell(log.steelWeight)}</td>
-              <td className="px-3 py-2 text-right text-gray-700">{numCell(log.useWeight)}</td>
-              <td className="px-3 py-2 text-gray-500 whitespace-nowrap font-mono text-[11px]">{formatDate(log.startAt)}</td>
-              <td className="px-3 py-2 text-center text-gray-500 whitespace-nowrap">{formatDurationMs(totMs)}</td>
-              <td className="px-3 py-2 text-center text-orange-500 whitespace-nowrap">{formatPauseMin(log.pauseMs)}</td>
-              <td className="px-3 py-2 text-center text-green-700 font-semibold whitespace-nowrap">{formatDurationMs(actMs)}</td>
+              <td className="px-3 py-1 text-right text-gray-700">{log.thickness ?? "-"}</td>
+              <td className="px-3 py-1 text-right tabular-nums text-gray-700">{log.dimW1?.toLocaleString() ?? "-"}</td>
+              <td className="px-3 py-1 text-right tabular-nums text-gray-400">{log.dimW2?.toLocaleString() ?? "-"}</td>
+              <td className="px-3 py-1 text-right tabular-nums text-gray-700">{log.dimL1?.toLocaleString() ?? "-"}</td>
+              <td className="px-3 py-1 text-right tabular-nums text-gray-400">{log.dimL2?.toLocaleString() ?? "-"}</td>
+              <td className="px-3 py-1 text-right text-gray-700">{numCell(log.steelWeight)}</td>
+              <td className="px-3 py-1 text-right text-gray-700">{numCell(log.useWeight)}</td>
+              <td className="px-3 py-1 text-gray-500 whitespace-nowrap font-mono text-[11px]">{formatDate(log.startAt)}</td>
+              <td className="px-3 py-1 text-center text-gray-500 whitespace-nowrap">{formatDurationMs(totMs)}</td>
+              <td className="px-3 py-1 text-center text-orange-500 whitespace-nowrap">{formatPauseMin(log.pauseMs)}</td>
+              <td className="px-3 py-1 text-center text-green-700 font-semibold whitespace-nowrap">{formatDurationMs(actMs)}</td>
             </tr>
           );
         })}
@@ -874,18 +919,18 @@ function TotalFoot({ colspan, totalQty, totalSteel, totalUse, totalMs, count }: 
   return (
     <tfoot className="bg-gray-50 border-t font-semibold text-xs">
       <tr>
-        <td colSpan={colspan} className="px-3 py-2 text-gray-500">
+        <td colSpan={colspan} className="px-3 py-1 text-gray-500">
           합계 ({count}건)
           <span className="ml-4 text-gray-400 font-normal">
             수량 <strong className="text-gray-800">{totalQty.toLocaleString()}매</strong> ·
             작업시간 <strong className="text-green-700">{formatDurationMs(totalMs)}</strong>
           </span>
         </td>
-        <td className="px-3 py-2 text-right text-gray-800">
+        <td className="px-3 py-1 text-right text-gray-800">
           {totalSteel.toLocaleString()}
           <span className="text-gray-500 font-normal"> kg</span>
         </td>
-        <td className="px-3 py-2 text-right text-gray-800">
+        <td className="px-3 py-1 text-right text-gray-800">
           {totalUse.toLocaleString()}
           <span className="text-gray-500 font-normal"> kg</span>
         </td>
@@ -902,15 +947,15 @@ function TotalFootNormal({ totalQty, totalSteel, totalUse, totalMs, count }: {
     <tfoot className="bg-gray-50 border-t font-semibold text-xs">
       <tr>
         {/* 호선·블록·도면·재질·두께·폭1·폭2·길이1·길이2 = 9칸 */}
-        <td colSpan={9} className="px-3 py-2 text-gray-500">합계 ({count}건 · {totalQty.toLocaleString()}매)</td>
+        <td colSpan={9} className="px-3 py-1 text-gray-500">합계 ({count}건 · {totalQty.toLocaleString()}매)</td>
         {/* 작업시간 */}
-        <td className="px-3 py-2 text-center text-green-700">{formatDurationMs(totalMs)}</td>
+        <td className="px-3 py-1 text-center text-green-700">{formatDurationMs(totalMs)}</td>
         {/* 강재중량 */}
-        <td className="px-3 py-2 text-right text-gray-800">
+        <td className="px-3 py-1 text-right text-gray-800">
           {totalSteel.toLocaleString()}<span className="text-gray-500 font-normal"> kg</span>
         </td>
         {/* 사용중량 */}
-        <td className="px-3 py-2 text-right text-gray-800">
+        <td className="px-3 py-1 text-right text-gray-800">
           {totalUse.toLocaleString()}<span className="text-gray-500 font-normal"> kg</span>
         </td>
         {/* 특이사항 */}
@@ -927,16 +972,16 @@ function TotalFootUrgent({ totalQty, totalSteel, totalUse, totalMs, count }: {
     <tfoot className="bg-orange-50 border-t font-semibold text-xs">
       <tr>
         {/* 작업명·요청자·부서·호선블록·잔재번호·재질·두께·폭1·폭2·길이1·길이2 = 11칸 */}
-        <td colSpan={11} className="px-3 py-2 text-gray-500">
+        <td colSpan={11} className="px-3 py-1 text-gray-500">
           합계 ({count}건)
           <span className="ml-4 text-gray-400 font-normal">
             실가동 <strong className="text-green-700">{formatDurationMs(totalMs)}</strong>
           </span>
         </td>
-        <td className="px-3 py-2 text-right text-gray-800">
+        <td className="px-3 py-1 text-right text-gray-800">
           {totalSteel.toLocaleString()}<span className="text-gray-500 font-normal"> kg</span>
         </td>
-        <td className="px-3 py-2 text-right text-gray-800">
+        <td className="px-3 py-1 text-right text-gray-800">
           {totalUse.toLocaleString()}<span className="text-gray-500 font-normal"> kg</span>
         </td>
         {/* 작업일·총가동·중단·실가동 */}

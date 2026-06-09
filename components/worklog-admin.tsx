@@ -9,6 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
 import { calcPauseMs as libCalcPauseMs, calcTotalMs as libCalcTotalMs } from "@/lib/cutting-time";
+import {
+  getCascadedFilteredRows, getAllCascadedOptions,
+  type ColumnAccessorMap, type ColFilters,
+} from "@/lib/cascading-filters";
+import { ArrowUp, ArrowDown, ArrowUpDown, Filter as FilterIcon } from "lucide-react";
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -175,12 +180,60 @@ interface UrgentWorkRow {
   cuttingLogs: CuttingLog[];
 }
 
+// 돌발 탭 컬럼 메타 — Project.MD § 9 표준 (헤더 11px / 본문 12px / py-1)
+const URGENT_COLS = [
+  { key: "status",       label: "상태",          align: "center" as const, filterable: true  },
+  { key: "urgentNo",     label: "돌발번호",      align: "left"   as const, filterable: true  },
+  { key: "title",        label: "작업명",        align: "left"   as const, filterable: true  },
+  { key: "requester",    label: "요청자",        align: "left"   as const, filterable: true  },
+  { key: "department",   label: "요청부서",      align: "left"   as const, filterable: true  },
+  { key: "vessel",       label: "연관호선/블록", align: "left"   as const, filterable: true  },
+  { key: "remnantNo",    label: "사용잔재번호",  align: "left"   as const, filterable: true  },
+  { key: "material",     label: "재질",          align: "left"   as const, filterable: true  },
+  { key: "thickness",    label: "두께",          align: "right"  as const, filterable: true  },
+  { key: "width1",       label: "폭1",           align: "right"  as const, filterable: true  },
+  { key: "width2",       label: "폭2",           align: "right"  as const, filterable: true  },
+  { key: "length1",      label: "길이1",         align: "right"  as const, filterable: true  },
+  { key: "length2",      label: "길이2",         align: "right"  as const, filterable: true  },
+  { key: "steelWeight",  label: "중량(kg)",      align: "right"  as const, filterable: true  },
+  { key: "useWeight",    label: "사용중량(kg)",  align: "right"  as const, filterable: true  },
+  { key: "workDate",     label: "작업일",        align: "left"   as const, filterable: true  },
+  { key: "totalTime",    label: "총가동시간",    align: "left"   as const, filterable: false },
+  { key: "pauseTime",    label: "중단시간",      align: "left"   as const, filterable: false },
+  { key: "activeTime",   label: "실가동시간",    align: "left"   as const, filterable: false },
+] as const;
+type URGENT_KEY = (typeof URGENT_COLS)[number]["key"];
+
+// 정규화된 한 행 — accessor/렌더 둘 다 같은 객체 사용 (중복 계산 방지)
+interface UrgentDisplayRow {
+  w: UrgentWorkRow;
+  log: CuttingLog | null;
+  statusLabel: string;
+  statusCls:   string;
+  material:    string;
+  thickness:   number | null;
+  w1: number | null; l1: number | null; w2: number | null; l2: number | null;
+  steelWeight: number | null;
+  useWeight:   number | null;
+  workDateStr: string;
+  totalMs:     number;
+  pauseMs:     number;
+  activeMs:    number;
+}
+
 function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers: Worker[] }) {
   const [works,    setWorks]    = useState<UrgentWorkRow[]>([]);
   const [loading,  setLoading]  = useState(false);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo,   setDateTo]   = useState("");
   const [editLog,  setEditLog]  = useState<CuttingLog | null>(null);
+
+  // 컬럼 필터 + 정렬 + 드롭다운 위치
+  const [colFilters, setColFilters] = useState<ColFilters>({});
+  const [openCol,    setOpenCol]    = useState<URGENT_KEY | null>(null);
+  const [anchorEl,   setAnchorEl]   = useState<HTMLElement | null>(null);
+  const [sortKey,    setSortKey]    = useState<URGENT_KEY | null>(null);
+  const [sortDir,    setSortDir]    = useState<"asc" | "desc">("asc");
 
   const fetchData = async () => {
     setLoading(true);
@@ -205,24 +258,109 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
   };
 
   // 날짜 필터 — UrgentWork.createdAt 기준 (작업 전 행도 포함되므로 작업일이 아닌 등록일 기준이 자연)
-  const filteredWorks = works.filter(w => {
+  const dateFilteredWorks = useMemo(() => works.filter(w => {
     if (!dateFrom && !dateTo) return true;
     const d = new Date(w.createdAt);
     if (dateFrom) { const f = new Date(dateFrom); f.setHours(0,0,0,0); if (d < f) return false; }
     if (dateTo)   { const t = new Date(dateTo);   t.setHours(23,59,59,999); if (d > t) return false; }
     return true;
-  });
+  }), [works, dateFrom, dateTo]);
 
-  // 행별 매칭 — 가장 최근 CuttingLog (없으면 null)
-  const rowOf = (w: UrgentWorkRow) => w.cuttingLogs[0] ?? null;
+  // 정규화 — 한 번만 계산해서 accessor/렌더 둘 다 사용
+  const rows = useMemo<UrgentDisplayRow[]>(() => dateFilteredWorks.map(w => {
+    const log = w.cuttingLogs[0] ?? null;
+    const rem = w.remnant;
+    const w1  = log?.width ?? rem?.width1 ?? null;
+    const l1  = log?.length ?? rem?.length1 ?? null;
+    const w2  = rem?.width2  ?? null;
+    const l2  = rem?.length2 ?? null;
+    const thickness = log?.thickness ?? rem?.thickness ?? null;
+    const material  = log?.material ?? rem?.material ?? "";
+    const steelWeight = thickness && w1 && l1
+      ? Math.round(thickness * (w1 * l1 - (w2 ?? 0) * (l2 ?? 0)) * 7.85 / 1_000_000 * 10) / 10
+      : null;
+    const statusDef = !log
+      ? { label: "작업 전", cls: "bg-gray-100 text-gray-600" }
+      : log.status === "COMPLETED" ? { label: "완료",   cls: "bg-green-100 text-green-700" }
+      : log.status === "PAUSED"    ? { label: "중단중", cls: "bg-yellow-100 text-yellow-700" }
+      :                              { label: "진행중", cls: "bg-blue-100 text-blue-700" };
+    const totalMs  = log ? libCalcTotalMs(log.startAt, log.endAt, log.pauses) : 0;
+    const pauseMs  = log ? calcPauseMs(log.pauses) : 0;
+    return {
+      w, log,
+      statusLabel: statusDef.label, statusCls: statusDef.cls,
+      material, thickness, w1, l1, w2, l2,
+      steelWeight,
+      useWeight: w.useWeight,
+      workDateStr: log ? fmtDate(log.startAt) : "",
+      totalMs, pauseMs,
+      activeMs: Math.max(0, totalMs - pauseMs),
+    };
+  }), [dateFilteredWorks]);
 
-  const totalCount     = filteredWorks.length;
-  const completedCount = filteredWorks.filter(w => rowOf(w)?.status === "COMPLETED").length;
-  const ongoingCount   = filteredWorks.filter(w => {
-    const l = rowOf(w);
-    return l && (l.status === "STARTED" || l.status === "PAUSED");
-  }).length;
-  const pendingCount   = filteredWorks.filter(w => !rowOf(w)).length;
+  // 컬럼 accessor — 필터/정렬 공통
+  const accessors: ColumnAccessorMap<UrgentDisplayRow> = useMemo(() => ({
+    status:       r => r.statusLabel,
+    urgentNo:     r => r.w.urgentNo,
+    title:        r => r.w.title,
+    requester:    r => r.w.requester ?? "",
+    department:   r => r.w.department ?? "",
+    vessel:       r => r.w.project ? `[${r.w.project.projectCode}] ${r.w.project.projectName}` : (r.w.vesselName ?? ""),
+    remnantNo:    r => r.w.remnant?.remnantNo ?? "",
+    material:     r => r.material,
+    thickness:    r => r.thickness != null ? String(r.thickness) : "",
+    width1:       r => r.w1 != null ? String(r.w1) : "",
+    width2:       r => r.w2 != null ? String(r.w2) : "",
+    length1:      r => r.l1 != null ? String(r.l1) : "",
+    length2:      r => r.l2 != null ? String(r.l2) : "",
+    steelWeight:  r => r.steelWeight != null ? r.steelWeight.toFixed(1) : "",
+    useWeight:    r => r.useWeight   != null ? r.useWeight.toFixed(1)   : "",
+    workDate:     r => r.workDateStr,
+  }), []);
+
+  // cascading 필터 + 자기 자신 제외 옵션
+  const filteredRows = useMemo(
+    () => getCascadedFilteredRows(rows, colFilters, accessors),
+    [rows, colFilters, accessors],
+  );
+  const distinctValues = useMemo(
+    () => getAllCascadedOptions(rows, colFilters, accessors),
+    [rows, colFilters, accessors],
+  );
+
+  // 정렬
+  const sortedRows = useMemo(() => {
+    if (!sortKey) return filteredRows;
+    const acc = accessors[sortKey];
+    if (!acc) return filteredRows;
+    const arr = [...filteredRows];
+    arr.sort((a, b) => {
+      const av = acc(a); const bv = acc(b);
+      // 숫자 추론
+      const an = parseFloat(av as string); const bn = parseFloat(bv as string);
+      const bothNum = !isNaN(an) && !isNaN(bn) && String(an) === av && String(bn) === bv;
+      const cmp = bothNum
+        ? an - bn
+        : String(av).localeCompare(String(bv), "ko", { numeric: true });
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return arr;
+  }, [filteredRows, sortKey, sortDir, accessors]);
+
+  const handleSort = (key: URGENT_KEY) => {
+    if (sortKey === key) {
+      if (sortDir === "asc") setSortDir("desc");
+      else { setSortKey(null); setSortDir("asc"); }
+    } else {
+      setSortKey(key); setSortDir("asc");
+    }
+  };
+
+  // 요약
+  const totalCount     = filteredRows.length;
+  const completedCount = filteredRows.filter(r => r.log?.status === "COMPLETED").length;
+  const ongoingCount   = filteredRows.filter(r => r.log && (r.log.status === "STARTED" || r.log.status === "PAUSED")).length;
+  const pendingCount   = filteredRows.filter(r => !r.log).length;
 
   return (
     <div className="space-y-4">
@@ -262,7 +400,7 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
         <div className="flex justify-center items-center py-20 text-gray-400 gap-3">
           <RefreshCw className="animate-spin text-blue-500" size={24} /> 불러오는 중...
         </div>
-      ) : filteredWorks.length === 0 ? (
+      ) : sortedRows.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-xl border border-dashed border-gray-200 text-gray-400">
           <Zap size={36} className="mx-auto mb-3 opacity-20" />
           <p>돌발 작업일보가 없습니다.</p>
@@ -271,134 +409,88 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse">
-              <thead>
-                <tr className="bg-orange-50 border-b border-gray-200">
-                  <th className="px-2 py-2.5 text-center text-xs font-semibold text-gray-500 w-8">No</th>
-                  {[
-                    "상태", "돌발번호", "작업명", "요청자", "요청부서", "연관호선/블록", "사용잔재번호",
-                    "재질", "두께", "폭1", "폭2", "길이1", "길이2",
-                    "중량(kg)", "사용중량(kg)",
-                    "작업일", "총가동시간", "중단시간", "실가동시간", "액션",
-                  ].map(h => (
-                    <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">{h}</th>
-                  ))}
+              <thead className="bg-orange-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-2 py-1 text-center text-[11px] font-semibold text-gray-500 w-8">No</th>
+                  {URGENT_COLS.map(col => {
+                    const active = (colFilters[col.key]?.length ?? 0) > 0;
+                    const isSort = sortKey === col.key;
+                    const SortIcon = isSort ? (sortDir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+                    return (
+                      <th
+                        key={col.key}
+                        className={`px-3 py-1 text-${col.align} text-[11px] font-semibold text-gray-500 whitespace-nowrap`}
+                      >
+                        <div className={`flex items-center gap-1 ${col.align === "right" ? "justify-end" : col.align === "center" ? "justify-center" : ""}`}>
+                          <button onClick={() => handleSort(col.key)} className="inline-flex items-center gap-1 hover:text-gray-700">
+                            {col.label}
+                            <SortIcon size={11} className={isSort ? "text-blue-500" : "text-gray-300"} />
+                          </button>
+                          {col.filterable && (
+                            <button
+                              onClick={e => { setOpenCol(col.key); setAnchorEl(e.currentTarget); }}
+                              className="text-gray-400 hover:text-gray-700"
+                            >
+                              <FilterIcon size={11} className={active ? "text-blue-500 fill-blue-500" : ""} fill={active ? "currentColor" : "none"} />
+                            </button>
+                          )}
+                        </div>
+                      </th>
+                    );
+                  })}
+                  <th className="px-3 py-1 text-center text-[11px] font-semibold text-gray-500 whitespace-nowrap">액션</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredWorks.map((w, i) => {
-                  const log = rowOf(w);
-                  const rem = w.remnant;
-                  // 치수: CuttingLog 우선 (실제 절단 기준), 없으면 잔재 치수
-                  const w1  = log?.width  ?? rem?.width1  ?? null;
-                  const l1  = log?.length ?? rem?.length1 ?? null;
-                  const w2  = rem?.width2  ?? null;
-                  const l2  = rem?.length2 ?? null;
-                  const thickness = log?.thickness ?? rem?.thickness ?? null;
-                  const material  = log?.material ?? rem?.material ?? null;
-                  const sw = thickness && w1 && l1
-                    ? Math.round(thickness * (w1 * l1 - (w2 ?? 0) * (l2 ?? 0)) * 7.85 / 1_000_000 * 10) / 10
-                    : null;
-
-                  // 상태 — CuttingLog 없으면 PENDING (작업 전)
-                  const statusLabel = !log
-                    ? { label: "작업 전", cls: "bg-gray-100 text-gray-600" }
-                    : log.status === "COMPLETED" ? { label: "완료",   cls: "bg-green-100 text-green-700" }
-                    : log.status === "PAUSED"    ? { label: "중단중", cls: "bg-yellow-100 text-yellow-700" }
-                    :                              { label: "진행중", cls: "bg-blue-100 text-blue-700" };
-
-                  // 시간 (log 있을 때만)
-                  const totalMs  = log ? libCalcTotalMs(log.startAt, log.endAt, log.pauses) : 0;
-                  const pauseMs  = log ? calcPauseMs(log.pauses) : 0;
-                  const activeMs = Math.max(0, totalMs - pauseMs);
-
-                  return (
-                    <tr key={w.id} className="hover:bg-orange-50/30 transition-colors">
-                      <td className="px-2 py-1.5 text-center text-gray-400">{i + 1}</td>
-                      {/* 상태 */}
-                      <td className="px-3 py-1.5">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${statusLabel.cls}`}>{statusLabel.label}</span>
-                      </td>
-                      {/* 돌발번호 */}
-                      <td className="px-3 py-1.5 font-mono text-[11px] text-orange-700">{w.urgentNo}</td>
-                      {/* 작업명 */}
-                      <td className="px-3 py-1.5 font-semibold text-gray-900 max-w-[160px] truncate">{w.title}</td>
-                      {/* 요청자 */}
-                      <td className="px-3 py-1.5 text-gray-600">{w.requester ?? "-"}</td>
-                      {/* 요청부서 */}
-                      <td className="px-3 py-1.5 text-gray-500">{w.department ?? "-"}</td>
-                      {/* 연관호선/블록 */}
-                      <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap text-[11px]">
-                        {w.project ? `[${w.project.projectCode}] ${w.project.projectName}` : (w.vesselName ?? "-")}
-                      </td>
-                      {/* 사용잔재번호 */}
-                      <td className="px-3 py-1.5 font-mono text-orange-700">{rem?.remnantNo ?? "-"}</td>
-                      {/* 재질 */}
-                      <td className="px-3 py-1.5 text-gray-600">{material ?? "-"}</td>
-                      {/* 두께 */}
-                      <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{thickness ?? "-"}</td>
-                      {/* 폭1 */}
-                      <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{w1?.toLocaleString() ?? "-"}</td>
-                      {/* 폭2 */}
-                      <td className="px-3 py-1.5 text-right tabular-nums text-gray-400">{w2?.toLocaleString() ?? "-"}</td>
-                      {/* 길이1 */}
-                      <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{l1?.toLocaleString() ?? "-"}</td>
-                      {/* 길이2 */}
-                      <td className="px-3 py-1.5 text-right tabular-nums text-gray-400">{l2?.toLocaleString() ?? "-"}</td>
-                      {/* 중량 */}
-                      <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{sw?.toFixed(1) ?? "-"}</td>
-                      {/* 사용중량 — UrgentWork.useWeight (등록 시 입력) */}
-                      <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">
-                        {w.useWeight != null ? w.useWeight.toFixed(1) : "-"}
-                      </td>
-                      {/* 작업일 — log 있을 때만 */}
-                      <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap font-mono text-[11px]">
-                        {log ? fmtDate(log.startAt) : "-"}
-                      </td>
-                      {/* 총가동시간 */}
-                      <td className="px-3 py-1.5 text-gray-500 whitespace-nowrap">
-                        {log?.endAt ? fmtHM(totalMs) : (log ? "진행중" : "-")}
-                      </td>
-                      {/* 중단시간 */}
-                      <td className="px-3 py-1.5 text-orange-500 whitespace-nowrap">
-                        {log ? fmtPauseMin(pauseMs) : "-"}
-                      </td>
-                      {/* 실가동시간 */}
-                      <td className="px-3 py-1.5 text-green-700 font-semibold whitespace-nowrap">
-                        {log?.endAt ? fmtHM(activeMs) : "-"}
-                      </td>
-                      {/* 액션 */}
-                      <td className="px-3 py-1.5 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          {log && (
-                            <button
-                              onClick={() => setEditLog(log)}
-                              className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md transition-colors"
-                              title="작업로그 수정"
-                            >
-                              <Edit2 size={13} />
-                            </button>
-                          )}
-                          {log && (
-                            <button
-                              onClick={() => handleDeleteLog(log.id)}
-                              className="p-1.5 text-orange-400 hover:bg-orange-50 rounded-md transition-colors"
-                              title="작업로그만 삭제 (돌발 등록 유지)"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleDeleteUrgent(w.id, w.title)}
-                            className="p-1.5 text-red-400 hover:bg-red-50 rounded-md transition-colors"
-                            title="돌발등록 삭제 (작업로그 포함)"
-                          >
-                            <XCircle size={13} />
+                {sortedRows.map((r, i) => (
+                  <tr key={r.w.id} className="hover:bg-orange-50/30 transition-colors">
+                    <td className="px-2 py-1 text-center text-gray-400">{i + 1}</td>
+                    {/* 상태 */}
+                    <td className="px-3 py-1 text-center">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${r.statusCls}`}>{r.statusLabel}</span>
+                    </td>
+                    <td className="px-3 py-1 font-mono text-[11px] text-orange-700">{r.w.urgentNo}</td>
+                    <td className="px-3 py-1 font-semibold text-gray-900 max-w-[160px] truncate">{r.w.title}</td>
+                    <td className="px-3 py-1 text-gray-600">{r.w.requester ?? "-"}</td>
+                    <td className="px-3 py-1 text-gray-500">{r.w.department ?? "-"}</td>
+                    <td className="px-3 py-1 text-gray-600 whitespace-nowrap text-[11px]">
+                      {r.w.project ? `[${r.w.project.projectCode}] ${r.w.project.projectName}` : (r.w.vesselName ?? "-")}
+                    </td>
+                    <td className="px-3 py-1 font-mono text-orange-700">{r.w.remnant?.remnantNo ?? "-"}</td>
+                    <td className="px-3 py-1 text-gray-600">{r.material || "-"}</td>
+                    <td className="px-3 py-1 text-right tabular-nums text-gray-600">{r.thickness ?? "-"}</td>
+                    <td className="px-3 py-1 text-right tabular-nums text-gray-600">{r.w1?.toLocaleString() ?? "-"}</td>
+                    <td className="px-3 py-1 text-right tabular-nums text-gray-400">{r.w2?.toLocaleString() ?? "-"}</td>
+                    <td className="px-3 py-1 text-right tabular-nums text-gray-600">{r.l1?.toLocaleString() ?? "-"}</td>
+                    <td className="px-3 py-1 text-right tabular-nums text-gray-400">{r.l2?.toLocaleString() ?? "-"}</td>
+                    <td className="px-3 py-1 text-right tabular-nums text-gray-600">{r.steelWeight?.toFixed(1) ?? "-"}</td>
+                    <td className="px-3 py-1 text-right tabular-nums text-gray-600">{r.useWeight != null ? r.useWeight.toFixed(1) : "-"}</td>
+                    <td className="px-3 py-1 text-gray-600 whitespace-nowrap font-mono text-[11px]">{r.workDateStr || "-"}</td>
+                    <td className="px-3 py-1 text-gray-500 whitespace-nowrap">
+                      {r.log?.endAt ? fmtHM(r.totalMs) : (r.log ? "진행중" : "-")}
+                    </td>
+                    <td className="px-3 py-1 text-orange-500 whitespace-nowrap">{r.log ? fmtPauseMin(r.pauseMs) : "-"}</td>
+                    <td className="px-3 py-1 text-green-700 font-semibold whitespace-nowrap">{r.log?.endAt ? fmtHM(r.activeMs) : "-"}</td>
+                    {/* 액션 */}
+                    <td className="px-3 py-1 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        {r.log && (
+                          <button onClick={() => setEditLog(r.log!)} className="p-1 text-blue-500 hover:bg-blue-50 rounded-md transition-colors" title="작업로그 수정">
+                            <Edit2 size={13} />
                           </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                        )}
+                        {r.log && (
+                          <button onClick={() => handleDeleteLog(r.log!.id)} className="p-1 text-orange-400 hover:bg-orange-50 rounded-md transition-colors" title="작업로그만 삭제">
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                        <button onClick={() => handleDeleteUrgent(r.w.id, r.w.title)} className="p-1 text-red-400 hover:bg-red-50 rounded-md transition-colors" title="돌발등록 삭제">
+                          <XCircle size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -415,6 +507,20 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
           projectId={editLog.project ? "" : ""}
           onClose={() => setEditLog(null)}
           onSaved={() => { setEditLog(null); fetchData(); }}
+        />
+      )}
+
+      {/* 컬럼 필터 드롭다운 */}
+      {openCol && anchorEl && (
+        <ColumnFilterDropdown
+          anchorEl={anchorEl}
+          values={distinctValues[openCol] ?? []}
+          selected={colFilters[openCol] ?? []}
+          onApply={sel => {
+            setColFilters(p => ({ ...p, [openCol]: sel }));
+            setOpenCol(null); setAnchorEl(null);
+          }}
+          onClose={() => { setOpenCol(null); setAnchorEl(null); }}
         />
       )}
     </div>
@@ -623,7 +729,7 @@ function LogModal({
               {workers.length > 0 && (
                 <select
                   onChange={e => { if (e.target.value) setForm(f => ({ ...f, operator: e.target.value })); }}
-                  className="px-2 py-1.5 border border-gray-200 rounded-md text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-2 py-1 border border-gray-200 rounded-md text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   defaultValue=""
                 >
                   <option value="">목록 선택</option>
@@ -842,9 +948,39 @@ export default function WorklogAdmin({
     return result;
   }, [drawings, logByDrawingId, dateFrom, dateTo, filters]);
 
+  // 정렬 — 컬럼 헤더 클릭 asc → desc → 해제 토글
+  const [sortKey, setSortKey] = useState<FCKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const handleNormalSort = (key: FCKey) => {
+    if (sortKey === key) {
+      if (sortDir === "asc") setSortDir("desc");
+      else { setSortKey(null); setSortDir("asc"); }
+    } else {
+      setSortKey(key); setSortDir("asc");
+    }
+  };
+
+  const sortedDrawings = useMemo(() => {
+    if (!sortKey) return filteredDrawings;
+    const arr = [...filteredDrawings];
+    arr.sort((a, b) => {
+      const la = logByDrawingId.get(a.id) ?? null;
+      const lb = logByDrawingId.get(b.id) ?? null;
+      const av = getVal(a, la, sortKey);
+      const bv = getVal(b, lb, sortKey);
+      const an = parseFloat(av); const bn = parseFloat(bv);
+      const bothNum = !isNaN(an) && !isNaN(bn) && String(an) === av && String(bn) === bv;
+      const cmp = bothNum
+        ? an - bn
+        : av.localeCompare(bv, "ko", { numeric: true });
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return arr;
+  }, [filteredDrawings, sortKey, sortDir, logByDrawingId]);
+
   const PAGE_SIZE   = 50;
-  const totalPages  = Math.ceil(filteredDrawings.length / PAGE_SIZE);
-  const pagedRows   = filteredDrawings.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages  = Math.ceil(sortedDrawings.length / PAGE_SIZE);
+  const pagedRows   = sortedDrawings.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const filterCount = Object.keys(filters).length;
   const cutCount    = filteredDrawings.filter(d => logByDrawingId.has(d.id)).length;
 
@@ -948,15 +1084,20 @@ export default function WorklogAdmin({
               <table className="w-full text-xs border-collapse">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="px-2 py-2.5 text-center text-xs font-semibold text-gray-500 w-8">No</th>
+                    <th className="px-2 py-1 text-center text-[11px] font-semibold text-gray-500 w-8">No</th>
                     {COLUMNS.map(col => {
                       const isFilterable = col.filterable;
                       const isActive     = isFilterable && (filters[col.key as FCKey]?.length ?? 0) > 0;
                       const alignCls     = col.align === "right" ? "justify-end" : "";
+                      const isSort       = sortKey === col.key;
+                      const SortI        = isSort ? (sortDir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
                       return (
-                        <th key={col.key} className={`px-3 py-2.5 text-xs font-semibold text-gray-500 whitespace-nowrap ${col.align === "right" ? "text-right" : "text-left"}`}>
+                        <th key={col.key} className={`px-3 py-1 text-[11px] font-semibold text-gray-500 whitespace-nowrap ${col.align === "right" ? "text-right" : "text-left"}`}>
                           <div className={`flex items-center gap-1 ${alignCls}`}>
-                            <span>{col.label}</span>
+                            <button onClick={() => handleNormalSort(col.key as FCKey)} className="inline-flex items-center gap-1 hover:text-gray-700">
+                              {col.label}
+                              <SortI size={11} className={isSort ? "text-blue-500" : "text-gray-300"} />
+                            </button>
                             {isFilterable && (
                               <button
                                 onClick={e => {
@@ -983,7 +1124,7 @@ export default function WorklogAdmin({
                         </th>
                       );
                     })}
-                    <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">액션</th>
+                    <th className="px-3 py-1 text-center text-[11px] font-semibold text-gray-500 whitespace-nowrap">액션</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -993,57 +1134,57 @@ export default function WorklogAdmin({
                     const rowNo  = (page - 1) * PAGE_SIZE + i + 1;
                     return (
                       <tr key={d.id} className={`transition-colors ${hasCut ? "hover:bg-green-50/30" : "hover:bg-gray-50/60"}`}>
-                        <td className="px-2 py-1.5 text-center text-gray-400">{rowNo}</td>
+                        <td className="px-2 py-1 text-center text-gray-400">{rowNo}</td>
                         {/* 호선 */}
-                        <td className="px-3 py-1.5 text-gray-600 font-mono text-[11px]">{d.project?.projectCode ?? "-"}</td>
+                        <td className="px-3 py-1 text-gray-600 font-mono text-[11px]">{d.project?.projectCode ?? "-"}</td>
                         {/* 블록 */}
-                        <td className="px-3 py-1.5 text-gray-600">{d.block ?? "-"}</td>
+                        <td className="px-3 py-1 text-gray-600">{d.block ?? "-"}</td>
                         {/* 도면번호 */}
-                        <td className="px-3 py-1.5 font-mono text-[11px] font-bold text-gray-800">{d.drawingNo ?? "-"}</td>
+                        <td className="px-3 py-1 font-mono text-[11px] font-bold text-gray-800">{d.drawingNo ?? "-"}</td>
                         {/* 재질 */}
-                        <td className="px-3 py-1.5 text-gray-600">{d.material}</td>
+                        <td className="px-3 py-1 text-gray-600">{d.material}</td>
                         {/* 두께 */}
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.thickness}</td>
+                        <td className="px-3 py-1 text-right tabular-nums text-gray-600">{d.thickness}</td>
                         {/* 폭1 */}
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{getW1(d)}</td>
+                        <td className="px-3 py-1 text-right tabular-nums text-gray-600">{getW1(d)}</td>
                         {/* 폭2 */}
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-400">{d.assignedRemnant?.width2 ?? "-"}</td>
+                        <td className="px-3 py-1 text-right tabular-nums text-gray-400">{d.assignedRemnant?.width2 ?? "-"}</td>
                         {/* 길이1 */}
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{getL1(d)}</td>
+                        <td className="px-3 py-1 text-right tabular-nums text-gray-600">{getL1(d)}</td>
                         {/* 길이2 */}
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-400">{d.assignedRemnant?.length2 ?? "-"}</td>
+                        <td className="px-3 py-1 text-right tabular-nums text-gray-400">{d.assignedRemnant?.length2 ?? "-"}</td>
                         {/* 철판중량 */}
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">
+                        <td className="px-3 py-1 text-right tabular-nums text-gray-600">
                           {calcSteelWeight(d.thickness, getW1(d), getL1(d), d.assignedRemnant?.width2, d.assignedRemnant?.length2).toFixed(1)}
                         </td>
                         {/* 사용중량 */}
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{d.useWeight?.toFixed(1) ?? "-"}</td>
+                        <td className="px-3 py-1 text-right tabular-nums text-gray-600">{d.useWeight?.toFixed(1) ?? "-"}</td>
                         {/* Heat NO */}
-                        <td className="px-3 py-1.5 font-mono text-[11px] text-blue-700">{d.heatNo ?? "-"}</td>
+                        <td className="px-3 py-1 font-mono text-[11px] text-blue-700">{d.heatNo ?? "-"}</td>
                         {/* 작업자 */}
-                        <td className="px-3 py-1.5 font-semibold text-gray-800">{log?.operator ?? "-"}</td>
+                        <td className="px-3 py-1 font-semibold text-gray-800">{log?.operator ?? "-"}</td>
                         {/* 장비 */}
-                        <td className="px-3 py-1.5 text-gray-500">{log ? eqShort(log.equipment.name) : "-"}</td>
+                        <td className="px-3 py-1 text-gray-500">{log ? eqShort(log.equipment.name) : "-"}</td>
                         {/* 작업일 */}
-                        <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap font-mono text-[11px]">
+                        <td className="px-3 py-1 text-gray-600 whitespace-nowrap font-mono text-[11px]">
                           {log ? fmtDate(log.startAt) : "-"}
                         </td>
                         {/* 총가동시간 */}
-                        <td className="px-3 py-1.5 text-gray-500 whitespace-nowrap">
+                        <td className="px-3 py-1 text-gray-500 whitespace-nowrap">
                           {log?.endAt ? fmtHM(new Date(log.endAt).getTime() - new Date(log.startAt).getTime()) : (log ? "진행중" : "-")}
                         </td>
                         {/* 중단시간 */}
-                        <td className="px-3 py-1.5 text-orange-500 whitespace-nowrap">
+                        <td className="px-3 py-1 text-orange-500 whitespace-nowrap">
                           {log ? fmtPauseMin(calcPauseMs(log.pauses)) : "-"}
                         </td>
                         {/* 실가동시간 — 총가동(야간이월 제외) - 일반중단 */}
-                        <td className="px-3 py-1.5 text-green-700 font-semibold whitespace-nowrap">
+                        <td className="px-3 py-1 text-green-700 font-semibold whitespace-nowrap">
                           {log?.endAt ? fmtHM(Math.max(0, libCalcTotalMs(log.startAt, log.endAt, log.pauses) - calcPauseMs(log.pauses))) : (log ? "진행중" : "-")}
                         </td>
                         {/* 비고 */}
-                        <td className="px-3 py-1.5 text-gray-400 max-w-[120px] truncate">{log?.memo ?? "-"}</td>
+                        <td className="px-3 py-1 text-gray-400 max-w-[120px] truncate">{log?.memo ?? "-"}</td>
                         {/* 액션 */}
-                        <td className="px-3 py-1.5 text-center">
+                        <td className="px-3 py-1 text-center">
                           {hasCut ? (
                             <div className="flex items-center justify-center gap-1">
                               <button
