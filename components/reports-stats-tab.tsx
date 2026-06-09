@@ -36,7 +36,7 @@ const REASON_LABEL: Record<string, string> = {
   EQUIPMENT_FAILURE: "장비고장",
   DRAWING_CHANGE:    "도면변경",
   CONSUMABLE:        "소모품교체",
-  WORK_EXTENSION:    "작업연장",
+  WORK_EXTENSION:    "퇴근/야간이월",
   OTHER:             "기타",
 };
 

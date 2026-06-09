@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
+import { calcPauseMs as libCalcPauseMs, calcTotalMs as libCalcTotalMs } from "@/lib/cutting-time";
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -82,12 +83,9 @@ function eqShort(name: string): string {
 }
 
 // ── 시간 헬퍼 ─────────────────────────────────────────────────────────────
+// 일반 중단(퇴근/야간이월 제외) — lib/cutting-time.ts 위임
 function calcPauseMs(pauses?: CuttingPause[]): number {
-  if (!pauses?.length) return 0;
-  return pauses.reduce((s, p) => {
-    if (!p.resumedAt) return s;
-    return s + (new Date(p.resumedAt).getTime() - new Date(p.pausedAt).getTime());
-  }, 0);
+  return libCalcPauseMs(pauses);
 }
 function fmtHM(ms: number): string {
   if (ms <= 0) return "-";
@@ -256,9 +254,8 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
                   const sw      = log.thickness && w1 && l1
                     ? Math.round(log.thickness * (w1 * l1 - (w2 ?? 0) * (l2 ?? 0)) * 7.85 / 1_000_000 * 10) / 10
                     : null;
-                  const totalMs  = log.endAt
-                    ? new Date(log.endAt).getTime() - new Date(log.startAt).getTime()
-                    : 0;
+                  // 총가동 = (endAt-startAt) - 야간이월, 실가동 = 총가동 - 일반중단
+                  const totalMs  = libCalcTotalMs(log.startAt, log.endAt, log.pauses);
                   const pauseMs  = calcPauseMs(log.pauses);
                   const activeMs = Math.max(0, totalMs - pauseMs);
                   return (
@@ -973,9 +970,9 @@ export default function WorklogAdmin({
                         <td className="px-3 py-1.5 text-orange-500 whitespace-nowrap">
                           {log ? fmtPauseMin(calcPauseMs(log.pauses)) : "-"}
                         </td>
-                        {/* 실가동시간 */}
+                        {/* 실가동시간 — 총가동(야간이월 제외) - 일반중단 */}
                         <td className="px-3 py-1.5 text-green-700 font-semibold whitespace-nowrap">
-                          {log?.endAt ? fmtHM(Math.max(0, new Date(log.endAt).getTime() - new Date(log.startAt).getTime() - calcPauseMs(log.pauses))) : (log ? "진행중" : "-")}
+                          {log?.endAt ? fmtHM(Math.max(0, libCalcTotalMs(log.startAt, log.endAt, log.pauses) - calcPauseMs(log.pauses))) : (log ? "진행중" : "-")}
                         </td>
                         {/* 비고 */}
                         <td className="px-3 py-1.5 text-gray-400 max-w-[120px] truncate">{log?.memo ?? "-"}</td>

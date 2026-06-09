@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 import { prisma } from "@/lib/prisma";
 import ReportsMain from "@/components/reports-main";
+import { calcPauseMs, calcNightOffMs } from "@/lib/cutting-time";
 
 export default async function ReportsPage({
   searchParams,
@@ -105,11 +106,10 @@ export default async function ReportsPage({
       pausedAt:  p.pausedAt.toISOString(),
       resumedAt: p.resumedAt?.toISOString() ?? null,
     })),
-    // 미가동시간(ms): 완료된 pause들의 합산
-    pauseMs: l.pauses.reduce((sum, p) => {
-      if (!p.resumedAt) return sum;
-      return sum + (p.resumedAt.getTime() - p.pausedAt.getTime());
-    }, 0),
+    // 중단시간 — 일반 중단 합 (퇴근/야간이월 제외)
+    pauseMs: calcPauseMs(l.pauses),
+    // 야간이월시간 — 총가동시간 계산에서 빼낼 용도
+    nightOffMs: calcNightOffMs(l.pauses),
   }));
 
   return <ReportsMain logs={logs} fromStr={fromStr} toStr={toStr} />;

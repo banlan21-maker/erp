@@ -50,14 +50,15 @@ const PAUSE_REASON_OPTIONS = [
   { value: "EQUIPMENT_FAILURE", label: "장비고장" },
   { value: "DRAWING_CHANGE",    label: "도면변경" },
   { value: "CONSUMABLE",        label: "소모품교체" },
-  { value: "WORK_EXTENSION",    label: "작업연장" },
+  // WORK_EXTENSION = 퇴근/야간이월 — 가동시간·중단시간 양쪽에서 제외됨 (lib/cutting-time.ts)
+  { value: "WORK_EXTENSION",    label: "퇴근/야간이월" },
   { value: "OTHER",             label: "기타 (직접입력)" },
 ];
 const PAUSE_REASON_LABEL: Record<string, string> = {
   EQUIPMENT_FAILURE: "장비고장",
   DRAWING_CHANGE:    "도면변경",
   CONSUMABLE:        "소모품교체",
-  WORK_EXTENSION:    "작업연장",
+  WORK_EXTENSION:    "퇴근/야간이월",
   OTHER:             "기타",
 };
 

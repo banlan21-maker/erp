@@ -65,8 +65,10 @@ interface CuttingLog {
   dimL1:       number | null;
   dimW2:       number | null;
   dimL2:       number | null;
-  // 중단 시간
+  // 중단 시간 (일반 중단만 — 퇴근/야간이월 제외)
   pauseMs:     number;
+  // 퇴근/야간이월 시간 — 총가동시간에서 차감 (사용자 정의: 퇴근시간은 작업과 무관)
+  nightOffMs:  number;
   pauses:      { reason: string; pausedAt: string; resumedAt: string | null }[];
 }
 
@@ -88,9 +90,14 @@ function formatTime(iso: string) {
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
-function durationMs(start: string, end: string | null, pauseMs = 0) {
+// 총가동시간 = (endAt - startAt) - 야간이월
+function totalSpanMs(start: string, end: string | null, nightOffMs = 0) {
   if (!end) return 0;
-  return Math.max(0, new Date(end).getTime() - new Date(start).getTime() - pauseMs);
+  return Math.max(0, new Date(end).getTime() - new Date(start).getTime() - nightOffMs);
+}
+// 실가동시간 = 총가동시간 - 일반중단
+function durationMs(start: string, end: string | null, pauseMs = 0, nightOffMs = 0) {
+  return Math.max(0, totalSpanMs(start, end, nightOffMs) - pauseMs);
 }
 function formatDurationMs(ms: number) {
   if (ms <= 0) return "-";
@@ -99,7 +106,7 @@ function formatDurationMs(ms: number) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 function formatDuration(log: CuttingLog) {
-  return formatDurationMs(durationMs(log.startAt, log.endAt, log.pauseMs));
+  return formatDurationMs(durationMs(log.startAt, log.endAt, log.pauseMs, log.nightOffMs));
 }
 function formatPauseMin(ms: number) {
   if (ms <= 0) return "-";
@@ -144,7 +151,7 @@ export default function ReportsMain({
   const sumNum = (arr: CuttingLog[], key: "qty" | "steelWeight" | "useWeight") =>
     arr.reduce((s, l) => s + (l[key] ?? 0), 0);
   const sumDurationMs = (arr: CuttingLog[]) =>
-    arr.reduce((s, l) => s + durationMs(l.startAt, l.endAt, l.pauseMs), 0);
+    arr.reduce((s, l) => s + durationMs(l.startAt, l.endAt, l.pauseMs, l.nightOffMs), 0);
 
   const totalQty      = filteredLogs.length;  // 1작업=1매이므로 건수=수량
   const totalSteel    = sumNum(filteredLogs, "steelWeight");
@@ -154,7 +161,8 @@ export default function ReportsMain({
   // ── 장비별 집계 ──────────────────────────────────────────────────────────
   const byEq = filteredLogs.reduce((acc, l) => {
     const k      = eqShort(l.equipment.name);
-    const totMs  = durationMs(l.startAt, l.endAt);
+    // 총가동 = (endAt-startAt) - 야간이월, 중단·실가동은 그 위에서 계산
+    const totMs  = totalSpanMs(l.startAt, l.endAt, l.nightOffMs);
     if (!acc[k]) acc[k] = { qty: 0, steelWeight: 0, useWeight: 0, totalMs: 0, pauseMs: 0 };
     acc[k].qty++;
     acc[k].steelWeight += l.steelWeight ?? 0;
@@ -605,7 +613,7 @@ const NORMAL_COLS = [
   { key: "workDate",    label: "작업일",       align: "left"   as const, getVal: (l: CuttingLog) => formatDate(l.startAt) },
   { key: "totalTime",   label: "총가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(durationMs(l.startAt, l.endAt)) },
   { key: "pauseTime",   label: "중단시간",     align: "center" as const, getVal: (l: CuttingLog) => formatPauseMin(l.pauseMs) },
-  { key: "activeTime",  label: "실가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(durationMs(l.startAt, l.endAt, l.pauseMs)) },
+  { key: "activeTime",  label: "실가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(durationMs(l.startAt, l.endAt, l.pauseMs, l.nightOffMs)) },
   { key: "memo",        label: "비고",         align: "left"   as const, getVal: (l: CuttingLog) => l.memo ?? "" },
 ];
 
@@ -627,7 +635,7 @@ const URGENT_COLS = [
   { key: "workDate",      label: "작업일",       align: "left"   as const, getVal: (l: CuttingLog) => formatDate(l.startAt) },
   { key: "totalTime",     label: "총가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(durationMs(l.startAt, l.endAt)) },
   { key: "pauseTime",     label: "중단시간",     align: "center" as const, getVal: (l: CuttingLog) => formatPauseMin(l.pauseMs) },
-  { key: "activeTime",    label: "실가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(durationMs(l.startAt, l.endAt, l.pauseMs)) },
+  { key: "activeTime",    label: "실가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(durationMs(l.startAt, l.endAt, l.pauseMs, l.nightOffMs)) },
 ];
 
 // ─── 공통 필터 훅 ──────────────────────────────────────────────────────────────
@@ -677,7 +685,7 @@ function NormalDetailTable({ logs }: { logs: CuttingLog[] }) {
   const totalQty   = filteredLogs.length;
   const totalSteel = filteredLogs.reduce((s, l) => s + (l.steelWeight ?? 0), 0);
   const totalUse   = filteredLogs.reduce((s, l) => s + (l.useWeight   ?? 0), 0);
-  const totalMs    = filteredLogs.reduce((s, l) => s + durationMs(l.startAt, l.endAt, l.pauseMs), 0);
+  const totalMs    = filteredLogs.reduce((s, l) => s + durationMs(l.startAt, l.endAt, l.pauseMs, l.nightOffMs), 0);
 
   return (
     <div>
@@ -723,8 +731,8 @@ function NormalDetailTable({ logs }: { logs: CuttingLog[] }) {
       </thead>
       <tbody className="divide-y">
         {filteredLogs.map((log) => {
-          const totMs  = durationMs(log.startAt, log.endAt);
-          const actMs  = durationMs(log.startAt, log.endAt, log.pauseMs);
+          const totMs  = totalSpanMs(log.startAt, log.endAt, log.nightOffMs);
+          const actMs  = durationMs(log.startAt, log.endAt, log.pauseMs, log.nightOffMs);
           return (
           <tr key={log.id} className="hover:bg-gray-50">
             <td className="px-3 py-2 text-gray-600 text-[11px] whitespace-nowrap">
@@ -770,7 +778,7 @@ function UrgentDetailTable({ logs }: { logs: CuttingLog[] }) {
   const totalQty   = filteredLogs.length;
   const totalSteel = filteredLogs.reduce((s, l) => s + (l.steelWeight ?? 0), 0);
   const totalUse   = filteredLogs.reduce((s, l) => s + (l.useWeight   ?? 0), 0);
-  const totalMs    = filteredLogs.reduce((s, l) => s + durationMs(l.startAt, l.endAt, l.pauseMs), 0);
+  const totalMs    = filteredLogs.reduce((s, l) => s + durationMs(l.startAt, l.endAt, l.pauseMs, l.nightOffMs), 0);
 
   return (
     <div>
@@ -816,8 +824,8 @@ function UrgentDetailTable({ logs }: { logs: CuttingLog[] }) {
       </thead>
       <tbody className="divide-y">
         {filteredLogs.map((log) => {
-          const totMs  = durationMs(log.startAt, log.endAt);
-          const actMs  = durationMs(log.startAt, log.endAt, log.pauseMs);
+          const totMs  = totalSpanMs(log.startAt, log.endAt, log.nightOffMs);
+          const actMs  = durationMs(log.startAt, log.endAt, log.pauseMs, log.nightOffMs);
           return (
             <tr key={log.id} className="hover:bg-orange-50/40">
               <td className="px-3 py-2 font-semibold text-gray-900 max-w-[180px] truncate">
