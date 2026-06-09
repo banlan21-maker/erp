@@ -157,6 +157,12 @@ export default function FieldWorklog({
     if (d.success) setLogs(d.data);
   }, []);
 
+  // 장비 선택 후 메인 화면 진입 시 돌발작업 건수 즉시 로드 (탭 클릭 전에도 뱃지 표시)
+  useEffect(() => {
+    if (selectedEq && !urgentLoaded) loadUrgentWorks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEq]);
+
   const resetStep2 = () => { setDrawingId(""); setHeatNo(""); setHeatOptions([]); setMemo(""); setSearch(""); };
   const resetAll   = () => { setS1({ vesselCode: "", projectId: "", operatorId: "" }); resetStep2(); setDrawings([]); setStep1Open(true); };
 
