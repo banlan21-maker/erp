@@ -216,10 +216,12 @@ export default function RemnantListTab({
               <tr>
                 {COLS.map(({ key, label, align, filterable }) => {
                   const active = (filters[key]?.length ?? 0) > 0;
+                  // 여유원재(SURPLUS) 는 '발생판번호' 대신 '판번호' 로 표시
+                  const displayLabel = (typeFilter === "SURPLUS" && key === "heatNo") ? "판번호" : label;
                   if (!filterable) {
                     return (
                       <th key={key} className={`px-3 py-2.5 text-${align} text-gray-500 font-semibold`}>
-                        {label}
+                        {displayLabel}
                       </th>
                     );
                   }
@@ -229,7 +231,7 @@ export default function RemnantListTab({
                         onClick={e => openFilter(key, e.currentTarget)}
                         className={`flex items-center gap-1 ${align === "right" ? "ml-auto" : align === "center" ? "mx-auto" : ""} hover:text-gray-700`}
                       >
-                        {label}
+                        {displayLabel}
                         <Filter size={10} className={active ? "text-blue-500 fill-blue-500" : "text-gray-400"} fill={active ? "currentColor" : "none"} />
                       </button>
                     </th>
