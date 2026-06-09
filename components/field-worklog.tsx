@@ -46,12 +46,12 @@ interface Remnant {
   id: string; remnantNo: string; material: string; thickness: number; weight: number; needsConsult: boolean;
 }
 
+// 일반 중단 사유 dropdown — 미가동시간(중단시간)에 포함됨.
+// WORK_EXTENSION(퇴근/야간이월) 은 dropdown 에 노출하지 않고 별도 버튼으로 분리.
 const PAUSE_REASON_OPTIONS = [
   { value: "EQUIPMENT_FAILURE", label: "장비고장" },
   { value: "DRAWING_CHANGE",    label: "도면변경" },
   { value: "CONSUMABLE",        label: "소모품교체" },
-  // WORK_EXTENSION = 퇴근/야간이월 — 가동시간·중단시간 양쪽에서 제외됨 (lib/cutting-time.ts)
-  { value: "WORK_EXTENSION",    label: "퇴근/야간이월" },
   { value: "OTHER",             label: "기타 (직접입력)" },
 ];
 const PAUSE_REASON_LABEL: Record<string, string> = {
@@ -417,6 +417,24 @@ export default function FieldWorklog({
       if (!d.success) { setError(d.error); return; }
       resetStep2();
       await Promise.all([refreshLogs(), loadDrawings(s1.projectId)]);
+    } catch { setError("서버 오류"); } finally { setLoading(false); }
+  };
+
+  // 퇴근/야간이월 — STARTED 상태에서 호출. reason=WORK_EXTENSION 으로 PAUSED 전환.
+  // 미가동시간에서 자동 제외됨 (lib/cutting-time.ts NIGHT_OFF_REASONS)
+  const handleNightOff = async (logId: string) => {
+    if (!confirm("퇴근/야간이월 처리하시겠습니까?\n다음날 출근해서 '절단 재개' 로 이어서 진행할 수 있습니다.")) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/cutting-logs/${logId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "pause", reason: "WORK_EXTENSION" }),
+      });
+      const d = await res.json();
+      if (!d.success) { setError(d.error); return; }
+      setPauseReason(""); setPauseReasonText("");
+      await refreshLogs();
     } catch { setError("서버 오류"); } finally { setLoading(false); }
   };
 
@@ -879,48 +897,16 @@ export default function FieldWorklog({
               )}
             </div>
 
-            {/* 절단 중단 중 → 사유 입력 + 재개 버튼 */}
-            {ongoing.status === "PAUSED" && (
-              <div className="space-y-2">
-                <p className="text-xs text-yellow-400 font-medium">중단 사유를 입력하고 재개하세요</p>
-                <select
-                  value={pauseReason}
-                  onChange={e => { setPauseReason(e.target.value); setPauseReasonText(""); }}
-                  className="w-full bg-gray-900 border border-yellow-700 rounded-lg px-3 py-2 text-sm text-white"
-                >
-                  <option value="">-- 중단 사유 선택 --</option>
-                  {PAUSE_REASON_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-                {pauseReason === "OTHER" && (
-                  <input
-                    type="text"
-                    placeholder="사유 직접 입력"
-                    value={pauseReasonText}
-                    onChange={e => setPauseReasonText(e.target.value)}
-                    className="w-full bg-gray-900 border border-yellow-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500"
-                  />
-                )}
-                <button
-                  onClick={() => handleResume(ongoing.id)}
-                  disabled={loading || !pauseReason || (pauseReason === "OTHER" && !pauseReasonText.trim())}
-                  className="w-full bg-yellow-500 active:bg-yellow-600 rounded-xl py-3.5 flex items-center justify-center gap-3 text-black font-bold text-base transition-colors disabled:opacity-40"
-                >
-                  <Play size={18} fill="currentColor" />
-                  절단 재개
-                </button>
-              </div>
-            )}
-
-            {/* 절단 진행중 → 중단 / 완료 버튼 */}
+            {/* ─ 진행/중단 공통 사유 dropdown — STARTED 일 때만 표시 ─ */}
             {ongoing.status === "STARTED" && (
               <div className="space-y-2">
-                <p className="text-xs text-gray-400">중단 사유 선택 후 중단, 또는 바로 종료할 수 있습니다</p>
+                <p className="text-xs text-gray-400">중단 사유 선택 후 [절단 중단] 버튼을 누르세요</p>
                 <select
                   value={pauseReason}
                   onChange={e => { setPauseReason(e.target.value); setPauseReasonText(""); }}
                   className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
                 >
-                  <option value="">-- 중단 사유 (선택시 중단 가능) --</option>
+                  <option value="">-- 중단 사유 선택 --</option>
                   {PAUSE_REASON_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
                 {pauseReason === "OTHER" && (
@@ -932,26 +918,49 @@ export default function FieldWorklog({
                     className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500"
                   />
                 )}
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handlePause(ongoing.id)}
-                    disabled={loading || !pauseReason || (pauseReason === "OTHER" && !pauseReasonText.trim())}
-                    className="flex-1 bg-yellow-600 active:bg-yellow-700 rounded-xl py-3.5 flex items-center justify-center gap-2 text-white font-bold text-base transition-colors disabled:opacity-40"
-                  >
-                    <Pause size={18} fill="currentColor" />
-                    절단 중단
-                  </button>
-                  <button
-                    onClick={() => handleComplete(ongoing.id)}
-                    disabled={loading}
-                    className="flex-1 bg-red-600 active:bg-red-700 rounded-xl py-3.5 flex items-center justify-center gap-2 text-white font-bold text-base transition-colors disabled:opacity-60"
-                  >
-                    <Square size={18} fill="currentColor" />
-                    절단 완료
-                  </button>
-                </div>
               </div>
             )}
+
+            {/* ─ 중단/재개 단독 버튼 (상태에 따라 라벨 변경) ─ */}
+            {ongoing.status === "STARTED" ? (
+              <button
+                onClick={() => handlePause(ongoing.id)}
+                disabled={loading || !pauseReason || (pauseReason === "OTHER" && !pauseReasonText.trim())}
+                className="w-full bg-yellow-600 active:bg-yellow-700 rounded-xl py-3.5 flex items-center justify-center gap-2 text-white font-bold text-base transition-colors disabled:opacity-40"
+              >
+                <Pause size={18} fill="currentColor" />
+                절단 중단
+              </button>
+            ) : (
+              <button
+                onClick={() => handleResume(ongoing.id)}
+                disabled={loading}
+                className="w-full bg-yellow-500 active:bg-yellow-600 rounded-xl py-3.5 flex items-center justify-center gap-3 text-black font-bold text-base transition-colors disabled:opacity-50"
+              >
+                <Play size={18} fill="currentColor" />
+                절단 재개
+              </button>
+            )}
+
+            {/* ─ 퇴근/야간이월 (좌) + 절단 완료 (우) ─ */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleNightOff(ongoing.id)}
+                disabled={loading || ongoing.status === "PAUSED"}
+                title={ongoing.status === "PAUSED" ? "재개 후 사용하세요" : "퇴근/야간이월 — 다음날 이어서 절단"}
+                className="flex-1 bg-purple-600 active:bg-purple-700 rounded-xl py-3.5 flex items-center justify-center gap-2 text-white font-bold text-sm transition-colors disabled:opacity-40"
+              >
+                퇴근/야간이월
+              </button>
+              <button
+                onClick={() => handleComplete(ongoing.id)}
+                disabled={loading}
+                className="flex-1 bg-red-600 active:bg-red-700 rounded-xl py-3.5 flex items-center justify-center gap-2 text-white font-bold text-sm transition-colors disabled:opacity-60"
+              >
+                <Square size={16} fill="currentColor" />
+                절단 완료
+              </button>
+            </div>
           </div>
         )}
 
