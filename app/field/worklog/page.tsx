@@ -25,12 +25,21 @@ export default async function FieldWorklogPage() {
     }),
   ]);
 
-  const today = new Date();
-  const dayStart = new Date(today); dayStart.setHours(0, 0, 0, 0);
-  const dayEnd   = new Date(today); dayEnd.setHours(23, 59, 59, 999);
+  // KST(Asia/Seoul) 기준 오늘 자정~23:59:59.999 — Docker container 가 UTC 라도 안전
+  const kstDateStr = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+  const dayStart = new Date(`${kstDateStr}T00:00:00+09:00`);
+  const dayEnd   = new Date(`${kstDateStr}T23:59:59.999+09:00`);
 
+  // /api/cutting-logs 의 includeStuck 와 동일 — 어제 시작해 오늘까지 진행 중인 STARTED 도 포함
   const rawLogs = await prisma.cuttingLog.findMany({
-    where: { startAt: { gte: dayStart, lte: dayEnd } },
+    where: {
+      OR: [
+        { startAt: { gte: dayStart, lte: dayEnd } },
+        { status: "STARTED" },
+      ],
+    },
     include: {
       equipment: { select: { id: true, name: true, type: true } },
       project:   { select: { projectCode: true, projectName: true } },

@@ -437,7 +437,8 @@ export default function FieldWorklog({
           <p className="text-sm text-gray-400 mb-4 font-medium">사용할 장비를 선택하세요</p>
           <div className="grid grid-cols-1 gap-3">
             {equipment.map(eq => {
-              const eqOngoing = logs.find(l => l.equipmentId === eq.id && l.status === "STARTED");
+              // 진행중(STARTED) + 중단(PAUSED) 둘 다 "작업중" 으로 판단 — 대시보드와 동일 의미
+              const eqOngoing = logs.find(l => l.equipmentId === eq.id && (l.status === "STARTED" || l.status === "PAUSED"));
               const eqDone    = logs.filter(l => l.equipmentId === eq.id && l.status === "COMPLETED").length;
               return (
                 <button
@@ -452,7 +453,9 @@ export default function FieldWorklog({
                     </div>
                     <div className="flex flex-col items-end gap-1.5">
                       {eqOngoing && (
-                        <span className="text-xs px-2.5 py-1 rounded-full bg-red-500 text-white font-bold animate-pulse">진행중</span>
+                        eqOngoing.status === "PAUSED"
+                          ? <span className="text-xs px-2.5 py-1 rounded-full bg-yellow-500 text-white font-bold">중단중</span>
+                          : <span className="text-xs px-2.5 py-1 rounded-full bg-red-500 text-white font-bold animate-pulse">진행중</span>
                       )}
                       {eqDone > 0 && (
                         <span className="text-xs px-2.5 py-1 rounded-full bg-gray-700 text-gray-300">완료 {eqDone}건</span>
