@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Filter, X, Search, RefreshCw, Package } from "lucide-react";
+import { Filter, X, Search, RefreshCw, Package, StickyNote } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
 import { DetailModal, EditModal, ReregisterModal, type Remnant } from "@/components/remnant-tabs";
@@ -77,6 +77,7 @@ const COLS = [
   { key: "location",   label: "위치",          align: "left",   filterable: true  },
   { key: "status",     label: "상태",           align: "center", filterable: true  },
   { key: "usedVessel", label: "사용호선/블록", align: "left",   filterable: false }, // 파생값 — 필터 미지원
+  { key: "memo",       label: "메모",          align: "center", filterable: false },
 ] as const;
 
 export default function RemnantListTab({
@@ -275,6 +276,13 @@ export default function RemnantListTab({
                       ? `${r.assignedToLists[0].project?.projectCode ?? "-"} / ${r.assignedToLists[0].block ?? "-"}`
                       : "-"}
                   </td>
+                  <td className="px-3 py-2 text-center">
+                    {r.memo && r.memo.trim() ? (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[10px] font-medium" title={r.memo}>
+                        <StickyNote size={11} /> 메모
+                      </span>
+                    ) : null}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -282,7 +290,7 @@ export default function RemnantListTab({
               <tr>
                 <td colSpan={11} className="px-3 py-2 text-gray-500 font-medium">합계 ({remnants.length}건 / 전체 {total}건)</td>
                 <td className="px-3 py-2 text-right font-bold text-gray-700">{totalWeight.toFixed(1)}kg</td>
-                <td /><td />
+                <td /><td /><td />
               </tr>
             </tfoot>
           </table>
