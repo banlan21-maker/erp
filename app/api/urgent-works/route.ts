@@ -30,7 +30,22 @@ export async function GET(request: NextRequest) {
       where,
       include: {
         project: { select: { id: true, projectCode: true, projectName: true } },
-        remnant: { select: { id: true, remnantNo: true, material: true, thickness: true, weight: true, needsConsult: true } },
+        remnant: {
+          select: {
+            id: true, remnantNo: true, material: true, thickness: true, weight: true, needsConsult: true,
+            width1: true, length1: true, width2: true, length2: true,
+          },
+        },
+        // 작업일보관리에서 UrgentWork 한 행에 매칭된 CuttingLog 매핑용
+        cuttingLogs: {
+          select: {
+            id: true, status: true, startAt: true, endAt: true, operator: true, memo: true, equipmentId: true,
+            material: true, thickness: true, width: true, length: true, qty: true, drawingNo: true,
+            equipment: { select: { id: true, name: true, type: true } },
+            pauses:    { select: { reason: true, reasonText: true, pausedAt: true, resumedAt: true }, orderBy: { pausedAt: "asc" } },
+          },
+          orderBy: { startAt: "desc" },
+        },
       },
       orderBy: [
         { urgency: "asc" },   // URGENT 먼저
@@ -52,7 +67,7 @@ export async function POST(request: NextRequest) {
       title, urgency, requester, department,
       projectId, vesselName,
       requestDate, dueDate,
-      materialMemo, drawingNo, destination,
+      materialMemo, drawingNo, destination, useWeight,
       remnantId, status, registeredBy, memo,
     } = body;
 
@@ -76,6 +91,7 @@ export async function POST(request: NextRequest) {
         materialMemo: materialMemo || null,
         drawingNo:    drawingNo    || null,
         destination:  destination  || null,
+        useWeight:    useWeight != null && useWeight !== "" ? Number(useWeight) : null,
         remnantId:    remnantId    || null,
         status:       status       || "PENDING",
         registeredBy: registeredBy || null,

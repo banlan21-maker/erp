@@ -13,7 +13,7 @@ export async function PATCH(
       title, urgency, requester, department,
       projectId, vesselName,
       requestDate, dueDate,
-      materialMemo, drawingNo, destination,
+      materialMemo, drawingNo, destination, useWeight,
       remnantId, status, registeredBy, memo,
     } = body;
 
@@ -31,6 +31,7 @@ export async function PATCH(
         ...(materialMemo !== undefined ? { materialMemo: materialMemo || null }                  : {}),
         ...(drawingNo    !== undefined ? { drawingNo:    drawingNo    || null }                  : {}),
         ...(destination  !== undefined ? { destination:  destination  || null }                  : {}),
+        ...(useWeight    !== undefined ? { useWeight:    useWeight != null && useWeight !== "" ? Number(useWeight) : null } : {}),
         ...(remnantId    !== undefined ? { remnantId:    remnantId    || null }                  : {}),
         ...(status       !== undefined ? { status }                                              : {}),
         ...(registeredBy !== undefined ? { registeredBy: registeredBy || null }                  : {}),

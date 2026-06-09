@@ -50,6 +50,7 @@ export default async function ReportsPage({
           title:      true,
           requester:  true,
           department: true,
+          useWeight:  true,   // 돌발 사용중량 (등록 시 입력)
           // 돌발작업 연결 잔재의 W1/L1/W2/L2 (L자형이면 W2/L2 존재)
           remnant: {
             select: { remnantNo: true, width1: true, length1: true, width2: true, length2: true },
@@ -99,7 +100,8 @@ export default async function ReportsPage({
       }
       return null;
     })(),
-    useWeight: l.drawingList?.useWeight ?? null,
+    // 사용중량 — 돌발은 UrgentWork.useWeight, 정규는 DrawingList.useWeight
+    useWeight: l.urgentWork?.useWeight ?? l.drawingList?.useWeight ?? null,
     block: l.drawingList?.block ?? null,
     pauses: l.pauses.map((p) => ({
       ...p,

@@ -21,6 +21,7 @@ const INIT = {
   projectId: "", vesselName: "",
   dueDate: "",
   materialMemo: "", drawingNo: "", destination: "",
+  useWeight: "",
   remnantId: "", registeredBy: "", memo: "",
 };
 
@@ -60,6 +61,7 @@ export default function UrgentRegisterForm({
           materialMemo: form.materialMemo || null,
           drawingNo:    form.drawingNo    || null,
           destination:  form.destination  || null,
+          useWeight:    form.useWeight    || null,
           remnantId:    form.remnantId    || null,
           registeredBy: form.registeredBy || null,
           memo:         form.memo         || null,
@@ -192,6 +194,19 @@ export default function UrgentRegisterForm({
             <Input value={form.destination} onChange={e => set("destination", e.target.value)} placeholder="예: 조립장 3번 라인" />
           </div>
           <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              사용중량 (kg) <span className="text-gray-400">(선택)</span>
+            </label>
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              value={form.useWeight}
+              onChange={e => set("useWeight", e.target.value)}
+              placeholder="예: 12.5"
+            />
+          </div>
+          <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">등록자</label>
             <Input value={form.registeredBy} onChange={e => set("registeredBy", e.target.value)} placeholder="이름" />
           </div>
@@ -235,9 +250,6 @@ export default function UrgentRegisterForm({
         </div>
 
         <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
-          <Button type="button" variant="outline" onClick={() => router.push("/cutpart/urgent/list")}>
-            목록으로
-          </Button>
           <Button type="submit" disabled={saving} className="bg-orange-500 hover:bg-orange-600 font-bold">
             <Save size={14} className="mr-1.5" />
             {saving ? "등록 중..." : "돌발 등록"}

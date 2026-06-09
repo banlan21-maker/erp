@@ -680,6 +680,7 @@ model UrgentWork {
   materialMemo String? // 재질 메모 (자유 텍스트)
   drawingNo    String? // 도면번호
   destination  String? // 도착지
+  useWeight    Float?  // 사용 중량 (kg) — 돌발작업 부재의 예상 절단 사용량
 
   // 사용 예정 잔재 연결
   remnantId String?

@@ -153,37 +153,76 @@ function toLocalDatetimeValue(iso: string | null) {
 
 // ─── 돌발 작업일보 탭 ────────────────────────────────────────────────────────
 
+// UrgentWork 한 행 (cuttingLogs 매칭 포함) — UrgentWorkTab 전용 타입
+interface UrgentWorkRow {
+  id: string;
+  urgentNo: string;
+  title: string;
+  urgency: string;
+  requester: string | null;
+  department: string | null;
+  vesselName: string | null;
+  useWeight: number | null;
+  status: string;
+  createdAt: string;
+  project: { id: string; projectCode: string; projectName: string } | null;
+  remnant: {
+    id: string; remnantNo: string; material: string; thickness: number;
+    weight: number;
+    width1: number | null; length1: number | null;
+    width2: number | null; length2: number | null;
+  } | null;
+  cuttingLogs: CuttingLog[];
+}
+
 function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers: Worker[] }) {
-  const [logs,     setLogs]     = useState<CuttingLog[]>([]);
+  const [works,    setWorks]    = useState<UrgentWorkRow[]>([]);
   const [loading,  setLoading]  = useState(false);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo,   setDateTo]   = useState("");
   const [editLog,  setEditLog]  = useState<CuttingLog | null>(null);
 
-  const fetchLogs = async () => {
+  const fetchData = async () => {
     setLoading(true);
     try {
-      const p = new URLSearchParams();
-      if (dateFrom) p.set("dateFrom", dateFrom);
-      if (dateTo)   p.set("dateTo",   dateTo);
-      if (!dateFrom && !dateTo) p.set("all", "true");
-      const res  = await fetch(`/api/cutting-logs?${p}`);
+      const res  = await fetch("/api/urgent-works");
       const data = await res.json();
-      if (data.success) {
-        setLogs((data.data as CuttingLog[]).filter(l => l.isUrgent));
-      }
+      if (data.success) setWorks(data.data as UrgentWorkRow[]);
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchLogs(); }, [dateFrom, dateTo]);
+  useEffect(() => { fetchData(); }, []);
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("이 돌발 작업일보를 삭제할까요?")) return;
+  const handleDeleteLog = async (id: string) => {
+    if (!confirm("이 돌발 작업로그를 삭제할까요? (돌발 등록은 유지)")) return;
     await fetch(`/api/cutting-logs/${id}`, { method: "DELETE" });
-    fetchLogs();
+    fetchData();
+  };
+  const handleDeleteUrgent = async (id: string, title: string) => {
+    if (!confirm(`돌발등록 "${title}" 전체를 삭제할까요? (연결된 작업로그도 함께 삭제)`)) return;
+    await fetch(`/api/urgent-works/${id}`, { method: "DELETE" });
+    fetchData();
   };
 
-  const completedLogs = logs.filter(l => l.status === "COMPLETED");
+  // 날짜 필터 — UrgentWork.createdAt 기준 (작업 전 행도 포함되므로 작업일이 아닌 등록일 기준이 자연)
+  const filteredWorks = works.filter(w => {
+    if (!dateFrom && !dateTo) return true;
+    const d = new Date(w.createdAt);
+    if (dateFrom) { const f = new Date(dateFrom); f.setHours(0,0,0,0); if (d < f) return false; }
+    if (dateTo)   { const t = new Date(dateTo);   t.setHours(23,59,59,999); if (d > t) return false; }
+    return true;
+  });
+
+  // 행별 매칭 — 가장 최근 CuttingLog (없으면 null)
+  const rowOf = (w: UrgentWorkRow) => w.cuttingLogs[0] ?? null;
+
+  const totalCount     = filteredWorks.length;
+  const completedCount = filteredWorks.filter(w => rowOf(w)?.status === "COMPLETED").length;
+  const ongoingCount   = filteredWorks.filter(w => {
+    const l = rowOf(w);
+    return l && (l.status === "STARTED" || l.status === "PAUSED");
+  }).length;
+  const pendingCount   = filteredWorks.filter(w => !rowOf(w)).length;
 
   return (
     <div className="space-y-4">
@@ -205,7 +244,7 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
               )}
             </div>
           </div>
-          <button onClick={fetchLogs} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-600 pb-1">
+          <button onClick={fetchData} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-600 pb-1">
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> 새로고침
           </button>
         </div>
@@ -213,16 +252,17 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
 
       {/* 요약 */}
       <div className="flex items-center gap-4 text-sm bg-white border border-gray-200 rounded-xl px-5 py-3 shadow-sm">
-        <span className="text-gray-500">전체 <strong className="text-gray-900">{logs.length}</strong>건</span>
-        <span className="text-green-600">완료 <strong>{completedLogs.length}</strong>건</span>
-        <span className="text-yellow-600">진행중 <strong>{logs.filter(l => l.status === "STARTED" || l.status === "PAUSED").length}</strong>건</span>
+        <span className="text-gray-500">전체 <strong className="text-gray-900">{totalCount}</strong>건</span>
+        <span className="text-gray-500">작업전 <strong className="text-gray-700">{pendingCount}</strong>건</span>
+        <span className="text-yellow-600">진행중 <strong>{ongoingCount}</strong>건</span>
+        <span className="text-green-600">완료 <strong>{completedCount}</strong>건</span>
       </div>
 
       {loading ? (
         <div className="flex justify-center items-center py-20 text-gray-400 gap-3">
           <RefreshCw className="animate-spin text-blue-500" size={24} /> 불러오는 중...
         </div>
-      ) : logs.length === 0 ? (
+      ) : filteredWorks.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-xl border border-dashed border-gray-200 text-gray-400">
           <Zap size={36} className="mx-auto mb-3 opacity-20" />
           <p>돌발 작업일보가 없습니다.</p>
@@ -235,7 +275,7 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
                 <tr className="bg-orange-50 border-b border-gray-200">
                   <th className="px-2 py-2.5 text-center text-xs font-semibold text-gray-500 w-8">No</th>
                   {[
-                    "작업명", "요청자", "요청부서", "연관호선/블록", "사용잔재번호",
+                    "상태", "돌발번호", "작업명", "요청자", "요청부서", "연관호선/블록", "사용잔재번호",
                     "재질", "두께", "폭1", "폭2", "길이1", "길이2",
                     "중량(kg)", "사용중량(kg)",
                     "작업일", "총가동시간", "중단시간", "실가동시간", "액션",
@@ -245,42 +285,57 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {logs.map((log, i) => {
-                  const rem     = log.urgentWork?.remnant;
-                  const w1      = rem?.width1  ?? log.width  ?? null;
-                  const l1      = rem?.length1 ?? log.length ?? null;
-                  const w2      = rem?.width2  ?? null;
-                  const l2      = rem?.length2 ?? null;
-                  const sw      = log.thickness && w1 && l1
-                    ? Math.round(log.thickness * (w1 * l1 - (w2 ?? 0) * (l2 ?? 0)) * 7.85 / 1_000_000 * 10) / 10
+                {filteredWorks.map((w, i) => {
+                  const log = rowOf(w);
+                  const rem = w.remnant;
+                  // 치수: CuttingLog 우선 (실제 절단 기준), 없으면 잔재 치수
+                  const w1  = log?.width  ?? rem?.width1  ?? null;
+                  const l1  = log?.length ?? rem?.length1 ?? null;
+                  const w2  = rem?.width2  ?? null;
+                  const l2  = rem?.length2 ?? null;
+                  const thickness = log?.thickness ?? rem?.thickness ?? null;
+                  const material  = log?.material ?? rem?.material ?? null;
+                  const sw = thickness && w1 && l1
+                    ? Math.round(thickness * (w1 * l1 - (w2 ?? 0) * (l2 ?? 0)) * 7.85 / 1_000_000 * 10) / 10
                     : null;
-                  // 총가동 = (endAt-startAt) - 야간이월, 실가동 = 총가동 - 일반중단
-                  const totalMs  = libCalcTotalMs(log.startAt, log.endAt, log.pauses);
-                  const pauseMs  = calcPauseMs(log.pauses);
+
+                  // 상태 — CuttingLog 없으면 PENDING (작업 전)
+                  const statusLabel = !log
+                    ? { label: "작업 전", cls: "bg-gray-100 text-gray-600" }
+                    : log.status === "COMPLETED" ? { label: "완료",   cls: "bg-green-100 text-green-700" }
+                    : log.status === "PAUSED"    ? { label: "중단중", cls: "bg-yellow-100 text-yellow-700" }
+                    :                              { label: "진행중", cls: "bg-blue-100 text-blue-700" };
+
+                  // 시간 (log 있을 때만)
+                  const totalMs  = log ? libCalcTotalMs(log.startAt, log.endAt, log.pauses) : 0;
+                  const pauseMs  = log ? calcPauseMs(log.pauses) : 0;
                   const activeMs = Math.max(0, totalMs - pauseMs);
+
                   return (
-                    <tr key={log.id} className="hover:bg-orange-50/30 transition-colors">
+                    <tr key={w.id} className="hover:bg-orange-50/30 transition-colors">
                       <td className="px-2 py-1.5 text-center text-gray-400">{i + 1}</td>
-                      {/* 작업명 */}
-                      <td className="px-3 py-1.5 font-semibold text-gray-900 max-w-[160px] truncate">
-                        {log.urgentWork?.title ?? "-"}
+                      {/* 상태 */}
+                      <td className="px-3 py-1.5">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${statusLabel.cls}`}>{statusLabel.label}</span>
                       </td>
+                      {/* 돌발번호 */}
+                      <td className="px-3 py-1.5 font-mono text-[11px] text-orange-700">{w.urgentNo}</td>
+                      {/* 작업명 */}
+                      <td className="px-3 py-1.5 font-semibold text-gray-900 max-w-[160px] truncate">{w.title}</td>
                       {/* 요청자 */}
-                      <td className="px-3 py-1.5 text-gray-600">{log.urgentWork?.requester ?? "-"}</td>
+                      <td className="px-3 py-1.5 text-gray-600">{w.requester ?? "-"}</td>
                       {/* 요청부서 */}
-                      <td className="px-3 py-1.5 text-gray-500">{log.urgentWork?.department ?? "-"}</td>
+                      <td className="px-3 py-1.5 text-gray-500">{w.department ?? "-"}</td>
                       {/* 연관호선/블록 */}
                       <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap text-[11px]">
-                        {log.project ? `[${log.project.projectCode}] ${log.project.projectName}` : "-"}
+                        {w.project ? `[${w.project.projectCode}] ${w.project.projectName}` : (w.vesselName ?? "-")}
                       </td>
                       {/* 사용잔재번호 */}
-                      <td className="px-3 py-1.5 font-mono text-orange-700">
-                        {rem?.remnantNo ?? "-"}
-                      </td>
+                      <td className="px-3 py-1.5 font-mono text-orange-700">{rem?.remnantNo ?? "-"}</td>
                       {/* 재질 */}
-                      <td className="px-3 py-1.5 text-gray-600">{log.material ?? "-"}</td>
+                      <td className="px-3 py-1.5 text-gray-600">{material ?? "-"}</td>
                       {/* 두께 */}
-                      <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{log.thickness ?? "-"}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{thickness ?? "-"}</td>
                       {/* 폭1 */}
                       <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{w1?.toLocaleString() ?? "-"}</td>
                       {/* 폭2 */}
@@ -291,42 +346,53 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
                       <td className="px-3 py-1.5 text-right tabular-nums text-gray-400">{l2?.toLocaleString() ?? "-"}</td>
                       {/* 중량 */}
                       <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{sw?.toFixed(1) ?? "-"}</td>
-                      {/* 사용중량 */}
+                      {/* 사용중량 — UrgentWork.useWeight (등록 시 입력) */}
                       <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">
-                        {log.drawingList?.useWeight?.toFixed(1) ?? "-"}
+                        {w.useWeight != null ? w.useWeight.toFixed(1) : "-"}
                       </td>
-                      {/* 작업일 */}
+                      {/* 작업일 — log 있을 때만 */}
                       <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap font-mono text-[11px]">
-                        {fmtDate(log.startAt)}
+                        {log ? fmtDate(log.startAt) : "-"}
                       </td>
                       {/* 총가동시간 */}
                       <td className="px-3 py-1.5 text-gray-500 whitespace-nowrap">
-                        {log.endAt ? fmtHM(totalMs) : (log.status !== "COMPLETED" ? "진행중" : "-")}
+                        {log?.endAt ? fmtHM(totalMs) : (log ? "진행중" : "-")}
                       </td>
                       {/* 중단시간 */}
                       <td className="px-3 py-1.5 text-orange-500 whitespace-nowrap">
-                        {fmtPauseMin(pauseMs)}
+                        {log ? fmtPauseMin(pauseMs) : "-"}
                       </td>
                       {/* 실가동시간 */}
                       <td className="px-3 py-1.5 text-green-700 font-semibold whitespace-nowrap">
-                        {log.endAt ? fmtHM(activeMs) : "-"}
+                        {log?.endAt ? fmtHM(activeMs) : "-"}
                       </td>
                       {/* 액션 */}
                       <td className="px-3 py-1.5 text-center">
                         <div className="flex items-center justify-center gap-1">
+                          {log && (
+                            <button
+                              onClick={() => setEditLog(log)}
+                              className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md transition-colors"
+                              title="작업로그 수정"
+                            >
+                              <Edit2 size={13} />
+                            </button>
+                          )}
+                          {log && (
+                            <button
+                              onClick={() => handleDeleteLog(log.id)}
+                              className="p-1.5 text-orange-400 hover:bg-orange-50 rounded-md transition-colors"
+                              title="작업로그만 삭제 (돌발 등록 유지)"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
                           <button
-                            onClick={() => setEditLog(log)}
-                            className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md transition-colors"
-                            title="수정"
-                          >
-                            <Edit2 size={13} />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(log.id)}
+                            onClick={() => handleDeleteUrgent(w.id, w.title)}
                             className="p-1.5 text-red-400 hover:bg-red-50 rounded-md transition-colors"
-                            title="삭제"
+                            title="돌발등록 삭제 (작업로그 포함)"
                           >
-                            <Trash2 size={13} />
+                            <XCircle size={13} />
                           </button>
                         </div>
                       </td>
@@ -348,7 +414,7 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
           workers={workers}
           projectId={editLog.project ? "" : ""}
           onClose={() => setEditLog(null)}
-          onSaved={() => { setEditLog(null); fetchLogs(); }}
+          onSaved={() => { setEditLog(null); fetchData(); }}
         />
       )}
     </div>
