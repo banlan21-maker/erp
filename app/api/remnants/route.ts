@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
       remnantNo: customNo,
       type, shape, material, thickness, weight,
       width1, length1, width2, length2,
-      sourceProjectId, sourceVesselName, sourceBlock,
+      sourceProjectId, sourceVesselName, sourceBlock, heatNo,
       location, registeredBy, memo,
     } = body;
 
@@ -198,6 +198,7 @@ export async function POST(request: NextRequest) {
         sourceProjectId: sourceProjectId || null,
         sourceVesselName: sourceVesselName?.trim() || null,
         sourceBlock: sourceBlock?.trim() || null,
+        heatNo: heatNo?.trim() || null,
         location:  location?.trim() || null,
         registeredBy: registeredBy.trim(),
         memo: memo?.trim() || null,

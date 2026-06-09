@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { X, Save, AlertTriangle, Edit2, RotateCcw, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -129,6 +129,7 @@ function calcWeight(
 
 type RemnantBulkRow = {
   remnantNo: string;
+  heatNo: string;     // 여유원재(SURPLUS) 일 때만 입력 — '판번호'
   material: string;
   thickness: string;
   width1: string;
@@ -141,7 +142,7 @@ type RemnantBulkRow = {
 };
 
 const emptyRemnantBulkRow = (): RemnantBulkRow => ({
-  remnantNo: "", material: "", thickness: "",
+  remnantNo: "", heatNo: "", material: "", thickness: "",
   width1: "", length1: "", width2: "", length2: "",
   weight: "", location: "", memo: "",
 });
@@ -166,14 +167,17 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
 
   const isLShape    = shape === "L_SHAPE";
   const isIrregular = shape === "IRREGULAR";
+  const isSurplus   = type === "SURPLUS";
 
-  // 형태에 따른 컬럼 순서 (키보드 네비게이션용)
+  // 형태/종류에 따른 컬럼 순서 (키보드 네비게이션용)
   const cols: (keyof RemnantBulkRow)[] = useMemo(() => {
-    const base: (keyof RemnantBulkRow)[] = ["remnantNo", "material", "thickness", "width1", "length1"];
+    const base: (keyof RemnantBulkRow)[] = ["remnantNo"];
+    if (isSurplus) base.push("heatNo");
+    base.push("material", "thickness", "width1", "length1");
     if (isLShape) base.push("width2", "length2");
     base.push("weight", "location", "memo");
     return base;
-  }, [isLShape]);
+  }, [isLShape, isSurplus]);
 
   // 행별 자동 중량
   const autoWeightFor = (r: RemnantBulkRow): number | null => {
@@ -293,6 +297,7 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
             length1: r.length1 || null,
             width2:  r.width2  || null,
             length2: r.length2 || null,
+            heatNo:  isSurplus ? (r.heatNo.trim() || null) : null,
             sourceProjectId:  sourceMode === "project" ? sourceProjectId : null,
             sourceVesselName: sourceMode === "direct"  ? (sourceVesselDirect.trim() || null) : null,
             sourceBlock:      sourceMode === "direct"
@@ -441,6 +446,7 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
             <colgroup>
               <col style={{ width: "2rem" }} />
               <col style={{ width: "10rem" }} />  {/* 잔재번호 */}
+              {isSurplus && <col style={{ width: "7rem" }} />}  {/* 판번호 (SURPLUS) */}
               <col style={{ width: "7rem"  }} />  {/* 재질 */}
               <col style={{ width: "5.5rem" }} /> {/* 두께 */}
               <col style={{ width: "6rem" }} />   {/* W1 */}
@@ -456,6 +462,7 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
               <tr className="border-b text-[11px] text-gray-500 uppercase tracking-wide">
                 <th className="text-center pb-2">#</th>
                 <th className="text-left pb-2 pr-2">잔재번호<span className="text-gray-300 font-normal"> (자동)</span></th>
+                {isSurplus && <th className="text-left pb-2 pr-2">판번호<span className="text-gray-300 font-normal"> (선택)</span></th>}
                 <th className="text-left pb-2 pr-2">재질 *</th>
                 <th className="text-left pb-2 pr-2">두께 *</th>
                 <th className="text-left pb-2 pr-2">W1 *</th>
@@ -479,6 +486,7 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
                       const val     = row[col];
                       const placeholder =
                         col === "remnantNo"  ? "자동" :
+                        col === "heatNo"     ? "예: HT12345" :
                         col === "material"   ? "AH36" :
                         col === "weight"     ? (auto != null && !isIrregular ? String(auto) : isIrregular ? "직접 입력" : "") :
                         "";
@@ -563,6 +571,11 @@ export function RemnantRegisterTab({ projects }: { projects: ProjectOption[] }) 
 // ─── 수정 모달 ─────────────────────────────────────────────────────────────
 
 export function EditModal({ remnant, onClose, onSaved, onPermanentDeleted }: { remnant: Remnant; onClose: () => void; onSaved: () => void; onPermanentDeleted?: () => void }) {
+  // 발생 출처 모드 — 기존 데이터로 초기값 추정
+  const initialSourceMode: "project" | "direct" | "none" =
+    remnant.sourceProjectId ? "project"
+    : (remnant.sourceVesselName ? "direct" : "none");
+
   const [form, setForm] = useState({
     status:    remnant.status,
     location:  remnant.location ?? "",
@@ -570,10 +583,34 @@ export function EditModal({ remnant, onClose, onSaved, onPermanentDeleted }: { r
     thickness: String(remnant.thickness),
     weight:    String(remnant.weight),
     memo:      remnant.memo ?? "",
+    sourceMode:        initialSourceMode,
+    sourceProjectId:   remnant.sourceProjectId ?? "",
+    sourceVesselDirect: remnant.sourceVesselName ?? "",
+    sourceBlock:       remnant.sourceBlock ?? "",
+    heatNo:            remnant.heatNo ?? "",
   });
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [saving,   setSaving]   = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error,    setError]    = useState<string | null>(null);
+
+  // 호선 옵션 fetch
+  useEffect(() => {
+    fetch("/api/projects")
+      .then(r => r.ok ? r.json() : { data: [] })
+      .then(j => {
+        const arr: ProjectOption[] = (j.data ?? j ?? []).map((p: { id: string; projectCode: string; projectName: string }) => ({
+          id: p.id, projectCode: p.projectCode, projectName: p.projectName,
+        }));
+        setProjects(arr);
+      })
+      .catch(() => setProjects([]));
+  }, []);
+
+  // SURPLUS(여유원재)는 "판번호", 그 외는 "발생판번호"
+  const heatLabel = remnant.type === "SURPLUS" ? "판번호" : "발생판번호";
+  const vesselLabel = remnant.type === "SURPLUS" ? "호선" : "발생호선";
+  const blockLabel  = remnant.type === "SURPLUS" ? "블록" : "발생블록";
 
   const handlePermanentDelete = async () => {
     if (!confirm(`"${remnant.remnantNo}" 잔재를 완전히 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
@@ -588,6 +625,36 @@ export function EditModal({ remnant, onClose, onSaved, onPermanentDeleted }: { r
   };
 
   const handleSave = async () => {
+    setError(null);
+    if (form.sourceMode === "direct" && !form.sourceVesselDirect.trim()) {
+      setError(`${vesselLabel}을(를) 입력해주세요. (직접 입력 모드)`);
+      return;
+    }
+    if (form.sourceMode === "project" && !form.sourceProjectId) {
+      setError(`${vesselLabel}을(를) 선택하거나 직접 입력 / 없음으로 바꿔주세요.`);
+      return;
+    }
+
+    // sourceMode 에 따라 payload 구성 — undefined 가 아닌 명시적 값/null 로 전송
+    const sourcePayload =
+      form.sourceMode === "project"
+        ? {
+            sourceProjectId:  form.sourceProjectId,
+            sourceVesselName: null,
+            sourceBlock:      form.sourceBlock.trim() || null,
+          }
+        : form.sourceMode === "direct"
+        ? {
+            sourceProjectId:  null,
+            sourceVesselName: form.sourceVesselDirect.trim(),
+            sourceBlock:      form.sourceBlock.trim() || null,
+          }
+        : {
+            sourceProjectId:  null,
+            sourceVesselName: null,
+            sourceBlock:      null,
+          };
+
     setSaving(true);
     try {
       const res = await fetch(`/api/remnants/${remnant.id}`, {
@@ -600,6 +667,8 @@ export function EditModal({ remnant, onClose, onSaved, onPermanentDeleted }: { r
           thickness: form.thickness,
           weight:    form.weight,
           memo:      form.memo || null,
+          ...sourcePayload,
+          heatNo:    form.heatNo.trim() || null,
         }),
       });
       const data = await res.json();
@@ -611,13 +680,76 @@ export function EditModal({ remnant, onClose, onSaved, onPermanentDeleted }: { r
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-        <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50 rounded-t-xl">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50 rounded-t-xl sticky top-0 z-10">
           <h3 className="font-bold text-base">{remnant.remnantNo} 수정</h3>
           <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-full"><X size={16} /></button>
         </div>
         {error && <div className="mx-5 mt-4 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">{error}</div>}
         <div className="p-5 space-y-4">
+
+          {/* ── 발생 출처 (호선/블록) ── */}
+          <div className="bg-emerald-50/50 border border-emerald-200 rounded-lg p-3">
+            <label className="block text-xs font-semibold text-gray-700 mb-2">{vesselLabel} · {blockLabel}</label>
+            <div className="flex gap-2 mb-2 flex-wrap">
+              {([
+                ["project", "기존 호선/블록"],
+                ["direct",  "직접 입력"],
+                ["none",    "없음"],
+              ] as const).map(([v, l]) => (
+                <label key={v} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border cursor-pointer text-xs font-medium transition-all ${
+                  form.sourceMode === v ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-gray-200 text-gray-600 hover:border-gray-300 bg-white"
+                }`}>
+                  <input type="radio" name="edit-source-mode" value={v}
+                    checked={form.sourceMode === v}
+                    onChange={() => setForm(f => ({ ...f, sourceMode: v }))}
+                    className="hidden" />
+                  {l}
+                </label>
+              ))}
+            </div>
+            {form.sourceMode === "project" && (
+              <div className="space-y-2">
+                <select value={form.sourceProjectId}
+                  onChange={e => setForm(f => ({ ...f, sourceProjectId: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">-- {vesselLabel} 선택 --</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.id}>[{p.projectCode}] {p.projectName}</option>
+                  ))}
+                </select>
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-0.5">{blockLabel} <span className="text-gray-400">(선택)</span></label>
+                  <Input value={form.sourceBlock} onChange={e => setForm(f => ({ ...f, sourceBlock: e.target.value }))} placeholder="예: 101-1" />
+                </div>
+              </div>
+            )}
+            {form.sourceMode === "direct" && (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-0.5">{vesselLabel} <span className="text-red-500">*</span></label>
+                  <Input value={form.sourceVesselDirect} onChange={e => setForm(f => ({ ...f, sourceVesselDirect: e.target.value }))} placeholder="예: 4560호" />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-0.5">{blockLabel} <span className="text-gray-400">(선택)</span></label>
+                  <Input value={form.sourceBlock} onChange={e => setForm(f => ({ ...f, sourceBlock: e.target.value }))} placeholder="예: 101-1" />
+                </div>
+              </div>
+            )}
+            {form.sourceMode === "none" && (
+              <p className="text-[11px] text-gray-500">{vesselLabel}·{blockLabel} 정보 없이 저장됩니다.</p>
+            )}
+          </div>
+
+          {/* ── 판번호 ── */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              {heatLabel} <span className="text-gray-400">(선택)</span>
+            </label>
+            <Input value={form.heatNo} onChange={e => setForm(f => ({ ...f, heatNo: e.target.value }))} placeholder={`${heatLabel} 입력`} />
+          </div>
+
+          {/* ── 기존 필드 ── */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">상태</label>

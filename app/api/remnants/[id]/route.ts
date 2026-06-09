@@ -24,7 +24,7 @@ export async function PATCH(
     const {
       type, shape, material, thickness, weight,
       width1, length1, width2, length2,
-      sourceProjectId, sourceVesselName, sourceBlock,
+      sourceProjectId, sourceVesselName, sourceBlock, heatNo,
       location, status, registeredBy, memo,
     } = body;
 
@@ -43,6 +43,7 @@ export async function PATCH(
         ...(sourceProjectId  !== undefined ? { sourceProjectId: sourceProjectId || null }           : {}),
         ...(sourceVesselName !== undefined ? { sourceVesselName: sourceVesselName?.trim() || null } : {}),
         ...(sourceBlock      !== undefined ? { sourceBlock: sourceBlock?.trim() || null }           : {}),
+        ...(heatNo           !== undefined ? { heatNo: heatNo?.trim() || null }                     : {}),
         ...(location         !== undefined ? { location: location?.trim() || null }                 : {}),
         ...(status           !== undefined ? { status }                                              : {}),
         ...(registeredBy     !== undefined ? { registeredBy: registeredBy.trim() }                  : {}),
