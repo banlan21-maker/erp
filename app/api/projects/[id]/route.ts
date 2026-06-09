@@ -46,11 +46,12 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { projectName, client, status, memo, storageLocation } = body;
+    const { projectCode, projectName, client, status, memo, storageLocation } = body;
 
     const project = await prisma.project.update({
       where: { id },
       data: {
+        ...(projectCode ? { projectCode: projectCode.trim() } : {}),
         ...(projectName ? { projectName: projectName.trim() } : {}),
         ...(client ? { client: client.trim() } : {}),
         ...(status ? { status: status as ProjectStatus } : {}),

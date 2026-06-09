@@ -4,9 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   ChevronDown, ChevronRight, FolderOpen, Folder,
-  FileSpreadsheet, Plus, MapPin, ClipboardList,
+  FileSpreadsheet, Plus, MapPin, ClipboardList, Pencil,
 } from "lucide-react";
-import ProjectDeleteButton from "@/components/project-delete-button";
+import BlockEditModal from "@/components/block-edit-modal";
+import VesselEditModal from "@/components/vessel-edit-modal";
 
 interface Block {
   id: string;
@@ -43,6 +44,10 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   // 블록 폴더 펼침 (기본 모두 닫힘)
   const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({});
+
+  // 수정 모달
+  const [editingBlock,  setEditingBlock]  = useState<Block | null>(null);
+  const [editingVessel, setEditingVessel] = useState<VesselGroup | null>(null);
 
   const toggle      = (code: string) => setExpanded(p => ({ ...p, [code]: !p[code] }));
   const toggleBlock = (id: string)   => setExpandedBlocks(p => ({ ...p, [id]: !p[id] }));
@@ -90,6 +95,15 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
                 <FileSpreadsheet size={13} />
                 전체 강재리스트
               </Link>
+
+              {/* 호선 수정 버튼 */}
+              <button
+                onClick={() => setEditingVessel(vessel)}
+                className="flex items-center gap-1.5 px-3 py-2 text-[11px] text-gray-400 hover:text-white hover:bg-gray-700 transition-colors border-l border-gray-700"
+                title="호선코드 수정 / 호선 전체 삭제"
+              >
+                <Pencil size={12} />
+              </button>
             </div>
 
             {isOpen && (
@@ -141,10 +155,13 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
                           <span className="text-xs text-gray-300">
                             {new Date(block.createdAt).toLocaleDateString("ko-KR")}
                           </span>
-                          <ProjectDeleteButton
-                            projectId={block.id}
-                            projectCode={`${block.projectCode}-${block.projectName}`}
-                          />
+                          <button
+                            onClick={() => setEditingBlock(block)}
+                            className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded transition-colors"
+                            title="블록 이름 변경 / 삭제"
+                          >
+                            <Pencil size={12} /> 수정
+                          </button>
                         </div>
                       </div>
 
@@ -191,6 +208,23 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
           </div>
         );
       })}
+
+      {/* 수정 모달 */}
+      {editingBlock && (
+        <BlockEditModal
+          projectId={editingBlock.id}
+          projectCode={editingBlock.projectCode}
+          projectName={editingBlock.projectName}
+          onClose={() => setEditingBlock(null)}
+        />
+      )}
+      {editingVessel && (
+        <VesselEditModal
+          vesselCode={editingVessel.code}
+          blockIds={editingVessel.blocks.map(b => b.id)}
+          onClose={() => setEditingVessel(null)}
+        />
+      )}
     </div>
   );
 }
