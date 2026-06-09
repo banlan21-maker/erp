@@ -41,6 +41,7 @@ interface BomPreset {
   fields: Record<string, FieldConfig>;
   sum_cols?: string[];
   field_labels?: Record<string, string>;
+  fillDownCols?: number[];   // 셀병합 양식 — 비어있는 셀을 위쪽 값으로 자동 채움
 }
 
 interface ProjectOption {
@@ -454,6 +455,30 @@ export default function BomUpload({ projectOptions }: { projectOptions: ProjectO
                         className="w-full border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="열" />
                     </div>
                   </div>
+                </div>
+
+                {/* 셀병합 자동 채우기 (forward-fill) */}
+                <div className="mt-3">
+                  <label className="block text-xs text-gray-500 mb-1">
+                    셀병합 자동 채우기 컬럼 <span className="text-gray-400">(선택, 콤마구분 1-indexed)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={(form.preset.fillDownCols ?? []).join(", ")}
+                    onChange={e => {
+                      const raw = e.target.value;
+                      const cols = raw
+                        .split(",")
+                        .map(x => parseInt(x.trim(), 10))
+                        .filter(n => Number.isFinite(n) && n > 0);
+                      setPreset({ fillDownCols: cols.length > 0 ? cols : undefined });
+                    }}
+                    placeholder="예: 1  (A열 비어있으면 위쪽 값 사용)"
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    엑셀 셀병합 양식 — 비어있는 셀은 위쪽의 가장 가까운 값으로 자동 채워집니다. (필터 통과한 행에만 적용)
+                  </p>
                 </div>
               </div>
 

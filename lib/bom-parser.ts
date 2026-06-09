@@ -52,6 +52,10 @@ export interface BomVendorPreset {
   fields:  Record<string, FieldConfig>;        // 출력 필드 매핑
   sum_cols?: string[];                         // 합계 표시 컬럼
   field_labels?: Record<string, string>;       // 출력 항목명 재정의
+  // 셀병합 자동 채우기 — 비어있는 셀을 위쪽의 가장 가까운 비어있지 않은 값으로 대체.
+  // filter 통과한 행만 대상 (소계/합계 행이 lastVal 오염 방지). 시트 경계에서 초기화.
+  // 1-indexed 컬럼 번호 배열. 예: [1] = A열만 자동 채움.
+  fillDownCols?: number[];
 }
 
 // ── 내부 유틸 ──────────────────────────────────────────────────
@@ -119,6 +123,10 @@ export function extractBomData(fileBuffer: Buffer, preset: BomVendorPreset): Bom
 
     const dataRows = allRows.slice((preset.header_row ?? 2) - 1);
 
+    // 시트 단위 LOCF (forward-fill) 상태 — fillDownCols 활성 시 사용
+    const fillCols = preset.fillDownCols ?? [];
+    const lastFillVal: Record<number, unknown> = {};
+
     for (const rawRow of dataRows) {
       if (!Array.isArray(rawRow)) continue;
 
@@ -132,6 +140,18 @@ export function extractBomData(fileBuffer: Buffer, preset: BomVendorPreset): Bom
         if (f.contains   && (!fv || !String(fv).includes(f.contains)))    { skip = true; break; }
       }
       if (skip) continue;
+
+      // 셀병합 forward-fill — filter 통과 행만 대상 (소계/합계 행이 lastVal 오염 방지)
+      if (fillCols.length > 0) {
+        for (const col of fillCols) {
+          const v = rawRow[col - 1];
+          if (v == null || v === "") {
+            rawRow[col - 1] = (lastFillVal[col] ?? null) as unknown;
+          } else {
+            lastFillVal[col] = v;
+          }
+        }
+      }
 
       // 필드 매핑
       const record: Partial<BomRow> = { "호선": project, "블록": block };
