@@ -123,7 +123,10 @@ export default async function LandingPage() {
   })();
   const fmtMdKst = (d: Date) =>
     new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "long", day: "numeric" }).format(d);
-  const weeklyRangeLabel = `${fmtMdKst(kst7DaysAgoStart)}~${fmtMdKst(new Date(kstYesterdayEnd.getTime() - 86400000))} 진행상황`;
+  const kstYesterday = new Date(kstYesterdayEnd.getTime() - 86400000);
+  const weeklyRangeLabel = `${fmtMdKst(kst7DaysAgoStart)}~${fmtMdKst(kstYesterday)} 진행상황`;
+  // 부제용 — 매일 갱신되는지 시각 검증 가능하도록 오늘 날짜 명시
+  const weeklyTodayLabel = `오늘 (${fmtMdKst(new Date())}) 기준 · 최근 일주일간 절단 완료된 정규작업 호선/블록`;
 
   // ── 정보 카드 데이터 가공 ────────────────────────────────────────────
   const equipmentWork = activeEquipment.map(eq => {
@@ -250,7 +253,7 @@ export default async function LandingPage() {
             </div>
             <div className="min-w-0">
               <p className="font-bold text-gray-900 text-[15px] sm:text-base leading-tight">{weeklyRangeLabel}</p>
-              <p className="text-[11px] text-gray-500 mt-0.5">최근 일주일간 절단 완료된 정규작업 호선/블록</p>
+              <p className="text-[11px] text-gray-500 mt-0.5">{weeklyTodayLabel}</p>
             </div>
             <span className="ml-auto text-[11px] text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full font-bold">{weeklyPairs.length}건</span>
           </div>
