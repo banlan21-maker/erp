@@ -496,11 +496,6 @@ function UploadTab({
                             <option key={r.id} value={r.id}>{formatRemnantOption(r)}</option>
                           ))}
                         </select>
-                        {selectedRem && (
-                          <div className={`mt-1 text-[10px] ${C.chip} rounded px-2 py-0.5 inline-block`}>
-                            {formatRemnantOption(selectedRem)}
-                          </div>
-                        )}
                       </td>
                       <td className="px-3 py-2">
                         <button
