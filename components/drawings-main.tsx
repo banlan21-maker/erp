@@ -902,7 +902,7 @@ function UploadTab({
           <p className="text-sm text-gray-400 text-center py-4">아직 등록된 강재리스트가 없습니다.</p>
         ) : (
           <div className="space-y-1">
-            {recentUploads.map(u => (
+            {recentUploads.slice(0, 10).map(u => (
               <Link
                 key={u.projectId}
                 href={`${baseUrl}?tab=list&projectId=${u.projectId}`}
