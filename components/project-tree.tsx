@@ -81,7 +81,7 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
                 {isOpen
                   ? <FolderOpen size={16} className="text-yellow-400 flex-shrink-0" />
                   : <Folder size={16} className="text-yellow-400 flex-shrink-0" />}
-                <span className="font-bold text-xs">호선 [{vessel.code}]</span>
+                <span className="font-bold text-xs">[{vessel.code}]</span>
                 <span className="text-[11px] text-gray-400 ml-1">
                   {vessel.blocks.length}개 블록
                 </span>
