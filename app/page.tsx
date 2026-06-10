@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import {
   Scissors, Package, Settings,
-  AlertTriangle, XCircle, Clock, ChevronRight, HardHat,
+  AlertTriangle, XCircle, Clock, ChevronRight, HardHat, History,
 } from "lucide-react";
 import NoticeSection from "@/components/notice-section";
 import WeatherBar from "@/components/weather-bar";
@@ -14,6 +14,14 @@ export default async function LandingPage() {
   const in30days = new Date(today.getTime() + 30 * 86400000);
   const in60days = new Date(today.getTime() + 60 * 86400000);
   const in90days = new Date(today.getTime() + 90 * 86400000);
+
+  // 최근 일주일(어제까지 7일) — KST 기준
+  const kstTodayStr = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+  const kstYesterdayEnd = new Date(`${kstTodayStr}T00:00:00+09:00`); // 어제 자정 직전 = 오늘 자정 KST
+  const kst7DaysAgoStart = new Date(kstYesterdayEnd.getTime() - 7 * 86400000); // 6일 전 자정 KST
+  // (7일 범위 = 6일 전 자정 ~ 어제 23:59:59)
 
   const [
     notices,
@@ -27,6 +35,7 @@ export default async function LandingPage() {
     startedLogs,
     consumables,
     visaIn90,
+    weeklyCutLogs,
   ] = await Promise.all([
     prisma.notice.findMany({
       where: { category: "NOTICE" },
@@ -83,7 +92,38 @@ export default async function LandingPage() {
       select: { id: true, name: true, nationality: true, visaExpiry: true },
       orderBy: { visaExpiry: "asc" },
     }),
+    // 최근 일주일 정규작업 절단 완료 (어제까지) — 호선/블록 unique 표시용
+    prisma.cuttingLog.findMany({
+      where: {
+        isUrgent: false,
+        status:   "COMPLETED",
+        startAt:  { gte: kst7DaysAgoStart, lt: kstYesterdayEnd },
+      },
+      include: {
+        project:     { select: { projectCode: true } },
+        drawingList: { select: { block: true } },
+      },
+    }),
   ]);
+
+  // ── 최근 일주일 절단 호선/블록 (unique) ────────────────────────────
+  const weeklyPairs = (() => {
+    const seen = new Set<string>();
+    const list: string[] = [];
+    for (const log of weeklyCutLogs) {
+      const vessel = log.project?.projectCode ?? "";
+      const block  = log.drawingList?.block ?? "";
+      if (!vessel && !block) continue;
+      const key = `${vessel}-${block}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      list.push(block ? `${vessel}-${block}` : vessel);
+    }
+    return list;
+  })();
+  const fmtMdKst = (d: Date) =>
+    new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "long", day: "numeric" }).format(d);
+  const weeklyRangeLabel = `${fmtMdKst(kst7DaysAgoStart)}~${fmtMdKst(new Date(kstYesterdayEnd.getTime() - 86400000))} 진행상황`;
 
   // ── 정보 카드 데이터 가공 ────────────────────────────────────────────
   const equipmentWork = activeEquipment.map(eq => {
@@ -200,6 +240,34 @@ export default async function LandingPage() {
             title="경영진 · 관리자 전달사항"
             accentColor="purple"
           />
+        </div>
+
+        {/* 최근 일주일 절단 진행상황 (어제까지) */}
+        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 px-4 sm:px-5 py-3 border-b border-gray-100 bg-blue-50/30">
+            <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+              <History size={16} className="text-blue-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-bold text-gray-900 text-[15px] sm:text-base leading-tight">{weeklyRangeLabel}</p>
+              <p className="text-[11px] text-gray-500 mt-0.5">최근 일주일간 절단 완료된 정규작업 호선/블록</p>
+            </div>
+            <span className="ml-auto text-[11px] text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full font-bold">{weeklyPairs.length}건</span>
+          </div>
+          <div className="px-4 sm:px-5 py-3">
+            {weeklyPairs.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-3">최근 일주일 절단 기록 없음</p>
+            ) : (
+              <ol className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-1 text-[13px] sm:text-sm text-gray-700">
+                {weeklyPairs.map((p, i) => (
+                  <li key={p} className="flex items-baseline gap-1.5 tabular-nums">
+                    <span className="text-gray-400 text-[11px] w-5 text-right">{i + 1}.</span>
+                    <span className="font-medium">{p}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
         </div>
 
         {/* 진교·진동 현재 날씨 */}
