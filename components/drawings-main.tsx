@@ -161,6 +161,15 @@ interface RemnantOption {
 type AssignKind = "REGISTERED" | "REMNANT" | "SURPLUS";
 interface Assignment { kind: AssignKind; remnantId: string; }
 
+// 잔재 옵션 라벨: "REM-... — AH36 - 12 × 1500 × 3000 (245.5kg)"
+// L자형이면 두께 × 폭1 × 폭2 × 길이1 × 길이2 로 5종 표시
+function formatRemnantOption(r: RemnantOption): string {
+  const dims = r.shape === "L_SHAPE" && r.width2 != null && r.length2 != null
+    ? `${r.thickness} × ${r.width1 ?? "-"} × ${r.width2} × ${r.length1 ?? "-"} × ${r.length2}`
+    : `${r.thickness} × ${r.width1 ?? "-"} × ${r.length1 ?? "-"}`;
+  return `${r.remnantNo} — ${r.material} - ${dims} (${r.weight}kg)`;
+}
+
 // 자동매칭 — 같은 재질·두께 + 잔재 사이즈가 도면 사이즈 이상 + 면적 최소 + 미사용
 function findBestRemnant(
   kind: AssignKind,
@@ -484,19 +493,12 @@ function UploadTab({
                         >
                           <option value="">잔재 선택...</option>
                           {opts.map(r => (
-                            <option key={r.id} value={r.id}>
-                              {r.remnantNo} — {r.material} {r.thickness}t {r.width1}×{r.length1}
-                              {r.shape === "L_SHAPE" && r.width2 ? ` / ${r.width2}×${r.length2}` : ""} ({r.weight}kg)
-                            </option>
+                            <option key={r.id} value={r.id}>{formatRemnantOption(r)}</option>
                           ))}
                         </select>
                         {selectedRem && (
                           <div className={`mt-1 text-[10px] ${C.chip} rounded px-2 py-0.5 inline-block`}>
-                            {selectedRem.remnantNo} · 폭 {selectedRem.width1}
-                            {selectedRem.shape === "L_SHAPE" && selectedRem.width2 ? `/${selectedRem.width2}` : ""}
-                            × 길이 {selectedRem.length1}
-                            {selectedRem.shape === "L_SHAPE" && selectedRem.length2 ? `/${selectedRem.length2}` : ""}
-                            · {selectedRem.weight}kg
+                            {formatRemnantOption(selectedRem)}
                           </div>
                         )}
                       </td>
