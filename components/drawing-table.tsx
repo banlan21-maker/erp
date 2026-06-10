@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { DrawingList } from "@prisma/client";
 import * as XLSX from "xlsx";
 import { Pencil, Trash2, Check, X, Filter, XCircle, Plus, CalendarCheck, ArrowUp, ArrowDown, ArrowUpDown, Download } from "lucide-react";
+import DrawingEditModal from "@/components/drawing-edit-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ColumnFilterDropdown from "@/components/column-filter-dropdown";
@@ -241,6 +242,8 @@ export default function DrawingTable({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [clearConfirm, setClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
+  // 잔재 사용 행 수정용 모달 (원재 행은 기존 inline editing 유지)
+  const [modalEditDrawing, setModalEditDrawing] = useState<DrawingList | null>(null);
 
   // 잔재 상세 (SSR include 우선 — page.tsx 가 prisma include 로 함께 fetch).
   // 구버전 호환: SSR 미 include 시 클라이언트 fallback fetch.
@@ -633,6 +636,7 @@ export default function DrawingTable({
                     </div>
                   </th>
                 ))}
+                <th className={`px-2 py-2.5 ${C.txt} font-semibold text-center`}>액션</th>
               </tr>
             </thead>
             <tbody className={`divide-y ${C.div}`}>
@@ -665,6 +669,26 @@ export default function DrawingTable({
                     <td className="px-2 py-2 text-right font-semibold text-gray-700">{calcSteelWeight(d.thickness, d.width, d.length).toFixed(1)}</td>
                     <td className="px-2 py-2 text-right text-gray-500">{d.useWeight != null ? d.useWeight.toFixed(1) : "-"}</td>
                     <td className="px-2 py-2 text-center font-mono text-blue-600">{d.heatNo ?? <span className="text-gray-300">-</span>}</td>
+                    <td className="px-2 py-2">
+                      <div className="flex gap-1 justify-center items-center">
+                        <button
+                          onClick={() => setModalEditDrawing(d)}
+                          disabled={status === "CUT"}
+                          className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                          title={status === "CUT" ? "절단 완료 항목은 수정 불가" : "수정"}
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          onClick={() => deleteRow(d.id)}
+                          disabled={deletingId === d.id || status === "CUT"}
+                          className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                          title={status === "CUT" ? "절단 완료 항목은 삭제 불가" : "삭제"}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
@@ -674,6 +698,7 @@ export default function DrawingTable({
                 <td colSpan={10} className={`px-2 py-2 text-xs ${C.noCol} font-medium`}>합계 ({list.length}행)</td>
                 <td className={`px-2 py-2 text-right text-xs font-bold ${C.noCol}`}>{list.reduce((s, d) => s + calcSteelWeight(d.thickness, d.width, d.length), 0).toFixed(1)}kg</td>
                 <td className={`px-2 py-2 text-right text-xs font-bold ${C.noCol}`}>{list.reduce((s, d) => s + (d.useWeight ?? 0), 0).toFixed(1)}kg</td>
+                <td />
                 <td />
               </tr>
             </tfoot>
@@ -974,6 +999,23 @@ export default function DrawingTable({
       {renderUseList("REGISTERED", registeredUseDrawings)}
       {renderUseList("REMNANT", remnantUseDrawings)}
       {renderUseList("SURPLUS", surplusUseDrawings)}
+
+      {/* 잔재 사용 행 수정 모달 (원재 행은 inline editing 사용) */}
+      {modalEditDrawing && (
+        <DrawingEditModal
+          drawing={{
+            id: modalEditDrawing.id,
+            block: modalEditDrawing.block,
+            drawingNo: modalEditDrawing.drawingNo,
+            material: modalEditDrawing.material,
+            thickness: modalEditDrawing.thickness,
+            width: modalEditDrawing.width,
+            length: modalEditDrawing.length,
+            useWeight: modalEditDrawing.useWeight,
+          }}
+          onClose={() => setModalEditDrawing(null)}
+        />
+      )}
 
       {/* 단건 강재 추가 모달 */}
       {showAddModal && (
