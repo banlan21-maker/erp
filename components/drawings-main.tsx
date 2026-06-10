@@ -157,9 +157,32 @@ interface RemnantOption {
   weight: number;
 }
 
-// 잔재 사용 지정: 등록잔재(REGISTERED) 또는 현장잔재(REMNANT)
-type AssignKind = "REGISTERED" | "REMNANT";
+// 잔재 사용 지정: 등록잔재(REGISTERED) / 현장잔재(REMNANT) / 여유원재(SURPLUS)
+type AssignKind = "REGISTERED" | "REMNANT" | "SURPLUS";
 interface Assignment { kind: AssignKind; remnantId: string; }
+
+// 자동매칭 — 같은 재질·두께 + 잔재 사이즈가 도면 사이즈 이상 + 면적 최소 + 미사용
+function findBestRemnant(
+  kind: AssignKind,
+  row: PreviewRow,
+  pool: RemnantOption[],
+  usedIds: Set<string>,
+): string {
+  const matMatch = (a: string, b: string) => a.trim().toUpperCase() === b.trim().toUpperCase();
+  const candidates = pool
+    .filter(r => r.type === kind)
+    .filter(r => !usedIds.has(r.id))
+    .filter(r => matMatch(r.material, row.material))
+    .filter(r => r.thickness === row.thickness)
+    .filter(r => (r.width1 ?? 0) >= row.width && (r.length1 ?? 0) >= row.length);
+  if (candidates.length === 0) return "";
+  candidates.sort((a, b) => {
+    const aA = (a.width1 ?? 0) * (a.length1 ?? 0);
+    const bA = (b.width1 ?? 0) * (b.length1 ?? 0);
+    return aA - bA;
+  });
+  return candidates[0].id;
+}
 
 /* ── 강재등록 탭 ─────────────────────────────────────────────────────────── */
 function UploadTab({
@@ -190,16 +213,18 @@ function UploadTab({
     fetch("/api/excel-presets").then(r => r.json()).then(d => { if (d.success) setPresets(d.data); });
   }, []);
 
-  // 미리보기가 열릴 때 사용 가능한 잔재(등록잔재 + 현장잔재) 불러오기
+  // 미리보기가 열릴 때 사용 가능한 잔재(등록잔재 + 현장잔재 + 여유원재) 불러오기
   useEffect(() => {
     if (!previewRows) { setAvailableRemnants([]); return; }
     Promise.all([
       fetch("/api/remnants?type=REGISTERED&status=IN_STOCK&onlyAvailable=true").then(r => r.json()),
       fetch("/api/remnants?type=REMNANT&status=IN_STOCK&onlyAvailable=true").then(r => r.json()),
-    ]).then(([reg, rem]) => {
+      fetch("/api/remnants?type=SURPLUS&status=IN_STOCK&onlyAvailable=true").then(r => r.json()),
+    ]).then(([reg, rem, sur]) => {
       const list: RemnantOption[] = [];
       if (reg.success) list.push(...reg.data);
       if (rem.success) list.push(...rem.data);
+      if (sur.success) list.push(...sur.data);
       setAvailableRemnants(list);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -333,36 +358,95 @@ function UploadTab({
     });
   };
 
-  const assignTo = (idx: number, kind: AssignKind) => setRemnantAssignments(prev => ({ ...prev, [idx]: { kind, remnantId: "" } }));
+  // 단건 — 자동매칭 시도. 매칭 없으면 빈 값 (사용자가 드롭다운에서 수동 선택)
+  const assignTo = (idx: number, kind: AssignKind) => {
+    if (!previewRows) return;
+    const row = previewRows[idx];
+    setRemnantAssignments(prev => {
+      const usedIds = new Set(Object.entries(prev)
+        .filter(([k]) => Number(k) !== idx)
+        .map(([, a]) => a.remnantId).filter(Boolean));
+      const matched = findBestRemnant(kind, row, availableRemnants, usedIds);
+      return { ...prev, [idx]: { kind, remnantId: matched } };
+    });
+  };
+
   const moveToNormal = (idx: number) => setRemnantAssignments(prev => {
     const next = { ...prev }; delete next[idx]; return next;
   });
   const setAssignedRemnant = (idx: number, remnantId: string) =>
     setRemnantAssignments(prev => ({ ...prev, [idx]: { ...(prev[idx] ?? { kind: "REGISTERED" as AssignKind }), remnantId } }));
 
+  // 체크박스 (원재사용 목록에서만 활성)
+  const [checkedRows, setCheckedRows] = useState<Set<number>>(new Set());
+  const toggleRow = (idx: number) => setCheckedRows(prev => {
+    const next = new Set(prev);
+    if (next.has(idx)) next.delete(idx); else next.add(idx);
+    return next;
+  });
+  const clearCheckedRows = () => setCheckedRows(new Set());
+
+  // 일괄 적용 — 선택된 모든 행에 자동매칭 (이미 자동매칭된 잔재는 중복 방지)
+  const assignBulk = (kind: AssignKind) => {
+    if (!previewRows || checkedRows.size === 0) return;
+    const indices = [...checkedRows].sort((a, b) => a - b);
+    setRemnantAssignments(prev => {
+      const next = { ...prev };
+      const usedIds = new Set(Object.entries(prev)
+        .filter(([k]) => !checkedRows.has(Number(k)))
+        .map(([, a]) => a.remnantId).filter(Boolean));
+      for (const idx of indices) {
+        const row = previewRows[idx];
+        const matched = findBestRemnant(kind, row, availableRemnants, usedIds);
+        if (matched) usedIds.add(matched);
+        next[idx] = { kind, remnantId: matched };
+      }
+      return next;
+    });
+    clearCheckedRows();
+  };
+
   const assignedIndices  = new Set(Object.keys(remnantAssignments).map(Number));
   const registeredIndices = new Set(Object.entries(remnantAssignments).filter(([, a]) => a.kind === "REGISTERED").map(([i]) => Number(i)));
   const remnantIndices    = new Set(Object.entries(remnantAssignments).filter(([, a]) => a.kind === "REMNANT").map(([i]) => Number(i)));
+  const surplusIndices    = new Set(Object.entries(remnantAssignments).filter(([, a]) => a.kind === "SURPLUS").map(([i]) => Number(i)));
   const normalCount    = previewRows ? previewRows.filter((_, i) => !assignedIndices.has(i)).length : 0;
   const registeredCount = registeredIndices.size;
   const remnantCount    = remnantIndices.size;
+  const surplusCount    = surplusIndices.size;
 
-  // 잔재 사용 목록 렌더 (등록잔재 / 현장잔재 공통)
+  // 원재사용 행 전체 선택
+  const normalIndices = previewRows
+    ? previewRows.map((_, i) => i).filter(i => !assignedIndices.has(i))
+    : [];
+  const allNormalChecked = normalIndices.length > 0 && normalIndices.every(i => checkedRows.has(i));
+  const toggleAllNormal = () => {
+    if (allNormalChecked) clearCheckedRows();
+    else setCheckedRows(new Set(normalIndices));
+  };
+
+  // 잔재 사용 목록 렌더 (등록잔재 / 현장잔재 / 여유원재 공통)
   const renderAssignedList = (kind: AssignKind, indices: Set<number>, count: number) => {
     if (!previewRows || count === 0) return null;
-    const isReg = kind === "REGISTERED";
-    const label = isReg ? "등록잔재 사용 목록" : "현장잔재 사용 목록";
+    const KIND_LABEL = { REGISTERED: "등록잔재", REMNANT: "현장잔재", SURPLUS: "여유원재" } as const;
+    const label = `${KIND_LABEL[kind]} 사용 목록`;
     const opts = remnantsByKind(kind);
-    const C = isReg
-      ? { wrap: "bg-orange-50 border-orange-200", head: "bg-orange-100 border-orange-200", txt: "text-orange-700", soft: "text-orange-400", chip: "bg-orange-100 text-orange-700", rowHover: "hover:bg-orange-100/50", openBg: "bg-amber-50", childBorder: "border-amber-300", childTxt: "text-amber-700", addBtn: "border-amber-400 text-amber-700 hover:bg-amber-100", inputBtnOpen: "bg-amber-100 border-amber-300 text-amber-700", inputBtn: "border-orange-300 text-orange-600 hover:bg-orange-100" }
-      : { wrap: "bg-teal-50 border-teal-200", head: "bg-teal-100 border-teal-200", txt: "text-teal-700", soft: "text-teal-400", chip: "bg-teal-100 text-teal-700", rowHover: "hover:bg-teal-100/50", openBg: "bg-cyan-50", childBorder: "border-cyan-300", childTxt: "text-cyan-700", addBtn: "border-cyan-400 text-cyan-700 hover:bg-cyan-100", inputBtnOpen: "bg-cyan-100 border-cyan-300 text-cyan-700", inputBtn: "border-teal-300 text-teal-600 hover:bg-teal-100" };
+    const PALETTE: Record<AssignKind, {
+      wrap: string; head: string; txt: string; soft: string; chip: string; rowHover: string;
+      openBg: string; childBorder: string; childTxt: string; addBtn: string; inputBtnOpen: string; inputBtn: string;
+    }> = {
+      REGISTERED: { wrap: "bg-orange-50 border-orange-200", head: "bg-orange-100 border-orange-200", txt: "text-orange-700", soft: "text-orange-400", chip: "bg-orange-100 text-orange-700", rowHover: "hover:bg-orange-100/50", openBg: "bg-amber-50", childBorder: "border-amber-300", childTxt: "text-amber-700", addBtn: "border-amber-400 text-amber-700 hover:bg-amber-100", inputBtnOpen: "bg-amber-100 border-amber-300 text-amber-700", inputBtn: "border-orange-300 text-orange-600 hover:bg-orange-100" },
+      REMNANT:    { wrap: "bg-teal-50 border-teal-200",     head: "bg-teal-100 border-teal-200",     txt: "text-teal-700",   soft: "text-teal-400",   chip: "bg-teal-100 text-teal-700",     rowHover: "hover:bg-teal-100/50",   openBg: "bg-cyan-50",  childBorder: "border-cyan-300",  childTxt: "text-cyan-700",  addBtn: "border-cyan-400 text-cyan-700 hover:bg-cyan-100",   inputBtnOpen: "bg-cyan-100 border-cyan-300 text-cyan-700",   inputBtn: "border-teal-300 text-teal-600 hover:bg-teal-100" },
+      SURPLUS:    { wrap: "bg-purple-50 border-purple-200", head: "bg-purple-100 border-purple-200", txt: "text-purple-700", soft: "text-purple-400", chip: "bg-purple-100 text-purple-700", rowHover: "hover:bg-purple-100/50", openBg: "bg-violet-50", childBorder: "border-violet-300", childTxt: "text-violet-700", addBtn: "border-violet-400 text-violet-700 hover:bg-violet-100", inputBtnOpen: "bg-violet-100 border-violet-300 text-violet-700", inputBtn: "border-purple-300 text-purple-600 hover:bg-purple-100" },
+    };
+    const C = PALETTE[kind];
     return (
       <div className="space-y-1.5">
         <div className="flex items-center gap-2">
           <span className={`text-xs font-semibold ${C.txt}`}>{label}</span>
           <span className={`text-xs ${C.soft}`}>{count}행</span>
           {opts.length === 0 && (
-            <span className="text-xs text-red-500">사용 가능한 {isReg ? "등록잔재" : "현장잔재"}(재고)가 없습니다</span>
+            <span className="text-xs text-red-500">사용 가능한 {KIND_LABEL[kind]}(재고)가 없습니다</span>
           )}
         </div>
         <div className={`${C.wrap} border rounded-xl overflow-x-auto max-h-[350px] overflow-y-auto`}>
@@ -373,7 +457,7 @@ function UploadTab({
                 <th className={`px-3 py-2 text-left ${C.txt} font-semibold`}>도면번호</th>
                 <th className={`px-3 py-2 text-left ${C.txt} font-semibold`}>재질</th>
                 <th className={`px-3 py-2 text-right ${C.txt} font-semibold`}>두께</th>
-                <th className={`px-3 py-2 text-left ${C.txt} font-semibold`}>사용할 {isReg ? "등록잔재" : "현장잔재"}</th>
+                <th className={`px-3 py-2 text-left ${C.txt} font-semibold`}>사용할 {KIND_LABEL[kind]}</th>
                 <th className={`px-3 py-2 ${C.txt} font-semibold`}></th>
                 <th className={`px-3 py-2 ${C.txt} font-semibold`}></th>
               </tr>
@@ -645,14 +729,48 @@ function UploadTab({
 
                   {/* 원재사용 목록 */}
                   <div className="space-y-1.5">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-semibold text-gray-600">원재사용 목록</span>
                       <span className="text-xs text-gray-400">{normalCount}행</span>
+                      {checkedRows.size > 0 && (
+                        <div className="ml-auto flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">
+                          <span className="text-xs font-semibold text-blue-700">{checkedRows.size}개 선택 — 일괄 적용</span>
+                          <button
+                            onClick={() => assignBulk("REGISTERED")}
+                            className="px-2 py-0.5 text-xs rounded border border-orange-300 text-orange-600 hover:bg-orange-50 font-medium"
+                            title="선택된 도면을 등록잔재로 자동매칭"
+                          >등록잔재 →</button>
+                          <button
+                            onClick={() => assignBulk("REMNANT")}
+                            className="px-2 py-0.5 text-xs rounded border border-teal-300 text-teal-600 hover:bg-teal-50 font-medium"
+                            title="선택된 도면을 현장잔재로 자동매칭"
+                          >현장잔재 →</button>
+                          <button
+                            onClick={() => assignBulk("SURPLUS")}
+                            className="px-2 py-0.5 text-xs rounded border border-purple-300 text-purple-600 hover:bg-purple-50 font-medium"
+                            title="선택된 도면을 여유원재로 자동매칭"
+                          >여유원재 →</button>
+                          <button
+                            onClick={clearCheckedRows}
+                            className="px-1.5 py-0.5 text-xs text-gray-400 hover:text-gray-600"
+                            title="선택 해제"
+                          >✕</button>
+                        </div>
+                      )}
                     </div>
                     <div className="bg-white border rounded-xl overflow-x-auto max-h-[400px] overflow-y-auto">
                       <table className="w-full text-xs whitespace-nowrap">
                         <thead className="bg-gray-50 border-b sticky top-0">
                           <tr>
+                            <th className="px-2 py-2 text-center w-8">
+                              <input
+                                type="checkbox"
+                                checked={allNormalChecked}
+                                onChange={toggleAllNormal}
+                                className="cursor-pointer"
+                                title="전체 선택"
+                              />
+                            </th>
                             {["블록","도면번호","재질","두께","폭","길이","",""].map((h, i) => (
                               <th key={i} className={`px-3 py-2 text-gray-500 font-semibold ${i >= 3 ? "text-right" : "text-left"}`}>{h}</th>
                             ))}
@@ -663,9 +781,18 @@ function UploadTab({
                             if (assignedIndices.has(idx)) return null;
                             const rem = remnantInputs[idx];
                             const blockName = row.block ?? selectedProject?.projectName ?? "-";
+                            const isChecked = checkedRows.has(idx);
                             return (
                               <React.Fragment key={idx}>
-                                <tr className={`border-b ${rem?.open ? "bg-orange-50" : "hover:bg-gray-50"}`}>
+                                <tr className={`border-b ${rem?.open ? "bg-orange-50" : isChecked ? "bg-blue-50/40" : "hover:bg-gray-50"}`}>
+                                  <td className="px-2 py-2 text-center">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => toggleRow(idx)}
+                                      className="cursor-pointer"
+                                    />
+                                  </td>
                                   <td className="px-3 py-2 font-medium text-gray-800">{blockName}</td>
                                   <td className="px-3 py-2 font-mono text-gray-600">{row.drawingNo ?? "-"}</td>
                                   <td className="px-3 py-2"><span className="px-1.5 py-0.5 bg-slate-100 rounded font-medium">{row.material}</span></td>
@@ -688,23 +815,30 @@ function UploadTab({
                                       <button
                                         onClick={() => assignTo(idx, "REGISTERED")}
                                         className="px-2 py-0.5 text-xs rounded border border-orange-300 text-orange-600 hover:bg-orange-50 font-medium"
-                                        title="등록잔재를 사용해 이 도면을 절단"
+                                        title="등록잔재 자동매칭 (수정 가능)"
                                       >
                                         등록잔재 →
                                       </button>
                                       <button
                                         onClick={() => assignTo(idx, "REMNANT")}
                                         className="px-2 py-0.5 text-xs rounded border border-teal-300 text-teal-600 hover:bg-teal-50 font-medium"
-                                        title="현장잔재를 사용해 이 도면을 절단"
+                                        title="현장잔재 자동매칭 (수정 가능)"
                                       >
                                         현장잔재 →
+                                      </button>
+                                      <button
+                                        onClick={() => assignTo(idx, "SURPLUS")}
+                                        className="px-2 py-0.5 text-xs rounded border border-purple-300 text-purple-600 hover:bg-purple-50 font-medium"
+                                        title="여유원재 자동매칭 (수정 가능)"
+                                      >
+                                        여유원재 →
                                       </button>
                                     </div>
                                   </td>
                                 </tr>
                                 {rem?.open && (
                                   <tr className="bg-orange-50 border-b">
-                                    <td colSpan={8} className="px-4 py-3">
+                                    <td colSpan={9} className="px-4 py-3">
                                       <div className="space-y-3">
                                         {rem.items.map((item, itemIdx) => (
                                           <div key={itemIdx} className="bg-white border border-orange-200 rounded-lg p-3 relative">
@@ -739,7 +873,7 @@ function UploadTab({
                             );
                           })}
                           {normalCount === 0 && (
-                            <tr><td colSpan={8} className="px-3 py-4 text-center text-gray-400">원재사용 항목이 없습니다.</td></tr>
+                            <tr><td colSpan={9} className="px-3 py-4 text-center text-gray-400">원재사용 항목이 없습니다.</td></tr>
                           )}
                         </tbody>
                       </table>
@@ -750,6 +884,8 @@ function UploadTab({
                   {renderAssignedList("REGISTERED", registeredIndices, registeredCount)}
                   {/* 현장잔재 사용 목록 */}
                   {renderAssignedList("REMNANT", remnantIndices, remnantCount)}
+                  {/* 여유원재 사용 목록 */}
+                  {renderAssignedList("SURPLUS", surplusIndices, surplusCount)}
                 </div>
               )}
             </div>
