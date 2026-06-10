@@ -242,17 +242,37 @@ export default function DrawingTable({
   const [clearConfirm, setClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
 
-  // 등록잔재/현장잔재 사용 행의 잔재 상세 정보
+  // 잔재 상세 (SSR include 우선 — page.tsx 가 prisma include 로 함께 fetch).
+  // 구버전 호환: SSR 미 include 시 클라이언트 fallback fetch.
   interface RemnantDetail {
     remnantNo: string; type: string; shape: string;
     width1: number | null; length1: number | null; width2: number | null; length2: number | null; weight: number;
   }
+  type DrawingExt = DrawingList & {
+    assignedRemnantId?: string | null;
+    assignedRemnant?: (RemnantDetail & { id: string }) | null;
+  };
+  const remnantOf = (d: DrawingList): (RemnantDetail & { id: string }) | null => {
+    const dExt = d as DrawingExt;
+    if (dExt.assignedRemnant) return dExt.assignedRemnant;
+    if (dExt.assignedRemnantId) {
+      const fb = assignedRemnantDetails[dExt.assignedRemnantId];
+      if (fb) return { ...fb, id: dExt.assignedRemnantId };
+    }
+    return null;
+  };
   const [assignedRemnantDetails, setAssignedRemnantDetails] = useState<Record<string, RemnantDetail>>({});
 
   useEffect(() => {
+    // SSR 에 assignedRemnant 가 이미 include 되어 있으면 fallback fetch 불필요
+    const needFallback = drawings.some(d => {
+      const dExt = d as DrawingExt;
+      return !!dExt.assignedRemnantId && !dExt.assignedRemnant;
+    });
+    if (!needFallback) return;
     const ids = [...new Set(
       drawings
-        .map(d => (d as DrawingList & { assignedRemnantId?: string | null }).assignedRemnantId)
+        .map(d => (d as DrawingExt).assignedRemnantId)
         .filter((id): id is string => !!id)
     )];
     if (ids.length === 0) { setAssignedRemnantDetails({}); return; }
@@ -402,10 +422,11 @@ export default function DrawingTable({
   // 원재/잔재사용 분리
   const normalDrawings  = useMemo(() => drawings.filter(d => !(d as DrawingList & { assignedRemnantId?: string | null }).assignedRemnantId), [drawings]);
   const assignedDrawings = useMemo(() => drawings.filter(d => !!(d as DrawingList & { assignedRemnantId?: string | null }).assignedRemnantId), [drawings]);
-  // 잔재 종류별(등록잔재 REGISTERED / 현장잔재 REMNANT) 분리 — 상세 정보의 type 기준
-  const assignedKind = (d: DrawingList): string => {
-    const id = (d as DrawingList & { assignedRemnantId?: string | null }).assignedRemnantId;
-    return id ? (assignedRemnantDetails[id]?.type ?? "REGISTERED") : "REGISTERED";
+  // 잔재 종류별 분리 — d.assignedRemnant.type 우선 (SSR include), 없으면 클라이언트 fallback state
+  // type 정보가 아직 없으면 null 반환 → 어떤 섹션에도 분류 안 됨 (깜빡임 방지)
+  const assignedKind = (d: DrawingList): string | null => {
+    const rem = remnantOf(d);
+    return rem?.type ?? null;
   };
 
   // 필터 + 정렬 (원재사용만)
@@ -424,8 +445,7 @@ export default function DrawingTable({
   const sortedAssignedDrawings = useMemo(() => {
     if (assignedSortKeys.length === 0) return assignedDrawings;
     const getAssignedValue = (d: DrawingList, col: string): number | string => {
-      const dExt = d as DrawingList & { assignedRemnantId?: string | null };
-      const rem  = dExt.assignedRemnantId ? assignedRemnantDetails[dExt.assignedRemnantId] : null;
+      const rem = remnantOf(d);
       switch (col) {
         case "remnantNo": return rem?.remnantNo ?? "";
         case "width1":    return rem?.width1  ?? Number.NEGATIVE_INFINITY;
@@ -437,11 +457,13 @@ export default function DrawingTable({
       }
     };
     return [...assignedDrawings].sort((a, b) => compareSortKeys(a, b, assignedSortKeys, getAssignedValue));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assignedDrawings, assignedSortKeys, assignedRemnantDetails]);
 
-  // 종류별 분리 (등록잔재 / 현장잔재)
+  // 종류별 분리 (등록잔재 / 현장잔재 / 여유원재)
   const registeredUseDrawings = useMemo(() => sortedAssignedDrawings.filter(d => assignedKind(d) === "REGISTERED"), [sortedAssignedDrawings, assignedRemnantDetails]);
   const remnantUseDrawings    = useMemo(() => sortedAssignedDrawings.filter(d => assignedKind(d) === "REMNANT"),    [sortedAssignedDrawings, assignedRemnantDetails]);
+  const surplusUseDrawings    = useMemo(() => sortedAssignedDrawings.filter(d => assignedKind(d) === "SURPLUS"),    [sortedAssignedDrawings, assignedRemnantDetails]);
 
   // 현재 화면(필터·정렬 반영)을 엑셀로 다운로드
   const downloadExcel = () => {
@@ -476,8 +498,7 @@ export default function DrawingTable({
 
     if (sortedAssignedDrawings.length > 0) {
       const data = sortedAssignedDrawings.map(d => {
-        const dExt = d as DrawingList & { assignedRemnantId?: string | null };
-        const rem  = dExt.assignedRemnantId ? assignedRemnantDetails[dExt.assignedRemnantId] : null;
+        const rem = remnantOf(d);
         return {
           "상태":         STATUS_LABEL[(d.status ?? "REGISTERED") as DrawingStatusType] ?? d.status ?? "",
           "사용잔재번호": rem?.remnantNo ?? "",
@@ -570,13 +591,16 @@ export default function DrawingTable({
   };
 
   // 잔재 사용 리스트 렌더 (등록잔재 / 현장잔재 공통)
-  const renderUseList = (kind: "REGISTERED" | "REMNANT", list: DrawingList[]) => {
+  const renderUseList = (kind: "REGISTERED" | "REMNANT" | "SURPLUS", list: DrawingList[]) => {
     if (list.length === 0) return null;
-    const isReg = kind === "REGISTERED";
-    const title = isReg ? "등록잔재 사용 리스트" : "현장잔재 사용 리스트";
-    const C = isReg
-      ? { wrap: "bg-orange-50 border-orange-200", head: "bg-orange-100 border-orange-200", txt: "text-orange-700", soft: "text-orange-400", rowHover: "hover:bg-orange-100/50", div: "divide-orange-100", foot: "bg-orange-100 border-orange-200", noCol: "text-orange-700" }
-      : { wrap: "bg-teal-50 border-teal-200", head: "bg-teal-100 border-teal-200", txt: "text-teal-700", soft: "text-teal-400", rowHover: "hover:bg-teal-100/50", div: "divide-teal-100", foot: "bg-teal-100 border-teal-200", noCol: "text-teal-700" };
+    const TITLE = { REGISTERED: "등록잔재 사용 리스트", REMNANT: "현장잔재 사용 리스트", SURPLUS: "여유원재 사용 리스트" } as const;
+    const title = TITLE[kind];
+    const PALETTE = {
+      REGISTERED: { wrap: "bg-orange-50 border-orange-200", head: "bg-orange-100 border-orange-200", txt: "text-orange-700", soft: "text-orange-400", rowHover: "hover:bg-orange-100/50", div: "divide-orange-100", foot: "bg-orange-100 border-orange-200", noCol: "text-orange-700" },
+      REMNANT:    { wrap: "bg-teal-50 border-teal-200",     head: "bg-teal-100 border-teal-200",     txt: "text-teal-700",   soft: "text-teal-400",   rowHover: "hover:bg-teal-100/50",   div: "divide-teal-100",   foot: "bg-teal-100 border-teal-200",     noCol: "text-teal-700" },
+      SURPLUS:    { wrap: "bg-purple-50 border-purple-200", head: "bg-purple-100 border-purple-200", txt: "text-purple-700", soft: "text-purple-400", rowHover: "hover:bg-purple-100/50", div: "divide-purple-100", foot: "bg-purple-100 border-purple-200", noCol: "text-purple-700" },
+    } as const;
+    const C = PALETTE[kind];
     return (
       <div className="space-y-1.5 mt-4">
         <div className="flex items-center gap-2">
@@ -614,7 +638,7 @@ export default function DrawingTable({
             <tbody className={`divide-y ${C.div}`}>
               {list.map(d => {
                 const dExt = d as DrawingList & { assignedRemnantId?: string | null };
-                const rem = dExt.assignedRemnantId ? assignedRemnantDetails[dExt.assignedRemnantId] : null;
+                const rem = remnantOf(d);
                 const status = (d.status ?? "REGISTERED") as DrawingStatusType;
                 return (
                   <tr key={d.id} className={C.rowHover}>
@@ -949,6 +973,7 @@ export default function DrawingTable({
       {/* 등록잔재 사용 리스트 / 현장잔재 사용 리스트 */}
       {renderUseList("REGISTERED", registeredUseDrawings)}
       {renderUseList("REMNANT", remnantUseDrawings)}
+      {renderUseList("SURPLUS", surplusUseDrawings)}
 
       {/* 단건 강재 추가 모달 */}
       {showAddModal && (

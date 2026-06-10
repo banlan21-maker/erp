@@ -89,10 +89,22 @@ export default async function ProjectsPage({
   if ((tab === "list" || tab === "bom") && projectId) {
     const proj = await prisma.project.findUnique({
       where: { id: projectId },
-      include: { drawingLists: { orderBy: { createdAt: "asc" } } },
+      select: { id: true, projectCode: true, projectName: true, storageLocation: true },
     });
     if (proj) {
-      drawings = proj.drawingLists;
+      // 잔재 사용 도면의 type/사이즈/번호 등을 SSR 단에서 함께 fetch — 클라이언트 추가 fetch 불필요
+      drawings = await prisma.drawingList.findMany({
+        where: { projectId },
+        orderBy: { createdAt: "asc" },
+        include: {
+          assignedRemnant: {
+            select: {
+              id: true, remnantNo: true, type: true, shape: true,
+              width1: true, length1: true, width2: true, length2: true, weight: true,
+            },
+          },
+        },
+      });
       activeProject = {
         id: proj.id,
         projectCode: proj.projectCode,
