@@ -613,6 +613,7 @@ model SupplyOutbound {
 model Vendor {
   id             Int     @id @default(autoincrement())
   name           String // 업체명
+  factory        String  @default("공용") // 담당공장: '진교' / '진동' / '공용'
   contact        String? // 담당자명
   phone          String? // 연락처 (휴대폰)
   landline       String? // 일반전화 (사무실)

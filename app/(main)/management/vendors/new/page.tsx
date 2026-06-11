@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Truck, Save, AlertCircle } from "lucide-react";
+import { Truck, Save, AlertCircle, Factory } from "lucide-react";
+
+type FactoryKey = "진교" | "진동" | "공용";
+const FACTORY_OPTIONS: FactoryKey[] = ["진교", "진동", "공용"];
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -10,6 +13,7 @@ export default function NewVendorPage() {
   const router = useRouter();
   const [formData, setFormData] = useState({
     name: "",
+    factory: "공용" as FactoryKey,
     contact: "",
     phone: "",
     landline: "",
@@ -17,7 +21,7 @@ export default function NewVendorPage() {
     email: "",
     businessNumber: "",
     category: "",
-    memo: ""
+    memo: "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +87,33 @@ export default function NewVendorPage() {
             <div className="sm:col-span-2">
               <label className="block text-sm font-semibold text-gray-800 mb-1.5">업체명 <span className="text-red-500">*</span></label>
               <Input required name="name" value={formData.name} onChange={handleChange} placeholder="예: (주)한국테크 공급" className="w-full" />
+            </div>
+
+            {/* 담당공장 */}
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-semibold text-gray-800 mb-1.5 flex items-center gap-1.5">
+                <Factory size={15} className="text-gray-400" />
+                담당공장 <span className="text-red-500">*</span>
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                {FACTORY_OPTIONS.map(f => (
+                  <button
+                    type="button"
+                    key={f}
+                    onClick={() => setFormData(prev => ({ ...prev, factory: f }))}
+                    className={`px-4 py-2 text-sm rounded-lg border font-semibold transition-all ${
+                      formData.factory === f
+                        ? f === "진교" ? "bg-sky-600 text-white border-sky-600"
+                        : f === "진동" ? "bg-violet-600 text-white border-violet-600"
+                        : "bg-amber-500 text-white border-amber-500"
+                        : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
+                    }`}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-gray-500 mt-1">주로 사용하는 공장을 선택하세요. 두 공장 모두 사용하면 [공용].</p>
             </div>
 
             <div>

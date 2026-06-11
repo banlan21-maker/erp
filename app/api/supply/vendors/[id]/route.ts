@@ -54,7 +54,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       return NextResponse.json({ success: true, data: updatedVendor });
     }
 
-    const { name, contact, phone, landline, fax, email, businessNumber, category, memo } = body;
+    const { name, factory, contact, phone, landline, fax, email, businessNumber, category, memo } = body;
 
     if (!name?.trim()) {
       return NextResponse.json({ success: false, error: "업체명은 필수입니다." }, { status: 400 });
@@ -62,7 +62,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     const updatedVendor = await prisma.vendor.update({
       where: { id: vendorId },
-      data: { name, contact, phone, landline, fax, email, businessNumber, category, memo }
+      data: {
+        name,
+        ...(factory && ["진교", "진동", "공용"].includes(factory) ? { factory } : {}),
+        contact, phone, landline, fax, email, businessNumber, category, memo,
+      },
     });
 
     return NextResponse.json({ success: true, data: updatedVendor });

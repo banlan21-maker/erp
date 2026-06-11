@@ -30,14 +30,18 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, contact, phone, landline, fax, email, businessNumber, category, memo } = body;
+    const { name, factory, contact, phone, landline, fax, email, businessNumber, category, memo } = body;
 
     if (!name?.trim()) {
       return NextResponse.json({ success: false, error: "업체명은 필수입니다." }, { status: 400 });
     }
 
     const newVendor = await prisma.vendor.create({
-      data: { name, contact, phone, landline, fax, email, businessNumber, category, memo }
+      data: {
+        name,
+        factory: factory && ["진교", "진동", "공용"].includes(factory) ? factory : "공용",
+        contact, phone, landline, fax, email, businessNumber, category, memo,
+      },
     });
 
     return NextResponse.json({ success: true, data: newVendor });

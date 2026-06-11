@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Building2, Edit, Calendar, PackageCheck, RefreshCw, Mail, Phone, Hash, Tag, FileText, ArrowLeft } from "lucide-react";
+import { Building2, Edit, Calendar, PackageCheck, RefreshCw, Mail, Phone, Hash, Tag, FileText, ArrowLeft, Factory } from "lucide-react";
+
+const FACTORY_BADGE: Record<string, string> = {
+  진교: "bg-sky-100 text-sky-700 border-sky-200",
+  진동: "bg-violet-100 text-violet-700 border-violet-200",
+  공용: "bg-amber-100 text-amber-700 border-amber-200",
+};
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -104,8 +110,11 @@ export default function VendorDetailPage() {
           <ArrowLeft size={18} />
         </button>
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2 flex-wrap">
             <Building2 size={24} className="text-blue-600" /> {vendor.name}
+            <span className={`text-xs px-2.5 py-0.5 rounded-full border font-semibold ${FACTORY_BADGE[vendor.factory ?? "공용"]}`}>
+              {vendor.factory ?? "공용"}
+            </span>
           </h2>
           <p className="text-sm text-gray-500 mt-1">거래처 정보 및 월별 입고(매입) 이력 상세표</p>
         </div>
@@ -123,6 +132,13 @@ export default function VendorDetailPage() {
           </div>
 
           <div className="space-y-5 flex-1 p-1">
+            <div className="flex gap-3">
+              <span className="mt-0.5 text-gray-400"><Factory size={16} /></span>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 mb-0.5">담당공장</p>
+                <p className="text-sm text-gray-900 font-medium">{vendor.factory ?? "공용"}</p>
+              </div>
+            </div>
             <div className="flex gap-3">
               <span className="mt-0.5 text-gray-400"><Tag size={16} /></span>
               <div>
@@ -272,6 +288,29 @@ export default function VendorDetailPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">이메일</label>
                   <Input type="email" name="email" value={editingData.email || ""} onChange={handleEditChange} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-800 mb-1.5 flex items-center gap-1.5">
+                    <Factory size={15} className="text-gray-400" /> 담당공장
+                  </label>
+                  <div className="flex gap-2 flex-wrap">
+                    {(["진교", "진동", "공용"] as const).map(f => (
+                      <button
+                        type="button"
+                        key={f}
+                        onClick={() => setEditingData((prev: any) => ({ ...prev, factory: f }))}
+                        className={`px-4 py-2 text-sm rounded-lg border font-semibold transition-all ${
+                          (editingData.factory ?? "공용") === f
+                            ? f === "진교" ? "bg-sky-600 text-white border-sky-600"
+                            : f === "진동" ? "bg-violet-600 text-white border-violet-600"
+                            : "bg-amber-500 text-white border-amber-500"
+                            : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
+                        }`}
+                      >
+                        {f}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="sm:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">취급품목 카테고리</label>
