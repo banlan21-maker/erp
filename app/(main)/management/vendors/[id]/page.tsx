@@ -148,7 +148,7 @@ export default function VendorDetailPage() {
             <div className="flex gap-3">
               <span className="mt-0.5 text-gray-400"><Tag size={16} /></span>
               <div>
-                <p className="text-xs font-semibold text-gray-500 mb-0.5">취급품목 카테고리</p>
+                <p className="text-xs font-semibold text-gray-500 mb-0.5">취급품목</p>
                 <p className="text-sm text-gray-900 font-medium">{vendor.category || "-"}</p>
               </div>
             </div>
@@ -319,7 +319,7 @@ export default function VendorDetailPage() {
                   </div>
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">취급품목 카테고리</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">취급품목</label>
                   <Input name="category" value={editingData.category || ""} onChange={handleEditChange} />
                 </div>
                 <div className="sm:col-span-2">

@@ -39,16 +39,16 @@ interface Vendor {
 
 // Project.MD § 13.X 표준 cascading filter 패턴
 const COLS = [
-  { key: "name",           label: "업체명",           filterable: true },
-  { key: "factory",        label: "담당공장",         filterable: true },
-  { key: "contact",        label: "담당자명",         filterable: true },
-  { key: "phone",          label: "연락처",           filterable: true },
-  { key: "landline",       label: "일반전화",         filterable: true },
-  { key: "fax",            label: "FAX",              filterable: true },
-  { key: "email",          label: "이메일",           filterable: true },
-  { key: "businessNumber", label: "사업자등록번호",   filterable: true },
-  { key: "category",       label: "취급품목 카테고리", filterable: true },
-  { key: "memo",           label: "비고",             filterable: false },
+  { key: "name",           label: "업체명",         filterable: true },
+  { key: "category",       label: "취급품목",       filterable: true },
+  { key: "factory",        label: "담당공장",       filterable: true },
+  { key: "contact",        label: "담당자명",       filterable: true },
+  { key: "phone",          label: "연락처",         filterable: true },
+  { key: "landline",       label: "일반전화",       filterable: true },
+  { key: "fax",            label: "FAX",            filterable: true },
+  { key: "email",          label: "이메일",         filterable: true },
+  { key: "businessNumber", label: "사업자등록번호", filterable: true },
+  { key: "memo",           label: "비고",           filterable: false },
 ] as const;
 type ColKey = (typeof COLS)[number]["key"];
 
@@ -255,6 +255,7 @@ export default function VendorsPage() {
                       className="cursor-pointer hover:bg-gray-50/70 transition-colors group"
                     >
                       <td className="px-3 py-1 text-xs font-bold text-gray-900 border-r border-gray-100 group-hover:text-blue-700 transition-colors">{vendor.name}</td>
+                      <td className="px-3 py-1 text-xs text-gray-700 border-r border-gray-100">{vendor.category || <span className="text-gray-300">-</span>}</td>
                       <td className="px-3 py-1 text-xs border-r border-gray-100">
                         <span className={`text-[11px] px-2 py-0.5 rounded-full border font-semibold ${FACTORY_BADGE[vendor.factory ?? "공용"]}`}>
                           {vendor.factory ?? "공용"}
@@ -266,7 +267,6 @@ export default function VendorsPage() {
                       <td className="px-3 py-1 text-xs text-gray-700 border-r border-gray-100 font-mono">{vendor.fax || <span className="text-gray-300">-</span>}</td>
                       <td className="px-3 py-1 text-xs text-gray-700 border-r border-gray-100">{vendor.email || <span className="text-gray-300">-</span>}</td>
                       <td className="px-3 py-1 text-xs text-gray-700 border-r border-gray-100 font-mono">{vendor.businessNumber || <span className="text-gray-300">-</span>}</td>
-                      <td className="px-3 py-1 text-xs text-gray-700 border-r border-gray-100">{vendor.category || <span className="text-gray-300">-</span>}</td>
                       <td className="px-3 py-1 text-xs text-gray-500 truncate max-w-[200px]" title={vendor.memo ?? ""}>{vendor.memo || <span className="text-gray-300">-</span>}</td>
                       <td className="px-3 py-1 text-xs text-center">
                         <div className="flex items-center justify-center gap-1">

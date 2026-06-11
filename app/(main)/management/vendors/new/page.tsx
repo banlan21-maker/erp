@@ -147,7 +147,7 @@ export default function NewVendorPage() {
             </div>
 
             <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">취급품목 카테고리</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">취급품목</label>
               <Input name="category" value={formData.category} onChange={handleChange} placeholder="예: 플라즈마 소모품, 절단기 부품, 복사기 렌탈 등" className="w-full" />
             </div>
 
