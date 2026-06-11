@@ -1303,3 +1303,36 @@ model SteelPlanHeat {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+
+// ==========================================
+// 절단파트 — 납품처(고객) 관리
+// 절단·가공부재를 납품받는 거래처 (출고장/거래명세표 자동출력 데이터 소스)
+// 자재거래처(Vendor) 와는 별도 — 매출 측 거래처
+// ==========================================
+model DeliveryVendor {
+  id                  String   @id @default(cuid())
+  bizNo               String?  // 사업자등록번호 (예: 123-45-67890)
+  name                String   // 상호 (필수)
+  ceo                 String?  // 대표자
+  address             String?  // 주소
+  bizType             String?  // 업태
+  bizItem             String?  // 종목
+  phone               String?  // 회사 전화번호
+  fax                 String?  // 팩스
+  contactName         String?  // 업체담당자 이름
+  contactPhone        String?  // 업체담당자 전화번호
+  memo                String?  // 비고
+
+  // 사업자등록증 — 업체당 1개 (교체 시 기존 파일 폐기)
+  bizCertStoredName   String?  // 디스크 저장명 (cuid.확장자)
+  bizCertOriginalName String?  // 원본 파일명
+  bizCertMimeType     String?  // image/* | application/pdf
+  bizCertSize         Int?     // bytes
+
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([name])
+}

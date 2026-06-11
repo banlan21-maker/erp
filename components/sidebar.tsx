@@ -6,7 +6,7 @@ import {
   LayoutDashboard, FolderOpen, FileSpreadsheet, ClipboardList,
   Users, BarChart2, ChevronLeft, ChevronRight, Smartphone,
   ExternalLink, Package, Truck, History, CalendarDays, Eye, Wrench,
-  UtensilsCrossed, Archive, Zap, Gauge, CreditCard,
+  UtensilsCrossed, Archive, Zap, Gauge, CreditCard, Building2,
 } from "lucide-react";
 import type { ComponentType } from "react";
 
@@ -24,12 +24,13 @@ type MenuItem = { href: string; label: string; icon: ComponentType<{ size?: numb
 
 const menuGroups: Record<string, MenuItem[]> = {
   cnc: [
-    { href: "/cutpart/dashboard",  label: "절단 대시보드", icon: LayoutDashboard },
-    { href: "/cutpart/steel-plan", label: "강재입고관리",  icon: ClipboardList },
-    { href: "/cutpart/projects",   label: "프로젝트",      icon: FolderOpen },
-    { href: "/cutpart/scrap",      label: "잔재관리",      icon: Archive },
-    { href: "/cutpart/worklog",    label: "작업일보관리",   icon: ClipboardList },
-    { href: "/cutpart/reports",    label: "절단보고서",     icon: BarChart2 },
+    { href: "/cutpart/dashboard",         label: "절단 대시보드", icon: LayoutDashboard },
+    { href: "/cutpart/steel-plan",        label: "강재입고관리",  icon: ClipboardList },
+    { href: "/cutpart/projects",          label: "프로젝트",      icon: FolderOpen },
+    { href: "/cutpart/scrap",             label: "잔재관리",      icon: Archive },
+    { href: "/cutpart/worklog",           label: "작업일보관리",   icon: ClipboardList },
+    { href: "/cutpart/delivery-vendors",  label: "납품처관리",    icon: Building2 },
+    { href: "/cutpart/reports",           label: "절단보고서",     icon: BarChart2 },
   ],
   schedule: [
     { href: "/cutpart/schedule",      label: "스케줄 생성", icon: CalendarDays },
