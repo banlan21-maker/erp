@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Building2, Edit, Calendar, PackageCheck, RefreshCw, Mail, Phone, Hash, Tag, FileText, ArrowLeft, Factory } from "lucide-react";
 
 const FACTORY_BADGE: Record<string, string> = {
@@ -25,9 +25,15 @@ export default function VendorDetailPage() {
   const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
   const [selectedMonth, setSelectedMonth] = useState(defaultMonth);
 
+  const searchParams = useSearchParams();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingData, setEditingData] = useState<any>({});
   const [isSaving, setIsSaving] = useState(false);
+
+  // 리스트 → ?edit=1 로 진입 시 정보수정 모달 자동 열림
+  useEffect(() => {
+    if (searchParams.get("edit") === "1") setIsEditModalOpen(true);
+  }, [searchParams]);
 
   const fetchVendorDetail = async () => {
     setLoading(true);

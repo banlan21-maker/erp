@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Truck, Search, Plus, RefreshCw,
   ArrowUp, ArrowDown, ArrowUpDown, Filter as FilterIcon, XCircle,
+  Pencil, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -135,6 +136,29 @@ export default function VendorsPage() {
 
   const filterCount = Object.values(colFilters).filter(v => v.length > 0).length;
 
+  // 삭제 핸들러
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const handleDelete = async (vendor: Vendor, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`'${vendor.name}' 거래처를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
+    setDeletingId(vendor.id);
+    try {
+      const res = await fetch(`/api/supply/vendors/${vendor.id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!json.success) {
+        alert(json.error ?? "삭제 실패");
+        return;
+      }
+      setVendors(prev => prev.filter(v => v.id !== vendor.id));
+    } catch {
+      alert("서버 오류가 발생했습니다.");
+    } finally { setDeletingId(null); }
+  };
+  const handleEdit = (vendor: Vendor, e: React.MouseEvent) => {
+    e.stopPropagation();
+    router.push(`/management/vendors/${vendor.id}?edit=1`);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -213,12 +237,13 @@ export default function VendorsPage() {
                       </th>
                     );
                   })}
+                  <th className="px-3 py-2 text-[11px] font-semibold text-gray-500 text-center whitespace-nowrap">액션</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {sortedRows.length === 0 ? (
                   <tr>
-                    <td colSpan={COLS.length} className="px-3 py-12 text-center text-gray-400 text-sm">
+                    <td colSpan={COLS.length + 1} className="px-3 py-12 text-center text-gray-400 text-sm">
                       {vendors.length === 0 ? "등록된 거래처가 없습니다." : "검색·필터 조건에 맞는 거래처가 없습니다."}
                     </td>
                   </tr>
@@ -243,6 +268,25 @@ export default function VendorsPage() {
                       <td className="px-3 py-1 text-xs text-gray-700 border-r border-gray-100 font-mono">{vendor.businessNumber || <span className="text-gray-300">-</span>}</td>
                       <td className="px-3 py-1 text-xs text-gray-700 border-r border-gray-100">{vendor.category || <span className="text-gray-300">-</span>}</td>
                       <td className="px-3 py-1 text-xs text-gray-500 truncate max-w-[200px]" title={vendor.memo ?? ""}>{vendor.memo || <span className="text-gray-300">-</span>}</td>
+                      <td className="px-3 py-1 text-xs text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={e => handleEdit(vendor, e)}
+                            title="수정"
+                            className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            onClick={e => handleDelete(vendor, e)}
+                            disabled={deletingId === vendor.id}
+                            title="삭제"
+                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-40"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))
                 )}

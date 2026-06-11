@@ -74,3 +74,25 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ success: false, error: error.message || "수정 중 오류가 발생했습니다." }, { status: 500 });
   }
 }
+
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const vendorId = Number(id);
+    if (!vendorId) return NextResponse.json({ success: false, error: "잘못된 ID입니다." }, { status: 400 });
+
+    // 입고 이력 연결 검사 — 있으면 삭제 차단 (이력 보존 정책)
+    const inboundCount = await prisma.supplyInbound.count({ where: { vendorId } });
+    if (inboundCount > 0) {
+      return NextResponse.json({
+        success: false,
+        error: `입고 이력 ${inboundCount}건이 연결되어 있어 삭제할 수 없습니다. 이력을 먼저 정리하거나 다른 거래처로 이관하세요.`,
+      }, { status: 409 });
+    }
+
+    await prisma.vendor.delete({ where: { id: vendorId } });
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message || "삭제 중 오류가 발생했습니다." }, { status: 500 });
+  }
+}
