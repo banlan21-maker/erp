@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const {
       date, driverName, driverPhone, vehicleNo, items,
-      departure, destination, departTime, cost, memo,
+      departure, waypoint, destination, departTime, cost, memo,
     } = body;
 
     if (!date)                  return NextResponse.json({ success: false, error: "날짜를 입력해주세요." },     { status: 400 });
@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
         vehicleNo:   vehicleNo?.trim()   || null,
         items:       items?.trim()       || null,
         departure:   departure?.trim()   || null,
+        waypoint:    waypoint?.trim()    || null,
         destination: destination?.trim() || null,
         departTime:  departTime          || null,
         cost:        cost != null && cost !== "" ? Number(cost) : null,

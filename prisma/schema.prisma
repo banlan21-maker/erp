@@ -1050,6 +1050,7 @@ model CharterUsage {
   vehicleNo   String? // 차량번호
   items       String? // 출고품목
   departure   String? // 출발지 (DrivingLocation 프리셋 또는 직접입력)
+  waypoint    String? // 경유지 (선택사항 — 사용자가 +경유지 버튼으로 추가 시)
   destination String? // 도착지
   departTime  String? // 출발시간 HH:MM
   cost        Int? // 용차비용 (원)

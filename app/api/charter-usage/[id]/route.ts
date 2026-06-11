@@ -19,6 +19,7 @@ export async function PATCH(
     if (body.vehicleNo    !== undefined) data.vehicleNo   = body.vehicleNo?.trim()   || null;
     if (body.items        !== undefined) data.items       = body.items?.trim()       || null;
     if (body.departure    !== undefined) data.departure   = body.departure?.trim()   || null;
+    if (body.waypoint     !== undefined) data.waypoint    = body.waypoint?.trim()    || null;
     if (body.destination  !== undefined) data.destination = body.destination?.trim() || null;
     if (body.departTime   !== undefined) data.departTime  = body.departTime || null;
     if (body.cost         !== undefined) data.cost        = body.cost != null && body.cost !== "" ? Number(body.cost) : null;

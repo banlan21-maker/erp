@@ -22,6 +22,7 @@ interface CharterUsage {
   vehicleNo:   string | null;
   items:       string | null;
   departure:   string | null;
+  waypoint:    string | null;
   destination: string | null;
   departTime:  string | null;
   cost:        number | null;
@@ -38,6 +39,7 @@ const FORM_INIT = {
   vehicleNo:   "",
   items:       "",
   departure:   "",
+  waypoint:    "",
   destination: "",
   departTime:  "",
   cost:        "",
@@ -62,6 +64,10 @@ export default function CharterUsageTab() {
 
   const [editId,   setEditId]   = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ ...FORM_INIT });
+
+  // 경유지 표시 여부 (등록 모달 / 인라인 편집 행 각각)
+  const [showWaypoint,     setShowWaypoint]     = useState(false);
+  const [showEditWaypoint, setShowEditWaypoint] = useState(false);
 
   /* 용차 운전자 목록 (자동완성 + 차량/전화 자동입력) */
   interface CharterDriver { id: string; name: string; vehicleNo: string | null; phoneNo: string | null }
@@ -152,8 +158,21 @@ export default function CharterUsageTab() {
   };
   const openForm = () => {
     setForm({ ...FORM_INIT, date: todayYMD() });
+    setShowWaypoint(false);
     setFormErr("");
     setShowForm(true);
+  };
+  const toggleWaypoint = () => {
+    setShowWaypoint(prev => {
+      if (prev) set("waypoint", ""); // 닫을 때 값 비움
+      return !prev;
+    });
+  };
+  const toggleEditWaypoint = () => {
+    setShowEditWaypoint(prev => {
+      if (prev) setE("waypoint", "");
+      return !prev;
+    });
   };
   const handleSubmit = async () => {
     setFormErr("");
@@ -177,6 +196,7 @@ export default function CharterUsageTab() {
   const setE = (k: keyof typeof editForm, v: string) => setEditForm(p => ({ ...p, [k]: v }));
   const openEdit = (l: CharterUsage) => {
     setEditId(l.id);
+    setShowEditWaypoint(!!l.waypoint);
     setEditForm({
       date:        l.date,
       driverName:  l.driverName,
@@ -184,6 +204,7 @@ export default function CharterUsageTab() {
       vehicleNo:   l.vehicleNo ?? "",
       items:       l.items ?? "",
       departure:   l.departure ?? "",
+      waypoint:    l.waypoint ?? "",
       destination: l.destination ?? "",
       departTime:  l.departTime ?? "",
       cost:        l.cost != null ? String(l.cost) : "",
@@ -293,10 +314,10 @@ export default function CharterUsageTab() {
     if (!d.success) { alert("데이터 조회 실패"); return; }
     const all: CharterUsage[] = d.data;
 
-    const header = ["날짜", "운전자", "전화번호", "차량번호", "출고품목", "출발지", "도착지", "출발시간", "용차비용", "비고"];
+    const header = ["날짜", "운전자", "전화번호", "차량번호", "출고품목", "출발지", "경유지", "도착지", "출발시간", "용차비용", "비고"];
     const toRow = (l: CharterUsage) => [
       l.date, l.driverName, l.driverPhone ?? "", l.vehicleNo ?? "", l.items ?? "",
-      l.departure ?? "", l.destination ?? "", l.departTime ?? "",
+      l.departure ?? "", l.waypoint ?? "", l.destination ?? "", l.departTime ?? "",
       l.cost ?? 0, l.memo ?? "",
     ];
 
@@ -305,12 +326,12 @@ export default function CharterUsageTab() {
       header,
       ...all.map(toRow),
       [],
-      ["합계", "", "", "", "", "", "", "",
+      ["합계", "", "", "", "", "", "", "", "",
         all.reduce((s, l) => s + (l.cost ?? 0), 0), ""],
     ]);
     ws["!cols"] = [
       { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 24 },
-      { wch: 16 }, { wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 30 },
+      { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 30 },
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, `${year}-${String(month).padStart(2, "0")}`);
@@ -428,8 +449,20 @@ export default function CharterUsageTab() {
                 <td className="px-2 py-1.5 border-r border-gray-100"><Input value={editForm.driverPhone} onChange={e => setE("driverPhone", e.target.value)} className="h-7 text-xs w-28" /></td>
                 <td className="px-2 py-1.5 border-r border-gray-100"><Input value={editForm.vehicleNo} onChange={e => setE("vehicleNo", e.target.value)} className="h-7 text-xs w-24" /></td>
                 <td className="px-2 py-1.5 border-r border-gray-100"><Input value={editForm.items} onChange={e => setE("items", e.target.value)} className="h-7 text-xs w-32" /></td>
-                <td className="px-2 py-1.5 border-r border-gray-100"><Input value={editForm.departure} onChange={e => setE("departure", e.target.value)} className="h-7 text-xs w-24" /></td>
-                <td className="px-2 py-1.5 border-r border-gray-100"><Input value={editForm.destination} onChange={e => setE("destination", e.target.value)} className="h-7 text-xs w-24" /></td>
+                <td className="px-2 py-1.5 border-r border-gray-100 align-top">
+                  <div className="space-y-1">
+                    <Input value={editForm.departure} onChange={e => setE("departure", e.target.value)} className="h-7 text-xs w-24" placeholder="출발지" />
+                    {showEditWaypoint ? (
+                      <div className="flex items-center gap-1">
+                        <Input value={editForm.waypoint} onChange={e => setE("waypoint", e.target.value)} className="h-7 text-xs w-24" placeholder="경유지" />
+                        <button type="button" onClick={toggleEditWaypoint} className="text-[10px] text-red-500 hover:underline" title="경유지 제거">×</button>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={toggleEditWaypoint} className="text-[10px] text-blue-600 hover:underline">+ 경유지</button>
+                    )}
+                  </div>
+                </td>
+                <td className="px-2 py-1.5 border-r border-gray-100 align-top"><Input value={editForm.destination} onChange={e => setE("destination", e.target.value)} className="h-7 text-xs w-24" placeholder="도착지" /></td>
                 <td className="px-2 py-1.5 border-r border-gray-100"><Input type="time" value={editForm.departTime} onChange={e => setE("departTime", e.target.value)} className="h-7 text-xs w-20" /></td>
                 <td className="px-2 py-1.5 border-r border-gray-100"><Input type="number" value={editForm.cost} onChange={e => setE("cost", e.target.value)} className="h-7 text-xs w-24 text-right" /></td>
                 <td className="px-2 py-1.5 border-r border-gray-100"><Input value={editForm.memo} onChange={e => setE("memo", e.target.value)} className="h-7 text-xs w-32" /></td>
@@ -447,7 +480,10 @@ export default function CharterUsageTab() {
                 <td className="px-3 py-2 text-xs text-gray-600 border-r border-gray-100 font-mono">{l.driverPhone || <span className="text-gray-300">-</span>}</td>
                 <td className="px-3 py-2 text-xs text-gray-600 border-r border-gray-100 font-mono">{l.vehicleNo || <span className="text-gray-300">-</span>}</td>
                 <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100 max-w-[160px] truncate" title={l.items ?? ""}>{l.items || <span className="text-gray-300">-</span>}</td>
-                <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100">{l.departure || <span className="text-gray-300">-</span>}</td>
+                <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100">
+                  {l.departure || <span className="text-gray-300">-</span>}
+                  {l.waypoint && <div className="text-[10px] text-purple-600 mt-0.5">↳ 경유: {l.waypoint}</div>}
+                </td>
                 <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100">{l.destination || <span className="text-gray-300">-</span>}</td>
                 <td className="px-3 py-2 text-xs text-gray-600 text-center border-r border-gray-100 font-mono">{l.departTime || <span className="text-gray-300">-</span>}</td>
                 <td className="px-3 py-2 text-xs text-purple-700 font-medium border-r border-gray-100 text-right">{won(l.cost)}</td>
@@ -554,31 +590,51 @@ export default function CharterUsageTab() {
                     <Button size="sm" onClick={addLocation} className="h-8 text-xs">추가</Button>
                   </div>
                 )}
-                {(["departure", "destination"] as const).map(field => (
-                  <div key={field} className="space-y-1.5">
-                    <p className="text-xs text-gray-500">{field === "departure" ? "출발지" : "도착지"}</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {locations.map(loc => (
-                        <div key={loc.id} className="relative">
-                          <button type="button"
-                            onClick={() => set(field, form[field] === loc.name ? "" : loc.name)}
-                            className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
-                              form[field] === loc.name
-                                ? "bg-blue-600 text-white border-blue-600"
-                                : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
-                            }`}>
-                            {loc.name}
-                          </button>
-                          {locEditMode && (
-                            <button type="button" onClick={() => deleteLocation(loc.id, loc.name)}
-                              className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] hover:bg-red-600">×</button>
-                          )}
-                        </div>
-                      ))}
+                {(() => {
+                  const FIELDS = showWaypoint
+                    ? ["departure", "waypoint", "destination"] as const
+                    : ["departure", "destination"] as const;
+                  const LABEL: Record<string, string> = {
+                    departure: "출발지", waypoint: "경유지", destination: "도착지",
+                  };
+                  return FIELDS.map(field => (
+                    <div key={field} className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-gray-500">{LABEL[field]}</p>
+                        {field === "waypoint" && (
+                          <button type="button" onClick={toggleWaypoint}
+                            className="text-[11px] text-red-500 hover:underline">× 경유지 제거</button>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {locations.map(loc => (
+                          <div key={loc.id} className="relative">
+                            <button type="button"
+                              onClick={() => set(field, form[field] === loc.name ? "" : loc.name)}
+                              className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+                                form[field] === loc.name
+                                  ? "bg-blue-600 text-white border-blue-600"
+                                  : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+                              }`}>
+                              {loc.name}
+                            </button>
+                            {locEditMode && (
+                              <button type="button" onClick={() => deleteLocation(loc.id, loc.name)}
+                                className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] hover:bg-red-600">×</button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <Input value={form[field]} onChange={e => set(field, e.target.value)} placeholder="직접 입력" className="h-8 text-xs" />
+                      {field === "departure" && !showWaypoint && (
+                        <button type="button" onClick={toggleWaypoint}
+                          className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline">
+                          + 경유지 추가
+                        </button>
+                      )}
                     </div>
-                    <Input value={form[field]} onChange={e => set(field, e.target.value)} placeholder="직접 입력" className="h-8 text-xs" />
-                  </div>
-                ))}
+                  ));
+                })()}
               </div>
 
               <div>

@@ -34,11 +34,19 @@ export default function FieldCharterUsage() {
     vehicleNo:   "",
     items:       "",
     departure:   "",
+    waypoint:    "",
     destination: "",
     departTime:  nowHM(),
     cost:        "",
     memo:        "",
   });
+  const [showWaypoint, setShowWaypoint] = useState(false);
+  const toggleWaypoint = () => {
+    setShowWaypoint(prev => {
+      if (prev) setForm(p => ({ ...p, waypoint: "" }));
+      return !prev;
+    });
+  };
 
   useEffect(() => {
     fetch("/api/driving-location").then(r => r.json()).then(d => {
@@ -83,9 +91,10 @@ export default function FieldCharterUsage() {
       if (!d.success) { alert(d.error ?? "저장 실패"); return; }
       setForm({
         date: todayStr(), driverName: "", driverPhone: "", vehicleNo: "",
-        items: "", departure: "", destination: "", departTime: nowHM(),
+        items: "", departure: "", waypoint: "", destination: "", departTime: nowHM(),
         cost: "", memo: "",
       });
+      setShowWaypoint(false);
       setDone(true);
       setTimeout(() => setDone(false), 2000);
     } catch { alert("서버 오류"); }
@@ -131,28 +140,48 @@ export default function FieldCharterUsage() {
         <input value={form.items} onChange={e => set("items", e.target.value)} placeholder="예: 강재, 부재" className={fieldCls} />
       </div>
 
-      {/* 출발지 / 도착지 — 프리셋 + 직접입력 */}
-      {(["departure", "destination"] as const).map(field => (
-        <div key={field}>
-          <label className={labelCls}>{field === "departure" ? "출발지" : "도착지"}</label>
-          {locations.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {locations.map(loc => (
-                <button key={loc.id} type="button"
-                  onClick={() => set(field, form[field] === loc.name ? "" : loc.name)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-                    form[field] === loc.name
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : "bg-gray-800 text-gray-300 border-gray-700"
-                  }`}>
-                  {loc.name}
-                </button>
-              ))}
+      {/* 출발지 → (경유지) → 도착지 — 프리셋 + 직접입력 */}
+      {(() => {
+        const FIELDS = showWaypoint
+          ? ["departure", "waypoint", "destination"] as const
+          : ["departure", "destination"] as const;
+        const LABEL: Record<string, string> = {
+          departure: "출발지", waypoint: "경유지", destination: "도착지",
+        };
+        return FIELDS.map(field => (
+          <div key={field}>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className={labelCls + " mb-0"}>{LABEL[field]}</label>
+              {field === "waypoint" && (
+                <button type="button" onClick={toggleWaypoint}
+                  className="text-xs font-semibold text-red-400 active:text-red-300">× 경유지 제거</button>
+              )}
             </div>
-          )}
-          <input value={form[field]} onChange={e => set(field, e.target.value)} placeholder="직접 입력" className={fieldCls} />
-        </div>
-      ))}
+            {locations.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {locations.map(loc => (
+                  <button key={loc.id} type="button"
+                    onClick={() => set(field, form[field] === loc.name ? "" : loc.name)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                      form[field] === loc.name
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "bg-gray-800 text-gray-300 border-gray-700"
+                    }`}>
+                    {loc.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            <input value={form[field]} onChange={e => set(field, e.target.value)} placeholder="직접 입력" className={fieldCls} />
+            {field === "departure" && !showWaypoint && (
+              <button type="button" onClick={toggleWaypoint}
+                className="mt-2 w-full py-2.5 rounded-xl border border-dashed border-blue-500/60 text-blue-300 text-sm font-semibold active:bg-blue-900/30">
+                + 경유지 추가
+              </button>
+            )}
+          </div>
+        ));
+      })()}
 
       <div>
         <label className={labelCls}>용차비용 (원)</label>
