@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Car, CheckCircle2, ChevronDown, RefreshCw, Star } from "lucide-react";
+import MobileAutocomplete from "@/components/mobile-autocomplete";
 
 interface Vehicle { id: string; code: string; name: string; plateNo: string | null; mileage: number | null }
 interface RegularDriver { id: string; name: string }
@@ -21,90 +22,6 @@ const INIT = {
 /* ── 공통 스타일 ── */
 const fieldCls = "w-full bg-gray-800 border border-gray-700 rounded-2xl px-4 py-4 text-white text-base placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 appearance-none";
 const labelCls = "block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2";
-
-/* ── 커스텀 드롭다운 (iOS Safari 호환) ── */
-function MobileAutocomplete({
-  value,
-  onChange,
-  options,
-  placeholder,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: { label: string; sub?: string }[];
-  placeholder?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState(value);
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  // 외부 터치시 닫기
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent | TouchEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    document.addEventListener("touchstart", handler);
-    return () => {
-      document.removeEventListener("mousedown", handler);
-      document.removeEventListener("touchstart", handler);
-    };
-  }, [open]);
-
-  // 상위 value가 바뀌면 query 동기화 (reset 시)
-  useEffect(() => { setQuery(value); }, [value]);
-
-  const filtered = query.trim()
-    ? options.filter(o => o.label.includes(query) || (o.sub && o.sub.includes(query)))
-    : options;
-
-  const select = (label: string) => {
-    onChange(label);
-    setQuery(label);
-    setOpen(false);
-  };
-
-  return (
-    <div ref={wrapRef} className="relative">
-      <input
-        type="text"
-        value={query}
-        placeholder={placeholder}
-        autoComplete="off"
-        autoCorrect="off"
-        autoCapitalize="off"
-        spellCheck={false}
-        className={fieldCls}
-        onFocus={() => setOpen(true)}
-        onChange={e => {
-          setQuery(e.target.value);
-          onChange(e.target.value);
-          setOpen(true);
-        }}
-      />
-      {open && filtered.length > 0 && (
-        <ul className="absolute z-50 left-0 right-0 mt-1 bg-gray-800 border border-gray-600 rounded-2xl overflow-hidden shadow-xl max-h-52 overflow-y-auto">
-          {filtered.map((o, i) => (
-            <li key={i}>
-              <button
-                type="button"
-                onMouseDown={e => { e.preventDefault(); select(o.label); }}
-                onTouchEnd={e => { e.preventDefault(); select(o.label); }}
-                className="w-full text-left px-4 py-3 text-white text-base active:bg-gray-700 border-b border-gray-700 last:border-0"
-              >
-                {o.label}
-                {o.sub && <span className="text-gray-400 text-sm ml-2">{o.sub}</span>}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
 
 /* ── 장소 선택 (칩 + 직접입력 + 위치 관리) ── */
 interface DrivingLocation { id: string; name: string; }
