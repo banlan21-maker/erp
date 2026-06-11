@@ -126,14 +126,15 @@ export default function CharterUsageTab() {
 
   /* 등록 */
   const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }));
-  // 운전자 이름 변경 시 — 마스터에서 일치하면 차량번호/전화번호 자동 채움 (사용자가 이후 수정 가능)
+  // 운전자 이름 변경 시 — 마스터에 일치하면 그 사람 차량/전화로 덮어씀.
+  // 다른 사람으로 바꾸면 자동으로 새 사람 정보로 교체. 마스터에 없는 이름(직접입력)이면 기존 값 유지.
   const onDriverNameChange = (v: string) => {
     setForm(p => {
       const next = { ...p, driverName: v };
       const hit = charterDrivers.find(d => d.name === v.trim());
       if (hit) {
-        if (!p.vehicleNo.trim()   && hit.vehicleNo) next.vehicleNo   = hit.vehicleNo;
-        if (!p.driverPhone.trim() && hit.phoneNo)   next.driverPhone = hit.phoneNo;
+        next.vehicleNo   = hit.vehicleNo ?? "";
+        next.driverPhone = hit.phoneNo   ?? "";
       }
       return next;
     });
@@ -143,8 +144,8 @@ export default function CharterUsageTab() {
       const next = { ...p, driverName: v };
       const hit = charterDrivers.find(d => d.name === v.trim());
       if (hit) {
-        if (!p.vehicleNo.trim()   && hit.vehicleNo) next.vehicleNo   = hit.vehicleNo;
-        if (!p.driverPhone.trim() && hit.phoneNo)   next.driverPhone = hit.phoneNo;
+        next.vehicleNo   = hit.vehicleNo ?? "";
+        next.driverPhone = hit.phoneNo   ?? "";
       }
       return next;
     });

@@ -55,20 +55,21 @@ export default function FieldCharterUsage() {
     setForm(p => ({
       ...p,
       driverName:  d.name,
-      driverPhone: d.phoneNo   ?? p.driverPhone,
-      vehicleNo:   d.vehicleNo ?? p.vehicleNo,
+      driverPhone: d.phoneNo   ?? "",
+      vehicleNo:   d.vehicleNo ?? "",
     }));
     setShowDriverList(false);
   };
 
-  // 직접 입력 시 마스터 일치하면 자동 채움 (빈 칸만)
+  // 직접 입력 시 마스터 일치하면 그 사람 차량/전화로 덮어씀.
+  // 다른 사람으로 바꾸면 자동으로 새 정보로 교체. 마스터에 없는 이름이면 기존 값 유지.
   const onDriverNameChange = (v: string) => {
     setForm(p => {
       const next = { ...p, driverName: v };
       const hit = drivers.find(d => d.name === v.trim());
       if (hit) {
-        if (!p.driverPhone.trim() && hit.phoneNo)   next.driverPhone = hit.phoneNo;
-        if (!p.vehicleNo.trim()   && hit.vehicleNo) next.vehicleNo   = hit.vehicleNo;
+        next.vehicleNo   = hit.vehicleNo ?? "";
+        next.driverPhone = hit.phoneNo   ?? "";
       }
       return next;
     });
