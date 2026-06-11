@@ -63,6 +63,16 @@ export default function CharterUsageTab() {
   const [editId,   setEditId]   = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ ...FORM_INIT });
 
+  /* 용차 운전자 목록 (자동완성 + 차량/전화 자동입력) */
+  interface CharterDriver { id: string; name: string; vehicleNo: string | null; phoneNo: string | null }
+  const [charterDrivers, setCharterDrivers] = useState<CharterDriver[]>([]);
+  useEffect(() => {
+    fetch("/api/transport-drivers?type=CHARTER")
+      .then(r => r.json())
+      .then(d => { if (d.success) setCharterDrivers(d.data); })
+      .catch(() => {});
+  }, []);
+
   /* 위치 프리셋 (출발·도착 공용) — driving-log 와 동일 모델 재사용 */
   const [locations, setLocations] = useState<DrivingLocation[]>([]);
   const [locEditMode, setLocEditMode] = useState(false);
@@ -116,6 +126,29 @@ export default function CharterUsageTab() {
 
   /* 등록 */
   const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }));
+  // 운전자 이름 변경 시 — 마스터에서 일치하면 차량번호/전화번호 자동 채움 (사용자가 이후 수정 가능)
+  const onDriverNameChange = (v: string) => {
+    setForm(p => {
+      const next = { ...p, driverName: v };
+      const hit = charterDrivers.find(d => d.name === v.trim());
+      if (hit) {
+        if (!p.vehicleNo.trim()   && hit.vehicleNo) next.vehicleNo   = hit.vehicleNo;
+        if (!p.driverPhone.trim() && hit.phoneNo)   next.driverPhone = hit.phoneNo;
+      }
+      return next;
+    });
+  };
+  const onEditDriverNameChange = (v: string) => {
+    setEditForm(p => {
+      const next = { ...p, driverName: v };
+      const hit = charterDrivers.find(d => d.name === v.trim());
+      if (hit) {
+        if (!p.vehicleNo.trim()   && hit.vehicleNo) next.vehicleNo   = hit.vehicleNo;
+        if (!p.driverPhone.trim() && hit.phoneNo)   next.driverPhone = hit.phoneNo;
+      }
+      return next;
+    });
+  };
   const openForm = () => {
     setForm({ ...FORM_INIT, date: todayYMD() });
     setFormErr("");
@@ -286,6 +319,10 @@ export default function CharterUsageTab() {
   /* ── 렌더 ── */
   return (
     <div className="space-y-4">
+      {/* 용차 운전자 자동완성 datalist — 등록·수정 행에서 공통 참조 */}
+      <datalist id="charter-driver-suggestions">
+        {charterDrivers.map(d => <option key={d.id} value={d.name} />)}
+      </datalist>
       {/* 상단 컨트롤 */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-1.5">
@@ -386,7 +423,7 @@ export default function CharterUsageTab() {
             ) : filteredLogs.map(l => editId === l.id ? (
               <tr key={l.id} className="bg-blue-50/60">
                 <td className="px-2 py-1.5 border-r border-gray-100"><Input type="date" value={editForm.date} onChange={e => setE("date", e.target.value)} className="h-7 text-xs w-32" /></td>
-                <td className="px-2 py-1.5 border-r border-gray-100"><Input value={editForm.driverName} onChange={e => setE("driverName", e.target.value)} className="h-7 text-xs w-20" /></td>
+                <td className="px-2 py-1.5 border-r border-gray-100"><Input list="charter-driver-suggestions" value={editForm.driverName} onChange={e => onEditDriverNameChange(e.target.value)} autoComplete="off" className="h-7 text-xs w-20" /></td>
                 <td className="px-2 py-1.5 border-r border-gray-100"><Input value={editForm.driverPhone} onChange={e => setE("driverPhone", e.target.value)} className="h-7 text-xs w-28" /></td>
                 <td className="px-2 py-1.5 border-r border-gray-100"><Input value={editForm.vehicleNo} onChange={e => setE("vehicleNo", e.target.value)} className="h-7 text-xs w-24" /></td>
                 <td className="px-2 py-1.5 border-r border-gray-100"><Input value={editForm.items} onChange={e => setE("items", e.target.value)} className="h-7 text-xs w-32" /></td>
@@ -471,7 +508,14 @@ export default function CharterUsageTab() {
 
                 <div>
                   <label className="text-xs font-semibold text-gray-600 mb-1 block">운전자 이름 <span className="text-red-500">*</span></label>
-                  <Input value={form.driverName} onChange={e => set("driverName", e.target.value)} placeholder="이름" className="h-9 text-sm" />
+                  <Input
+                    list="charter-driver-suggestions"
+                    value={form.driverName}
+                    onChange={e => onDriverNameChange(e.target.value)}
+                    placeholder="이름 입력 또는 목록에서 선택"
+                    autoComplete="off"
+                    className="h-9 text-sm"
+                  />
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-gray-600 mb-1 block">전화번호</label>

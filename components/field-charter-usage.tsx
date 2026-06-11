@@ -9,6 +9,7 @@ import { useState, useEffect } from "react";
 import { Truck, CheckCircle2, Loader2 } from "lucide-react";
 
 interface DrivingLocation { id: string; name: string }
+interface CharterDriver { id: string; name: string; vehicleNo: string | null; phoneNo: string | null }
 
 const todayStr = () => new Date().toISOString().split("T")[0];
 const nowHM    = () => {
@@ -21,6 +22,8 @@ const labelCls = "block text-xs font-semibold text-gray-400 mb-1.5";
 
 export default function FieldCharterUsage() {
   const [locations, setLocations] = useState<DrivingLocation[]>([]);
+  const [drivers,   setDrivers]   = useState<CharterDriver[]>([]);
+  const [showDriverList, setShowDriverList] = useState(false);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -41,9 +44,35 @@ export default function FieldCharterUsage() {
     fetch("/api/driving-location").then(r => r.json()).then(d => {
       if (d.success) setLocations(d.data);
     });
+    fetch("/api/transport-drivers?type=CHARTER").then(r => r.json()).then(d => {
+      if (d.success) setDrivers(d.data);
+    }).catch(() => {});
   }, []);
 
   const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }));
+
+  const selectDriver = (d: CharterDriver) => {
+    setForm(p => ({
+      ...p,
+      driverName:  d.name,
+      driverPhone: d.phoneNo   ?? p.driverPhone,
+      vehicleNo:   d.vehicleNo ?? p.vehicleNo,
+    }));
+    setShowDriverList(false);
+  };
+
+  // 직접 입력 시 마스터 일치하면 자동 채움 (빈 칸만)
+  const onDriverNameChange = (v: string) => {
+    setForm(p => {
+      const next = { ...p, driverName: v };
+      const hit = drivers.find(d => d.name === v.trim());
+      if (hit) {
+        if (!p.driverPhone.trim() && hit.phoneNo)   next.driverPhone = hit.phoneNo;
+        if (!p.vehicleNo.trim()   && hit.vehicleNo) next.vehicleNo   = hit.vehicleNo;
+      }
+      return next;
+    });
+  };
 
   const submit = async () => {
     if (!form.driverName.trim()) { alert("운전자 이름을 입력하세요."); return; }
@@ -80,8 +109,44 @@ export default function FieldCharterUsage() {
       </div>
 
       <div>
-        <label className={labelCls}>운전자 이름 *</label>
-        <input value={form.driverName} onChange={e => set("driverName", e.target.value)} placeholder="이름" className={fieldCls} />
+        <div className="flex items-center justify-between mb-1.5">
+          <label className={labelCls + " mb-0"}>운전자 이름 *</label>
+          {drivers.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowDriverList(v => !v)}
+              className="text-xs font-semibold text-blue-300 active:text-blue-200"
+            >
+              {showDriverList ? "목록 닫기" : `등록된 운전자 (${drivers.length})`}
+            </button>
+          )}
+        </div>
+        <input
+          value={form.driverName}
+          onChange={e => onDriverNameChange(e.target.value)}
+          placeholder="이름 입력 또는 목록에서 선택"
+          autoComplete="off"
+          className={fieldCls}
+        />
+        {showDriverList && drivers.length > 0 && (
+          <div className="mt-2 bg-gray-900 border border-gray-800 rounded-2xl divide-y divide-gray-800 max-h-60 overflow-y-auto">
+            {drivers.map(d => (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => selectDriver(d)}
+                className="w-full flex items-start justify-between px-3 py-2.5 active:bg-gray-800 text-left"
+              >
+                <div>
+                  <div className="text-sm font-semibold text-white">{d.name}</div>
+                  <div className="text-[11px] text-gray-400 font-mono mt-0.5">
+                    {d.vehicleNo ?? "-"} · {d.phoneNo ?? "-"}
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div>

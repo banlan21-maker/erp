@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import {
   Plus, Truck, ChevronRight, Search, X, Save, Trash2,
   CheckCircle, AlertTriangle, Clock, XCircle, MinusCircle,
-  Filter,
+  Filter, UserPlus,
 } from "lucide-react";
 import TransportDrivingLogTab from "@/components/transport-driving-log-tab";
 import CharterUsageTab from "@/components/charter-usage-tab";
+import TransportDriverModal from "@/components/transport-driver-modal";
 
 // ── 타입 ─────────────────────────────────────────────────────
 
@@ -246,6 +247,7 @@ export default function TransportMain({ initialVehicles }: Props) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"manage" | "drivingLog" | "charterUsage">("drivingLog");
   const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [showDriverModal,   setShowDriverModal]   = useState(false);
   const [vehicles, setVehicles] = useState<TransportVehicle[]>(initialVehicles);
 
   // ── 등록 폼 상태 ──────────────────────────────────────────
@@ -359,13 +361,24 @@ export default function TransportMain({ initialVehicles }: Props) {
             </button>
           ))}
         </div>
-        <button
-          onClick={() => { setForm(emptyForm); setConsumables(DEFAULT_CONSUMABLES.map(c => ({ ...c }))); setInspections([]); setSpecs([]); setFormError(""); setShowRegisterModal(true); }}
-          className="mb-2 mr-1 flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          <Plus size={15} /> 운송장비 등록
-        </button>
+        <div className="flex items-center gap-2 mb-2 mr-1">
+          <button
+            onClick={() => setShowDriverModal(true)}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+          >
+            <UserPlus size={15} /> 운전자 등록
+          </button>
+          <button
+            onClick={() => { setForm(emptyForm); setConsumables(DEFAULT_CONSUMABLES.map(c => ({ ...c }))); setInspections([]); setSpecs([]); setFormError(""); setShowRegisterModal(true); }}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            <Plus size={15} /> 운송장비 등록
+          </button>
+        </div>
       </div>
+
+      {/* ── 운전자 등록·관리 모달 ── */}
+      <TransportDriverModal open={showDriverModal} onClose={() => setShowDriverModal(false)} />
 
       {/* ── 등록 모달 ── */}
       {showRegisterModal && (

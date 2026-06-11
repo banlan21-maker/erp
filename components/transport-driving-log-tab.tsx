@@ -10,7 +10,6 @@ import { getCascadedFilteredRowsWithPredicates, getAllCascadedOptions, type Colu
 import type { TransportVehicle } from "@/components/transport-main";
 
 /* ── 타입 ── */
-interface Worker { id: string; name: string; role: string | null; position: string | null }
 interface DrivingLog {
   id: string;
   vehicleId: string;
@@ -70,8 +69,9 @@ export default function TransportDrivingLogTab({
   const [editId,   setEditId]   = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ ...LOG_INIT });
 
-  /* 인원 목록 (운전자 선택용) */
-  const [workers, setWorkers] = useState<Worker[]>([]);
+  /* 일반차량 운전자 목록 (자동완성 소스) */
+  interface RegularDriver { id: string; name: string }
+  const [regularDrivers, setRegularDrivers] = useState<RegularDriver[]>([]);
 
   /* 위치 프리셋 (출발·도착 공용) — DB 기반, 추가/삭제 가능 */
   interface DrivingLocation { id: string; name: string; }
@@ -125,11 +125,11 @@ export default function TransportDrivingLogTab({
 
   useEffect(() => { load(); }, [load]);
 
-  /* 인원 목록 1회 로드 */
+  /* 일반차량 운전자 1회 로드 */
   useEffect(() => {
-    fetch("/api/workers")
+    fetch("/api/transport-drivers?type=REGULAR")
       .then(r => r.json())
-      .then(d => { if (d.success) setWorkers(d.data); })
+      .then(d => { if (d.success) setRegularDrivers(d.data); })
       .catch(() => {});
   }, []);
 
@@ -430,6 +430,10 @@ export default function TransportDrivingLogTab({
 
   return (
     <div className="space-y-4">
+      {/* 운전자 자동완성 datalist — 등록·수정 행에서 공통 참조 */}
+      <datalist id="driver-suggestions">
+        {regularDrivers.map(d => <option key={d.id} value={d.name} />)}
+      </datalist>
       {/* 상단 컨트롤 */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3 flex-wrap">
@@ -571,7 +575,7 @@ export default function TransportDrivingLogTab({
                   <tr key={log.id} className="bg-blue-50/60">
                     <td className="px-2 py-1.5 text-xs text-gray-700 border-r border-gray-100">{log.date}</td>
                     <td className="px-2 py-1.5 text-xs text-gray-700 border-r border-gray-100">{log.vehicle.name}{log.vehicle.plateNo ? ` (${log.vehicle.plateNo})` : ""}</td>
-                    <td className="px-2 py-1.5 border-r border-gray-100"><Input value={editForm.driver} onChange={e => setE("driver", e.target.value)} className="h-7 text-xs w-20" /></td>
+                    <td className="px-2 py-1.5 border-r border-gray-100"><Input list="driver-suggestions" value={editForm.driver} onChange={e => setE("driver", e.target.value)} className="h-7 text-xs w-20" autoComplete="off" /></td>
                     <td className="px-2 py-1.5 border-r border-gray-100">
                       <div className="flex items-center gap-1">
                         <Input value={editForm.departure} onChange={e => setE("departure", e.target.value)} placeholder="출발" className="h-7 text-xs w-20" />
@@ -712,15 +716,6 @@ export default function TransportDrivingLogTab({
                     placeholder="이름 입력 또는 선택"
                     autoComplete="off"
                   />
-                  {workers.length > 0 && (
-                    <datalist id="driver-suggestions">
-                      {workers.map(w => (
-                        <option key={w.id} value={w.name}>
-                          {w.position ? `${w.name} (${w.position})` : w.name}
-                        </option>
-                      ))}
-                    </datalist>
-                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">목적/용무</label>

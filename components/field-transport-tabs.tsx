@@ -11,16 +11,13 @@ import FieldDrivingLog from "@/components/field-driving-log";
 import FieldCharterUsage from "@/components/field-charter-usage";
 
 interface Vehicle { id: string; code: string; name: string; plateNo: string | null; mileage: number | null }
-interface Worker  { id: string; name: string; position: string | null }
 
 type Tab = "drivingLog" | "charterUsage";
 
 export default function FieldTransportTabs({
   vehicles,
-  workers,
 }: {
   vehicles: Vehicle[];
-  workers:  Worker[];
 }) {
   const [tab, setTab] = useState<Tab>("drivingLog");
 
@@ -55,7 +52,7 @@ export default function FieldTransportTabs({
 
       {/* 본문 — 탭별 분기. 기존 FieldDrivingLog 컴포넌트는 자체 헤더가 있어 그대로 끼움 */}
       {tab === "drivingLog"
-        ? <FieldDrivingLog vehicles={vehicles} workers={workers} embedded />
+        ? <FieldDrivingLog vehicles={vehicles} embedded />
         : <FieldCharterUsage />
       }
     </div>

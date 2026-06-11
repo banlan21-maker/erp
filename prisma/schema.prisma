@@ -1058,6 +1058,28 @@ model CharterUsage {
   createdAt DateTime @default(now())
 }
 
+// 운송 운전자 마스터 (일반차량/용차 운전자 풀)
+// — 차량운행일지 driver, 용차사용 driverName 자동완성용
+// — 기존 string 컬럼과 FK 로 연결하지 않음 (자유 입력 + 자동완성 선택)
+enum TransportDriverType {
+  REGULAR // 일반차량 운전자 (이름만)
+  CHARTER // 용차 운전자 (이름 + 차량번호 + 전화번호)
+}
+
+model TransportDriver {
+  id        String              @id @default(cuid())
+  type      TransportDriverType
+  name      String
+  vehicleNo String? // CHARTER 일 때만 의미 — 등록 시 자동입력 소스
+  phoneNo   String? // CHARTER 일 때만 의미
+  memo      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([type, name])
+  @@index([type])
+}
+
 // 차량 운행일지
 model TransportDrivingLog {
   id           String           @id @default(cuid())

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Car, CheckCircle2, ChevronDown, RefreshCw, Star } from "lucide-react";
 
 interface Vehicle { id: string; code: string; name: string; plateNo: string | null; mileage: number | null }
-interface Worker  { id: string; name: string; position: string | null }
+interface RegularDriver { id: string; name: string }
 
 const PURPOSE_PRESETS  = ["자재운반", "현장이동", "정비", "출장"];
 
@@ -166,13 +166,19 @@ function LocationPicker({
 
 export default function FieldDrivingLog({
   vehicles,
-  workers,
   embedded = false,
 }: {
   vehicles: Vehicle[];
-  workers: Worker[];
   embedded?: boolean; // true=상위 탭 wrapper 안에서 헤더/min-h-screen 생략
 }) {
+  // 일반차량 운전자 1회 로드
+  const [drivers, setDrivers] = useState<RegularDriver[]>([]);
+  useEffect(() => {
+    fetch("/api/transport-drivers?type=REGULAR")
+      .then(r => r.json())
+      .then(d => { if (d.success) setDrivers(d.data); })
+      .catch(() => {});
+  }, []);
   const [form, setForm] = useState({ ...INIT });
   const [saving, setSaving] = useState(false);
   const [done,   setDone]   = useState(false);
@@ -258,10 +264,7 @@ export default function FieldDrivingLog({
     }));
   };
 
-  const workerOptions = workers.map(w => ({
-    label: w.name,
-    sub: w.position ?? undefined,
-  }));
+  const driverOptions = drivers.map(d => ({ label: d.name }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -473,14 +476,17 @@ export default function FieldDrivingLog({
           {/* 편집 패널: 모든 인원 + 별 토글 */}
           {drvFavEdit ? (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl divide-y divide-gray-800 max-h-72 overflow-y-auto">
-              {workers.map(w => {
-                const fav = favDriver === w.name;
+              {drivers.length === 0 && (
+                <p className="px-3 py-3 text-xs text-gray-500">등록된 일반차량 운전자가 없습니다. PC 운송관리에서 "운전자 등록" 으로 추가하세요.</p>
+              )}
+              {drivers.map(d => {
+                const fav = favDriver === d.name;
                 return (
-                  <div key={w.id} className="flex items-center justify-between px-3 py-2.5">
-                    <span className="text-sm text-gray-200">{w.name}{w.position ? <span className="text-gray-500 ml-1">({w.position})</span> : null}</span>
+                  <div key={d.id} className="flex items-center justify-between px-3 py-2.5">
+                    <span className="text-sm text-gray-200">{d.name}</span>
                     <button
                       type="button"
-                      onClick={() => toggleFavDriver(w.name)}
+                      onClick={() => toggleFavDriver(d.name)}
                       className={`p-1.5 rounded ${fav ? "text-amber-400" : "text-gray-500 hover:text-amber-400"}`}
                       title={fav ? "즐겨찾기 해제" : "즐겨찾기 설정 (1명만 가능)"}
                     >
@@ -495,7 +501,7 @@ export default function FieldDrivingLog({
             <MobileAutocomplete
               value={form.driver}
               onChange={v => set("driver", v)}
-              options={workerOptions}
+              options={driverOptions}
               placeholder="이름 입력 또는 목록에서 선택"
             />
           )}
