@@ -41,16 +41,27 @@ export async function PATCH(
     const { id } = await params;
     const body = await req.json();
 
+    // 현재 vendor 의 type 확인 (vendorType 자체는 PATCH 로 변경 불가 — UI 가정 보호)
+    const current = await prisma.deliveryVendor.findUnique({ where: { id }, select: { vendorType: true } });
+    if (!current) return NextResponse.json({ success: false, error: "존재하지 않습니다." }, { status: 404 });
+    if (body.vendorType !== undefined && body.vendorType !== current.vendorType) {
+      return NextResponse.json({ success: false, error: "거래처 종류(공급처/납품처)는 변경할 수 없습니다. 새로 등록해 주세요." }, { status: 400 });
+    }
+    const isSupplier = current.vendorType === "SUPPLIER";
+
     const data: Record<string, unknown> = {};
     if (body.name !== undefined) {
       const n = norm(body.name);
       if (!n) return NextResponse.json({ success: false, error: "상호(이름)는 비울 수 없습니다." }, { status: 400 });
       data.name = n;
     }
-    for (const k of ["bizNo","ceo","address","bizType","bizItem","phone","fax","contactName","contactPhone","memo"] as const) {
+    for (const k of ["bizNo","ceo","address","bizType","bizItem","phone","fax","memo"] as const) {
       if (body[k] !== undefined) data[k] = norm(body[k]);
     }
-    if (body.isActive !== undefined) data.isActive = !!body.isActive;
+    // 공급처는 거래처 측 담당자가 의미 없음 — 들어와도 null 유지
+    if (body.contactName  !== undefined) data.contactName  = isSupplier ? null : norm(body.contactName);
+    if (body.contactPhone !== undefined) data.contactPhone = isSupplier ? null : norm(body.contactPhone);
+    if (body.isActive     !== undefined) data.isActive     = !!body.isActive;
 
     const updated = await prisma.deliveryVendor.update({ where: { id }, data });
     return NextResponse.json({

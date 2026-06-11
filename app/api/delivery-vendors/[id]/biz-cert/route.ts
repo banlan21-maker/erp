@@ -47,6 +47,9 @@ export async function POST(
     const { id } = await params;
     const vendor = await prisma.deliveryVendor.findUnique({ where: { id } });
     if (!vendor) return NextResponse.json({ success: false, error: "납품처를 찾을 수 없습니다." }, { status: 404 });
+    if (vendor.vendorType !== "DELIVERY") {
+      return NextResponse.json({ success: false, error: "공급처는 사업자등록증을 등록할 수 없습니다." }, { status: 400 });
+    }
 
     const fd = await req.formData();
     const file = fd.get("file");
@@ -115,6 +118,9 @@ export async function DELETE(
     const { id } = await params;
     const vendor = await prisma.deliveryVendor.findUnique({ where: { id } });
     if (!vendor) return NextResponse.json({ success: false, error: "납품처를 찾을 수 없습니다." }, { status: 404 });
+    if (vendor.vendorType !== "DELIVERY") {
+      return NextResponse.json({ success: false, error: "공급처는 사업자등록증을 관리하지 않습니다." }, { status: 400 });
+    }
 
     // DB 먼저 비우고 파일을 나중에 삭제 — 파일 삭제 실패해도 orphan 만 남고 UI 는 정합
     const updated = await prisma.deliveryVendor.update({

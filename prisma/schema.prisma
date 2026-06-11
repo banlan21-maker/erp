@@ -1306,25 +1306,33 @@ model SteelPlanHeat {
 
 
 // ==========================================
-// 절단파트 — 납품처(고객) 관리
-// 절단·가공부재를 납품받는 거래처 (출고장/거래명세표 자동출력 데이터 소스)
+// 절단파트 — 거래처(공급처 + 납품처) 관리
+// 거래명세표 자동출력 데이터 소스 — "공급자"와 "공급받는자" 양쪽
+//   SUPPLIER = 공급처 (우리 회사·자회사, 사업자등록증 불필요)
+//   DELIVERY = 납품처 (절단·가공부재 납품받는 거래처, 사업자등록증 보관)
 // 자재거래처(Vendor) 와는 별도 — 매출 측 거래처
 // ==========================================
-model DeliveryVendor {
-  id                  String   @id @default(cuid())
-  bizNo               String?  // 사업자등록번호 (예: 123-45-67890)
-  name                String   // 상호 (필수)
-  ceo                 String?  // 대표자
-  address             String?  // 주소
-  bizType             String?  // 업태
-  bizItem             String?  // 종목
-  phone               String?  // 회사 전화번호
-  fax                 String?  // 팩스
-  contactName         String?  // 업체담당자 이름
-  contactPhone        String?  // 업체담당자 전화번호
-  memo                String?  // 비고
+enum DeliveryVendorType {
+  SUPPLIER // 공급처
+  DELIVERY // 납품처
+}
 
-  // 사업자등록증 — 업체당 1개 (교체 시 기존 파일 폐기)
+model DeliveryVendor {
+  id                  String             @id @default(cuid())
+  vendorType          DeliveryVendorType @default(DELIVERY)
+  bizNo               String?            // 사업자등록번호 (예: 123-45-67890)
+  name                String             // 상호 (필수)
+  ceo                 String?            // 대표자
+  address             String?            // 주소
+  bizType             String?            // 업태
+  bizItem             String?            // 종목
+  phone               String?            // 회사 전화번호
+  fax                 String?            // 팩스
+  contactName         String?            // 업체담당자 이름 (납품처에서 의미)
+  contactPhone        String?            // 업체담당자 전화번호 (납품처에서 의미)
+  memo                String?            // 비고
+
+  // 사업자등록증 — 납품처(DELIVERY) 만 사용, 업체당 1개
   bizCertStoredName   String?  // 디스크 저장명 (cuid.확장자)
   bizCertOriginalName String?  // 원본 파일명
   bizCertMimeType     String?  // image/* | application/pdf
@@ -1334,5 +1342,6 @@ model DeliveryVendor {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
+  @@index([vendorType])
   @@index([name])
 }

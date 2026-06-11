@@ -6,6 +6,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { DeliveryVendorType, Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -14,14 +15,23 @@ const norm = (v: unknown): string | null => {
   const t = v.trim();
   return t.length > 0 ? t : null;
 };
+const parseType = (v: unknown): DeliveryVendorType | null => {
+  if (v === "SUPPLIER" || v === "DELIVERY") return v;
+  return null;
+};
 
 export async function GET(req: NextRequest) {
   try {
     const sp = new URL(req.url).searchParams;
     const includeInactive = sp.get("includeInactive") === "1";
+    const vendorType = parseType(sp.get("type"));
+
+    const where: Prisma.DeliveryVendorWhereInput = {};
+    if (!includeInactive) where.isActive = true;
+    if (vendorType)       where.vendorType = vendorType;
 
     const list = await prisma.deliveryVendor.findMany({
-      where: includeInactive ? undefined : { isActive: true },
+      where,
       orderBy: [{ isActive: "desc" }, { name: "asc" }],
     });
 
@@ -47,8 +57,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "상호(이름)는 필수입니다." }, { status: 400 });
     }
 
+    const vendorType = parseType(body?.vendorType) ?? "DELIVERY";
+    // 공급처는 거래처 측 담당자가 의미 없으므로 저장 안 함
+    const isSupplier = vendorType === "SUPPLIER";
+
     const created = await prisma.deliveryVendor.create({
       data: {
+        vendorType,
         name,
         bizNo:        norm(body?.bizNo),
         ceo:          norm(body?.ceo),
@@ -57,8 +72,8 @@ export async function POST(req: NextRequest) {
         bizItem:      norm(body?.bizItem),
         phone:        norm(body?.phone),
         fax:          norm(body?.fax),
-        contactName:  norm(body?.contactName),
-        contactPhone: norm(body?.contactPhone),
+        contactName:  isSupplier ? null : norm(body?.contactName),
+        contactPhone: isSupplier ? null : norm(body?.contactPhone),
         memo:         norm(body?.memo),
         isActive:     body?.isActive === false ? false : true,
       },

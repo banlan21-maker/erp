@@ -13,8 +13,16 @@ import {
   Image as ImageIcon, Download, Eye, Check, CircleSlash2,
 } from "lucide-react";
 
+export type VendorType = "SUPPLIER" | "DELIVERY";
+
+const TYPE_LABEL: Record<VendorType, string> = {
+  SUPPLIER: "공급처",
+  DELIVERY: "납품처",
+};
+
 export interface DeliveryVendor {
   id:                  string;
+  vendorType:          VendorType;
   bizNo:               string | null;
   name:                string;
   ceo:                 string | null;
@@ -38,6 +46,7 @@ export interface DeliveryVendor {
 interface Props { initial: DeliveryVendor[] }
 
 type DraftForm = {
+  vendorType:   VendorType;
   bizNo:        string;
   name:         string;
   ceo:          string;
@@ -52,13 +61,15 @@ type DraftForm = {
   isActive:     boolean;
 };
 
-const emptyDraft = (): DraftForm => ({
+const emptyDraft = (vendorType: VendorType = "DELIVERY"): DraftForm => ({
+  vendorType,
   bizNo: "", name: "", ceo: "", address: "", bizType: "", bizItem: "",
   phone: "", fax: "", contactName: "", contactPhone: "", memo: "",
   isActive: true,
 });
 
 const toDraft = (v: DeliveryVendor): DraftForm => ({
+  vendorType:   v.vendorType,
   bizNo:        v.bizNo        ?? "",
   name:         v.name,
   ceo:          v.ceo          ?? "",
@@ -85,12 +96,18 @@ const isImageMime = (m: string | null) => !!m && m.startsWith("image/");
 
 export default function DeliveryVendorsMain({ initial }: Props) {
   const [vendors, setVendors] = useState<DeliveryVendor[]>(initial);
-  const [selectedId, setSelectedId] = useState<string | null>(initial[0]?.id ?? null);
+  // 활성 탭 (좌측 목록 + 신규 등록 type)
+  const [activeType, setActiveType] = useState<VendorType>("DELIVERY");
+  const initialFirstOfType =
+    initial.find(v => v.vendorType === "DELIVERY") ?? null;
+  const [selectedId, setSelectedId] = useState<string | null>(initialFirstOfType?.id ?? null);
   // null = 신규 등록 모드 (selectedId 도 null)
   const [search, setSearch] = useState("");
   const [showInactive, setShowInactive] = useState(false);
 
-  const [draft, setDraft] = useState<DraftForm>(() => initial[0] ? toDraft(initial[0]) : emptyDraft());
+  const [draft, setDraft] = useState<DraftForm>(
+    () => initialFirstOfType ? toDraft(initialFirstOfType) : emptyDraft("DELIVERY"),
+  );
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState("");
@@ -117,25 +134,61 @@ export default function DeliveryVendorsMain({ initial }: Props) {
 
   const selected = vendors.find(v => v.id === selectedId) ?? null;
   const isNew    = selectedId === null && !selected;
+  const isSupplierMode = draft.vendorType === "SUPPLIER";
+
+  // 탭별 카운트 (활성만)
+  const countByType = useMemo(() => {
+    const c = { SUPPLIER: 0, DELIVERY: 0 };
+    for (const v of vendors) {
+      if (v.isActive) c[v.vendorType]++;
+    }
+    return c;
+  }, [vendors]);
 
   // 선택 변경 시 draft 동기화 (dirty 이면 경고 — 작성 중 데이터 손실 방지)
-  const selectVendor = (id: string | null) => {
+  const selectVendor = (id: string | null, opts: { newType?: VendorType } = {}) => {
     if (dirty && !confirm("저장하지 않은 변경 내용이 사라집니다. 이대로 이동할까요?")) return;
     setSelectedId(id);
     setError("");
-    if (id === null) setDraft(emptyDraft());
-    else {
+    if (id === null) {
+      setDraft(emptyDraft(opts.newType ?? activeType));
+    } else {
       const v = vendors.find(x => x.id === id);
-      if (v) setDraft(toDraft(v));
+      if (v) {
+        setDraft(toDraft(v));
+        if (v.vendorType !== activeType) setActiveType(v.vendorType);
+      }
     }
     setDirty(false);
     // 모바일/좁은 화면에서 우측 상세 패널로 자동 스크롤 (lg 이상은 이미 같은 행에 보임)
     if (typeof window !== "undefined" && window.innerWidth < 1024) {
-      // 다음 paint 이후 스크롤
       window.requestAnimationFrame(() => {
         detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     }
+  };
+
+  // 헤더의 [+ 공급처 등록] / [+ 납품처 등록] 버튼
+  const startNewOfType = (t: VendorType) => {
+    setActiveType(t);
+    selectVendor(null, { newType: t });
+  };
+
+  // 탭 전환 — 첫 번째 vendor 자동 선택 (없으면 비움)
+  const switchTab = (t: VendorType) => {
+    if (t === activeType) return;
+    if (dirty && !confirm("저장하지 않은 변경 내용이 사라집니다. 이대로 이동할까요?")) return;
+    setActiveType(t);
+    setError("");
+    const first = vendors.find(v => v.vendorType === t && v.isActive);
+    if (first) {
+      setSelectedId(first.id);
+      setDraft(toDraft(first));
+    } else {
+      setSelectedId(null);
+      setDraft(emptyDraft(t));
+    }
+    setDirty(false);
   };
 
   // 신규 모드 진입 시 상호 input 자동 포커스
@@ -151,6 +204,7 @@ export default function DeliveryVendorsMain({ initial }: Props) {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return vendors
+      .filter(v => v.vendorType === activeType)
       .filter(v => showInactive || v.isActive)
       .filter(v => {
         if (!q) return true;
@@ -162,7 +216,7 @@ export default function DeliveryVendorsMain({ initial }: Props) {
           (v.contactPhone ?? "").toLowerCase().includes(q)
         );
       });
-  }, [vendors, search, showInactive]);
+  }, [vendors, search, showInactive, activeType]);
 
   // 저장 — 신규 POST, 기존 PATCH
   const handleSave = async () => {
@@ -182,8 +236,13 @@ export default function DeliveryVendorsMain({ initial }: Props) {
         setVendors(prev => [v, ...prev]);
         setSelectedId(v.id);
         setDraft(toDraft(v));
+        setActiveType(v.vendorType);
         setDirty(false);
-        setToast("등록되었습니다. 이제 사업자등록증을 업로드할 수 있습니다.");
+        setToast(
+          v.vendorType === "SUPPLIER"
+            ? "공급처가 등록되었습니다."
+            : "납품처가 등록되었습니다. 이제 사업자등록증을 업로드할 수 있습니다.",
+        );
       } else if (selected) {
         const res = await fetch(`/api/delivery-vendors/${selected.id}`, {
           method: "PATCH",
@@ -200,7 +259,7 @@ export default function DeliveryVendorsMain({ initial }: Props) {
         // 비활성으로 토글되었고 비활성 표시가 꺼져있으면 선택 해제 (목록에서 사라짐과 정합)
         if (!v.isActive && !showInactive) {
           setSelectedId(null);
-          setDraft(emptyDraft());
+          setDraft(emptyDraft(v.vendorType));
         }
       }
     } catch (err) {
@@ -255,8 +314,10 @@ export default function DeliveryVendorsMain({ initial }: Props) {
       const remaining = vendors.filter(v => v.id !== deleteTarget.id);
       setVendors(remaining);
       if (selectedId === deleteTarget.id) {
-        setSelectedId(remaining[0]?.id ?? null);
-        if (remaining[0]) setDraft(toDraft(remaining[0])); else setDraft(emptyDraft());
+        // 같은 타입의 다음 항목 우선 선택
+        const next = remaining.find(v => v.vendorType === deleteTarget.vendorType && v.isActive);
+        setSelectedId(next?.id ?? null);
+        setDraft(next ? toDraft(next) : emptyDraft(deleteTarget.vendorType));
         setDirty(false);
       }
       setDeleteTarget(null);
@@ -277,24 +338,60 @@ export default function DeliveryVendorsMain({ initial }: Props) {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Building2 size={24} className="text-blue-600" /> 납품처관리
-        </h2>
-        <p className="text-sm text-gray-500 mt-1">절단·가공부재를 납품받는 거래처. 출고장/거래명세표 자동출력에 사용합니다.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <Building2 size={24} className="text-blue-600" /> 납품처관리
+          </h2>
+          <p className="text-sm text-gray-500 mt-1">
+            거래명세표 자동출력에 사용 — <strong>공급처</strong>(우리 회사·자회사)와 <strong>납품처</strong>(거래처)를 함께 관리합니다.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => startNewOfType("SUPPLIER")}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+          >
+            <Plus size={14} /> 공급처 등록
+          </button>
+          <button
+            onClick={() => startNewOfType("DELIVERY")}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            <Plus size={14} /> 납품처 등록
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
         {/* 좌측 목록 */}
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col" style={{ minHeight: "70vh" }}>
+          {/* 탭 */}
+          <div className="grid grid-cols-2 border-b border-gray-200">
+            {(["SUPPLIER", "DELIVERY"] as const).map(t => (
+              <button
+                key={t}
+                onClick={() => switchTab(t)}
+                className={`px-3 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
+                  activeType === t
+                    ? (t === "SUPPLIER" ? "border-amber-600 text-amber-700 bg-amber-50/50" : "border-blue-600 text-blue-700 bg-blue-50/50")
+                    : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {TYPE_LABEL[t]} <span className="ml-1 text-xs text-gray-400">({countByType[t]})</span>
+              </button>
+            ))}
+          </div>
           <div className="p-3 border-b border-gray-200 space-y-2">
             <button
-              onClick={() => selectVendor(null)}
+              onClick={() => startNewOfType(activeType)}
               className={`w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold rounded-lg border-2 border-dashed ${
-                isNew ? "bg-blue-50 border-blue-400 text-blue-700" : "border-gray-300 text-gray-600 hover:border-blue-400 hover:text-blue-600"
+                isNew && draft.vendorType === activeType
+                  ? (activeType === "SUPPLIER" ? "bg-amber-50 border-amber-400 text-amber-700" : "bg-blue-50 border-blue-400 text-blue-700")
+                  : "border-gray-300 text-gray-600 hover:border-blue-400 hover:text-blue-600"
               }`}
             >
-              <Plus size={14} /> 새 납품처 등록
+              <Plus size={14} /> 새 {TYPE_LABEL[activeType]} 등록
             </button>
             <div className="relative">
               <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -313,7 +410,9 @@ export default function DeliveryVendorsMain({ initial }: Props) {
           <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
             {filtered.length === 0 ? (
               <div className="py-12 text-center text-xs text-gray-400">
-                {vendors.length === 0 ? "등록된 납품처가 없습니다." : "검색 결과가 없습니다."}
+                {countByType[activeType] === 0
+                  ? `등록된 ${TYPE_LABEL[activeType]}가 없습니다.`
+                  : "검색 결과가 없습니다."}
               </div>
             ) : filtered.map(v => (
               <button
@@ -351,10 +450,15 @@ export default function DeliveryVendorsMain({ initial }: Props) {
 
         {/* 우측 상세 + 편집 */}
         <div ref={detailRef} className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden scroll-mt-4">
-          <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
-            <h3 className="font-bold text-base text-gray-800">
-              {isNew ? "새 납품처 등록" : (selected?.name ?? "납품처를 선택하세요")}
-              {dirty && <span className="ml-2 text-xs font-normal text-amber-600">* 저장 안 됨</span>}
+          <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between gap-3">
+            <h3 className="font-bold text-base text-gray-800 flex items-center gap-2 min-w-0">
+              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold flex-shrink-0 ${
+                draft.vendorType === "SUPPLIER" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"
+              }`}>{TYPE_LABEL[draft.vendorType]}</span>
+              <span className="truncate">
+                {isNew ? `새 ${TYPE_LABEL[draft.vendorType]} 등록` : (selected?.name ?? `${TYPE_LABEL[activeType]}를 선택하세요`)}
+              </span>
+              {dirty && <span className="ml-2 text-xs font-normal text-amber-600 flex-shrink-0">* 저장 안 됨</span>}
             </h3>
             <div className="flex items-center gap-2">
               {!isNew && selected && (
@@ -420,20 +524,22 @@ export default function DeliveryVendorsMain({ initial }: Props) {
                 </div>
               </section>
 
-              {/* 담당자 */}
-              <section>
-                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">업체 담당자</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Field label="담당자 이름">
-                    <input value={draft.contactName} onChange={e => updateDraft("contactName", e.target.value)}
-                      className="input" placeholder="김영업" />
-                  </Field>
-                  <Field label="담당자 전화번호">
-                    <input value={draft.contactPhone} onChange={e => updateDraft("contactPhone", e.target.value)}
-                      className="input font-mono" placeholder="010-0000-0000" />
-                  </Field>
-                </div>
-              </section>
+              {/* 담당자 — 납품처에서만 의미 */}
+              {!isSupplierMode && (
+                <section>
+                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">업체 담당자</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Field label="담당자 이름">
+                      <input value={draft.contactName} onChange={e => updateDraft("contactName", e.target.value)}
+                        className="input" placeholder="김영업" />
+                    </Field>
+                    <Field label="담당자 전화번호">
+                      <input value={draft.contactPhone} onChange={e => updateDraft("contactPhone", e.target.value)}
+                        className="input font-mono" placeholder="010-0000-0000" />
+                    </Field>
+                  </div>
+                </section>
+              )}
 
               {/* 비고 + 활성 */}
               <section className="grid grid-cols-1 sm:grid-cols-[1fr_180px] gap-3">
@@ -450,7 +556,8 @@ export default function DeliveryVendorsMain({ initial }: Props) {
                 </Field>
               </section>
 
-              {/* 사업자등록증 */}
+              {/* 사업자등록증 — 납품처에서만 사용 */}
+              {!isSupplierMode && (
               <section>
                 <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">사업자등록증 (이미지/PDF · 최대 10MB)</h4>
                 {isNew ? (
@@ -506,6 +613,7 @@ export default function DeliveryVendorsMain({ initial }: Props) {
                   }}
                 />
               </section>
+              )}
 
               <style jsx>{`
                 .input {
