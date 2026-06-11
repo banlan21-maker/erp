@@ -101,10 +101,16 @@ export default function MealMain() {
   /* ── 오늘 주문 ── */
   const today = getTodayKST();
   const [todayRecords, setTodayRecords] = useState<MealRecord[]>([]);
-  const [addForm, setAddForm] = useState<{ factory: Factory; mealType: string; count: string; memo: string }>({
-    factory: "진교", mealType: "점심", count: "0", memo: "",
+  // 공장별 입력 폼 — 좌우 분할로 동시 입력 가능
+  type FactoryForm = { mealType: string; count: string; memo: string };
+  const [factoryForms, setFactoryForms] = useState<Record<Factory, FactoryForm>>({
+    진동: { mealType: "점심", count: "0", memo: "" },
+    진교: { mealType: "점심", count: "0", memo: "" },
   });
-  const [addLoading, setAddLoading] = useState(false);
+  const setFForm = (f: Factory, patch: Partial<FactoryForm>) =>
+    setFactoryForms(prev => ({ ...prev, [f]: { ...prev[f], ...patch } }));
+
+  const [addLoading, setAddLoading] = useState<Record<Factory, boolean>>({ 진동: false, 진교: false });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ count: "", memo: "" });
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -116,35 +122,38 @@ export default function MealMain() {
   }, [today]);
   useEffect(() => { loadTodayRecords(); }, [loadTodayRecords]);
 
-  // vendors 로드 후 기본값 동기
+  // vendors 로드 후 공장별 기본값 동기
   useEffect(() => {
-    const v = vendors.find(vv => vv.factory === addForm.factory && vv.isActive);
-    if (v) setAddForm(prev => ({ ...prev, mealType: v.defaultMealType, count: String(v.defaultCount) }));
+    for (const f of FACTORIES) {
+      const v = vendors.find(vv => vv.factory === f && vv.isActive);
+      if (v) setFForm(f, { mealType: v.defaultMealType, count: String(v.defaultCount) });
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendors]);
 
-  const submitRecord = async () => {
-    const v = vendors.find(vv => vv.factory === addForm.factory && vv.isActive);
-    setAddLoading(true);
+  const submitRecord = async (factory: Factory) => {
+    const form = factoryForms[factory];
+    const v = vendors.find(vv => vv.factory === factory && vv.isActive);
+    setAddLoading(prev => ({ ...prev, [factory]: true }));
     try {
       const r = await fetch("/api/meal-record", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          date: today, factory: addForm.factory, mealType: addForm.mealType,
-          count: parseInt(addForm.count) || 0, memo: addForm.memo,
-          registrar: registrars[addForm.factory], vendorId: v?.id || null,
+          date: today, factory, mealType: form.mealType,
+          count: parseInt(form.count) || 0, memo: form.memo,
+          registrar: registrars[factory], vendorId: v?.id || null,
         }),
       });
       const d = await r.json();
       if (d.success) {
         setTodayRecords(prev => {
-          const idx = prev.findIndex(x => x.factory === addForm.factory && x.mealType === addForm.mealType);
+          const idx = prev.findIndex(x => x.factory === factory && x.mealType === form.mealType);
           return idx >= 0 ? prev.map((x, i) => i === idx ? d.data : x) : [...prev, d.data];
         });
-        setAddForm(prev => ({ ...prev, count: "0", memo: "" }));
+        setFForm(factory, { count: "0", memo: "" });
       } else alert(d.error ?? "저장 실패");
-    } finally { setAddLoading(false); }
+    } finally { setAddLoading(prev => ({ ...prev, [factory]: false })); }
   };
 
   const startEdit = (rec: MealRecord) => {
@@ -489,76 +498,103 @@ export default function MealMain() {
             {today} ({getDayStr(today)}) 식수 주문
           </div>
 
-          {/* 주문 입력 폼 */}
-          <div className="bg-white rounded-xl border-2 border-blue-100 shadow-sm p-5 space-y-4">
-            <h3 className="font-semibold text-gray-800 text-sm">새 주문 등록</h3>
+          {/* 주문 입력 폼 — 좌(진동) / 우(진교) 분할 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {([
+              { factory: "진동" as Factory, palette: {
+                  border: "border-violet-300",
+                  bg:     "bg-violet-50/40",
+                  title:  "text-violet-700",
+                  badge:  "bg-violet-600 text-white",
+                  btnSel: "bg-violet-600 text-white border-violet-600",
+                  btnIdle:"bg-white text-gray-600 border-gray-200 hover:border-violet-300",
+                  submit: "bg-violet-600 hover:bg-violet-700",
+                  check:  "accent-violet-600",
+                  ring:   "focus:ring-violet-500",
+                } },
+              { factory: "진교" as Factory, palette: {
+                  border: "border-sky-300",
+                  bg:     "bg-sky-50/40",
+                  title:  "text-sky-700",
+                  badge:  "bg-sky-600 text-white",
+                  btnSel: "bg-sky-600 text-white border-sky-600",
+                  btnIdle:"bg-white text-gray-600 border-gray-200 hover:border-sky-300",
+                  submit: "bg-sky-600 hover:bg-sky-700",
+                  check:  "accent-sky-600",
+                  ring:   "focus:ring-sky-500",
+                } },
+            ] as const).map(({ factory, palette: P }) => {
+              const form = factoryForms[factory];
+              const loading = addLoading[factory];
+              return (
+                <div key={factory} className={`rounded-2xl border-2 ${P.border} ${P.bg} shadow-sm overflow-hidden`}>
+                  {/* 큰 제목 헤더 */}
+                  <div className={`px-5 py-4 border-b-2 ${P.border} flex items-center justify-center gap-3`}>
+                    <span className={`px-3 py-1 rounded-lg text-xs font-bold ${P.badge}`}>{factory === "진동" ? "왼쪽" : "오른쪽"}</span>
+                    <h2 className={`text-2xl sm:text-3xl font-extrabold tracking-tight ${P.title}`}>
+                      {factory}공장 식수
+                    </h2>
+                  </div>
 
-            {/* 공장 선택 */}
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1.5 block">공장</label>
-              <div className="flex gap-2">
-                {FACTORIES.map(f => (
-                  <button key={f} onClick={() => setAddForm(p => ({ ...p, factory: f }))}
-                    className={`px-4 py-1.5 text-sm rounded-lg border font-semibold transition-colors ${addForm.factory === f ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"}`}>
-                    {f}
-                  </button>
-                ))}
-              </div>
-            </div>
+                  <div className="p-5 space-y-4">
+                    {/* 식사 구분 */}
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 mb-1.5 block">식사 구분</label>
+                      <div className="flex gap-2">
+                        {MEAL_TYPES.map(mt => (
+                          <button key={mt} onClick={() => setFForm(factory, { mealType: mt })}
+                            className={`px-3 py-1.5 text-sm rounded-lg border font-medium transition-colors ${form.mealType === mt ? P.btnSel : P.btnIdle}`}>
+                            {mt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-            {/* 식사 구분 */}
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1.5 block">식사 구분</label>
-              <div className="flex gap-2">
-                {MEAL_TYPES.map(mt => (
-                  <button key={mt} onClick={() => setAddForm(p => ({ ...p, mealType: mt }))}
-                    className={`px-3 py-1.5 text-sm rounded-lg border font-medium transition-colors ${addForm.mealType === mt ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"}`}>
-                    {mt}
-                  </button>
-                ))}
-              </div>
-            </div>
+                    {/* 인원 */}
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 mb-1.5 block">식사 인원</label>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => setFForm(factory, { count: String(Math.max(0, parseInt(form.count || "0") - 1)) })}
+                          className="w-9 h-9 rounded-lg border border-gray-200 bg-white text-lg font-bold text-gray-600 hover:bg-gray-50">−</button>
+                        <Input type="number" min={0} value={form.count}
+                          onChange={e => setFForm(factory, { count: e.target.value })}
+                          className="w-20 h-9 text-center text-lg font-bold" />
+                        <button onClick={() => setFForm(factory, { count: String(parseInt(form.count || "0") + 1) })}
+                          className="w-9 h-9 rounded-lg border border-gray-200 bg-white text-lg font-bold text-gray-600 hover:bg-gray-50">+</button>
+                        <span className="text-sm text-gray-500">명</span>
+                      </div>
+                    </div>
 
-            {/* 인원 */}
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1.5 block">식사 인원</label>
-              <div className="flex items-center gap-2">
-                <button onClick={() => setAddForm(p => ({ ...p, count: String(Math.max(0, parseInt(p.count || "0") - 1)) }))}
-                  className="w-9 h-9 rounded-lg border border-gray-200 text-lg font-bold text-gray-600 hover:bg-gray-50">−</button>
-                <Input type="number" min={0} value={addForm.count}
-                  onChange={e => setAddForm(p => ({ ...p, count: e.target.value }))}
-                  className="w-20 h-9 text-center text-lg font-bold" />
-                <button onClick={() => setAddForm(p => ({ ...p, count: String(parseInt(p.count || "0") + 1) }))}
-                  className="w-9 h-9 rounded-lg border border-gray-200 text-lg font-bold text-gray-600 hover:bg-gray-50">+</button>
-                <span className="text-sm text-gray-500">명</span>
-              </div>
-            </div>
+                    {/* 전달사항 */}
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 mb-1.5 block">업체 전달사항 (선택)</label>
+                      <textarea value={form.memo} onChange={e => setFForm(factory, { memo: e.target.value })}
+                        placeholder="예: 오늘 김치찌개 빼주세요"
+                        className={`w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 ${P.ring} resize-none h-16 bg-white`} />
+                    </div>
 
-            {/* 전달사항 */}
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1.5 block">업체 전달사항 (선택)</label>
-              <textarea value={addForm.memo} onChange={e => setAddForm(p => ({ ...p, memo: e.target.value }))}
-                placeholder="예: 오늘 김치찌개 빼주세요"
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none h-16" />
-            </div>
+                    {/* 등록자 */}
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 mb-1.5 block">등록자</label>
+                      <div className="flex items-center gap-2">
+                        <Input value={registrars[factory]} onChange={e => updateRegistrar(factory, e.target.value)}
+                          placeholder="이름 입력" className="flex-1 h-8 text-sm" />
+                        <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer whitespace-nowrap select-none">
+                          <input type="checkbox" checked={isDefault[factory]}
+                            onChange={e => toggleDefault(factory, e.target.checked)} className={`w-3.5 h-3.5 ${P.check}`} />
+                          기본값 설정
+                        </label>
+                      </div>
+                    </div>
 
-            {/* 등록자 */}
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1.5 block">등록자</label>
-              <div className="flex items-center gap-2">
-                <Input value={registrars[addForm.factory]} onChange={e => updateRegistrar(addForm.factory, e.target.value)}
-                  placeholder="이름 입력" className="flex-1 h-8 text-sm" />
-                <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer whitespace-nowrap select-none">
-                  <input type="checkbox" checked={isDefault[addForm.factory]}
-                    onChange={e => toggleDefault(addForm.factory, e.target.checked)} className="w-3.5 h-3.5 accent-blue-600" />
-                  기본값 설정
-                </label>
-              </div>
-            </div>
-
-            <Button onClick={submitRecord} disabled={addLoading} className="w-full bg-blue-600 hover:bg-blue-700 font-bold">
-              {addLoading ? "저장 중..." : "주문 등록"}
-            </Button>
+                    <Button onClick={() => submitRecord(factory)} disabled={loading}
+                      className={`w-full text-white font-bold ${P.submit}`}>
+                      {loading ? "저장 중..." : `${factory}공장 주문 등록`}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           {/* 오늘 주문 목록 */}
