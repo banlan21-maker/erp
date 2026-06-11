@@ -94,6 +94,13 @@ export default function RemnantListTab({
   const [distinctValues, setDistinctValues] = useState<Record<string, FilterValue[]>>({});
   const [openCol,        setOpenCol]        = useState<string | null>(null);
   const [anchorEl,       setAnchorEl]       = useState<HTMLElement | null>(null);
+  // 정렬 (현재 페이지 내 클라이언트 정렬 — 서버 페이지네이션 환경)
+  const [sortKey,        setSortKey]        = useState<string | null>(null);
+  const [sortDir,        setSortDir]        = useState<"asc" | "desc">("asc");
+  const handleSortFor = (col: string, dir: "asc" | "desc" | null) => {
+    if (dir === null) { setSortKey(null); setSortDir("asc"); }
+    else { setSortKey(col); setSortDir(dir); }
+  };
   const [page,           setPage]           = useState(1);
   const [total,          setTotal]          = useState(0);
   const [totalPages,     setTotalPages]     = useState(1);
@@ -158,6 +165,36 @@ export default function RemnantListTab({
     };
     return distinctValues[map[col] ?? col] ?? [];
   };
+
+  // 현재 페이지 내 클라이언트 정렬 (서버 페이지 데이터 기준)
+  const sortedRemnants = (() => {
+    if (!sortKey) return remnants;
+    const colValueOf = (r: RemnantRow, col: string): string => {
+      switch (col) {
+        case "remnantNo":  return r.remnantNo;
+        case "vessel":     return r.sourceProject?.projectCode ?? r.sourceVesselName ?? "";
+        case "block":      return r.sourceBlock ?? "";
+        case "heatNo":     return r.heatNo ?? "";
+        case "shape":      return r.shape;
+        case "material":   return r.material;
+        case "thickness":  return String(r.thickness);
+        case "width1":     return String(r.width1 ?? "");
+        case "length1":    return String(r.length1 ?? "");
+        case "width2":     return String(r.width2 ?? "");
+        case "length2":    return String(r.length2 ?? "");
+        case "weight":     return String(r.weight);
+        case "location":   return r.location ?? "";
+        case "status":     return r.status;
+        default: return "";
+      }
+    };
+    return [...remnants].sort((a, b) => {
+      const av = colValueOf(a, sortKey);
+      const bv = colValueOf(b, sortKey);
+      const cmp = av.localeCompare(bv, "ko", { numeric: true });
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  })();
 
   const activeCount = Object.values(filters).filter(v => v.length > 0).length;
   const totalWeight = remnants.reduce((s, r) => s + r.weight, 0);
@@ -225,6 +262,7 @@ export default function RemnantListTab({
                       </th>
                     );
                   }
+                  const isSort = sortKey === key;
                   return (
                     <th key={key} className={`px-3 py-2.5 text-${align} text-gray-500 font-semibold`}>
                       <button
@@ -233,6 +271,9 @@ export default function RemnantListTab({
                       >
                         {displayLabel}
                         <Filter size={10} className={active ? "text-blue-500 fill-blue-500" : "text-gray-400"} fill={active ? "currentColor" : "none"} />
+                        {isSort && (sortDir === "asc"
+                          ? <span className="text-blue-500 text-[10px]">▲</span>
+                          : <span className="text-blue-500 text-[10px]">▼</span>)}
                       </button>
                     </th>
                   );
@@ -240,14 +281,14 @@ export default function RemnantListTab({
               </tr>
             </thead>
             <tbody className="divide-y">
-              {remnants.length === 0 ? (
+              {sortedRemnants.length === 0 ? (
                 <tr><td colSpan={COLS.length} className="text-center py-8 text-gray-400">
                   {activeCount > 0 || search ? "검색·필터 조건에 맞는 데이터가 없습니다." : "등록된 잔재가 없습니다."}
                   {(activeCount > 0 || search) && (
                     <button onClick={() => { setFilters({}); setSearch(""); }} className="ml-2 text-blue-500 hover:underline">초기화</button>
                   )}
                 </td></tr>
-              ) : remnants.map(r => (
+              ) : sortedRemnants.map(r => (
                 <tr key={r.id} onClick={() => setDetailItem(r)} className="hover:bg-blue-50/40 cursor-pointer transition-colors">
                   <td className="px-3 py-2 font-mono text-blue-600 font-medium">{r.remnantNo}</td>
                   <td className="px-3 py-2 text-gray-700">{r.sourceProject?.projectCode ?? r.sourceVesselName ?? "-"}</td>
@@ -329,6 +370,8 @@ export default function RemnantListTab({
           selected={filters[openCol] ?? []}
           onApply={sel => { setFilters(f => ({ ...f, [openCol]: sel })); setOpenCol(null); setAnchorEl(null); }}
           onClose={() => { setOpenCol(null); setAnchorEl(null); }}
+          sortDir={sortKey === openCol ? sortDir : null}
+          onSort={(dir) => handleSortFor(openCol, dir)}
         />
       )}
 

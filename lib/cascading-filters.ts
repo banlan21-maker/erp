@@ -29,6 +29,59 @@ export type ColAccessor<T>     = (row: T) => string | number | null | undefined;
 export type ColumnAccessorMap<T> = Record<string, ColAccessor<T>>;
 export type ColFilters         = Record<string, string[]>;
 
+// ── 텍스트 조건 필터 (엑셀스타일 통합 드롭다운) ───────────────────────────
+export type TextOp =
+  | "contains"   // ~ 포함
+  | "startsWith" // ~ 로 시작
+  | "endsWith"   // ~ 로 끝남
+  | "equals"     // ~ 와 같음
+  | "notEquals"  // ~ 와 같지 않음
+  | "empty"      // 비어있음
+  | "notEmpty";  // 비어있지 않음
+
+export interface TextPredicate { op: TextOp; val: string }
+
+/** 한 값이 텍스트 조건을 통과하는가 (대소문자 무시) */
+export function applyTextPredicate(value: string, p: TextPredicate): boolean {
+  const v = (value ?? "").toString().toLowerCase();
+  const q = (p.val ?? "").toLowerCase();
+  switch (p.op) {
+    case "empty":      return v === "";
+    case "notEmpty":   return v !== "";
+    case "contains":   return q === "" || v.includes(q);
+    case "startsWith": return q === "" || v.startsWith(q);
+    case "endsWith":   return q === "" || v.endsWith(q);
+    case "equals":     return v === q;
+    case "notEquals":  return v !== q;
+    default:           return true;
+  }
+}
+
+/** ColFilters + Text predicate 둘 다 적용한 행 필터링 */
+export function getCascadedFilteredRowsWithPredicates<T>(
+  rows: T[],
+  filters: ColFilters,
+  predicates: Record<string, TextPredicate | undefined>,
+  accessors: ColumnAccessorMap<T>,
+  excludeKey?: string,
+): T[] {
+  const baseFiltered = getCascadedFilteredRows(rows, filters, accessors, excludeKey);
+  const activeKeys = Object.entries(predicates)
+    .filter(([k, p]) => k !== excludeKey && p && (
+      p.op === "empty" || p.op === "notEmpty" || (p.val ?? "").length > 0
+    ))
+    .map(([k, p]) => [k, p as TextPredicate] as const);
+  if (activeKeys.length === 0) return baseFiltered;
+  return baseFiltered.filter(r =>
+    activeKeys.every(([k, p]) => {
+      const acc = accessors[k];
+      if (!acc) return true;
+      const raw = acc(r);
+      return applyTextPredicate(raw == null ? "" : String(raw), p);
+    })
+  );
+}
+
 /** 단일 행이 단일 컬럼 필터를 통과하는가 */
 function passesColumn<T>(row: T, _key: string, values: string[], accessor: ColAccessor<T>): boolean {
   if (!values || values.length === 0) return true;

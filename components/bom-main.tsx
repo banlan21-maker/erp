@@ -11,8 +11,8 @@ import { useRouter } from "next/navigation";
 import { ClipboardList, FolderOpen, ArrowLeft, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
-import { getCascadedFilteredRows, getAllCascadedOptions, type ColumnAccessorMap } from "@/lib/cascading-filters";
-import { Filter, XCircle } from "lucide-react";
+import { getCascadedFilteredRowsWithPredicates, getAllCascadedOptions, type ColumnAccessorMap, type TextPredicate } from "@/lib/cascading-filters";
+import { Filter, XCircle, ArrowUp, ArrowDown } from "lucide-react";
 
 const STATUS_LABEL: Record<string, string> = { ACTIVE: "진행중", COMPLETED: "완료" };
 const STATUS_COLOR: Record<string, string> = {
@@ -72,16 +72,23 @@ export default function BomMain({
   const [deleting,setDeleting]= useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-  // Excel-style filter state
-  const [filters,  setFilters]  = useState<Record<string, string[]>>({});
-  const [openCol,  setOpenCol]  = useState<string | null>(null);
-  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  // Excel-style filter state (정렬 + 텍스트 조건 + 체크박스 통합)
+  const [filters,    setFilters]    = useState<Record<string, string[]>>({});
+  const [predicates, setPredicates] = useState<Record<string, TextPredicate>>({});
+  const [sortKey,    setSortKey]    = useState<string | null>(null);
+  const [sortDir,    setSortDir]    = useState<"asc" | "desc">("asc");
+  const [openCol,    setOpenCol]    = useState<string | null>(null);
+  const [anchorEl,   setAnchorEl]   = useState<HTMLElement | null>(null);
 
   const handleFilterChange = (col: string, values: string[]) =>
     setFilters(p => values.length === 0 ? Object.fromEntries(Object.entries(p).filter(([k]) => k !== col)) : { ...p, [col]: values });
 
   const handleFilterOpen  = (col: string, el: HTMLElement) => { setOpenCol(col); setAnchorEl(el); };
   const handleFilterClose = () => { setOpenCol(null); setAnchorEl(null); };
+  const handleSortFor = (col: string, dir: "asc" | "desc" | null) => {
+    if (dir === null) { setSortKey(null); setSortDir("asc"); }
+    else { setSortKey(col); setSortDir(dir); }
+  };
 
   // cascading filter accessors
   const accessors = useMemo<ColumnAccessorMap<BomItem>>(() => {
@@ -95,10 +102,18 @@ export default function BomMain({
     [items, filters, accessors],
   );
 
-  const filtered = useMemo(
-    () => getCascadedFilteredRows(items, filters, accessors),
-    [items, filters, accessors],
-  );
+  const filtered = useMemo(() => {
+    const base = getCascadedFilteredRowsWithPredicates(items, filters, predicates, accessors);
+    if (!sortKey) return base;
+    const acc = accessors[sortKey];
+    if (!acc) return base;
+    return [...base].sort((a, b) => {
+      const av = String(acc(a) ?? "");
+      const bv = String(acc(b) ?? "");
+      const cmp = av.localeCompare(bv, "ko", { numeric: true });
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [items, filters, predicates, sortKey, sortDir, accessors]);
 
   // 기존 호출 시그니처 유지용 — distinctValues[col] 반환
   const allValues = (col: ColKey): FilterValue[] => distinctValues[col] ?? [];
@@ -194,7 +209,11 @@ export default function BomMain({
                   <tr className="bg-gray-50 border-b border-gray-200">
                     <th className="px-2 py-2.5 text-center text-xs font-semibold text-gray-500 w-8">No</th>
                     {COLUMNS.map(c => {
-                      const isActive = (filters[c.key]?.length ?? 0) > 0;
+                      const hasValues = (filters[c.key]?.length ?? 0) > 0;
+                      const p = predicates[c.key];
+                      const hasPredicate = !!p && (p.op === "empty" || p.op === "notEmpty" || p.val.length > 0);
+                      const isActive = hasValues || hasPredicate;
+                      const isSort = sortKey === c.key;
                       return (
                         <th key={c.key}
                           className={`px-2 py-2.5 text-xs font-semibold text-gray-500 whitespace-nowrap ${c.align === "right" ? "text-right" : "text-left"}`}>
@@ -203,10 +222,13 @@ export default function BomMain({
                             {c.filterable && (
                               <button
                                 onClick={e => { e.stopPropagation(); if (openCol === c.key) { handleFilterClose(); return; } handleFilterOpen(c.key, e.currentTarget); }}
-                                className={`p-0.5 rounded hover:bg-gray-200 transition-colors ${isActive ? "text-blue-600" : "text-gray-400"}`}
-                                title={isActive ? `필터 적용 중 (${filters[c.key]?.length}개)` : "필터"}
+                                className={`p-0.5 rounded hover:bg-gray-200 transition-colors inline-flex items-center ${isActive ? "text-blue-600" : "text-gray-400"}`}
+                                title="필터·정렬"
                               >
                                 <Filter size={11} fill={isActive ? "currentColor" : "none"} />
+                                {isSort && (sortDir === "asc"
+                                  ? <ArrowUp   size={9} className="text-blue-500" />
+                                  : <ArrowDown size={9} className="text-blue-500" />)}
                               </button>
                             )}
                           </div>
@@ -217,6 +239,14 @@ export default function BomMain({
                               selected={filters[c.key] ?? []}
                               onApply={values => { handleFilterChange(c.key, values); handleFilterClose(); }}
                               onClose={handleFilterClose}
+                              sortDir={sortKey === c.key ? sortDir : null}
+                              onSort={(dir) => handleSortFor(c.key, dir)}
+                              predicate={predicates[c.key] ?? null}
+                              onPredicate={(p) => setPredicates(prev => {
+                                const next = { ...prev };
+                                if (p) next[c.key] = p; else delete next[c.key];
+                                return next;
+                              })}
                             />
                           )}
                         </th>

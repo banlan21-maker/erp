@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import * as XLSX from "xlsx";
-import { CreditCard, Calendar, RefreshCw, Download, Printer, Plus, Pencil, Trash2, X, Save, Filter, Globe } from "lucide-react";
+import { CreditCard, Calendar, RefreshCw, Download, Printer, Plus, Pencil, Trash2, X, Save, Filter, Globe, ArrowUp, ArrowDown } from "lucide-react";
 import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
-import { getCascadedFilteredRows, getAllCascadedOptions, type ColumnAccessorMap } from "@/lib/cascading-filters";
+import { getCascadedFilteredRowsWithPredicates, getAllCascadedOptions, type ColumnAccessorMap, type TextPredicate } from "@/lib/cascading-filters";
 
 const DAYS = ["일", "월", "화", "수", "목", "금", "토"];
 function getNowKST() { return new Date(Date.now() + 9 * 3600000); }
@@ -94,11 +94,19 @@ export default function PaymentMain() {
   }, [ownerByCardNo]);
 
   const [colFilters, setColFilters] = useState<Record<string, string[]>>({});
+  const [predicates, setPredicates] = useState<Record<string, TextPredicate>>({});
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
 
   // 월 바뀌면 필터 초기화
-  useEffect(() => { setColFilters({}); }, [year, month]);
+  useEffect(() => { setColFilters({}); setPredicates({}); setSortKey(null); }, [year, month]);
+
+  const handleSortFor = (col: string, dir: "asc" | "desc" | null) => {
+    if (dir === null) { setSortKey(null); setSortDir("asc"); }
+    else { setSortKey(col); setSortDir(dir); }
+  };
 
   const accessors = useMemo<ColumnAccessorMap<typeof rows[number]>>(() => {
     const m: ColumnAccessorMap<typeof rows[number]> = {};
@@ -111,12 +119,20 @@ export default function PaymentMain() {
     [rows, colFilters, accessors],
   );
 
-  const filteredRows = useMemo(
-    () => getCascadedFilteredRows(rows, colFilters, accessors),
-    [rows, colFilters, accessors],
-  );
+  const filteredRows = useMemo(() => {
+    const base = getCascadedFilteredRowsWithPredicates(rows, colFilters, predicates, accessors);
+    if (!sortKey) return base;
+    return [...base].sort((a, b) => {
+      const av = colValue(a, sortKey);
+      const bv = colValue(b, sortKey);
+      const cmp = av.localeCompare(bv, "ko", { numeric: true });
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [rows, colFilters, predicates, sortKey, sortDir, accessors, colValue]);
 
-  const activeFilterCount = Object.values(colFilters).filter(v => v.length > 0).length;
+  const activeFilterCount =
+    Object.values(colFilters).filter(v => v.length > 0).length +
+    Object.values(predicates).filter(p => p && (p.op === "empty" || p.op === "notEmpty" || p.val.length > 0)).length;
   const totalAmount = filteredRows.reduce((s, r) => s + r.amount, 0);
 
   /* ── 입력/수정 모달 ── */
@@ -321,17 +337,24 @@ tfoot td{background:#e2e8f0;font-weight:bold}
               <tr>
                 <th className="px-3 py-2.5 text-xs font-semibold border-r border-gray-300">NO</th>
                 {COLUMNS.map(c => {
-                  const active = (colFilters[c.key]?.length ?? 0) > 0;
+                  const hasValues = (colFilters[c.key]?.length ?? 0) > 0;
+                  const p = predicates[c.key];
+                  const hasPredicate = !!p && (p.op === "empty" || p.op === "notEmpty" || p.val.length > 0);
+                  const active = hasValues || hasPredicate;
+                  const isSort = sortKey === c.key;
                   return (
                     <th key={c.key} className="px-3 py-2.5 text-xs font-semibold border-r border-gray-300">
                       <div className="flex items-center justify-center gap-1">
                         <span>{c.label}</span>
                         <button
                           onClick={(e) => { setOpenFilter(c.key); setFilterAnchorEl(e.currentTarget); }}
-                          className={`rounded p-0.5 hover:bg-gray-200 ${active ? "text-blue-600" : "text-gray-400"}`}
-                          title={active ? `필터 적용 (${colFilters[c.key].length}개)` : "필터"}
+                          className={`rounded p-0.5 hover:bg-gray-200 inline-flex items-center ${active ? "text-blue-600" : "text-gray-400"}`}
+                          title="필터·정렬"
                         >
                           <Filter size={11} fill={active ? "currentColor" : "none"} />
+                          {isSort && (sortDir === "asc"
+                            ? <ArrowUp   size={9} className="text-blue-500" />
+                            : <ArrowDown size={9} className="text-blue-500" />)}
                         </button>
                       </div>
                     </th>
@@ -392,7 +415,7 @@ tfoot td{background:#e2e8f0;font-weight:bold}
           </table>
         </div>
 
-        {/* 컬럼 필터 드롭다운 */}
+        {/* 컬럼 필터 + 정렬 + 텍스트조건 통합 드롭다운 */}
         {openFilter && filterAnchorEl && (
           <ColumnFilterDropdown
             anchorEl={filterAnchorEl}
@@ -404,6 +427,14 @@ tfoot td{background:#e2e8f0;font-weight:bold}
               setFilterAnchorEl(null);
             }}
             onClose={() => { setOpenFilter(null); setFilterAnchorEl(null); }}
+            sortDir={sortKey === openFilter ? sortDir : null}
+            onSort={(dir) => handleSortFor(openFilter, dir)}
+            predicate={predicates[openFilter] ?? null}
+            onPredicate={(p) => setPredicates(prev => {
+              const next = { ...prev };
+              if (p) next[openFilter] = p; else delete next[openFilter];
+              return next;
+            })}
           />
         )}
       </div>

@@ -4,15 +4,15 @@ import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Truck, Search, Plus, RefreshCw,
-  ArrowUp, ArrowDown, ArrowUpDown, Filter as FilterIcon, XCircle,
+  ArrowUp, ArrowDown, Filter as FilterIcon, XCircle,
   Pencil, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ColumnFilterDropdown from "@/components/column-filter-dropdown";
 import {
-  getCascadedFilteredRows, getAllCascadedOptions,
-  type ColumnAccessorMap, type ColFilters,
+  getCascadedFilteredRowsWithPredicates, getAllCascadedOptions,
+  type ColumnAccessorMap, type ColFilters, type TextPredicate,
 } from "@/lib/cascading-filters";
 
 type FactoryKey = "진교" | "진동" | "공용";
@@ -58,8 +58,9 @@ export default function VendorsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // cascading filter + 정렬
+  // cascading filter + 텍스트 조건 + 정렬 (통합 드롭다운)
   const [colFilters, setColFilters] = useState<ColFilters>({});
+  const [predicates, setPredicates] = useState<Record<string, TextPredicate>>({});
   const [openCol,    setOpenCol]    = useState<ColKey | null>(null);
   const [anchorEl,   setAnchorEl]   = useState<HTMLElement | null>(null);
   const [sortKey,    setSortKey]    = useState<ColKey | null>(null);
@@ -105,8 +106,8 @@ export default function VendorsPage() {
   );
 
   const cascadedRows = useMemo(
-    () => getCascadedFilteredRows(searchFiltered, colFilters, accessors),
-    [searchFiltered, colFilters, accessors],
+    () => getCascadedFilteredRowsWithPredicates(searchFiltered, colFilters, predicates, accessors),
+    [searchFiltered, colFilters, predicates, accessors],
   );
   const distinctValues = useMemo(
     () => getAllCascadedOptions(searchFiltered, colFilters, accessors),
@@ -127,14 +128,14 @@ export default function VendorsPage() {
     return arr;
   }, [cascadedRows, sortKey, sortDir, accessors]);
 
-  const handleSort = (k: ColKey) => {
-    if (sortKey === k) {
-      if (sortDir === "asc") setSortDir("desc");
-      else { setSortKey(null); setSortDir("asc"); }
-    } else { setSortKey(k); setSortDir("asc"); }
+  const handleSortFor = (k: ColKey, dir: "asc" | "desc" | null) => {
+    if (dir === null) { setSortKey(null); setSortDir("asc"); }
+    else { setSortKey(k); setSortDir(dir); }
   };
 
-  const filterCount = Object.values(colFilters).filter(v => v.length > 0).length;
+  const filterCount =
+    Object.values(colFilters).filter(v => v.length > 0).length +
+    Object.values(predicates).filter(p => p && (p.op === "empty" || p.op === "notEmpty" || p.val.length > 0)).length;
 
   // 삭제 핸들러
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -215,22 +216,27 @@ export default function VendorsPage() {
               <thead className="bg-gray-50 border-b-2 border-gray-300">
                 <tr>
                   {COLS.map(col => {
-                    const active = (colFilters[col.key]?.length ?? 0) > 0;
+                    const hasValues   = (colFilters[col.key]?.length ?? 0) > 0;
+                    const hasPredicate = (() => {
+                      const p = predicates[col.key];
+                      return !!p && (p.op === "empty" || p.op === "notEmpty" || p.val.length > 0);
+                    })();
+                    const active = hasValues || hasPredicate;
                     const isSort = sortKey === col.key;
-                    const SortI  = isSort ? (sortDir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
                     return (
                       <th key={col.key} className="px-3 py-2 text-[11px] font-semibold text-gray-500 border-r border-gray-200 whitespace-nowrap">
                         <div className="flex items-center gap-1">
-                          <button onClick={() => handleSort(col.key)} className="inline-flex items-center gap-1 hover:text-gray-700">
-                            {col.label}
-                            <SortI size={11} className={isSort ? "text-blue-500" : "text-gray-300"} />
-                          </button>
+                          <span>{col.label}</span>
                           {col.filterable && (
                             <button
                               onClick={e => { setOpenCol(col.key); setAnchorEl(e.currentTarget); }}
-                              className="text-gray-400 hover:text-gray-700"
+                              className="inline-flex items-center text-gray-400 hover:text-gray-700"
+                              title="필터·정렬"
                             >
                               <FilterIcon size={11} className={active ? "text-blue-500 fill-blue-500" : ""} fill={active ? "currentColor" : "none"} />
+                              {isSort && (sortDir === "asc"
+                                ? <ArrowUp   size={9} className="text-blue-500" />
+                                : <ArrowDown size={9} className="text-blue-500" />)}
                             </button>
                           )}
                         </div>
@@ -296,7 +302,7 @@ export default function VendorsPage() {
         </div>
       )}
 
-      {/* 컬럼 필터 드롭다운 */}
+      {/* 컬럼 필터 + 정렬 + 텍스트조건 통합 드롭다운 */}
       {openCol && anchorEl && (
         <ColumnFilterDropdown
           anchorEl={anchorEl}
@@ -307,6 +313,14 @@ export default function VendorsPage() {
             setOpenCol(null); setAnchorEl(null);
           }}
           onClose={() => { setOpenCol(null); setAnchorEl(null); }}
+          sortDir={sortKey === openCol ? sortDir : null}
+          onSort={(dir) => handleSortFor(openCol, dir)}
+          predicate={predicates[openCol] ?? null}
+          onPredicate={(p) => setPredicates(prev => {
+            const next = { ...prev };
+            if (p) next[openCol] = p; else delete next[openCol];
+            return next;
+          })}
         />
       )}
     </div>

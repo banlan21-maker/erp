@@ -2,14 +2,14 @@
 
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { UserPlus, Pencil, Trash2, Users, Search, Filter, X, Save, List, Plus, GitBranch, Phone, MapPin, Settings2, ArrowUp, ArrowDown, ArrowUpDown, Download } from "lucide-react";
+import { UserPlus, Pencil, Trash2, Users, Search, Filter, X, Save, List, Plus, GitBranch, Phone, MapPin, Settings2, ArrowUp, ArrowDown, Download } from "lucide-react";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import dynamic from "next/dynamic";
 import EmergencyTab from "@/components/emergency-tab";
 import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
-import { getCascadedFilteredRows, getAllCascadedOptions, type ColumnAccessorMap } from "@/lib/cascading-filters";
+import { getCascadedFilteredRowsWithPredicates, getAllCascadedOptions, type ColumnAccessorMap, type TextPredicate } from "@/lib/cascading-filters";
 
 const OrgChartTab = dynamic(() => import("@/components/org-chart-tab"), { ssr: false });
 
@@ -215,16 +215,14 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
 
-  type SortKey = { col: string; dir: "asc" | "desc" };
-  const [sortKeys, setSortKeys] = useState<SortKey[]>([]);
+  // 정렬 + 텍스트 조건 (엑셀스타일 통합 드롭다운)
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [predicates, setPredicates] = useState<Record<string, TextPredicate>>({});
 
-  const handleSort = useCallback((col: string) => {
-    setSortKeys(prev => {
-      const i = prev.findIndex(k => k.col === col);
-      if (i === -1) return [...prev, { col, dir: "asc" }];
-      if (prev[i].dir === "asc") return prev.map((k, j) => j === i ? { ...k, dir: "desc" } : k);
-      return prev.filter((_, j) => j !== i);
-    });
+  const handleSortFor = useCallback((col: string, dir: "asc" | "desc" | null) => {
+    if (dir === null) { setSortKey(null); setSortDir("asc"); }
+    else { setSortKey(col); setSortDir(dir); }
   }, []);
 
   // cascading filter accessors
@@ -245,21 +243,21 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
     const searched = searchTerm
       ? workers.filter(w => w.name.includes(searchTerm) || (w.phone && w.phone.includes(searchTerm)))
       : workers;
-    // 2) cascading 컬럼 필터 적용
-    const filtered = getCascadedFilteredRows(searched, colFilters, accessors);
-    if (sortKeys.length === 0) return filtered;
+    // 2) cascading 컬럼 필터 + 텍스트 조건 동시 적용
+    const filtered = getCascadedFilteredRowsWithPredicates(searched, colFilters, predicates, accessors);
+    // 3) 정렬 (단일 컬럼)
+    if (!sortKey) return filtered;
     return [...filtered].sort((a, b) => {
-      for (const { col, dir } of sortKeys) {
-        const av = colValue(a, col);
-        const bv = colValue(b, col);
-        const cmp = av.localeCompare(bv, "ko");
-        if (cmp !== 0) return dir === "asc" ? cmp : -cmp;
-      }
-      return 0;
+      const av = colValue(a, sortKey);
+      const bv = colValue(b, sortKey);
+      const cmp = av.localeCompare(bv, "ko", { numeric: true });
+      return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [workers, searchTerm, colFilters, sortKeys, colValue]);
+  }, [workers, searchTerm, colFilters, predicates, sortKey, sortDir, accessors, colValue]);
 
-  const activeFilterCount = Object.values(colFilters).filter(v => v.length > 0).length;
+  const activeFilterCount =
+    Object.values(colFilters).filter(v => v.length > 0).length +
+    Object.values(predicates).filter(p => p && (p.op === "empty" || p.op === "notEmpty" || p.val.length > 0)).length;
 
   /* ── 엑셀 다운로드 (메인 시트 + 사이즈 집계 시트들) ── */
   const downloadExcel = () => {
@@ -513,9 +511,13 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
                 <thead className="bg-gray-50 border-b-2 border-gray-300">
                   <tr>
                     {COLUMNS.map(c => {
-                      const filterActive = (colFilters[c.key]?.length ?? 0) > 0;
-                      const sortIdx = sortKeys.findIndex(k => k.col === c.key);
-                      const sortKey = sortKeys[sortIdx];
+                      const hasValues   = (colFilters[c.key]?.length ?? 0) > 0;
+                      const hasPredicate = (() => {
+                        const p = predicates[c.key];
+                        return !!p && (p.op === "empty" || p.op === "notEmpty" || p.val.length > 0);
+                      })();
+                      const filterActive = hasValues || hasPredicate;
+                      const isSort = sortKey === c.key;
                       const alignCls = c.align === "center" ? "text-center" : "text-left";
                       return (
                         <th key={c.key} className={`px-3 py-2.5 font-semibold text-xs text-gray-600 border-r border-gray-200 ${alignCls}`}>
@@ -523,20 +525,13 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
                             <span>{c.label}</span>
                             <button
                               onClick={(e) => { setOpenFilter(c.key); setFilterAnchorEl(e.currentTarget); }}
-                              className={`rounded hover:bg-gray-200 p-0.5 ${filterActive ? "text-blue-600" : "text-gray-400"}`}
-                              title={filterActive ? `필터 ${colFilters[c.key].length}개` : "필터"}
+                              className={`rounded hover:bg-gray-200 p-0.5 inline-flex items-center ${filterActive ? "text-blue-600" : "text-gray-400"}`}
+                              title="필터·정렬"
                             >
                               <Filter size={10} fill={filterActive ? "currentColor" : "none"} />
-                            </button>
-                            <button
-                              onClick={() => handleSort(c.key)}
-                              className={`rounded hover:bg-gray-200 p-0.5 ${sortKey ? "text-blue-600" : "text-gray-300 hover:text-gray-500"}`}
-                              title={sortKey ? (sortKey.dir === "asc" ? "오름차순" : "내림차순") : "정렬"}
-                            >
-                              <span className="flex items-center gap-px">
-                                {sortKey ? (sortKey.dir === "asc" ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} />}
-                                {sortKeys.length > 1 && sortKey && <span className="text-[8px] leading-none">{sortIdx + 1}</span>}
-                              </span>
+                              {isSort && (sortDir === "asc"
+                                ? <ArrowUp   size={9} className="text-blue-500" />
+                                : <ArrowDown size={9} className="text-blue-500" />)}
                             </button>
                           </div>
                         </th>
@@ -624,7 +619,7 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
               </table>
             </div>
 
-            {/* 컬럼 필터 드롭다운 */}
+            {/* 컬럼 필터 + 정렬 + 텍스트조건 통합 드롭다운 */}
             {openFilter && filterAnchorEl && (
               <ColumnFilterDropdown
                 anchorEl={filterAnchorEl}
@@ -636,6 +631,14 @@ export default function WorkersMain({ workers }: { workers: Worker[] }) {
                   setFilterAnchorEl(null);
                 }}
                 onClose={() => { setOpenFilter(null); setFilterAnchorEl(null); }}
+                sortDir={sortKey === openFilter ? sortDir : null}
+                onSort={(dir) => handleSortFor(openFilter, dir)}
+                predicate={predicates[openFilter] ?? null}
+                onPredicate={(p) => setPredicates(prev => {
+                  const next = { ...prev };
+                  if (p) next[openFilter] = p; else delete next[openFilter];
+                  return next;
+                })}
               />
             )}
           </div>

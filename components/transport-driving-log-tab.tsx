@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Plus, Trash2, RefreshCw, X, Save, ChevronLeft, ChevronRight, FileText, Download, Filter, Pencil } from "lucide-react";
+import { Plus, Trash2, RefreshCw, X, Save, ChevronLeft, ChevronRight, FileText, Download, Filter, Pencil, ArrowUp, ArrowDown } from "lucide-react";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ColumnFilterDropdown, { type FilterValue } from "./column-filter-dropdown";
-import { getCascadedFilteredRows, getAllCascadedOptions, type ColumnAccessorMap } from "@/lib/cascading-filters";
+import { getCascadedFilteredRowsWithPredicates, getAllCascadedOptions, type ColumnAccessorMap, type TextPredicate } from "@/lib/cascading-filters";
 import type { TransportVehicle } from "@/components/transport-main";
 
 /* ── 타입 ── */
@@ -382,11 +382,19 @@ export default function TransportDrivingLogTab({
   }, []);
 
   const [colFilters, setColFilters] = useState<Record<string, string[]>>({});
+  const [predicates, setPredicates] = useState<Record<string, TextPredicate>>({});
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
 
   // 월 바뀌면 필터 초기화 (전월 필터값이 신월 데이터에 안 맞을 수 있으므로)
-  useEffect(() => { setColFilters({}); }, [year, month]);
+  useEffect(() => { setColFilters({}); setPredicates({}); setSortKey(null); }, [year, month]);
+
+  const handleSortFor = (col: string, dir: "asc" | "desc" | null) => {
+    if (dir === null) { setSortKey(null); setSortDir("asc"); }
+    else { setSortKey(col); setSortDir(dir); }
+  };
 
   // 컬럼 accessor 맵 — cascading filter 헬퍼용
   const accessors = useMemo<ColumnAccessorMap<DrivingLog>>(() => {
@@ -401,14 +409,22 @@ export default function TransportDrivingLogTab({
     [logs, colFilters, accessors],
   );
 
-  // 필터 적용된 로그 (날짜 내림차순)
+  // 필터 적용된 로그 — sortKey 있으면 그 컬럼으로, 없으면 기본(날짜 내림차순)
   const filteredLogs = useMemo(() => {
-    const filtered = getCascadedFilteredRows(logs, colFilters, accessors);
+    const filtered = getCascadedFilteredRowsWithPredicates(logs, colFilters, predicates, accessors);
+    if (sortKey) {
+      return [...filtered].sort((a, b) => {
+        const av = colValue(a, sortKey);
+        const bv = colValue(b, sortKey);
+        const cmp = av.localeCompare(bv, "ko", { numeric: true });
+        return sortDir === "asc" ? cmp : -cmp;
+      });
+    }
     return [...filtered].sort((a, b) => {
       if (a.date !== b.date) return b.date.localeCompare(a.date);
       return (b.startTime ?? "").localeCompare(a.startTime ?? "");
     });
-  }, [logs, colFilters, accessors]);
+  }, [logs, colFilters, predicates, sortKey, sortDir, accessors, colValue]);
 
   const activeFilterCount = Object.values(colFilters).filter(v => v.length > 0).length;
 
@@ -519,7 +535,11 @@ export default function TransportDrivingLogTab({
             <thead className="bg-gray-50 border-b-2 border-gray-300">
               <tr>
                 {COLUMNS.map(c => {
-                  const active = (colFilters[c.key]?.length ?? 0) > 0;
+                  const hasValues = (colFilters[c.key]?.length ?? 0) > 0;
+                  const p = predicates[c.key];
+                  const hasPredicate = !!p && (p.op === "empty" || p.op === "notEmpty" || p.val.length > 0);
+                  const active = hasValues || hasPredicate;
+                  const isSort = sortKey === c.key;
                   const alignCls = c.align === "right" ? "text-right" : c.align === "center" ? "text-center" : "text-left";
                   return (
                     <th key={c.key} className={`px-3 py-2.5 text-xs font-semibold text-gray-600 border-r border-gray-200 ${alignCls}`}>
@@ -527,10 +547,13 @@ export default function TransportDrivingLogTab({
                         <span>{c.label}</span>
                         <button
                           onClick={(e) => { setOpenFilter(c.key); setFilterAnchorEl(e.currentTarget); }}
-                          className={`rounded p-0.5 hover:bg-gray-200 ${active ? "text-blue-600" : "text-gray-400"}`}
-                          title={active ? `필터 적용 (${colFilters[c.key].length}개)` : "필터"}
+                          className={`rounded p-0.5 hover:bg-gray-200 inline-flex items-center ${active ? "text-blue-600" : "text-gray-400"}`}
+                          title="필터·정렬"
                         >
                           <Filter size={11} fill={active ? "currentColor" : "none"} />
+                          {isSort && (sortDir === "asc"
+                            ? <ArrowUp   size={9} className="text-blue-500" />
+                            : <ArrowDown size={9} className="text-blue-500" />)}
                         </button>
                       </div>
                     </th>
@@ -613,7 +636,7 @@ export default function TransportDrivingLogTab({
         </div>
       )}
 
-      {/* 컬럼 필터 드롭다운 */}
+      {/* 컬럼 필터 + 정렬 + 텍스트조건 통합 드롭다운 */}
       {openFilter && filterAnchorEl && (
         <ColumnFilterDropdown
           anchorEl={filterAnchorEl}
@@ -625,6 +648,14 @@ export default function TransportDrivingLogTab({
             setFilterAnchorEl(null);
           }}
           onClose={() => { setOpenFilter(null); setFilterAnchorEl(null); }}
+          sortDir={sortKey === openFilter ? sortDir : null}
+          onSort={(dir) => handleSortFor(openFilter, dir)}
+          predicate={predicates[openFilter] ?? null}
+          onPredicate={(p) => setPredicates(prev => {
+            const next = { ...prev };
+            if (p) next[openFilter] = p; else delete next[openFilter];
+            return next;
+          })}
         />
       )}
 

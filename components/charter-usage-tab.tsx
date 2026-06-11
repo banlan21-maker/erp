@@ -7,12 +7,12 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Plus, Trash2, RefreshCw, X, Save, ChevronLeft, ChevronRight, FileText, Download, Filter, Pencil } from "lucide-react";
+import { Plus, Trash2, RefreshCw, X, Save, ChevronLeft, ChevronRight, FileText, Download, Filter, Pencil, ArrowUp, ArrowDown } from "lucide-react";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ColumnFilterDropdown, { type FilterValue } from "./column-filter-dropdown";
-import { getCascadedFilteredRows, getAllCascadedOptions, type ColumnAccessorMap } from "@/lib/cascading-filters";
+import { getCascadedFilteredRowsWithPredicates, getAllCascadedOptions, type ColumnAccessorMap, type TextPredicate } from "@/lib/cascading-filters";
 
 interface CharterUsage {
   id:          string;
@@ -204,11 +204,19 @@ export default function CharterUsageTab() {
   };
 
   const [colFilters, setColFilters] = useState<Record<string, string[]>>({});
+  const [predicates, setPredicates] = useState<Record<string, TextPredicate>>({});
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
 
   // 월 변경 시 필터 리셋
-  useEffect(() => { setColFilters({}); }, [year, month]);
+  useEffect(() => { setColFilters({}); setPredicates({}); setSortKey(null); }, [year, month]);
+
+  const handleSortFor = (col: string, dir: "asc" | "desc" | null) => {
+    if (dir === null) { setSortKey(null); setSortDir("asc"); }
+    else { setSortKey(col); setSortDir(dir); }
+  };
 
   // cascading filter accessors
   const accessors = useMemo<ColumnAccessorMap<CharterUsage>>(() => {
@@ -222,12 +230,20 @@ export default function CharterUsageTab() {
     [logs, colFilters, accessors],
   );
 
-  const filteredLogs = useMemo(
-    () => getCascadedFilteredRows(logs, colFilters, accessors),
-    [logs, colFilters, accessors],
-  );
+  const filteredLogs = useMemo(() => {
+    const base = getCascadedFilteredRowsWithPredicates(logs, colFilters, predicates, accessors);
+    if (!sortKey) return base;
+    return [...base].sort((a, b) => {
+      const av = colValue(a, sortKey);
+      const bv = colValue(b, sortKey);
+      const cmp = av.localeCompare(bv, "ko", { numeric: true });
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [logs, colFilters, predicates, sortKey, sortDir, accessors, colValue]);
 
-  const activeFilterCount = Object.values(colFilters).filter(v => v.length).length;
+  const activeFilterCount =
+    Object.values(colFilters).filter(v => v.length).length +
+    Object.values(predicates).filter(p => p && (p.op === "empty" || p.op === "notEmpty" || p.val.length > 0)).length;
 
   /* 월간 요약 */
   const summary = useMemo(() => {
@@ -329,7 +345,11 @@ export default function CharterUsageTab() {
           <thead className="bg-gray-50 border-b-2 border-gray-300">
             <tr>
               {COLUMNS.map(c => {
-                const active = (colFilters[c.key]?.length ?? 0) > 0;
+                const hasValues = (colFilters[c.key]?.length ?? 0) > 0;
+                const p = predicates[c.key];
+                const hasPredicate = !!p && (p.op === "empty" || p.op === "notEmpty" || p.val.length > 0);
+                const active = hasValues || hasPredicate;
+                const isSort = sortKey === c.key;
                 const alignCls = c.align === "right" ? "text-right" : c.align === "center" ? "text-center" : "text-left";
                 const justifyCls = c.align === "right" ? "justify-end" : c.align === "center" ? "justify-center" : "";
                 return (
@@ -338,8 +358,13 @@ export default function CharterUsageTab() {
                       <span>{c.label}</span>
                       <button
                         onClick={(e) => { setOpenFilter(c.key); setFilterAnchorEl(e.currentTarget); }}
-                        className={`rounded p-0.5 hover:bg-gray-200 ${active ? "text-blue-600" : "text-gray-400"}`}>
+                        className={`rounded p-0.5 hover:bg-gray-200 inline-flex items-center ${active ? "text-blue-600" : "text-gray-400"}`}
+                        title="필터·정렬"
+                      >
                         <Filter size={11} fill={active ? "currentColor" : "none"} />
+                        {isSort && (sortDir === "asc"
+                          ? <ArrowUp   size={9} className="text-blue-500" />
+                          : <ArrowDown size={9} className="text-blue-500" />)}
                       </button>
                     </div>
                   </th>
@@ -401,7 +426,7 @@ export default function CharterUsageTab() {
         </table>
       </div>
 
-      {/* 컬럼 필터 드롭다운 */}
+      {/* 컬럼 필터 + 정렬 + 텍스트조건 통합 드롭다운 */}
       {openFilter && filterAnchorEl && (
         <ColumnFilterDropdown
           anchorEl={filterAnchorEl}
@@ -412,6 +437,14 @@ export default function CharterUsageTab() {
             setOpenFilter(null); setFilterAnchorEl(null);
           }}
           onClose={() => { setOpenFilter(null); setFilterAnchorEl(null); }}
+          sortDir={sortKey === openFilter ? sortDir : null}
+          onSort={(dir) => handleSortFor(openFilter, dir)}
+          predicate={predicates[openFilter] ?? null}
+          onPredicate={(p) => setPredicates(prev => {
+            const next = { ...prev };
+            if (p) next[openFilter] = p; else delete next[openFilter];
+            return next;
+          })}
         />
       )}
 
