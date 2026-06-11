@@ -384,7 +384,7 @@ export default function DrawingTable({
   const [openCol, setOpenCol] = useState<string | null>(null);
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
 
-  // 정렬 (다중 컬럼) — 원재사용 / 등록잔재사용 각각 별도
+  // 정렬 (다중 컬럼) — 정규원재 사용 / 잔재 사용(등록·현장·여유) 각각 별도
   const [sortKeys, setSortKeys] = useState<SortKey[]>([]);
   const [assignedSortKeys, setAssignedSortKeys] = useState<SortKey[]>([]);
 
@@ -432,7 +432,7 @@ export default function DrawingTable({
     return rem?.type ?? null;
   };
 
-  // 필터 + 정렬 (원재사용만)
+  // 필터 + 정렬 (정규원재 사용만)
   const filteredDrawings = useMemo(() => {
     const filtered = normalDrawings.filter(d =>
       Object.entries(filters).every(([col, values]) => {
@@ -496,7 +496,7 @@ export default function DrawingTable({
       });
       const ws = XLSX.utils.json_to_sheet(data);
       ws["!cols"] = [{ wch: 8 },{ wch: 10 },{ wch: 10 },{ wch: 14 },{ wch: 8 },{ wch: 8 },{ wch: 8 },{ wch: 8 },{ wch: 12 },{ wch: 12 },{ wch: 14 },{ wch: 6 }];
-      XLSX.utils.book_append_sheet(wb, ws, "원재사용");
+      XLSX.utils.book_append_sheet(wb, ws, "정규원재 사용");
     }
 
     if (sortedAssignedDrawings.length > 0) {
@@ -576,7 +576,7 @@ export default function DrawingTable({
     } catch { alert("서버 오류"); } finally { setClearing(false); }
   };
 
-  // 상태별 카운트 (원재사용 기준)
+  // 상태별 카운트 (정규원재 사용 기준)
   const counts = normalDrawings.reduce((acc, d) => {
     const s = (d.status ?? "REGISTERED") as DrawingStatusType;
     acc[s] = (acc[s] ?? 0) + 1;
@@ -614,28 +614,32 @@ export default function DrawingTable({
           <table className="w-full text-xs whitespace-nowrap">
             <thead className={`${C.head} border-b`}>
               <tr>
-                {([
-                  ["status",     "상태",         "center"],
-                  ["remnantNo",  "사용잔재번호", "left"],
-                  ["block",      "블록",         "left"],
-                  ["drawingNo",  "도면번호",     "left"],
-                  ["material",   "재질",         "left"],
-                  ["thickness",  "두께",         "right"],
-                  ["width1",     "폭1",          "right"],
-                  ["width2",     "폭2",          "right"],
-                  ["length1",    "길이1",        "right"],
-                  ["length2",    "길이2",        "right"],
-                  ["remWeight",  "강재중량(kg)", "right"],
-                  ["useWeight",  "사용중량(kg)", "right"],
-                  ["heatNo",     "실사용판번호", "center"],
-                ] as [string, string, "left" | "right" | "center"][]).map(([col, label, align]) => (
-                  <th key={col} className={`px-2 py-2.5 ${C.txt} font-semibold text-${align}`}>
-                    <div className={`flex items-center gap-1 ${align === "right" ? "justify-end" : align === "center" ? "justify-center" : ""}`}>
-                      <span>{label}</span>
-                      <SortButton col={col} sortKeys={assignedSortKeys} onSort={handleAssignedSort} />
-                    </div>
-                  </th>
-                ))}
+                {(() => {
+                  // SURPLUS(여유원재) 는 사각형만이므로 폭2/길이2 컬럼 제외
+                  const baseCols: [string, string, "left" | "right" | "center"][] = [
+                    ["status",     "상태",         "center"],
+                    ["remnantNo",  "사용잔재번호", "left"],
+                    ["block",      "블록",         "left"],
+                    ["drawingNo",  "도면번호",     "left"],
+                    ["material",   "재질",         "left"],
+                    ["thickness",  "두께",         "right"],
+                    ["width1",     "폭1",          "right"],
+                    ...(kind === "SURPLUS" ? [] : [["width2", "폭2", "right"] as [string, string, "right"]]),
+                    ["length1",    "길이1",        "right"],
+                    ...(kind === "SURPLUS" ? [] : [["length2", "길이2", "right"] as [string, string, "right"]]),
+                    ["remWeight",  "강재중량(kg)", "right"],
+                    ["useWeight",  "사용중량(kg)", "right"],
+                    ["heatNo",     "실사용판번호", "center"],
+                  ];
+                  return baseCols.map(([col, label, align]) => (
+                    <th key={col} className={`px-2 py-2.5 ${C.txt} font-semibold text-${align}`}>
+                      <div className={`flex items-center gap-1 ${align === "right" ? "justify-end" : align === "center" ? "justify-center" : ""}`}>
+                        <span>{label}</span>
+                        <SortButton col={col} sortKeys={assignedSortKeys} onSort={handleAssignedSort} />
+                      </div>
+                    </th>
+                  ));
+                })()}
                 <th className={`px-2 py-2.5 ${C.txt} font-semibold text-center`}>액션</th>
               </tr>
             </thead>
@@ -663,9 +667,13 @@ export default function DrawingTable({
                     <td className="px-2 py-2"><span className="px-1.5 py-0.5 bg-slate-100 rounded font-medium">{d.material}</span></td>
                     <td className="px-2 py-2 text-right text-gray-700">{d.thickness}</td>
                     <td className="px-2 py-2 text-right text-gray-700">{rem?.width1?.toLocaleString() ?? "-"}</td>
-                    <td className="px-2 py-2 text-right text-gray-700">{rem?.width2?.toLocaleString() ?? "-"}</td>
+                    {kind !== "SURPLUS" && (
+                      <td className="px-2 py-2 text-right text-gray-700">{rem?.width2?.toLocaleString() ?? "-"}</td>
+                    )}
                     <td className="px-2 py-2 text-right text-gray-700">{rem?.length1?.toLocaleString() ?? "-"}</td>
-                    <td className="px-2 py-2 text-right text-gray-700">{rem?.length2?.toLocaleString() ?? "-"}</td>
+                    {kind !== "SURPLUS" && (
+                      <td className="px-2 py-2 text-right text-gray-700">{rem?.length2?.toLocaleString() ?? "-"}</td>
+                    )}
                     <td className="px-2 py-2 text-right font-semibold text-gray-700">{calcSteelWeight(d.thickness, d.width, d.length).toFixed(1)}</td>
                     <td className="px-2 py-2 text-right text-gray-500">{d.useWeight != null ? d.useWeight.toFixed(1) : "-"}</td>
                     <td className="px-2 py-2 text-center font-mono text-blue-600">{d.heatNo ?? <span className="text-gray-300">-</span>}</td>
@@ -695,7 +703,7 @@ export default function DrawingTable({
             </tbody>
             <tfoot className={`${C.foot} border-t`}>
               <tr>
-                <td colSpan={10} className={`px-2 py-2 text-xs ${C.noCol} font-medium`}>합계 ({list.length}행)</td>
+                <td colSpan={kind === "SURPLUS" ? 8 : 10} className={`px-2 py-2 text-xs ${C.noCol} font-medium`}>합계 ({list.length}행)</td>
                 <td className={`px-2 py-2 text-right text-xs font-bold ${C.noCol}`}>{list.reduce((s, d) => s + calcSteelWeight(d.thickness, d.width, d.length), 0).toFixed(1)}kg</td>
                 <td className={`px-2 py-2 text-right text-xs font-bold ${C.noCol}`}>{list.reduce((s, d) => s + (d.useWeight ?? 0), 0).toFixed(1)}kg</td>
                 <td />
@@ -843,7 +851,11 @@ export default function DrawingTable({
         </div>
       </div>
 
-      {/* 테이블 */}
+      {/* 정규원재 사용 리스트 (메인) */}
+      <div className="flex items-center gap-2 mt-2">
+        <span className="text-sm font-semibold text-gray-700">정규원재 사용 리스트</span>
+        <span className="text-xs text-gray-400">{normalDrawings.length}행</span>
+      </div>
       <div className="bg-white rounded-xl border overflow-x-auto">
         <table className="w-full text-sm whitespace-nowrap">
           <thead className="bg-gray-50 border-b">
@@ -996,9 +1008,10 @@ export default function DrawingTable({
       </div>
 
       {/* 등록잔재 사용 리스트 / 현장잔재 사용 리스트 */}
+      {/* Project.MD § 7.3a 자재 4구분 순서: 정규원재(메인 테이블) → 여유원재 → 등록잔재 → 현장잔재 */}
+      {renderUseList("SURPLUS", surplusUseDrawings)}
       {renderUseList("REGISTERED", registeredUseDrawings)}
       {renderUseList("REMNANT", remnantUseDrawings)}
-      {renderUseList("SURPLUS", surplusUseDrawings)}
 
       {/* 잔재 사용 행 수정 모달 (원재 행은 inline editing 사용) */}
       {modalEditDrawing && (

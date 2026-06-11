@@ -386,7 +386,7 @@ function UploadTab({
   const setAssignedRemnant = (idx: number, remnantId: string) =>
     setRemnantAssignments(prev => ({ ...prev, [idx]: { ...(prev[idx] ?? { kind: "REGISTERED" as AssignKind }), remnantId } }));
 
-  // 체크박스 (원재사용 목록에서만 활성)
+  // 체크박스 (정규원재 사용 목록에서만 활성)
   const [checkedRows, setCheckedRows] = useState<Set<number>>(new Set());
   const toggleRow = (idx: number) => setCheckedRows(prev => {
     const next = new Set(prev);
@@ -510,7 +510,7 @@ function UploadTab({
                           onClick={() => moveToNormal(idx)}
                           className="px-2 py-0.5 text-xs rounded border border-gray-300 text-gray-500 hover:bg-gray-100 font-medium"
                         >
-                          ← 원재로
+                          ← 정규원재로
                         </button>
                       </td>
                     </tr>
@@ -724,10 +724,10 @@ function UploadTab({
                     </div>
                   </div>
 
-                  {/* 원재사용 목록 */}
+                  {/* 정규원재 사용 목록 */}
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-semibold text-gray-600">원재사용 목록</span>
+                      <span className="text-xs font-semibold text-gray-600">정규원재 사용 목록</span>
                       <span className="text-xs text-gray-400">{normalCount}행</span>
                       {checkedRows.size > 0 && (
                         <div className="ml-auto flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">
@@ -870,19 +870,17 @@ function UploadTab({
                             );
                           })}
                           {normalCount === 0 && (
-                            <tr><td colSpan={9} className="px-3 py-4 text-center text-gray-400">원재사용 항목이 없습니다.</td></tr>
+                            <tr><td colSpan={9} className="px-3 py-4 text-center text-gray-400">정규원재 사용 항목이 없습니다.</td></tr>
                           )}
                         </tbody>
                       </table>
                     </div>
                   </div>
 
-                  {/* 등록잔재 사용 목록 */}
-                  {renderAssignedList("REGISTERED", registeredIndices, registeredCount)}
-                  {/* 현장잔재 사용 목록 */}
-                  {renderAssignedList("REMNANT", remnantIndices, remnantCount)}
-                  {/* 여유원재 사용 목록 */}
+                  {/* Project.MD § 7.3a 자재 4구분 순서: 정규원재(메인) → 여유원재 → 등록잔재 → 현장잔재 */}
                   {renderAssignedList("SURPLUS", surplusIndices, surplusCount)}
+                  {renderAssignedList("REGISTERED", registeredIndices, registeredCount)}
+                  {renderAssignedList("REMNANT", remnantIndices, remnantCount)}
                 </div>
               )}
             </div>
