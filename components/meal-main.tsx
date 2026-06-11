@@ -16,6 +16,9 @@ const MEAL_TYPES = ["점심", "저녁", "기타"] as const;
 function getTodayKST(): string {
   return new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
 }
+function getYesterdayKST(): string {
+  return new Date(Date.now() + 9 * 3600000 - 86400000).toISOString().slice(0, 10);
+}
 function getNowKST() {
   return new Date(Date.now() + 9 * 3600000);
 }
@@ -74,27 +77,7 @@ export default function MealMain() {
   useEffect(() => { loadVendors(); }, [loadVendors]);
   useEffect(() => { setOrigin(window.location.origin); }, []);
 
-  /* ── 등록자 (localStorage) ── */
-  const [registrars, setRegistrars] = useState<Record<Factory, string>>({ 진교: "", 진동: "" });
-  const [isDefault, setIsDefault] = useState<Record<Factory, boolean>>({ 진교: false, 진동: false });
-  useEffect(() => {
-    const next: Record<Factory, string> = { 진교: "", 진동: "" };
-    const def: Record<Factory, boolean> = { 진교: false, 진동: false };
-    for (const f of FACTORIES) {
-      const saved = localStorage.getItem(`mealRegistrar_${f}`);
-      if (saved) { next[f] = saved; def[f] = true; }
-    }
-    setRegistrars(next); setIsDefault(def);
-  }, []);
-  const updateRegistrar = (f: Factory, val: string) => {
-    setRegistrars(prev => ({ ...prev, [f]: val }));
-    if (isDefault[f]) localStorage.setItem(`mealRegistrar_${f}`, val);
-  };
-  const toggleDefault = (f: Factory, checked: boolean) => {
-    setIsDefault(prev => ({ ...prev, [f]: checked }));
-    if (checked) localStorage.setItem(`mealRegistrar_${f}`, registrars[f]);
-    else localStorage.removeItem(`mealRegistrar_${f}`);
-  };
+  // 등록자(registrar) 입력은 더 이상 노출하지 않음. API 호환 위해 빈 문자열로 전송.
 
   const [origin, setOrigin] = useState("");
 
@@ -131,6 +114,23 @@ export default function MealMain() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendors]);
 
+  // 어제 같은 식사구분 주문 수량을 그대로 채움
+  const copyYesterday = async (factory: Factory) => {
+    const yesterday = getYesterdayKST();
+    const mealType  = factoryForms[factory].mealType;
+    try {
+      const r = await fetch(`/api/meal-record?date=${yesterday}`);
+      const d = await r.json();
+      if (!d.success) { alert("어제 데이터를 불러올 수 없습니다."); return; }
+      const rec = (d.data as MealRecord[]).find(x => x.factory === factory && x.mealType === mealType);
+      if (!rec) {
+        alert(`${yesterday} ${factory}공장 ${mealType} 주문이 없습니다.`);
+        return;
+      }
+      setFForm(factory, { count: String(rec.count) });
+    } catch { alert("어제 데이터를 불러올 수 없습니다."); }
+  };
+
   const submitRecord = async (factory: Factory) => {
     const form = factoryForms[factory];
     const v = vendors.find(vv => vv.factory === factory && vv.isActive);
@@ -142,7 +142,7 @@ export default function MealMain() {
         body: JSON.stringify({
           date: today, factory, mealType: form.mealType,
           count: parseInt(form.count) || 0, memo: form.memo,
-          registrar: registrars[factory], vendorId: v?.id || null,
+          registrar: "", vendorId: v?.id || null,
         }),
       });
       const d = await r.json();
@@ -232,7 +232,7 @@ export default function MealMain() {
         body: JSON.stringify({
           date: cellEdit.dateStr, factory: cellEdit.factory, mealType: cellEdit.mealType,
           count: parseInt(cellEdit.count) || 0, memo: cellEdit.memo,
-          registrar: registrars[cellEdit.factory], vendorId: v?.id || null,
+          registrar: "", vendorId: v?.id || null,
         }),
       });
       const d = await r.json();
@@ -257,7 +257,7 @@ export default function MealMain() {
     try {
       const r = await fetch("/api/meal-settlement", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ factory, month: monthYM, totalCount: total, totalAmount: amount, confirmedBy: registrars[factory] || null }),
+        body: JSON.stringify({ factory, month: monthYM, totalCount: total, totalAmount: amount, confirmedBy: null }),
       });
       const d = await r.json();
       if (!d.success) { alert(d.error ?? "결산 실패"); return; }
@@ -502,26 +502,24 @@ export default function MealMain() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {([
               { factory: "진동" as Factory, palette: {
-                  border: "border-violet-300",
-                  bg:     "bg-violet-50/40",
-                  title:  "text-violet-700",
-                  badge:  "bg-violet-600 text-white",
-                  btnSel: "bg-violet-600 text-white border-violet-600",
-                  btnIdle:"bg-white text-gray-600 border-gray-200 hover:border-violet-300",
-                  submit: "bg-violet-600 hover:bg-violet-700",
-                  check:  "accent-violet-600",
-                  ring:   "focus:ring-violet-500",
+                  border: "border-blue-300",
+                  bg:     "bg-blue-50/40",
+                  title:  "text-blue-700",
+                  btnSel: "bg-blue-600 text-white border-blue-600",
+                  btnIdle:"bg-white text-gray-600 border-gray-200 hover:border-blue-300",
+                  submit: "bg-blue-600 hover:bg-blue-700",
+                  ring:   "focus:ring-blue-500",
+                  ghost:  "border-blue-300 text-blue-700 hover:bg-blue-100",
                 } },
               { factory: "진교" as Factory, palette: {
-                  border: "border-sky-300",
-                  bg:     "bg-sky-50/40",
-                  title:  "text-sky-700",
-                  badge:  "bg-sky-600 text-white",
-                  btnSel: "bg-sky-600 text-white border-sky-600",
-                  btnIdle:"bg-white text-gray-600 border-gray-200 hover:border-sky-300",
-                  submit: "bg-sky-600 hover:bg-sky-700",
-                  check:  "accent-sky-600",
-                  ring:   "focus:ring-sky-500",
+                  border: "border-emerald-300",
+                  bg:     "bg-emerald-50/40",
+                  title:  "text-emerald-700",
+                  btnSel: "bg-emerald-600 text-white border-emerald-600",
+                  btnIdle:"bg-white text-gray-600 border-gray-200 hover:border-emerald-300",
+                  submit: "bg-emerald-600 hover:bg-emerald-700",
+                  ring:   "focus:ring-emerald-500",
+                  ghost:  "border-emerald-300 text-emerald-700 hover:bg-emerald-100",
                 } },
             ] as const).map(({ factory, palette: P }) => {
               const form = factoryForms[factory];
@@ -529,8 +527,7 @@ export default function MealMain() {
               return (
                 <div key={factory} className={`rounded-2xl border-2 ${P.border} ${P.bg} shadow-sm overflow-hidden`}>
                   {/* 큰 제목 헤더 */}
-                  <div className={`px-5 py-4 border-b-2 ${P.border} flex items-center justify-center gap-3`}>
-                    <span className={`px-3 py-1 rounded-lg text-xs font-bold ${P.badge}`}>{factory === "진동" ? "왼쪽" : "오른쪽"}</span>
+                  <div className={`px-5 py-4 border-b-2 ${P.border} flex items-center justify-center`}>
                     <h2 className={`text-2xl sm:text-3xl font-extrabold tracking-tight ${P.title}`}>
                       {factory}공장 식수
                     </h2>
@@ -563,6 +560,14 @@ export default function MealMain() {
                           className="w-9 h-9 rounded-lg border border-gray-200 bg-white text-lg font-bold text-gray-600 hover:bg-gray-50">+</button>
                         <span className="text-sm text-gray-500">명</span>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => copyYesterday(factory)}
+                        className={`mt-2 w-full text-sm font-semibold py-2 rounded-lg border-2 border-dashed transition-colors ${P.ghost}`}
+                        title="어제 같은 식사구분 주문 수량을 그대로 채웁니다"
+                      >
+                        어제와 동일
+                      </button>
                     </div>
 
                     {/* 전달사항 */}
@@ -571,20 +576,6 @@ export default function MealMain() {
                       <textarea value={form.memo} onChange={e => setFForm(factory, { memo: e.target.value })}
                         placeholder="예: 오늘 김치찌개 빼주세요"
                         className={`w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 ${P.ring} resize-none h-16 bg-white`} />
-                    </div>
-
-                    {/* 등록자 */}
-                    <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1.5 block">등록자</label>
-                      <div className="flex items-center gap-2">
-                        <Input value={registrars[factory]} onChange={e => updateRegistrar(factory, e.target.value)}
-                          placeholder="이름 입력" className="flex-1 h-8 text-sm" />
-                        <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer whitespace-nowrap select-none">
-                          <input type="checkbox" checked={isDefault[factory]}
-                            onChange={e => toggleDefault(factory, e.target.checked)} className={`w-3.5 h-3.5 ${P.check}`} />
-                          기본값 설정
-                        </label>
-                      </div>
                     </div>
 
                     <Button onClick={() => submitRecord(factory)} disabled={loading}

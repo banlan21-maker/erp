@@ -360,13 +360,13 @@ export default function MealFieldPage({ params }: { params: Promise<{ token: str
         <div className="px-4 py-6 space-y-4">
           <div className="flex items-center gap-2 px-2">
             <input type="number" value={monthYear} onChange={e=>setMonthYear(e.target.value)}
-              className="w-20 h-11 border border-gray-200 rounded-xl px-3 text-lg font-bold text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-28 h-11 border border-gray-200 rounded-xl px-2 text-lg font-bold text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <span className="text-lg font-bold text-gray-600">년</span>
             <select value={monthMonth} onChange={e=>setMonthMonth(e.target.value)}
               className="h-11 px-3 border border-gray-200 rounded-xl text-lg font-bold focus:outline-none focus:ring-2 focus:ring-blue-500">
               {Array.from({length:12},(_,i)=><option key={i+1} value={i+1}>{i+1}월</option>)}
             </select>
-            <button onClick={loadMonth} className="flex-1 h-11 bg-blue-600 text-white rounded-xl text-base font-bold">조회</button>
+            <button onClick={loadMonth} className="h-11 px-5 bg-blue-600 text-white rounded-xl text-base font-bold whitespace-nowrap">조회</button>
           </div>
 
           {/* 결산완료 배지 */}
