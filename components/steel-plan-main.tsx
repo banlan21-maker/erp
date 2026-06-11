@@ -205,12 +205,16 @@ export default function SteelPlanMain() {
   const [formSaving, setFormSaving] = useState(false);
 
   /* ── 데이터 로드 ─────────────────────────────────────────────────────── */
-  /* ── 고유값 로드 (컬럼 필터 목록) — colFilters 변경 시 cascading 재계산 ── */
+  /* ── 고유값 로드 (컬럼 필터 목록) — colFilters/search 변경 시 cascading 재계산 ── */
   const loadDistinct = useCallback(async () => {
     const qs = serializeColFilters(colFilters, STEEL_PLAN_QS_KEY);
-    const res = await fetch(`/api/steel-plan/distinct${qs ? `?${qs}` : ""}`);
+    // search 도 함께 전달 — 본 데이터와 distinct 일관성 보장 (검색어 활성 시 호선 옵션 0건 호선 노출 방지)
+    const sp = new URLSearchParams(qs);
+    if (search) sp.set("search", search);
+    const qsAll = sp.toString();
+    const res = await fetch(`/api/steel-plan/distinct${qsAll ? `?${qsAll}` : ""}`);
     if (res.ok) setDistinctValues(await res.json());
-  }, [colFilters]);
+  }, [colFilters, search]);
 
   const loadPlan = useCallback(async () => {
     setLoading(true);
@@ -246,9 +250,12 @@ export default function SteelPlanMain() {
 
   const loadHeatDistinct = useCallback(async () => {
     const qs = serializeColFilters(heatColFilters, STEEL_PLAN_HEAT_QS_KEY);
-    const res = await fetch(`/api/steel-plan/heat/distinct${qs ? `?${qs}` : ""}`);
+    const sp = new URLSearchParams(qs);
+    if (heatSearch) sp.set("search", heatSearch);
+    const qsAll = sp.toString();
+    const res = await fetch(`/api/steel-plan/heat/distinct${qsAll ? `?${qsAll}` : ""}`);
     if (res.ok) setHeatDistinctValues(await res.json());
-  }, [heatColFilters]);
+  }, [heatColFilters, heatSearch]);
 
   const loadHeat = useCallback(async () => {
     setHeatLoading(true);

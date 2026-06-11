@@ -61,8 +61,22 @@ export async function GET(req: NextRequest) {
     filters[colKey] = parseList(sp.get(qsKey));
   }
 
-  // 2) cascading where 빌더 — 자기 자신 컬럼 제외
-  const where = (excludeKey: string) => buildCascadingWhere(BUILDERS, filters, excludeKey);
+  // search 파라미터 (본 데이터 fetch 와 동일 조건) — 검색어 활성 시 distinct 결과도 그 범위 안으로 좁힘
+  const search = sp.get("search") || undefined;
+  const searchWhere = search
+    ? {
+        OR: [
+          { vesselCode: { contains: search, mode: "insensitive" as const } },
+          { material:   { contains: search, mode: "insensitive" as const } },
+        ],
+      }
+    : {};
+
+  // 2) cascading where 빌더 — 자기 자신 컬럼 제외 + search 조건 추가
+  const where = (excludeKey: string) => ({
+    ...searchWhere,
+    ...buildCascadingWhere(BUILDERS, filters, excludeKey),
+  });
 
   // 3) 15개 distinct 쿼리 병렬
   const [

@@ -39,7 +39,22 @@ export async function GET(req: NextRequest) {
     filters[colKey] = parseList(sp.get(qsKey));
   }
 
-  const where = (excludeKey: string) => buildCascadingWhere(BUILDERS, filters, excludeKey);
+  // search 파라미터 — 본 데이터 fetch (/api/steel-plan/heat) 의 search OR 절과 동일하게 적용
+  const search = sp.get("search") || undefined;
+  const searchWhere = search
+    ? {
+        OR: [
+          { vesselCode: { contains: search, mode: "insensitive" as const } },
+          { material:   { contains: search, mode: "insensitive" as const } },
+          { heatNo:     { contains: search, mode: "insensitive" as const } },
+        ],
+      }
+    : {};
+
+  const where = (excludeKey: string) => ({
+    ...searchWhere,
+    ...buildCascadingWhere(BUILDERS, filters, excludeKey),
+  });
 
   const [vessels, materials, thicknesses, widths, lengths, heatNos, statuses, batchNos] =
     await Promise.all([
