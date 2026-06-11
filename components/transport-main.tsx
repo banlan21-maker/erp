@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import {
   Plus, Truck, ChevronRight, Search, X, Save, Trash2,
   CheckCircle, AlertTriangle, Clock, XCircle, MinusCircle,
-  Filter, UserPlus,
+  Filter, UserPlus, Wrench, AlertOctagon,
 } from "lucide-react";
 import TransportDrivingLogTab from "@/components/transport-driving-log-tab";
 import CharterUsageTab from "@/components/charter-usage-tab";
 import TransportDriverModal from "@/components/transport-driver-modal";
+import TransportConsumableModal from "@/components/transport-consumable-modal";
 
 // ── 타입 ─────────────────────────────────────────────────────
 
@@ -267,6 +268,24 @@ export default function TransportMain({ initialVehicles }: Props) {
   const [filterStatus, setFilterStatus] = useState<"ALL" | AlertStatus>("ALL");
   const [filterUsage, setFilterUsage] = useState<"ALL" | TransportUsage>("ALL");
 
+  // ── 삭제 확인 모달 ─────────────────────────────────────────
+  const [deleteTarget, setDeleteTarget] = useState<TransportVehicle | null>(null);
+  const [deleting,     setDeleting]     = useState(false);
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/transport-vehicle/${deleteTarget.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!data.success) { alert(data.error || "삭제 실패"); return; }
+      setVehicles(prev => prev.filter(v => v.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } finally { setDeleting(false); }
+  };
+
+  // ── 소모품 관리 모달 (등록 후 CRUD) ────────────────────────
+  const [consumableTarget, setConsumableTarget] = useState<TransportVehicle | null>(null);
+
   // ── 종류 변경 시 소모품/검사항목 초기화 ──────────────────
   function handleTypeChange(t: TransportVehicleType) {
     setForm(prev => ({ ...prev, vehicleType: t }));
@@ -283,7 +302,8 @@ export default function TransportMain({ initialVehicles }: Props) {
   // ── 등록 저장 ────────────────────────────────────────────
   const handleSave = useCallback(async () => {
     setFormError("");
-    if (!form.name.trim()) { setFormError("차량/장비명은 필수입니다."); return; }
+    if (!form.name.trim())    { setFormError("차량/장비명은 필수입니다."); return; }
+    if (!form.plateNo.trim()) { setFormError("차량번호(번호판)는 필수입니다."); return; }
     setSaving(true);
     try {
       const res = await fetch("/api/transport-vehicle", {
@@ -380,6 +400,64 @@ export default function TransportMain({ initialVehicles }: Props) {
       {/* ── 운전자 등록·관리 모달 ── */}
       <TransportDriverModal open={showDriverModal} onClose={() => setShowDriverModal(false)} />
 
+      {/* ── 운송장비 삭제 확인 모달 ── */}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm"
+          onClick={() => !deleting && setDeleteTarget(null)}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+              <AlertOctagon size={20} className="text-red-600" />
+              <h3 className="font-bold text-lg text-gray-900">운송장비 삭제</h3>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-700">
+                <strong className="text-gray-900">{deleteTarget.name}</strong>
+                {deleteTarget.plateNo && <span className="text-gray-500 ml-1 font-mono">({deleteTarget.plateNo})</span>}
+                {" "}을(를) 정말로 삭제하시겠습니까?
+              </p>
+              <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-xs text-red-700 leading-relaxed">
+                <p className="font-semibold mb-1">⚠ 이 차량/장비와 연결된 다음 데이터도 모두 함께 삭제됩니다:</p>
+                <ul className="list-disc list-inside space-y-0.5 ml-1">
+                  <li>운행일지 전체</li>
+                  <li>소모품 교체주기 설정 및 이력</li>
+                  <li>정기검사 항목 및 이력</li>
+                  <li>수선/정비 이력</li>
+                </ul>
+                <p className="mt-2 font-semibold">삭제된 데이터는 복구할 수 없습니다.</p>
+              </div>
+            </div>
+            <div className="px-6 py-3 border-t border-gray-200 bg-gray-50 flex justify-end gap-2 rounded-b-2xl">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-white disabled:opacity-50"
+              >취소</button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                <Trash2 size={14} /> {deleting ? "삭제 중…" : "삭제"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 소모품 교체주기 관리 모달 ── */}
+      {consumableTarget && (
+        <TransportConsumableModal
+          vehicle={consumableTarget}
+          onClose={() => setConsumableTarget(null)}
+          onSaved={(updated) => {
+            setVehicles(prev => prev.map(v => v.id === updated.id ? updated : v));
+            setConsumableTarget(null);
+          }}
+        />
+      )}
+
       {/* ── 등록 모달 ── */}
       {showRegisterModal && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-start justify-center p-4 overflow-y-auto backdrop-blur-sm" onClick={() => !saving && setShowRegisterModal(false)}>
@@ -421,7 +499,7 @@ export default function TransportMain({ initialVehicles }: Props) {
                 <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="예: 1톤 트럭" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">차량번호(번호판)</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">차량번호(번호판) <span className="text-red-500">*</span></label>
                 <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.plateNo} onChange={e => setForm(p => ({ ...p, plateNo: e.target.value }))} placeholder="예: 12가 3456" />
               </div>
               <div>
@@ -717,7 +795,7 @@ export default function TransportMain({ initialVehicles }: Props) {
                     <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 border-r border-gray-200">담당자</th>
                     <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 border-r border-gray-200">사용여부</th>
                     <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 border-r border-gray-200">알림</th>
-                    <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-600"></th>
+                    <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-600">액션</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -746,7 +824,27 @@ export default function TransportMain({ initialVehicles }: Props) {
                             {badge.icon}{badge.label}
                           </span>
                         </td>
-                        <td className="px-3 py-2 text-center text-gray-400"><ChevronRight size={14} /></td>
+                        <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
+                          <div className="inline-flex items-center gap-1">
+                            {v.vehicleType === "VEHICLE" && (
+                              <button
+                                onClick={() => setConsumableTarget(v)}
+                                className="p-1 text-amber-600 hover:bg-amber-50 rounded"
+                                title="소모품 교체주기 관리"
+                              >
+                                <Wrench size={13} />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setDeleteTarget(v)}
+                              className="p-1 text-red-600 hover:bg-red-50 rounded"
+                              title="삭제"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                            <ChevronRight size={14} className="text-gray-300" />
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
