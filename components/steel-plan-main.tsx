@@ -5,7 +5,7 @@ import * as XLSX from "xlsx";
 import {
   Upload, Plus, Trash2, RefreshCw, Download, Search, X,
   CheckSquare, Square, ClipboardList, PackageOpen, Hash, PackageCheck, Printer, Filter,
-  ArrowUp, ArrowDown, ArrowUpDown,
+  ArrowUp, ArrowDown,
 } from "lucide-react";
 import ColumnFilterDropdown, { type FilterValue } from "./column-filter-dropdown";
 import { serializeColFilters } from "@/lib/client-cascading";
@@ -130,16 +130,12 @@ export default function SteelPlanMain() {
   const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
   const [distinctValues, setDistinctValues] = useState<Record<string, FilterValue[]>>({});
 
-  /* ── 정렬 (다중 컬럼) ── */
-  const [sortKeys, setSortKeys] = useState<{ col: string; dir: "asc" | "desc" }[]>([]);
-
-  const handleSort = (col: string) => {
-    setSortKeys((prev) => {
-      const idx = prev.findIndex((k) => k.col === col);
-      if (idx === -1) return [...prev, { col, dir: "asc" }];
-      if (prev[idx].dir === "asc") return prev.map((k, i) => i === idx ? { ...k, dir: "desc" } : k);
-      return prev.filter((_, i) => i !== idx);
-    });
+  /* ── 정렬 (단일 컬럼 — 엑셀스타일 통합 드롭다운) ── */
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const handleSortFor = (col: string, dir: "asc" | "desc" | null) => {
+    if (dir === null) { setSortKey(null); setSortDir("asc"); }
+    else { setSortKey(col); setSortDir(dir); }
     setPage(1);
   };
 
@@ -221,7 +217,7 @@ export default function SteelPlanMain() {
     const p = new URLSearchParams();
     if (search) p.set("search", search);
     p.set("page", String(page));
-    if (sortKeys.length) { p.set("sortBy", sortKeys.map((k) => k.col).join(",")); p.set("sortDir", sortKeys.map((k) => k.dir).join(",")); }
+    if (sortKey) { p.set("sortBy", sortKey); p.set("sortDir", sortDir); }
     const cf = colFilters;
     if (cf.vesselCode?.length)          p.set("vesselCodes",          cf.vesselCode.join(","));
     if (cf.material?.length)            p.set("materials",             cf.material.join(","));
@@ -246,7 +242,7 @@ export default function SteelPlanMain() {
       setTotalPages(json.totalPages);
     }
     setLoading(false);
-  }, [search, page, colFilters, sortKeys]);
+  }, [search, page, colFilters, sortKey, sortDir]);
 
   const loadHeatDistinct = useCallback(async () => {
     const qs = serializeColFilters(heatColFilters, STEEL_PLAN_HEAT_QS_KEY);
@@ -424,7 +420,7 @@ export default function SteelPlanMain() {
     if (cf.uploadBatchNo?.length)       p.set("uploadBatchNos",        cf.uploadBatchNo.join(","));
     if (cf.selectionPrintedAt?.length)  p.set("selectionPrintedDates", cf.selectionPrintedAt.join(","));
     if (cf.issuedAt?.length)            p.set("issuedDates",           cf.issuedAt.join(","));
-    if (sortKeys.length) { p.set("sortBy", sortKeys.map((k) => k.col).join(",")); p.set("sortDir", sortKeys.map((k) => k.dir).join(",")); }
+    if (sortKey) { p.set("sortBy", sortKey); p.set("sortDir", sortDir); }
     p.set("all", "true");
 
     const res  = await fetch(`/api/steel-plan?${p}`);
@@ -1201,20 +1197,21 @@ export default function SteelPlanMain() {
                       ["length",        "길이"],
                     ] as [string, string][]).map(([col, label]) => {
                       const filterActive = (colFilters[col]?.length ?? 0) > 0;
-                      const sortIdx = sortKeys.findIndex((k) => k.col === col);
-                      const sortKey = sortKeys[sortIdx];
+                      const isSort = sortKey === col;
+                      const active = filterActive || isSort;
                       return (
                         <th key={col} className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">
                           <div className="flex items-center justify-center gap-0.5">
                             <span>{label}</span>
-                            <button onClick={(e) => { setOpenFilter(col); setFilterAnchorEl(e.currentTarget); }} className={`rounded hover:bg-gray-200 p-0.5 ${filterActive ? "text-blue-500" : "text-gray-400"}`}>
+                            <button
+                              onClick={(e) => { setOpenFilter(col); setFilterAnchorEl(e.currentTarget); }}
+                              className={`rounded hover:bg-gray-200 p-0.5 inline-flex items-center ${active ? "text-blue-600" : "text-gray-400"}`}
+                              title={active ? "필터·정렬 적용 중" : "필터·정렬"}
+                            >
                               <Filter size={10} fill={filterActive ? "currentColor" : "none"} />
-                            </button>
-                            <button onClick={() => handleSort(col)} className={`rounded hover:bg-gray-200 p-0.5 ${sortKey ? "text-blue-600" : "text-gray-300 hover:text-gray-500"}`} title={sortKey ? (sortKey.dir === "asc" ? "오름차순" : "내림차순") : "정렬"}>
-                              <span className="flex items-center gap-px">
-                                {sortKey ? (sortKey.dir === "asc" ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} />}
-                                {sortKeys.length > 1 && sortKey && <span className="text-[8px] leading-none">{sortIdx + 1}</span>}
-                              </span>
+                              {isSort && (sortDir === "asc"
+                                ? <ArrowUp size={8} className="text-blue-500" />
+                                : <ArrowDown size={8} className="text-blue-500" />)}
                             </button>
                           </div>
                         </th>
@@ -1230,20 +1227,21 @@ export default function SteelPlanMain() {
                       ["issuedAt",         "출고일"],
                     ] as [string, string][]).map(([col, label]) => {
                       const filterActive = (colFilters[col]?.length ?? 0) > 0;
-                      const sortIdx = sortKeys.findIndex((k) => k.col === col);
-                      const sortKey = sortKeys[sortIdx];
+                      const isSort = sortKey === col;
+                      const active = filterActive || isSort;
                       return (
                         <th key={col} className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">
                           <div className="flex items-center justify-center gap-0.5">
                             <span>{label}</span>
-                            <button onClick={(e) => { setOpenFilter(col); setFilterAnchorEl(e.currentTarget); }} className={`rounded hover:bg-gray-200 p-0.5 ${filterActive ? "text-blue-500" : "text-gray-400"}`}>
+                            <button
+                              onClick={(e) => { setOpenFilter(col); setFilterAnchorEl(e.currentTarget); }}
+                              className={`rounded hover:bg-gray-200 p-0.5 inline-flex items-center ${active ? "text-blue-600" : "text-gray-400"}`}
+                              title={active ? "필터·정렬 적용 중" : "필터·정렬"}
+                            >
                               <Filter size={10} fill={filterActive ? "currentColor" : "none"} />
-                            </button>
-                            <button onClick={() => handleSort(col)} className={`rounded hover:bg-gray-200 p-0.5 ${sortKey ? "text-blue-600" : "text-gray-300 hover:text-gray-500"}`} title={sortKey ? (sortKey.dir === "asc" ? "오름차순" : "내림차순") : "정렬"}>
-                              <span className="flex items-center gap-px">
-                                {sortKey ? (sortKey.dir === "asc" ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} />}
-                                {sortKeys.length > 1 && sortKey && <span className="text-[8px] leading-none">{sortIdx + 1}</span>}
-                              </span>
+                              {isSort && (sortDir === "asc"
+                                ? <ArrowUp size={8} className="text-blue-500" />
+                                : <ArrowDown size={8} className="text-blue-500" />)}
                             </button>
                           </div>
                         </th>
@@ -1384,6 +1382,8 @@ export default function SteelPlanMain() {
                 setFilterAnchorEl(null);
               }}
               onClose={() => { setOpenFilter(null); setFilterAnchorEl(null); }}
+              sortDir={sortKey === openFilter ? sortDir : null}
+              onSort={(dir) => handleSortFor(openFilter, dir)}
             />
           )}
 

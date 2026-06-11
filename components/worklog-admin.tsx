@@ -10,10 +10,10 @@ import { Input } from "@/components/ui/input";
 import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
 import { calcPauseMs as libCalcPauseMs, calcTotalMs as libCalcTotalMs } from "@/lib/cutting-time";
 import {
-  getCascadedFilteredRows, getAllCascadedOptions,
+  getCascadedFilteredRowsWithPredicates, getAllCascadedOptions, type TextPredicate,
   type ColumnAccessorMap, type ColFilters,
 } from "@/lib/cascading-filters";
-import { ArrowUp, ArrowDown, ArrowUpDown, Filter as FilterIcon } from "lucide-react";
+import { ArrowUp, ArrowDown, Filter as FilterIcon } from "lucide-react";
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -228,8 +228,9 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
   const [dateTo,   setDateTo]   = useState("");
   const [editLog,  setEditLog]  = useState<CuttingLog | null>(null);
 
-  // 컬럼 필터 + 정렬 + 드롭다운 위치
+  // 컬럼 필터 + 텍스트 조건 + 정렬 + 드롭다운 위치 (엑셀스타일 통합)
   const [colFilters, setColFilters] = useState<ColFilters>({});
+  const [predicates, setPredicates] = useState<Record<string, TextPredicate>>({});
   const [openCol,    setOpenCol]    = useState<URGENT_KEY | null>(null);
   const [anchorEl,   setAnchorEl]   = useState<HTMLElement | null>(null);
   const [sortKey,    setSortKey]    = useState<URGENT_KEY | null>(null);
@@ -318,10 +319,10 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
     workDate:     r => r.workDateStr,
   }), []);
 
-  // cascading 필터 + 자기 자신 제외 옵션
+  // cascading 필터 + 텍스트 조건
   const filteredRows = useMemo(
-    () => getCascadedFilteredRows(rows, colFilters, accessors),
-    [rows, colFilters, accessors],
+    () => getCascadedFilteredRowsWithPredicates(rows, colFilters, predicates, accessors),
+    [rows, colFilters, predicates, accessors],
   );
   const distinctValues = useMemo(
     () => getAllCascadedOptions(rows, colFilters, accessors),
@@ -347,13 +348,9 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
     return arr;
   }, [filteredRows, sortKey, sortDir, accessors]);
 
-  const handleSort = (key: URGENT_KEY) => {
-    if (sortKey === key) {
-      if (sortDir === "asc") setSortDir("desc");
-      else { setSortKey(null); setSortDir("asc"); }
-    } else {
-      setSortKey(key); setSortDir("asc");
-    }
+  const handleSortFor = (key: URGENT_KEY, dir: "asc" | "desc" | null) => {
+    if (dir === null) { setSortKey(null); setSortDir("asc"); }
+    else { setSortKey(key); setSortDir(dir); }
   };
 
   // 요약
@@ -413,25 +410,28 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
                 <tr>
                   <th className="px-2 py-1 text-center text-[11px] font-semibold text-gray-500 w-8">No</th>
                   {URGENT_COLS.map(col => {
-                    const active = (colFilters[col.key]?.length ?? 0) > 0;
+                    const hasValues = (colFilters[col.key]?.length ?? 0) > 0;
+                    const p = predicates[col.key];
+                    const hasPredicate = !!p && (p.op === "empty" || p.op === "notEmpty" || p.val.length > 0);
+                    const active = hasValues || hasPredicate;
                     const isSort = sortKey === col.key;
-                    const SortIcon = isSort ? (sortDir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
                     return (
                       <th
                         key={col.key}
                         className={`px-3 py-1 text-${col.align} text-[11px] font-semibold text-gray-500 whitespace-nowrap`}
                       >
                         <div className={`flex items-center gap-1 ${col.align === "right" ? "justify-end" : col.align === "center" ? "justify-center" : ""}`}>
-                          <button onClick={() => handleSort(col.key)} className="inline-flex items-center gap-1 hover:text-gray-700">
-                            {col.label}
-                            <SortIcon size={11} className={isSort ? "text-blue-500" : "text-gray-300"} />
-                          </button>
+                          <span>{col.label}</span>
                           {col.filterable && (
                             <button
                               onClick={e => { setOpenCol(col.key); setAnchorEl(e.currentTarget); }}
-                              className="text-gray-400 hover:text-gray-700"
+                              className="text-gray-400 hover:text-gray-700 inline-flex items-center"
+                              title="필터·정렬"
                             >
                               <FilterIcon size={11} className={active ? "text-blue-500 fill-blue-500" : ""} fill={active ? "currentColor" : "none"} />
+                              {isSort && (sortDir === "asc"
+                                ? <ArrowUp   size={9} className="text-blue-500" />
+                                : <ArrowDown size={9} className="text-blue-500" />)}
                             </button>
                           )}
                         </div>
@@ -521,6 +521,14 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
             setOpenCol(null); setAnchorEl(null);
           }}
           onClose={() => { setOpenCol(null); setAnchorEl(null); }}
+          sortDir={sortKey === openCol ? sortDir : null}
+          onSort={(dir) => handleSortFor(openCol, dir)}
+          predicate={predicates[openCol] ?? null}
+          onPredicate={(p) => setPredicates(prev => {
+            const next = { ...prev };
+            if (p) next[openCol] = p; else delete next[openCol];
+            return next;
+          })}
         />
       )}
     </div>
@@ -832,10 +840,11 @@ export default function WorklogAdmin({
     log: CuttingLog | null;
   }>({ open: false, mode: "add", drawing: null, log: null });
 
-  // 필터 상태
-  const [filters,  setFilters]  = useState<Record<string, string[]>>({});
-  const [openCol,  setOpenCol]  = useState<string | null>(null);
-  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  // 필터 + 텍스트 조건 + 정렬 (엑셀스타일 통합 드롭다운)
+  const [filters,    setFilters]    = useState<Record<string, string[]>>({});
+  const [normalPredicates, setNormalPredicates] = useState<Record<string, TextPredicate>>({});
+  const [openCol,    setOpenCol]    = useState<string | null>(null);
+  const [anchorEl,   setAnchorEl]   = useState<HTMLElement | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -945,19 +954,38 @@ export default function WorklogAdmin({
         return sel.includes(v || "__EMPTY__");
       });
     });
+    // 텍스트 조건 필터
+    result = result.filter(d => {
+      const log = logByDrawingId.get(d.id) ?? null;
+      for (const [col, p] of Object.entries(normalPredicates)) {
+        if (!p) continue;
+        const v = getVal(d, log, col as FCKey);
+        const vL = v.toLowerCase(); const qL = (p.val ?? "").toLowerCase();
+        const pass = (() => {
+          switch (p.op) {
+            case "empty":      return v === "";
+            case "notEmpty":   return v !== "";
+            case "contains":   return qL === "" || vL.includes(qL);
+            case "startsWith": return qL === "" || vL.startsWith(qL);
+            case "endsWith":   return qL === "" || vL.endsWith(qL);
+            case "equals":     return vL === qL;
+            case "notEquals":  return vL !== qL;
+            default: return true;
+          }
+        })();
+        if (!pass) return false;
+      }
+      return true;
+    });
     return result;
-  }, [drawings, logByDrawingId, dateFrom, dateTo, filters]);
+  }, [drawings, logByDrawingId, dateFrom, dateTo, filters, normalPredicates, getVal]);
 
-  // 정렬 — 컬럼 헤더 클릭 asc → desc → 해제 토글
+  // 정렬 — 단일 컬럼
   const [sortKey, setSortKey] = useState<FCKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-  const handleNormalSort = (key: FCKey) => {
-    if (sortKey === key) {
-      if (sortDir === "asc") setSortDir("desc");
-      else { setSortKey(null); setSortDir("asc"); }
-    } else {
-      setSortKey(key); setSortDir("asc");
-    }
+  const handleNormalSortFor = (key: FCKey, dir: "asc" | "desc" | null) => {
+    if (dir === null) { setSortKey(null); setSortDir("asc"); }
+    else { setSortKey(key); setSortDir(dir); }
   };
 
   const sortedDrawings = useMemo(() => {
@@ -981,7 +1009,9 @@ export default function WorklogAdmin({
   const PAGE_SIZE   = 50;
   const totalPages  = Math.ceil(sortedDrawings.length / PAGE_SIZE);
   const pagedRows   = sortedDrawings.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const filterCount = Object.keys(filters).length;
+  const filterCount =
+    Object.values(filters).filter(v => v && v.length > 0).length +
+    Object.values(normalPredicates).filter(p => p && (p.op === "empty" || p.op === "notEmpty" || (p.val ?? "").length > 0)).length;
   const cutCount    = filteredDrawings.filter(d => logByDrawingId.has(d.id)).length;
 
   const handleDelete = async (logId: string) => {
@@ -1069,9 +1099,9 @@ export default function WorklogAdmin({
             <span className="text-gray-400">미등록 <strong>{filteredDrawings.length - cutCount}</strong>건</span>
             {filterCount > 0 && (
               <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md">
-                <Filter size={11} fill="currentColor" />
+                <FilterIcon size={11} fill="currentColor" />
                 <span>필터 {filterCount}개 적용 ({filteredDrawings.length}/{drawings.length}행)</span>
-                <button onClick={() => setFilters({})} className="ml-0.5 hover:text-blue-800" title="모든 필터 초기화">
+                <button onClick={() => { setFilters({}); setNormalPredicates({}); }} className="ml-0.5 hover:text-blue-800" title="모든 필터 초기화">
                   <XCircle size={12} />
                 </button>
               </div>
@@ -1087,17 +1117,16 @@ export default function WorklogAdmin({
                     <th className="px-2 py-1 text-center text-[11px] font-semibold text-gray-500 w-8">No</th>
                     {COLUMNS.map(col => {
                       const isFilterable = col.filterable;
-                      const isActive     = isFilterable && (filters[col.key as FCKey]?.length ?? 0) > 0;
+                      const hasValues    = isFilterable && (filters[col.key as FCKey]?.length ?? 0) > 0;
+                      const p            = isFilterable ? normalPredicates[col.key] : undefined;
+                      const hasPredicate = !!p && (p.op === "empty" || p.op === "notEmpty" || (p.val ?? "").length > 0);
+                      const isActive     = hasValues || hasPredicate;
                       const alignCls     = col.align === "right" ? "justify-end" : "";
                       const isSort       = sortKey === col.key;
-                      const SortI        = isSort ? (sortDir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
                       return (
                         <th key={col.key} className={`px-3 py-1 text-[11px] font-semibold text-gray-500 whitespace-nowrap ${col.align === "right" ? "text-right" : "text-left"}`}>
                           <div className={`flex items-center gap-1 ${alignCls}`}>
-                            <button onClick={() => handleNormalSort(col.key as FCKey)} className="inline-flex items-center gap-1 hover:text-gray-700">
-                              {col.label}
-                              <SortI size={11} className={isSort ? "text-blue-500" : "text-gray-300"} />
-                            </button>
+                            <span>{col.label}</span>
                             {isFilterable && (
                               <button
                                 onClick={e => {
@@ -1105,10 +1134,13 @@ export default function WorklogAdmin({
                                   if (openCol === col.key) { handleFilterClose(); return; }
                                   handleFilterOpen(col.key, e.currentTarget);
                                 }}
-                                className={`p-0.5 rounded hover:bg-gray-200 transition-colors ${isActive ? "text-blue-600" : "text-gray-400"}`}
-                                title={isActive ? `필터 적용 중 (${filters[col.key as FCKey]?.length}개)` : "필터"}
+                                className={`p-0.5 rounded hover:bg-gray-200 transition-colors inline-flex items-center ${isActive || isSort ? "text-blue-600" : "text-gray-400"}`}
+                                title={isActive ? "필터·정렬 적용 중" : "필터·정렬"}
                               >
-                                <Filter size={11} fill={isActive ? "currentColor" : "none"} />
+                                <FilterIcon size={11} fill={isActive ? "currentColor" : "none"} />
+                                {isSort && (sortDir === "asc"
+                                  ? <ArrowUp size={9} className="text-blue-500" />
+                                  : <ArrowDown size={9} className="text-blue-500" />)}
                               </button>
                             )}
                           </div>
@@ -1119,6 +1151,14 @@ export default function WorklogAdmin({
                               selected={filters[col.key as FCKey] ?? []}
                               onApply={values => { handleFilterChange(col.key, values); handleFilterClose(); }}
                               onClose={handleFilterClose}
+                              sortDir={sortKey === col.key ? sortDir : null}
+                              onSort={dir => handleNormalSortFor(col.key as FCKey, dir)}
+                              predicate={normalPredicates[col.key] ?? null}
+                              onPredicate={p => setNormalPredicates(prev => {
+                                const next = { ...prev };
+                                if (p) next[col.key] = p; else delete next[col.key];
+                                return next;
+                              })}
                             />
                           )}
                         </th>

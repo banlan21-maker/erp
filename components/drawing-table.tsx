@@ -9,6 +9,13 @@ import DrawingEditModal from "@/components/drawing-edit-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ColumnFilterDropdown from "@/components/column-filter-dropdown";
+import { applyTextPredicate, type TextPredicate } from "@/lib/cascading-filters";
+
+const matchPredicate = (raw: string, p: TextPredicate): boolean => {
+  // colValue 가 "__EMPTY__" sentinel 을 쓰므로 empty 비교 시 정규화
+  const v = raw === "__EMPTY__" ? "" : raw;
+  return applyTextPredicate(v, p);
+};
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
@@ -83,22 +90,20 @@ function colValue(d: DrawingList, col: string): string {
   }
 }
 
-// ─── 정렬 버튼 (재사용) ───────────────────────────────────────────────────────
+// ─── 정렬 버튼 (재사용) — 단일 컬럼 토글 ───────────────────────────────────────
 
-type SortKey = { col: string; dir: "asc" | "desc" };
+type SortState = { col: string; dir: "asc" | "desc" } | null;
 
-function SortButton({ col, sortKeys, onSort }: { col: string; sortKeys: SortKey[]; onSort: (col: string) => void }) {
-  const idx = sortKeys.findIndex(k => k.col === col);
-  const sk  = idx >= 0 ? sortKeys[idx] : null;
+function SortButton({ col, sort, onSort }: { col: string; sort: SortState; onSort: (col: string) => void }) {
+  const isActive = sort?.col === col;
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onSort(col); }}
-      className={`p-0.5 rounded hover:bg-gray-200 transition-colors ${sk ? "text-blue-600" : "text-gray-300 hover:text-gray-500"}`}
-      title={sk ? (sk.dir === "asc" ? "오름차순 (다시 누르면 내림차순)" : "내림차순 (다시 누르면 해제)") : "정렬"}
+      className={`p-0.5 rounded hover:bg-gray-200 transition-colors ${isActive ? "text-blue-600" : "text-gray-300 hover:text-gray-500"}`}
+      title={isActive ? (sort!.dir === "asc" ? "오름차순 (다시 누르면 내림차순)" : "내림차순 (다시 누르면 해제)") : "정렬"}
     >
       <span className="flex items-center gap-px">
-        {sk ? (sk.dir === "asc" ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} />}
-        {sortKeys.length > 1 && sk && <span className="text-[8px] leading-none">{idx + 1}</span>}
+        {isActive ? (sort!.dir === "asc" ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} />}
       </span>
     </button>
   );
@@ -112,37 +117,48 @@ interface FilterHeaderProps {
   align?: "left" | "right" | "center";
   drawings: DrawingList[];
   filters: Record<string, string[]>;
+  predicates: Record<string, TextPredicate | undefined>;
   onFilterChange: (col: string, values: string[]) => void;
+  onPredicateChange: (col: string, p: TextPredicate | null) => void;
   openCol: string | null;
   anchorEl: HTMLElement | null;
   onOpen: (col: string, el: HTMLElement) => void;
   onClose: () => void;
-  sortKeys?: SortKey[];
-  onSort?: (col: string) => void;
+  sort: SortState;
+  onSortDir: (col: string, dir: "asc" | "desc" | null) => void;
 }
 
 function FilterHeader({
-  col, label, align = "left", drawings, filters,
-  onFilterChange, openCol, anchorEl, onOpen, onClose,
-  sortKeys, onSort,
+  col, label, align = "left", drawings, filters, predicates,
+  onFilterChange, onPredicateChange, openCol, anchorEl, onOpen, onClose,
+  sort, onSortDir,
 }: FilterHeaderProps) {
-  // cascading filter — 자기 자신 컬럼 제외 다른 모든 필터 적용 후 unique
+  // cascading filter — 자기 자신 컬럼 제외 다른 모든 필터 + 텍스트 조건 적용 후 unique
   const allValues = useMemo(() => {
-    const filtered = drawings.filter(d =>
-      Object.entries(filters).every(([k, vs]) => {
-        if (k === col || !vs || vs.length === 0) return true;
+    const filtered = drawings.filter(d => {
+      for (const [k, vs] of Object.entries(filters)) {
+        if (k === col || !vs || vs.length === 0) continue;
         const v = colValue(d, k);
-        return vs.includes(v);
-      })
-    );
+        if (!vs.includes(v)) return false;
+      }
+      for (const [k, p] of Object.entries(predicates)) {
+        if (k === col || !p) continue;
+        if (!matchPredicate(colValue(d, k), p)) return false;
+      }
+      return true;
+    });
     const vals = [...new Set(filtered.map(d => colValue(d, col)))];
     const nonEmpty = vals.filter(v => v !== "__EMPTY__").sort().map(v => ({ value: v, label: v }));
     const hasEmpty = vals.includes("__EMPTY__");
     if (hasEmpty) nonEmpty.push({ value: "__EMPTY__", label: "항목없음" });
     return nonEmpty;
-  }, [drawings, filters, col]);
-  const selected = filters[col] ?? [];
-  const isActive = selected.length > 0;
+  }, [drawings, filters, predicates, col]);
+  const selected   = filters[col] ?? [];
+  const predicate  = predicates[col] ?? null;
+  const hasValues  = selected.length > 0;
+  const hasPred    = !!predicate && (predicate.op === "empty" || predicate.op === "notEmpty" || (predicate.val ?? "").length > 0);
+  const isSort     = sort?.col === col;
+  const active     = hasValues || hasPred;
 
   return (
     <th className={`px-2 py-2.5 text-xs font-semibold text-gray-500 text-${align} whitespace-nowrap`}>
@@ -154,12 +170,14 @@ function FilterHeader({
             if (openCol === col) { onClose(); return; }
             onOpen(col, e.currentTarget);
           }}
-          className={`p-0.5 rounded hover:bg-gray-200 transition-colors ${isActive ? "text-blue-600" : "text-gray-400"}`}
-          title={isActive ? `필터 적용 중 (${selected.length}개)` : "필터"}
+          className={`p-0.5 rounded hover:bg-gray-200 transition-colors inline-flex items-center ${active || isSort ? "text-blue-600" : "text-gray-400"}`}
+          title={active ? "필터·정렬 적용 중" : "필터·정렬"}
         >
-          <Filter size={11} fill={isActive ? "currentColor" : "none"} />
+          <Filter size={11} fill={active ? "currentColor" : "none"} />
+          {isSort && (sort!.dir === "asc"
+            ? <ArrowUp size={9} className="text-blue-500" />
+            : <ArrowDown size={9} className="text-blue-500" />)}
         </button>
-        {onSort && sortKeys && <SortButton col={col} sortKeys={sortKeys} onSort={onSort} />}
       </div>
       {openCol === col && anchorEl && (
         <ColumnFilterDropdown
@@ -168,6 +186,10 @@ function FilterHeader({
           selected={selected}
           onApply={values => { onFilterChange(col, values); onClose(); }}
           onClose={onClose}
+          sortDir={isSort ? sort!.dir : null}
+          onSort={dir => onSortDir(col, dir)}
+          predicate={predicate}
+          onPredicate={p => onPredicateChange(col, p)}
         />
       )}
     </th>
@@ -192,16 +214,14 @@ function colSortValue(d: DrawingList, col: string): number | string {
   }
 }
 
-function compareSortKeys<T>(a: T, b: T, sortKeys: SortKey[], getValue: (row: T, col: string) => number | string): number {
-  for (const { col, dir } of sortKeys) {
-    const av = getValue(a, col);
-    const bv = getValue(b, col);
-    let cmp = 0;
-    if (typeof av === "number" && typeof bv === "number") cmp = av - bv;
-    else cmp = String(av).localeCompare(String(bv), "ko");
-    if (cmp !== 0) return dir === "asc" ? cmp : -cmp;
-  }
-  return 0;
+function compareSortKey<T>(a: T, b: T, sort: SortState, getValue: (row: T, col: string) => number | string): number {
+  if (!sort) return 0;
+  const av = getValue(a, sort.col);
+  const bv = getValue(b, sort.col);
+  let cmp = 0;
+  if (typeof av === "number" && typeof bv === "number") cmp = av - bv;
+  else cmp = String(av).localeCompare(String(bv), "ko");
+  return sort.dir === "asc" ? cmp : -cmp;
 }
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────────────────────────
@@ -384,25 +404,37 @@ export default function DrawingTable({
   const [openCol, setOpenCol] = useState<string | null>(null);
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
 
-  // 정렬 (다중 컬럼) — 정규원재 사용 / 잔재 사용(등록·현장·여유) 각각 별도
-  const [sortKeys, setSortKeys] = useState<SortKey[]>([]);
-  const [assignedSortKeys, setAssignedSortKeys] = useState<SortKey[]>([]);
+  // 정렬 (단일 컬럼) — 정규원재 사용 / 잔재 사용(등록·현장·여유) 각각 별도
+  const [sort, setSort] = useState<SortState>(null);
+  const [assignedSort, setAssignedSort] = useState<SortState>(null);
 
+  // SortButton 토글: asc → desc → null
   const handleSort = useCallback((col: string) => {
-    setSortKeys(prev => {
-      const i = prev.findIndex(k => k.col === col);
-      if (i === -1) return [...prev, { col, dir: "asc" }];
-      if (prev[i].dir === "asc") return prev.map((k, j) => j === i ? { ...k, dir: "desc" } : k);
-      return prev.filter((_, j) => j !== i);
+    setSort(prev => {
+      if (!prev || prev.col !== col) return { col, dir: "asc" };
+      if (prev.dir === "asc") return { col, dir: "desc" };
+      return null;
     });
   }, []);
-
   const handleAssignedSort = useCallback((col: string) => {
-    setAssignedSortKeys(prev => {
-      const i = prev.findIndex(k => k.col === col);
-      if (i === -1) return [...prev, { col, dir: "asc" }];
-      if (prev[i].dir === "asc") return prev.map((k, j) => j === i ? { ...k, dir: "desc" } : k);
-      return prev.filter((_, j) => j !== i);
+    setAssignedSort(prev => {
+      if (!prev || prev.col !== col) return { col, dir: "asc" };
+      if (prev.dir === "asc") return { col, dir: "desc" };
+      return null;
+    });
+  }, []);
+  // ColumnFilterDropdown 메뉴: 명시적 dir | null
+  const handleSortDir = useCallback((col: string, dir: "asc" | "desc" | null) => {
+    setSort(dir === null ? null : { col, dir });
+  }, []);
+
+  // 텍스트 조건 필터
+  const [predicates, setPredicates] = useState<Record<string, TextPredicate | undefined>>({});
+  const handlePredicateChange = useCallback((col: string, p: TextPredicate | null) => {
+    setPredicates(prev => {
+      const next = { ...prev };
+      if (p) next[col] = p; else delete next[col];
+      return next;
     });
   }, []);
 
@@ -420,7 +452,9 @@ export default function DrawingTable({
     setAnchorEl(null);
   }, []);
 
-  const activeFilterCount = Object.values(filters).filter(v => v.length > 0).length;
+  const activeFilterCount =
+    Object.values(filters).filter(v => v.length > 0).length +
+    Object.values(predicates).filter((p): p is TextPredicate => !!p && (p.op === "empty" || p.op === "notEmpty" || (p.val ?? "").length > 0)).length;
 
   // 원재/잔재사용 분리
   const normalDrawings  = useMemo(() => drawings.filter(d => !(d as DrawingList & { assignedRemnantId?: string | null }).assignedRemnantId), [drawings]);
@@ -432,21 +466,26 @@ export default function DrawingTable({
     return rem?.type ?? null;
   };
 
-  // 필터 + 정렬 (정규원재 사용만)
+  // 필터 + 텍스트 조건 + 정렬 (정규원재 사용만)
   const filteredDrawings = useMemo(() => {
-    const filtered = normalDrawings.filter(d =>
-      Object.entries(filters).every(([col, values]) => {
-        if (values.length === 0) return true;
-        return values.includes(colValue(d, col));
-      })
-    );
-    if (sortKeys.length === 0) return filtered;
-    return [...filtered].sort((a, b) => compareSortKeys(a, b, sortKeys, colSortValue));
-  }, [normalDrawings, filters, sortKeys]);
+    const filtered = normalDrawings.filter(d => {
+      for (const [col, values] of Object.entries(filters)) {
+        if (values.length === 0) continue;
+        if (!values.includes(colValue(d, col))) return false;
+      }
+      for (const [col, p] of Object.entries(predicates)) {
+        if (!p) continue;
+        if (!matchPredicate(colValue(d, col), p)) return false;
+      }
+      return true;
+    });
+    if (!sort) return filtered;
+    return [...filtered].sort((a, b) => compareSortKey(a, b, sort, colSortValue));
+  }, [normalDrawings, filters, predicates, sort]);
 
   // 등록잔재사용 정렬 (잔재 상세값까지 비교 가능)
   const sortedAssignedDrawings = useMemo(() => {
-    if (assignedSortKeys.length === 0) return assignedDrawings;
+    if (!assignedSort) return assignedDrawings;
     const getAssignedValue = (d: DrawingList, col: string): number | string => {
       const rem = remnantOf(d);
       switch (col) {
@@ -459,9 +498,9 @@ export default function DrawingTable({
         default:          return colSortValue(d, col);
       }
     };
-    return [...assignedDrawings].sort((a, b) => compareSortKeys(a, b, assignedSortKeys, getAssignedValue));
+    return [...assignedDrawings].sort((a, b) => compareSortKey(a, b, assignedSort, getAssignedValue));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assignedDrawings, assignedSortKeys, assignedRemnantDetails]);
+  }, [assignedDrawings, assignedSort, assignedRemnantDetails]);
 
   // 종류별 분리 (등록잔재 / 현장잔재 / 여유원재)
   const registeredUseDrawings = useMemo(() => sortedAssignedDrawings.filter(d => assignedKind(d) === "REGISTERED"), [sortedAssignedDrawings, assignedRemnantDetails]);
@@ -584,13 +623,14 @@ export default function DrawingTable({
   }, {} as Record<DrawingStatusType, number>);
 
   const filterHeaderProps = {
-    drawings, filters,
+    drawings, filters, predicates,
     onFilterChange: handleFilterChange,
+    onPredicateChange: handlePredicateChange,
     openCol, anchorEl,
     onOpen: handleFilterOpen,
     onClose: handleFilterClose,
-    sortKeys,
-    onSort: handleSort,
+    sort,
+    onSortDir: handleSortDir,
   };
 
   // 잔재 사용 리스트 렌더 (등록잔재 / 현장잔재 공통)
@@ -635,7 +675,7 @@ export default function DrawingTable({
                     <th key={col} className={`px-2 py-2.5 ${C.txt} font-semibold text-${align}`}>
                       <div className={`flex items-center gap-1 ${align === "right" ? "justify-end" : align === "center" ? "justify-center" : ""}`}>
                         <span>{label}</span>
-                        <SortButton col={col} sortKeys={assignedSortKeys} onSort={handleAssignedSort} />
+                        <SortButton col={col} sort={assignedSort} onSort={handleAssignedSort} />
                       </div>
                     </th>
                   ));
@@ -795,7 +835,7 @@ export default function DrawingTable({
               <Filter size={11} fill="currentColor" />
               <span>필터 {activeFilterCount}개 적용 ({filteredDrawings.length}/{drawings.length}행)</span>
               <button
-                onClick={() => setFilters({})}
+                onClick={() => { setFilters({}); setPredicates({}); }}
                 className="ml-0.5 hover:text-blue-800"
                 title="모든 필터 초기화"
               >
@@ -880,7 +920,7 @@ export default function DrawingTable({
               <tr>
                 <td colSpan={13} className="text-center py-8 text-gray-400 text-xs">
                   필터 조건에 맞는 데이터가 없습니다.
-                  <button onClick={() => setFilters({})} className="ml-2 text-blue-500 hover:underline">
+                  <button onClick={() => { setFilters({}); setPredicates({}); }} className="ml-2 text-blue-500 hover:underline">
                     필터 초기화
                   </button>
                 </td>

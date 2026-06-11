@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Input }  from "@/components/ui/input";
 import * as XLSX  from "xlsx";
 import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
-import { getCascadedFilteredRows, getAllCascadedOptions, type ColumnAccessorMap } from "@/lib/cascading-filters";
+import { getCascadedFilteredRowsWithPredicates, getAllCascadedOptions, type ColumnAccessorMap, type TextPredicate } from "@/lib/cascading-filters";
 import dynamic from "next/dynamic";
 
 // 통계 탭은 jspdf/recharts/html2canvas 클라이언트 전용 라이브러리 사용 — SSR 비활성화
@@ -640,11 +640,12 @@ const URGENT_COLS = [
 
 // ─── 공통 필터 + 정렬 훅 ─────────────────────────────────────────────────────
 function useTableFilter(logs: CuttingLog[], cols: { key: string; getVal: (l: CuttingLog) => string }[]) {
-  const [filters,  setFilters]  = useState<Record<string, string[]>>({});
-  const [openCol,  setOpenCol]  = useState<string | null>(null);
-  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-  const [sortKey,  setSortKey]  = useState<string | null>(null);
-  const [sortDir,  setSortDir]  = useState<"asc" | "desc">("asc");
+  const [filters,    setFilters]    = useState<Record<string, string[]>>({});
+  const [predicates, setPredicates] = useState<Record<string, TextPredicate>>({});
+  const [openCol,    setOpenCol]    = useState<string | null>(null);
+  const [anchorEl,   setAnchorEl]   = useState<HTMLElement | null>(null);
+  const [sortKey,    setSortKey]    = useState<string | null>(null);
+  const [sortDir,    setSortDir]    = useState<"asc" | "desc">("asc");
 
   // cascading: 한 컬럼 필터 적용 후 다른 컬럼 드롭다운은 그 결과 안에서 unique
   const accessors = useMemo<ColumnAccessorMap<CuttingLog>>(() => {
@@ -660,11 +661,11 @@ function useTableFilter(logs: CuttingLog[], cols: { key: string; getVal: (l: Cut
   const allValues = (key: string): FilterValue[] => allOptions[key] ?? [];
 
   const cascadedLogs = useMemo(
-    () => getCascadedFilteredRows(logs, filters, accessors),
-    [logs, filters, accessors],
+    () => getCascadedFilteredRowsWithPredicates(logs, filters, predicates, accessors),
+    [logs, filters, predicates, accessors],
   );
 
-  // 정렬 — 컬럼 헤더 클릭 시 asc → desc → 해제 토글
+  // 정렬 — 단일 컬럼
   const filteredLogs = useMemo(() => {
     if (!sortKey) return cascadedLogs;
     const acc = accessors[sortKey];
@@ -682,7 +683,9 @@ function useTableFilter(logs: CuttingLog[], cols: { key: string; getVal: (l: Cut
     return arr;
   }, [cascadedLogs, sortKey, sortDir, accessors]);
 
-  const filterCount = Object.keys(filters).length;
+  const filterCount =
+    Object.keys(filters).length +
+    Object.values(predicates).filter(p => p && (p.op === "empty" || p.op === "notEmpty" || p.val.length > 0)).length;
 
   const handleFilterChange = (col: string, values: string[]) =>
     setFilters(p => values.length === 0
@@ -690,30 +693,33 @@ function useTableFilter(logs: CuttingLog[], cols: { key: string; getVal: (l: Cut
       : { ...p, [col]: values });
   const handleFilterOpen   = (col: string, el: HTMLElement) => { setOpenCol(col); setAnchorEl(el); };
   const handleFilterClose  = () => { setOpenCol(null); setAnchorEl(null); };
-  const resetAllFilters    = () => setFilters({});
+  const resetAllFilters    = () => { setFilters({}); setPredicates({}); };
 
-  const handleSort = (col: string) => {
-    if (sortKey === col) {
-      if (sortDir === "asc") setSortDir("desc");
-      else { setSortKey(null); setSortDir("asc"); }
-    } else {
-      setSortKey(col); setSortDir("asc");
-    }
+  const handleSortFor = (col: string, dir: "asc" | "desc" | null) => {
+    if (dir === null) { setSortKey(null); setSortDir("asc"); }
+    else { setSortKey(col); setSortDir(dir); }
   };
 
+  const setPredicateFor = (col: string, p: TextPredicate | null) =>
+    setPredicates(prev => {
+      const next = { ...prev };
+      if (p) next[col] = p; else delete next[col];
+      return next;
+    });
+
   return {
-    filters, openCol, anchorEl, filteredLogs, filterCount,
+    filters, predicates, openCol, anchorEl, filteredLogs, filterCount,
     allValues, handleFilterChange, handleFilterOpen, handleFilterClose, resetAllFilters,
-    sortKey, sortDir, handleSort,
+    sortKey, sortDir, handleSortFor, setPredicateFor,
   };
 }
 
 // ─── 정규작업 탭: Heat NO + 폭×길이 + 수량 + 작업시간 + 특이사항 ──────────────
 function NormalDetailTable({ logs }: { logs: CuttingLog[] }) {
   const {
-    filters, openCol, anchorEl, filteredLogs, filterCount,
+    filters, predicates, openCol, anchorEl, filteredLogs, filterCount,
     allValues, handleFilterChange, handleFilterOpen, handleFilterClose, resetAllFilters,
-    sortKey, sortDir, handleSort,
+    sortKey, sortDir, handleSortFor, setPredicateFor,
   } = useTableFilter(logs, NORMAL_COLS);
 
   const totalQty   = filteredLogs.length;
@@ -736,22 +742,24 @@ function NormalDetailTable({ logs }: { logs: CuttingLog[] }) {
       <thead className="bg-gray-50 border-b">
         <tr>
           {NORMAL_COLS.map(col => {
-            const isActive = (filters[col.key]?.length ?? 0) > 0;
+            const hasValues = (filters[col.key]?.length ?? 0) > 0;
+            const p = predicates[col.key];
+            const hasPredicate = !!p && (p.op === "empty" || p.op === "notEmpty" || p.val.length > 0);
+            const isActive = hasValues || hasPredicate;
             const isSort   = sortKey === col.key;
-            const SortI    = isSort ? (sortDir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
             return (
               <th key={col.key} className={`px-3 py-1 text-gray-500 font-semibold text-[11px] whitespace-nowrap text-${col.align}`}>
                 <div className={`flex items-center gap-1 ${col.align === "right" ? "justify-end" : col.align === "center" ? "justify-center" : ""}`}>
-                  <button onClick={() => handleSort(col.key)} className="inline-flex items-center gap-1 hover:text-gray-700">
-                    {col.label}
-                    <SortI size={11} className={isSort ? "text-blue-500" : "text-gray-300"} />
-                  </button>
+                  <span>{col.label}</span>
                   <button
                     onClick={e => { e.stopPropagation(); openCol === col.key ? handleFilterClose() : handleFilterOpen(col.key, e.currentTarget); }}
-                    className={`p-0.5 rounded hover:bg-gray-200 transition-colors ${isActive ? "text-blue-600" : "text-gray-400"}`}
-                    title={isActive ? `필터 적용 중 (${filters[col.key]?.length}개)` : "필터"}
+                    className={`p-0.5 rounded hover:bg-gray-200 transition-colors inline-flex items-center ${isActive ? "text-blue-600" : "text-gray-400"}`}
+                    title="필터·정렬"
                   >
                     <Filter size={11} fill={isActive ? "currentColor" : "none"} />
+                    {isSort && (sortDir === "asc"
+                      ? <ArrowUp   size={9} className="text-blue-500" />
+                      : <ArrowDown size={9} className="text-blue-500" />)}
                   </button>
                   {openCol === col.key && anchorEl && (
                     <ColumnFilterDropdown
@@ -760,6 +768,10 @@ function NormalDetailTable({ logs }: { logs: CuttingLog[] }) {
                       selected={filters[col.key] ?? []}
                       onApply={values => { handleFilterChange(col.key, values); handleFilterClose(); }}
                       onClose={handleFilterClose}
+                      sortDir={sortKey === col.key ? sortDir : null}
+                      onSort={(dir) => handleSortFor(col.key, dir)}
+                      predicate={predicates[col.key] ?? null}
+                      onPredicate={(p) => setPredicateFor(col.key, p)}
                     />
                   )}
                 </div>
@@ -810,9 +822,9 @@ function NormalDetailTable({ logs }: { logs: CuttingLog[] }) {
 // ─── 돌발작업 탭: 작업명/요청자/부서/호선블록/잔재번호/치수/중량/시간 ─────────────
 function UrgentDetailTable({ logs }: { logs: CuttingLog[] }) {
   const {
-    filters, openCol, anchorEl, filteredLogs, filterCount,
+    filters, predicates, openCol, anchorEl, filteredLogs, filterCount,
     allValues, handleFilterChange, handleFilterOpen, handleFilterClose, resetAllFilters,
-    sortKey, sortDir, handleSort,
+    sortKey, sortDir, handleSortFor, setPredicateFor,
   } = useTableFilter(logs, URGENT_COLS);
 
   const totalQty   = filteredLogs.length;
@@ -835,22 +847,24 @@ function UrgentDetailTable({ logs }: { logs: CuttingLog[] }) {
       <thead className="bg-orange-50 border-b">
         <tr>
           {URGENT_COLS.map(col => {
-            const isActive = (filters[col.key]?.length ?? 0) > 0;
+            const hasValues = (filters[col.key]?.length ?? 0) > 0;
+            const p = predicates[col.key];
+            const hasPredicate = !!p && (p.op === "empty" || p.op === "notEmpty" || p.val.length > 0);
+            const isActive = hasValues || hasPredicate;
             const isSort   = sortKey === col.key;
-            const SortI    = isSort ? (sortDir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
             return (
               <th key={col.key} className={`px-3 py-1 text-gray-500 font-semibold text-[11px] whitespace-nowrap text-${col.align}`}>
                 <div className={`flex items-center gap-1 ${col.align === "right" ? "justify-end" : col.align === "center" ? "justify-center" : ""}`}>
-                  <button onClick={() => handleSort(col.key)} className="inline-flex items-center gap-1 hover:text-gray-700">
-                    {col.label}
-                    <SortI size={11} className={isSort ? "text-orange-500" : "text-gray-300"} />
-                  </button>
+                  <span>{col.label}</span>
                   <button
                     onClick={e => { e.stopPropagation(); openCol === col.key ? handleFilterClose() : handleFilterOpen(col.key, e.currentTarget); }}
-                    className={`p-0.5 rounded hover:bg-orange-100 transition-colors ${isActive ? "text-orange-600" : "text-gray-400"}`}
-                    title={isActive ? `필터 적용 중 (${filters[col.key]?.length}개)` : "필터"}
+                    className={`p-0.5 rounded hover:bg-orange-100 transition-colors inline-flex items-center ${isActive ? "text-orange-600" : "text-gray-400"}`}
+                    title="필터·정렬"
                   >
                     <Filter size={11} fill={isActive ? "currentColor" : "none"} />
+                    {isSort && (sortDir === "asc"
+                      ? <ArrowUp   size={9} className="text-orange-500" />
+                      : <ArrowDown size={9} className="text-orange-500" />)}
                   </button>
                   {openCol === col.key && anchorEl && (
                     <ColumnFilterDropdown
@@ -859,6 +873,10 @@ function UrgentDetailTable({ logs }: { logs: CuttingLog[] }) {
                       selected={filters[col.key] ?? []}
                       onApply={values => { handleFilterChange(col.key, values); handleFilterClose(); }}
                       onClose={handleFilterClose}
+                      sortDir={sortKey === col.key ? sortDir : null}
+                      onSort={(dir) => handleSortFor(col.key, dir)}
+                      predicate={predicates[col.key] ?? null}
+                      onPredicate={(p) => setPredicateFor(col.key, p)}
                     />
                   )}
                 </div>
