@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import NoticeSection from "@/components/notice-section";
 import WeatherBar from "@/components/weather-bar";
+import LandingCalendar from "@/components/landing-calendar";
 
 export const dynamic = "force-dynamic";
 
@@ -272,6 +273,9 @@ export default async function LandingPage() {
             )}
           </div>
         </div>
+
+        {/* 달력 — 월 단위 + 주차 + 일자 클릭 일정 등록 */}
+        <LandingCalendar />
 
         {/* 진교·진동 현재 날씨 */}
         <WeatherBar />

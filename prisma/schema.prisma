@@ -1345,3 +1345,17 @@ model DeliveryVendor {
   @@index([vendorType])
   @@index([name])
 }
+
+// ==========================================
+// 랜딩 페이지 달력 — 간단 일정 메모
+// ==========================================
+model CalendarEvent {
+  id        String   @id @default(cuid())
+  date      DateTime // 일정 날짜 (00:00:00 으로 정규화 저장)
+  registrar String   // 등록자 이름
+  content   String   // 일정 내용
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+}
