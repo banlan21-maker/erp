@@ -76,7 +76,12 @@ export function ShipoutCartProvider({ children }: { children: React.ReactNode })
     setItems(prev => prev.filter(x => x.steelPlanId !== steelPlanId));
   }, []);
 
-  const clear = useCallback(() => setItems([]), []);
+  // 카트 비우기 — setItems 의 비동기 갱신과 useEffect sync 사이에
+  // router.push 가 끼면 sessionStorage 가 안 비워질 수 있으므로 직접도 제거
+  const clear = useCallback(() => {
+    setItems([]);
+    try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* 무시 */ }
+  }, []);
 
   const totalWeight = useMemo(
     () => items.reduce((s, x) => s + (x.weight || 0), 0),
