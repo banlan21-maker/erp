@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: `자재가 중복 배차되었습니다: ${dupe}` }, { status: 400 });
     }
 
-    // 모든 SteelPlan 이 RECEIVED 인지 확인 (낙관적 락은 아니지만 1차 가드)
+    // 모든 SteelPlan 이 RECEIVED 인지 확인
     const targets = await prisma.steelPlan.findMany({
       where: { id: { in: allSteelPlanIds } },
       select: { id: true, status: true, vesselCode: true },
@@ -155,6 +155,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: false,
         error: `RECEIVED 가 아닌 자재가 ${notReceived.length}건 있습니다. 새로고침 후 다시 시도하세요.`,
+      }, { status: 409 });
+    }
+    // 활성(ACTIVE) 출고장에 이미 등록된 자재 확인 — 취소된(CANCELLED) ShipmentItem 은 무시
+    const alreadyActive = await prisma.shipmentItem.findMany({
+      where: {
+        steelPlanId: { in: allSteelPlanIds },
+        vehicle: { shipment: { status: "ACTIVE" } },
+      },
+      select: {
+        steelPlanId: true,
+        vehicle: { select: { shipment: { select: { shipmentNo: true } } } },
+      },
+    });
+    if (alreadyActive.length > 0) {
+      const sample = alreadyActive.slice(0, 3).map(x => `${x.steelPlanId} (출고장 ${x.vehicle.shipment.shipmentNo})`);
+      return NextResponse.json({
+        success: false,
+        error: `이미 출고된 자재가 ${alreadyActive.length}건 있습니다.\n` + sample.join("\n"),
       }, { status: 409 });
     }
 

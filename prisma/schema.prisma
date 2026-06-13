@@ -1291,7 +1291,7 @@ model SteelPlan {
   reservedFor        String? // 확정 블록 (예: "B80C")
 
   // 외부 출고 (Shipment) 관계 — 한 SteelPlan 은 한 번 출고됨
-  shipmentItem ShipmentItem?
+  shipmentItems ShipmentItem[]  // 출고 이력 (ACTIVE 1건만 의미 있음 — application 강제)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1382,7 +1382,7 @@ model ShipmentItem {
   id              String @id @default(cuid())
   vehicleId       String
   vehicle         ShipmentVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  steelPlanId     String  @unique // 한 SteelPlan 은 한 번만 출고 (cancel 시 해제)
+  steelPlanId     String          // 한 SteelPlan 은 활성 출고장(ACTIVE)에서만 한 번 — application 레벨에서 강제 (cancel 시 ShipmentItem 보존 위해 DB unique 제거)
   steelPlan       SteelPlan @relation(fields: [steelPlanId], references: [id], onDelete: Restrict)
   steelPlanHeatId String?
   steelPlanHeat   SteelPlanHeat? @relation(fields: [steelPlanHeatId], references: [id], onDelete: SetNull)

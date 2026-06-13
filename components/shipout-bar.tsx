@@ -100,7 +100,12 @@ export default function ShipoutBar() {
   const [writerPhone,   setWriterPhone]   = useState("");
   const [writerDefault, setWriterDefault] = useState(false);
 
-  // 모달 열 때 작성자 기본값 복원
+  // 공급처 (Step1 에서 선택) + 기본값 + 통일 옵션
+  const [supplierId,        setSupplierId]        = useState<string>("");
+  const [supplierDefault,   setSupplierDefault]   = useState(false);
+  const [supplierUnify,     setSupplierUnify]     = useState(true);
+
+  // 모달 열 때 작성자/공급처 기본값 복원
   useEffect(() => {
     if (!open) return;
     try {
@@ -112,6 +117,14 @@ export default function ShipoutBar() {
       } else {
         setWriterName(""); setWriterPhone(""); setWriterDefault(false);
       }
+      const supDef = localStorage.getItem("shipout-supplier-default") === "1";
+      if (supDef) {
+        setSupplierId(localStorage.getItem("shipout-supplier-id") ?? "");
+        setSupplierDefault(true);
+      } else {
+        setSupplierId(""); setSupplierDefault(false);
+      }
+      setSupplierUnify(localStorage.getItem("shipout-supplier-unify") !== "0");
     } catch { /* 무시 */ }
   }, [open]);
 
@@ -175,9 +188,9 @@ export default function ShipoutBar() {
     })();
   }, [open, cart.items]);
 
-  // 모달 ② 진입 전 공급처/납품처 로드
+  // 공급처/납품처 마스터 — 모달 열릴 때 즉시 (Step1 에서 공급처 선택용)
   useEffect(() => {
-    if (!open || step !== 2) return;
+    if (!open) return;
     if (suppliers.length === 0 || deliveries.length === 0) {
       Promise.all([
         fetch("/api/delivery-vendors?type=SUPPLIER").then(r => r.json()),
@@ -187,7 +200,7 @@ export default function ShipoutBar() {
         if (d.success) setDeliveries(d.data);
       }).catch(() => {});
     }
-  }, [open, step, suppliers.length, deliveries.length]);
+  }, [open, suppliers.length, deliveries.length]);
 
   /* ─── 모달 ① 액션 ─── */
   const setRow = (steelPlanId: string, patch: Partial<ModalRow>) =>
@@ -250,6 +263,11 @@ export default function ShipoutBar() {
       setError("차분이 1대 이상 있어야 합니다.");
       return;
     }
+    // 공급처 통일이 켜져있으면 Step1 에서 공급처 필수
+    if (supplierUnify && !supplierId) {
+      setError("공급처를 선택해주세요. (공급처 통일이 켜져있습니다)");
+      return;
+    }
     // 차량번호는 선택 입력 — 검증 안 함
     setStep(2);
   };
@@ -257,8 +275,12 @@ export default function ShipoutBar() {
   /* ─── 출고 확정 ─── */
   const submit = async () => {
     setError("");
+    // 공급처 통일이 켜져있으면 Step1 에서 선택한 supplierId 가 모든 차분에 강제 적용
+    const effectiveVehicles = supplierUnify && supplierId
+      ? vehicles.map(v => ({ ...v, supplierId }))
+      : vehicles;
     // 모든 차분에 공급처/납품처 선택됐는가
-    for (const v of vehicles) {
+    for (const v of effectiveVehicles) {
       if (!v.supplierId) { setError(`차분 ${v.sequence} — 공급처를 선택해주세요.`); return; }
       if (!v.deliveryId) { setError(`차분 ${v.sequence} — 납품처를 선택해주세요.`); return; }
     }
@@ -267,7 +289,7 @@ export default function ShipoutBar() {
       const supplierMap = new Map(suppliers.map(s => [s.id, s]));
       const deliveryMap = new Map(deliveries.map(d => [d.id, d]));
 
-      // 작성자 기본값 — 체크박스 ON 이면 localStorage 갱신, OFF 면 제거
+      // 작성자/공급처 기본값 — 체크박스 ON 이면 localStorage 갱신, OFF 면 제거
       try {
         if (writerDefault) {
           localStorage.setItem("shipout-writer-default", "1");
@@ -276,11 +298,18 @@ export default function ShipoutBar() {
         } else {
           localStorage.removeItem("shipout-writer-default");
         }
+        if (supplierDefault && supplierId) {
+          localStorage.setItem("shipout-supplier-default", "1");
+          localStorage.setItem("shipout-supplier-id", supplierId);
+        } else {
+          localStorage.removeItem("shipout-supplier-default");
+        }
+        localStorage.setItem("shipout-supplier-unify", supplierUnify ? "1" : "0");
       } catch { /* 무시 */ }
 
       const payload = {
         shippedAt,
-        vehicles: vehicles.map((v, vi) => {
+        vehicles: effectiveVehicles.map((v, vi) => {
           const sup = supplierMap.get(v.supplierId);
           const del = deliveryMap.get(v.deliveryId);
           const snap = (x: DeliveryVendor | undefined) => x ? ({
@@ -402,22 +431,42 @@ export default function ShipoutBar() {
               {error && <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700 flex items-center gap-2"><AlertTriangle size={14} /> {error}</div>}
 
               {/* 출고담당자 — 작성(출고)자 + 연락처 + 기본값 체크박스 */}
-              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 flex flex-wrap items-end gap-3">
-                <div className="flex-1 min-w-[200px]">
-                  <label className="block text-[11px] font-bold text-purple-700 mb-1">작성(출고)자</label>
-                  <input value={writerName} onChange={e => setWriterName(e.target.value)}
-                    placeholder="홍길동" className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded" />
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 space-y-2">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="flex-1 min-w-[180px]">
+                    <label className="block text-[11px] font-bold text-purple-700 mb-1">작성(출고)자</label>
+                    <input value={writerName} onChange={e => setWriterName(e.target.value)}
+                      placeholder="홍길동" className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded" />
+                  </div>
+                  <div className="flex-1 min-w-[180px]">
+                    <label className="block text-[11px] font-bold text-purple-700 mb-1">작성자 연락처</label>
+                    <input value={writerPhone} onChange={e => setWriterPhone(e.target.value)}
+                      placeholder="010-1234-5678" className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded font-mono" />
+                  </div>
+                  <label className="flex items-center gap-1.5 text-xs text-purple-700 select-none cursor-pointer whitespace-nowrap">
+                    <input type="checkbox" checked={writerDefault} onChange={e => setWriterDefault(e.target.checked)} className="w-4 h-4" />
+                    기본값으로 저장
+                  </label>
                 </div>
-                <div className="flex-1 min-w-[200px]">
-                  <label className="block text-[11px] font-bold text-purple-700 mb-1">작성자 연락처</label>
-                  <input value={writerPhone} onChange={e => setWriterPhone(e.target.value)}
-                    placeholder="010-1234-5678" className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded font-mono" />
+
+                <div className="flex flex-wrap items-end gap-3 pt-2 border-t border-purple-200">
+                  <div className="flex-1 min-w-[260px]">
+                    <label className="block text-[11px] font-bold text-amber-700 mb-1">공급처</label>
+                    <select value={supplierId} onChange={e => setSupplierId(e.target.value)}
+                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded bg-white">
+                      <option value="">— 선택 —</option>
+                      {suppliers.map(s => <option key={s.id} value={s.id}>{s.name} ({s.bizNo ?? "사업자번호 없음"})</option>)}
+                    </select>
+                  </div>
+                  <label className="flex items-center gap-1.5 text-xs text-amber-700 select-none cursor-pointer whitespace-nowrap">
+                    <input type="checkbox" checked={supplierDefault} onChange={e => setSupplierDefault(e.target.checked)} className="w-4 h-4" />
+                    기본값으로 저장
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs text-amber-700 select-none cursor-pointer whitespace-nowrap">
+                    <input type="checkbox" checked={supplierUnify} onChange={e => setSupplierUnify(e.target.checked)} className="w-4 h-4" />
+                    공급처 통일 (모든 차분 동일)
+                  </label>
                 </div>
-                <label className="flex items-center gap-1.5 text-xs text-purple-700 select-none cursor-pointer">
-                  <input type="checkbox" checked={writerDefault} onChange={e => setWriterDefault(e.target.checked)} className="w-4 h-4" />
-                  기본값으로 저장
-                  <span className="text-[10px] text-purple-500" title="체크 시 다음 출고장 만들 때 자동으로 입력됨 (이 브라우저)">ⓘ</span>
-                </label>
               </div>
 
               {step === 1 ? (
@@ -431,6 +480,7 @@ export default function ShipoutBar() {
                   removeVehicle={removeVehicle}
                   checked={checked}
                   toggleCheck={toggleCheck}
+                  setCheckedAll={setChecked}
                   unassignedRows={unassignedRows}
                   checkedWeight={checkedWeight}
                 />
@@ -441,6 +491,8 @@ export default function ShipoutBar() {
                   suppliers={suppliers}
                   deliveries={deliveries}
                   updateVehicle={updateVehicle}
+                  unifiedSupplierId={supplierId}
+                  supplierUnify={supplierUnify}
                 />
               )}
             </div>
@@ -479,7 +531,7 @@ export default function ShipoutBar() {
 /* ════════════════════════════════════════════════════════════ */
 function Step1({
   rowsM, setRow, vehicles, updateVehicle, addVehicle, removeVehicle,
-  checked, toggleCheck, unassignedRows, checkedWeight,
+  checked, toggleCheck, setCheckedAll, unassignedRows, checkedWeight,
 }: {
   rowsM:  ModalRow[];
   setRow: (id: string, patch: Partial<ModalRow>) => void;
@@ -490,6 +542,7 @@ function Step1({
   removeVehicle: (idx: number) => void;
   checked: Set<string>;
   toggleCheck: (id: string) => void;
+  setCheckedAll: (s: Set<string>) => void;
   unassignedRows: ModalRow[];
   checkedWeight: number;
 }) {
@@ -505,7 +558,26 @@ function Step1({
           <table className="w-full text-xs">
             <thead className="bg-gray-50 sticky top-0">
               <tr className="text-gray-600">
-                <th className="px-2 py-2 text-center w-8"></th>
+                <th className="px-2 py-2 text-center w-8">
+                  <input
+                    type="checkbox"
+                    checked={unassignedRows.length > 0 && unassignedRows.every(r => checked.has(r.steelPlanId))}
+                    onChange={e => {
+                      if (e.target.checked) {
+                        // 미배차 전체 추가
+                        const next = new Set(checked);
+                        for (const r of unassignedRows) next.add(r.steelPlanId);
+                        setCheckedAll(next);
+                      } else {
+                        // 미배차 자재만 선택 해제 (다른 차분에 든 것은 영향 없음)
+                        const next = new Set(checked);
+                        for (const r of unassignedRows) next.delete(r.steelPlanId);
+                        setCheckedAll(next);
+                      }
+                    }}
+                    title="미배차 자재 전체선택"
+                  />
+                </th>
                 <th className="px-2 py-2 text-left">호선</th>
                 <th className="px-2 py-2 text-left">재질</th>
                 <th className="px-2 py-2 text-right">두께</th>
@@ -647,18 +719,23 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 /* ════════════════════════════════════════════════════════════ */
 function Step2({
   vehicles, rowsM, suppliers, deliveries, updateVehicle,
+  unifiedSupplierId, supplierUnify,
 }: {
   vehicles: Vehicle[];
   rowsM: ModalRow[];
   suppliers: DeliveryVendor[];
   deliveries: DeliveryVendor[];
   updateVehicle: (idx: number, patch: Partial<Vehicle>) => void;
+  unifiedSupplierId: string;
+  supplierUnify:     boolean;
 }) {
   return (
     <div className="space-y-3">
       {vehicles.map((v, idx) => {
         const myRows = rowsM.filter(r => r.vehicleIdx === idx);
-        const sup = suppliers.find(s => s.id === v.supplierId);
+        // 통일이 켜져있으면 Step1 의 공급처 사용 (UI 표시용)
+        const effectiveSupplierId = supplierUnify ? unifiedSupplierId : v.supplierId;
+        const sup = suppliers.find(s => s.id === effectiveSupplierId);
         const del = deliveries.find(d => d.id === v.deliveryId);
         return (
           <div key={v.id} className="border-2 border-gray-200 rounded-xl p-3 space-y-3">
@@ -670,9 +747,13 @@ function Step2({
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="border border-amber-200 bg-amber-50/30 rounded-lg p-3">
-                <label className="text-xs font-bold text-amber-700 block mb-1">공급처 *</label>
-                <select value={v.supplierId} onChange={e => updateVehicle(idx, { supplierId: e.target.value })}
-                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded bg-white">
+                <label className="text-xs font-bold text-amber-700 block mb-1">
+                  공급처 * {supplierUnify && <span className="ml-1 text-[10px] font-normal text-amber-600">(Step1 통일 적용)</span>}
+                </label>
+                <select value={effectiveSupplierId}
+                  onChange={e => updateVehicle(idx, { supplierId: e.target.value })}
+                  disabled={supplierUnify}
+                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded bg-white disabled:bg-gray-100 disabled:cursor-not-allowed">
                   <option value="">— 선택 —</option>
                   {suppliers.map(s => <option key={s.id} value={s.id}>{s.name} ({s.bizNo ?? "사업자번호 없음"})</option>)}
                 </select>
