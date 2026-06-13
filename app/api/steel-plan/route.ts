@@ -69,6 +69,8 @@ export async function GET(req: NextRequest) {
   const selectionPrintedDates = parseList(sp.get("selectionPrintedDates"));
   const issuedDates           = parseList(sp.get("issuedDates"));
   const ids                   = parseList(sp.get("ids"));
+  // 메모 필터 — "has" (메모 있음만) / "none" (메모 없음만) / 빈값 (전체)
+  const memoMode     = sp.get("memoMode"); // "has" | "none" | null
 
   const where = {
     ...(ids.length ? { id: { in: ids } } : {}),
@@ -93,6 +95,9 @@ export async function GET(req: NextRequest) {
     ...nullableIn(actualVesselCodes, "actualVesselCode"),
     ...nullableIn(actualDrawingNos,  "actualDrawingNo"),
     ...nullableIn(uploadBatchNos,    "uploadBatchNo"),
+    // 메모 있음/없음 (빈 문자열은 has 에 포함되지 않음)
+    ...(memoMode === "has"  ? { memo: { not: null } } : {}),
+    ...(memoMode === "none" ? { memo: null } : {}),
   };
 
   const [total, rows, allVessels] = await Promise.all([

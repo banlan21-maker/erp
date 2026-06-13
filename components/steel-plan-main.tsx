@@ -98,6 +98,17 @@ const PLAN_STATUS: Record<string, { label: string; cls: string }> = {
 const calcWeight = (t: number, w: number, l: number) =>
   Math.round(t * w * l * 7.85 / 1_000_000 * 10) / 10;
 
+// ISO 날짜 → "YY.MM.DD" (공백 없이)
+const fmtYMDcompact = (iso: string | null | undefined) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const yy = String(d.getFullYear()).slice(2);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yy}.${mm}.${dd}`;
+};
+
 const HEAT_STATUS: Record<string, { label: string; cls: string }> = {
   WAITING: { label: "대기", cls: "bg-yellow-100 text-yellow-700" },
   CUT:     { label: "절단", cls: "bg-blue-100  text-blue-700" },
@@ -135,6 +146,14 @@ export default function SteelPlanMain() {
   const [openFilter,     setOpenFilter]     = useState<string | null>(null);
   const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
   const [distinctValues, setDistinctValues] = useState<Record<string, FilterValue[]>>({});
+
+  /* ── 메모 필터 ("" 전체 / "has" 있음만 / "none" 없음만) — 서버 처리 ── */
+  const [memoMode, setMemoMode] = useState<"" | "has" | "none">("");
+
+  /* ── 중량 필터 (클라이언트 측, 현재 페이지 한정) ── */
+  const [weightMin, setWeightMin] = useState("");
+  const [weightMax, setWeightMax] = useState("");
+  const [weightFilterOpen, setWeightFilterOpen] = useState(false);
 
   /* ── 정렬 (단일 컬럼 — 엑셀스타일 통합 드롭다운) ── */
   const [sortKey, setSortKey] = useState<string | null>(null);
@@ -240,6 +259,7 @@ export default function SteelPlanMain() {
     if (cf.uploadBatchNo?.length)       p.set("uploadBatchNos",        cf.uploadBatchNo.join(","));
     if (cf.selectionPrintedAt?.length)  p.set("selectionPrintedDates", cf.selectionPrintedAt.join(","));
     if (cf.issuedAt?.length)            p.set("issuedDates",           cf.issuedAt.join(","));
+    if (memoMode) p.set("memoMode", memoMode);
     const res = await fetch(`/api/steel-plan?${p}`);
     if (res.ok) {
       const json = await res.json();
@@ -248,7 +268,7 @@ export default function SteelPlanMain() {
       setTotalPages(json.totalPages);
     }
     setLoading(false);
-  }, [search, page, colFilters, sortKey, sortDir]);
+  }, [search, page, colFilters, sortKey, sortDir, memoMode]);
 
   const loadHeatDistinct = useCallback(async () => {
     const qs = serializeColFilters(heatColFilters, STEEL_PLAN_HEAT_QS_KEY);
@@ -1261,12 +1281,39 @@ export default function SteelPlanMain() {
                         </th>
                       );
                     })}
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">중량(kg)</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px] relative">
+                      <div className="flex items-center justify-center gap-0.5">
+                        <span>중량(kg)</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setWeightFilterOpen(v => !v); }}
+                          className={`rounded hover:bg-gray-200 p-0.5 inline-flex items-center ${(weightMin || weightMax) ? "text-blue-600" : "text-gray-400"}`}
+                          title={(weightMin || weightMax) ? `중량 ${weightMin || "0"} ~ ${weightMax || "∞"} kg (현재 페이지)` : "중량 범위 필터 (현재 페이지)"}
+                        >
+                          <Filter size={10} fill={(weightMin || weightMax) ? "currentColor" : "none"} />
+                        </button>
+                      </div>
+                      {weightFilterOpen && (
+                        <div className="absolute top-full right-0 z-30 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3 w-56" onClick={e => e.stopPropagation()}>
+                          <div className="text-[11px] text-gray-500 mb-2">중량 범위 (kg) — 현재 페이지에만 적용</div>
+                          <div className="flex items-center gap-1.5">
+                            <input type="number" value={weightMin} onChange={e => setWeightMin(e.target.value)}
+                              placeholder="최소" className="w-20 px-1.5 py-1 text-xs border border-gray-200 rounded text-right" />
+                            <span className="text-xs text-gray-400">~</span>
+                            <input type="number" value={weightMax} onChange={e => setWeightMax(e.target.value)}
+                              placeholder="최대" className="w-20 px-1.5 py-1 text-xs border border-gray-200 rounded text-right" />
+                          </div>
+                          <div className="flex justify-end gap-1 mt-2">
+                            <button onClick={() => { setWeightMin(""); setWeightMax(""); }} className="px-2 py-0.5 text-[11px] border border-gray-200 rounded hover:bg-gray-50">초기화</button>
+                            <button onClick={() => setWeightFilterOpen(false)} className="px-2 py-0.5 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-700">적용</button>
+                          </div>
+                        </div>
+                      )}
+                    </th>
                     {([
                       ["receivedAt",       "입고일"],
-                      ["storageLocation",  "보관위치"],
+                      ["storageLocation",  "위치"],
                       ["status",           "상태"],
-                      ["reservedFor",      "확정호선/블록"],
+                      ["reservedFor",      "확정정보"],
                       ["selectionPrintedAt","선별지시일"],
                       ["issuedAt",         "출고일"],
                     ] as [string, string][]).map(([col, label]) => {
@@ -1291,7 +1338,24 @@ export default function SteelPlanMain() {
                         </th>
                       );
                     })}
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">메모</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">
+                      <div className="flex items-center justify-center gap-0.5">
+                        <span>메모</span>
+                        <button
+                          onClick={() => {
+                            // 3단 토글: "" → "has" → "none" → ""
+                            setMemoMode(prev => prev === "" ? "has" : prev === "has" ? "none" : "");
+                            setPage(1);
+                          }}
+                          className={`rounded hover:bg-gray-200 p-0.5 inline-flex items-center ${memoMode ? "text-blue-600" : "text-gray-400"}`}
+                          title={memoMode === "has" ? "메모 있는 것만" : memoMode === "none" ? "메모 없는 것만" : "메모 필터 해제 — 클릭해서 토글"}
+                        >
+                          <Filter size={10} fill={memoMode ? "currentColor" : "none"} />
+                          {memoMode === "has"  && <span className="text-[8px] font-bold ml-0.5">●</span>}
+                          {memoMode === "none" && <span className="text-[8px] font-bold ml-0.5">○</span>}
+                        </button>
+                      </div>
+                    </th>
                     <th className="w-16 px-2 py-1 text-center font-medium text-gray-600 text-[11px]">입고</th>
                     <th className="w-16 px-2 py-1 text-center font-medium text-gray-600 text-[11px]">출고</th>
                   </tr>
@@ -1299,10 +1363,20 @@ export default function SteelPlanMain() {
                 <tbody className="divide-y divide-gray-100">
                   {loading ? (
                     <tr><td colSpan={18} className="py-12 text-center text-gray-400">불러오는 중...</td></tr>
-                  ) : rows.length === 0 ? (
-                    <tr><td colSpan={18} className="py-12 text-center text-gray-400">등록된 강재 계획이 없습니다</td></tr>
-                  ) : (
-                    rows.map((row) => {
+                  ) : (() => {
+                    const wMin = parseFloat(weightMin); const wMax = parseFloat(weightMax);
+                    const filtered = (isFinite(wMin) || isFinite(wMax))
+                      ? rows.filter(r => {
+                          const w = calcWeight(r.thickness, r.width, r.length);
+                          if (isFinite(wMin) && w < wMin) return false;
+                          if (isFinite(wMax) && w > wMax) return false;
+                          return true;
+                        })
+                      : rows;
+                    if (filtered.length === 0) {
+                      return <tr><td colSpan={18} className="py-12 text-center text-gray-400">{rows.length === 0 ? "등록된 강재 계획이 없습니다" : "중량 범위에 맞는 자재가 없습니다"}</td></tr>;
+                    }
+                    return filtered.map((row) => {
                       const st = PLAN_STATUS[row.status];
                       return (
                         <tr key={row.id} className={`hover:bg-gray-50 ${selectedIds.has(row.id) ? "bg-blue-50" : ""}`}>
@@ -1323,7 +1397,7 @@ export default function SteelPlanMain() {
                             {calcWeight(row.thickness, row.width, row.length).toFixed(1)}
                           </td>
                           <td className="px-2 py-1 text-center text-gray-500 font-mono">
-                            {row.receivedAt ? new Date(row.receivedAt).toLocaleDateString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit" }) : <span className="text-gray-300">-</span>}
+                            {row.receivedAt ? fmtYMDcompact(row.receivedAt) : <span className="text-gray-300">-</span>}
                           </td>
                           <td className="px-2 py-1 text-center">
                             {row.storageLocation ? (
@@ -1352,11 +1426,11 @@ export default function SteelPlanMain() {
                           </td>
                           {/* 선별지시일 */}
                           <td className="px-2 py-1 text-center text-gray-500 font-mono">
-                            {row.selectionPrintedAt ? new Date(row.selectionPrintedAt).toLocaleDateString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit" }) : <span className="text-gray-300">-</span>}
+                            {row.selectionPrintedAt ? fmtYMDcompact(row.selectionPrintedAt) : <span className="text-gray-300">-</span>}
                           </td>
                           {/* 출고일 */}
                           <td className="px-2 py-1 text-center text-gray-500 font-mono">
-                            {row.issuedAt ? new Date(row.issuedAt).toLocaleDateString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit" }) : <span className="text-gray-300">-</span>}
+                            {row.issuedAt ? fmtYMDcompact(row.issuedAt) : <span className="text-gray-300">-</span>}
                           </td>
                           {/* 메모 버튼 */}
                           <td className="px-2 py-1 text-center">
@@ -1406,8 +1480,8 @@ export default function SteelPlanMain() {
                           </td>
                         </tr>
                       );
-                    })
-                  )}
+                    });
+                  })()}
                 </tbody>
               </table>
             </div>
@@ -1610,7 +1684,7 @@ export default function SteelPlanMain() {
                             <span className={`px-1.5 py-0 rounded-full text-[11px] font-medium ${st.cls}`}>{st.label}</span>
                           </td>
                           <td className="px-2 py-1 text-center text-gray-500 font-mono text-[11px]">
-                            {row.cutAt ? new Date(row.cutAt).toLocaleDateString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit" }) : <span className="text-gray-300">-</span>}
+                            {row.cutAt ? fmtYMDcompact(row.cutAt) : <span className="text-gray-300">-</span>}
                           </td>
                           <td className="px-2 py-1 text-center">
                             {editingHeat?.id === row.id ? (
