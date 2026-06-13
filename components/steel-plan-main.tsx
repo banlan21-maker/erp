@@ -87,11 +87,11 @@ type BulkRow = { vesselCode: string; material: string; thickness: string; width:
 
 /* ── 상태 라벨 ─────────────────────────────────────────────────────────────── */
 const PLAN_STATUS: Record<string, { label: string; cls: string }> = {
-  REGISTERED:  { label: "등록",       cls: "bg-gray-100 text-gray-700" },
-  RECEIVED:    { label: "입고",       cls: "bg-green-100 text-green-700" },
-  ISSUED:      { label: "절단장 투입", cls: "bg-cyan-100  text-cyan-700" },
-  COMPLETED:   { label: "절단",       cls: "bg-blue-100  text-blue-700" },
-  SHIPPED_OUT: { label: "출고",       cls: "bg-purple-100 text-purple-700" },
+  REGISTERED:  { label: "등록", cls: "bg-gray-100 text-gray-700" },
+  RECEIVED:    { label: "입고", cls: "bg-green-100 text-green-700" },
+  ISSUED:      { label: "투입", cls: "bg-cyan-100  text-cyan-700" },
+  COMPLETED:   { label: "절단", cls: "bg-blue-100  text-blue-700" },
+  SHIPPED_OUT: { label: "외부", cls: "bg-purple-100 text-purple-700" },
 };
 
 // 강재 중량 계산 (단위: kg, 밀도 7.85 g/cm³)
