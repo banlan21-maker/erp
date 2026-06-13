@@ -73,37 +73,25 @@ const toYMD = (iso?: string | null) => iso ? iso.slice(0, 10) : "";
  * A4 가로 페이지 = 297 × 210 mm
  * 시트 padding = 좌우 8mm + 상하 6mm
  * → 실제 사용 가능 폭 = 297 - 16 = 281 mm
- *   (두 테이블의 컬럼 폭 합은 이 값을 넘으면 안 됨)
  *
- * 어디서 무엇:
- *   bottomA = '작성(출고)자' + '연락처' + '합계' 행
- *   bottomB = '인수(입고)자' + '차량번호' + '운전자성명' + '운전자연락처' 행
+ * 합계 행(작성자+연락처+합계)은 본문 자재 테이블의 tfoot 으로 통합되어
+ * 본문 컬럼(수량/중량/면적)과 자동 정렬됨 — 별도 LAYOUT 불필요.
+ *
+ * bottomB = '인수(입고)자' + '차량번호' + '운전자성명' + '운전자연락처' 8 컬럼
  */
 const LAYOUT = {
-  // 페이지 내부 컨텐츠 사용 폭 (계산용 — 실제 padding 은 위 @page 의 sheet padding)
   contentWidthMm: 281,
 
-  // 하단 테이블 A — 작성자 / 연락처 / 합계 (8 컬럼)
-  bottomA: {
-    writerLabelMm:  25, // '작성(출고)자' 라벨
-    writerValueMm:  55, // 작성자 값 (입력칸)
-    phoneLabelMm:   25, // '작성자 연락처' 라벨
-    phoneValueMm:   55, // 연락처 값 (입력칸)
-    sumLabelMm:     20, // '합 계' 라벨
-    sumQtyMm:       20, // 수량 합계
-    sumWeightMm:    35, // 중량 합계
-    sumAreaMm:      35, // 면적 합계  (총합 = 270, 여유 11)
-  },
-  // 하단 테이블 B — 인수자 / 차량 / 운전자 (8 컬럼)
+  // 하단 인수자/차량/운전자 행 (8 컬럼) — 인수자값 작게 + 나머지 균등
   bottomB: {
     receiverLabelMm:  25, // '인수(입고)자' 라벨
-    receiverValueMm:  50, // 인수자 값 (입력칸)
+    receiverValueMm:  35, // 인수자 값 (입력칸) — 작게
     vehicleLabelMm:   20, // '차량번호' 라벨
-    vehicleValueMm:   35, // 차량번호 값
+    vehicleValueMm:   45, // 차량번호 값
     driverLabelMm:    25, // '운전자 성명' 라벨
-    driverValueMm:    35, // 운전자 성명 값
+    driverValueMm:    45, // 운전자 성명 값
     phoneLabelMm:     30, // '운전자 연락처' 라벨
-    phoneValueMm:     50, // 연락처 값 (총합 = 270, 여유 11)
+    phoneValueMm:     45, // 연락처 값  (총합 = 270mm, 여유 11mm)
   },
 };
 const mm = (v: number) => `${v}mm`;
@@ -331,36 +319,30 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
               );
             })}
           </tbody>
-        </table>
-
-        {/* 하단 작성/합계 행 — 폭 조정: LAYOUT.bottomA (단위 mm) */}
-        <table className="mt-0">
-          <colgroup>
-            <col style={{ width: mm(LAYOUT.bottomA.writerLabelMm) }} />
-            <col style={{ width: mm(LAYOUT.bottomA.writerValueMm) }} />
-            <col style={{ width: mm(LAYOUT.bottomA.phoneLabelMm) }} />
-            <col style={{ width: mm(LAYOUT.bottomA.phoneValueMm) }} />
-            <col style={{ width: mm(LAYOUT.bottomA.sumLabelMm) }} />
-            <col style={{ width: mm(LAYOUT.bottomA.sumQtyMm) }} />
-            <col style={{ width: mm(LAYOUT.bottomA.sumWeightMm) }} />
-            <col style={{ width: mm(LAYOUT.bottomA.sumAreaMm) }} />
-          </colgroup>
-          <tbody>
+          {/* 합계 + 작성자 행 — 본문 자재 테이블 안에 통합 (수량/중량/면적이 본문 컬럼과 자동 정렬) */}
+          <tfoot>
             <tr>
-              <td className="bg-gray-50 text-center font-bold">작성(출고)자</td>
-              <td>
+              <td colSpan={2} className="bg-gray-50 text-center font-bold">작성(출고)자</td>
+              {/* 본문 컬럼 3~4 (호선·블록) = 작성자 값 */}
+              <td colSpan={2}>
                 <input className="cell" value={v.writerName ?? ""} onChange={e => setVehicleField("writerName", e.target.value)} />
               </td>
-              <td className="bg-gray-50 text-center font-bold">작성자 연락처</td>
-              <td>
+              {/* 본문 컬럼 5 (제품번호) = 작성자 연락처 라벨 */}
+              <td className="bg-gray-50 text-center font-bold">작성자<br/>연락처</td>
+              {/* 본문 컬럼 6~7 (선급·도면번호) = 작성자 연락처 값 */}
+              <td colSpan={2}>
                 <input className="cell font-mono" value={v.writerPhone ?? ""} onChange={e => setVehicleField("writerPhone", e.target.value)} />
               </td>
-              <td className="bg-gray-50 text-center font-bold">합  계</td>
+              {/* 본문 컬럼 8~11 (재질·두께·폭·길이) = 합계 라벨 */}
+              <td colSpan={4} className="bg-gray-50 text-center font-bold">합  계</td>
+              {/* 본문 컬럼 12~14 = 수량 / 중량 / 면적 합계 (자동 정렬) */}
               <td className="text-right font-bold">{totalQty}</td>
               <td className="text-right font-bold">{fmtNum(totalWeight, 1)}</td>
               <td className="text-right font-bold">{fmtNum(totalArea, 3)}</td>
+              {/* 본문 컬럼 15~16 (절단장비·선별지시번호) = 빈 */}
+              <td colSpan={2}></td>
             </tr>
-          </tbody>
+          </tfoot>
         </table>
 
         {/* 하단 인수/차량/운전자 행 — 폭 조정: LAYOUT.bottomB (단위 mm) */}

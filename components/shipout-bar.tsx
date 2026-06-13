@@ -747,6 +747,31 @@ export function ExcelUploadModal({ onClose, cart }: { onClose: () => void; cart:
     } finally { setUploading(false); }
   };
 
+  /** 미매칭(미입고·없는 자재) 행만 엑셀로 다운로드 — 추후 입고 후 그대로 다시 업로드 가능 */
+  const handleDownloadUnmatched = () => {
+    if (!results) return;
+    const unmatched = results.filter(r => r.status !== "MATCHED");
+    if (unmatched.length === 0) return;
+    const data: (string | number)[][] = [
+      ["호선", "재질", "두께", "폭", "길이", "판번호", "상태", "사유"],
+      ...unmatched.map(r => [
+        r.vesselCode ?? "",
+        r.material,
+        r.thickness,
+        r.width,
+        r.length,
+        r.heatNo ?? "",
+        r.status === "NOT_RECEIVED" ? "미입고" : "없는 자재",
+        r.reason ?? "",
+      ]),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "미매칭");
+    const today = new Date().toISOString().slice(0,10).replace(/-/g, "");
+    XLSX.writeFile(wb, `미매칭_외부출고_${today}.xlsx`);
+  };
+
   const handleAddMatched = () => {
     if (!results) return;
     const matched = results.filter(r => r.status === "MATCHED" && r.steelPlanId);
@@ -824,12 +849,19 @@ export function ExcelUploadModal({ onClose, cart }: { onClose: () => void; cart:
                 </div>
               )}
 
-              {summary && summary.notReceived > 0 && (
-                <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-3 flex items-start gap-2">
-                  <AlertTriangle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
-                  <div className="text-sm text-amber-800">
-                    <strong>미입고 자재 {summary.notReceived}건이 있습니다.</strong><br />
-                    입고처리 후 다시 시도하거나, 매칭된 {summary.matched}건만 카트에 담을 수 있습니다.
+              {summary && (summary.notReceived > 0 || summary.notFound > 0) && (
+                <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-3 space-y-2">
+                  <div className="flex items-start gap-2 text-sm text-amber-800">
+                    <AlertTriangle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <strong>미매칭 자재 {summary.notReceived + summary.notFound}건</strong>
+                      {summary.notReceived > 0 && ` (미입고 ${summary.notReceived})`}
+                      {summary.notFound > 0    && ` (없는 자재 ${summary.notFound})`}
+                      {` — 매칭된 ${summary.matched}건만 카트에 담을 수 있습니다.`}
+                      <div className="mt-1 text-xs text-amber-700">
+                        미매칭 자재를 엑셀로 따로 받아두면 입고 처리 후 그대로 다시 업로드할 수 있습니다.
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -877,6 +909,12 @@ export function ExcelUploadModal({ onClose, cart }: { onClose: () => void; cart:
         </div>
 
         <div className="px-6 py-3 border-t border-gray-200 bg-gray-50 flex justify-end gap-2 rounded-b-2xl">
+          {results && summary && (summary.notReceived + summary.notFound) > 0 && (
+            <button onClick={handleDownloadUnmatched}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold border border-amber-400 text-amber-700 rounded-lg hover:bg-amber-50">
+              <Download size={14} /> 미매칭 {summary.notReceived + summary.notFound}건 엑셀 다운로드
+            </button>
+          )}
           {results && (
             <button onClick={handleAddMatched}
               disabled={!summary || summary.matched === 0}
