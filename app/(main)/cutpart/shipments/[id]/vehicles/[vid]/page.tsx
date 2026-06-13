@@ -49,8 +49,8 @@ export default async function ShipmentVehicleInvoicePage({ params }: PageProps) 
   };
 
   return (
-    <div className="space-y-4">
-      <div className="no-print flex items-center gap-2 text-sm">
+    <div className="space-y-4 print:space-y-0">
+      <div className="no-print flex items-center gap-2 text-sm print:hidden">
         <a href={`/cutpart/shipments/${id}`} className="text-blue-600 hover:underline">← 출고장 {v.shipment.shipmentNo}</a>
         <span className="text-gray-400">/ 차분 #{v.sequence} ({v.vehicleNo})</span>
       </div>

@@ -51,9 +51,9 @@ export default function MainLayoutClient({ children }: { children: React.ReactNo
   const effectiveMode: SidebarMode = mounted ? mode : "full";
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50 text-gray-900">
+    <div className="flex flex-col min-h-screen bg-gray-50 text-gray-900 print:min-h-0 print:bg-white">
       {/* 상단 GNB */}
-      <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 sticky top-0 z-40 shadow-sm">
+      <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 sticky top-0 z-40 shadow-sm print:hidden">
         <div className="flex items-center gap-12">
           <div className="flex items-center pl-1 w-[220px] shrink-0">
             <Link
@@ -116,12 +116,12 @@ export default function MainLayoutClient({ children }: { children: React.ReactNo
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden print:overflow-visible print:block">
         {/* 숨김 상태일 때 >> 버튼 */}
         {effectiveMode === "hidden" && (
           <button
             onClick={() => setModeAndSave("full")}
-            className="fixed left-0 top-1/2 -translate-y-1/2 z-50 bg-gray-900 hover:bg-gray-800 text-white px-1.5 py-4 rounded-r-lg shadow-xl transition-all border border-l-0 border-gray-700"
+            className="fixed left-0 top-1/2 -translate-y-1/2 z-50 bg-gray-900 hover:bg-gray-800 text-white px-1.5 py-4 rounded-r-lg shadow-xl transition-all border border-l-0 border-gray-700 print:hidden"
             title="사이드바 열기"
           >
             <ChevronRight size={14} />
@@ -129,15 +129,17 @@ export default function MainLayoutClient({ children }: { children: React.ReactNo
         )}
 
         {effectiveMode !== "hidden" && (
-          <Sidebar 
-            mode={effectiveMode} 
-            onModeChange={setModeAndSave} 
-            module={activeModule}
-          />
+          <div className="print:hidden contents">
+            <Sidebar
+              mode={effectiveMode}
+              onModeChange={setModeAndSave}
+              module={activeModule}
+            />
+          </div>
         )}
 
-        <main className="flex-1 overflow-auto bg-gray-50 relative">
-          <div className="min-h-full p-6 md:p-8 max-w-[1600px] mx-auto">
+        <main className="flex-1 overflow-auto bg-gray-50 relative print:overflow-visible print:bg-white">
+          <div className="min-h-full p-6 md:p-8 max-w-[1600px] mx-auto print:min-h-0 print:p-0 print:max-w-none print:mx-0">
             {children}
           </div>
         </main>

@@ -144,39 +144,34 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
       {/* 인쇄용 / 화면 공통 스타일 */}
       <style jsx global>{`
         @media print {
-          /* @page 마진 0 — 시트 내부 padding 으로 안전 영역 확보. 프린터별 마진 비대칭 영향 회피 */
+          /* @page 마진 0 — 시트 내부 padding 으로 안전 영역 확보 */
           @page { size: A4 landscape; margin: 0; }
-          /* 본문 영역을 정확히 1페이지 크기로 강제 — 빈 2번째 페이지 생성 차단 */
+          /* 사이드바/헤더 등 chrome 은 main-layout-client 에서 print:hidden 처리됨.
+             여기서는 시트 본인만 정확히 1페이지에 맞추면 됨 */
           html, body {
             background: white !important;
             margin: 0 !important;
             padding: 0 !important;
-            width: 297mm !important;
-            height: 210mm !important;
-            max-width: 297mm !important;
-            max-height: 210mm !important;
-            overflow: hidden !important;
           }
-          /* invoice-sheet 외 모두 숨김 — 사이드바/헤더 등 */
-          body * { visibility: hidden !important; }
-          .invoice-sheet, .invoice-sheet * { visibility: visible !important; }
-          /* fixed + 좌상단 고정으로 인쇄 영역 가득 */
+          /* 시트는 normal flow 의 단일 블록 — position:fixed 는 인쇄 시
+             모든 페이지에 반복 페인트되는 브라우저 동작 때문에 절대 금지 */
           .invoice-sheet {
-            position: fixed !important;
-            left: 0 !important; top: 0 !important;
+            position: static !important;
             width: 297mm !important;
             height: 210mm !important;
-            padding: 6mm 8mm !important;
+            padding: 26mm 8mm 6mm 8mm !important;   /* 상단 여백 +20mm */
             margin: 0 !important;
             box-sizing: border-box !important;
             box-shadow: none !important;
             page-break-after: avoid !important;
             page-break-inside: avoid !important;
+            break-after: avoid !important;
+            break-inside: avoid !important;
             overflow: hidden !important;
           }
           .invoice-sheet input { border: none !important; background: transparent !important; }
           .invoice-sheet h1 { font-size: 22px !important; margin: 0 0 4px 0 !important; }
-          /* 입력칸 placeholder 가 인쇄에 새는 것 방지 (절단예정일 빈칸) */
+          /* 입력칸 placeholder (절단예정일 빈칸 등) 인쇄 누출 차단 */
           .invoice-sheet input::placeholder { color: transparent !important; opacity: 0 !important; }
         }
         .invoice-sheet table { border-collapse: collapse; width: 100%; font-size: 10.5px; }
@@ -202,7 +197,7 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
         </button>
       </div>
 
-      <div className="invoice-sheet bg-white mx-auto" style={{ width: "297mm", height: "210mm", padding: "6mm 8mm", boxSizing: "border-box" }}>
+      <div className="invoice-sheet bg-white mx-auto" style={{ width: "297mm", height: "210mm", padding: "26mm 8mm 6mm 8mm", boxSizing: "border-box" }}>
         {/* 제목 */}
         <h1 className="text-center text-2xl font-extrabold tracking-[0.3em] mb-1">거 래 명 세 표</h1>
 
