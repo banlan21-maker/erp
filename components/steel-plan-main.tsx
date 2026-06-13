@@ -498,16 +498,17 @@ export default function SteelPlanMain() {
 <title>선별지시서</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: "Malgun Gothic", sans-serif; font-size: 18pt; color: #111; padding: 4mm; }
-  h1 { font-size: 22pt; font-weight: bold; text-align: center; margin-bottom: 2mm; letter-spacing: 1px; }
-  .meta { text-align: center; font-size: 11pt; color: #555; margin-bottom: 2mm; }
-  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  th { background: #1e3a5f; color: #fff; padding: 1px 2px; font-size: 14pt; text-align: center; border: 1px solid #888; line-height: 1.1; }
-  td { padding: 1px 2px; border: 1px solid #aaa; text-align: center; vertical-align: middle; font-size: 18pt; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body { font-family: "Malgun Gothic", sans-serif; font-size: 16pt; color: #111; padding: 4mm; }
+  h1 { font-size: 20pt; font-weight: bold; text-align: center; margin-bottom: 2mm; letter-spacing: 1px; }
+  .meta { text-align: center; font-size: 10pt; color: #555; margin-bottom: 2mm; }
+  /* auto layout — 호선/확정정보 컬럼이 내용 크기에 따라 자동으로 폭 결정 */
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #1e3a5f; color: #fff; padding: 1px 2px; font-size: 13pt; text-align: center; border: 1px solid #888; line-height: 1.1; white-space: nowrap; }
+  td { padding: 1px 2px; border: 1px solid #aaa; text-align: center; vertical-align: middle; font-size: 16pt; line-height: 1.1; white-space: nowrap; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  td.memo { text-align: left; font-size: 14pt; color: #222; white-space: normal; }
+  td.memo { text-align: left; font-size: 13pt; color: #222; white-space: normal; }
   tr.even { background: #f5f8fc; }
-  .summary { margin-top: 2mm; font-size: 11pt; color: #555; text-align: right; }
+  .summary { margin-top: 2mm; font-size: 10pt; color: #555; text-align: right; }
   @media print {
     body { padding: 3mm; }
     @page { margin: 6mm; size: A4 landscape; }
@@ -518,6 +519,19 @@ export default function SteelPlanMain() {
 <h1>선별지시서</h1>
 <p class="meta">출력일시: ${new Date().toLocaleString("ko-KR")} | 총수량: ${data.length}장 | 총중량: ${data.reduce((s, r) => s + r.thickness * r.width * r.length * 7.85 / 1_000_000, 0).toFixed(1)}kg${filterDesc ? " | 필터: " + filterDesc : ""}</p>
 <table>
+  <colgroup>
+    <col />                       <!-- 호선   : auto (내용에 따라) -->
+    <col style="width:16mm" />    <!-- 재질    -->
+    <col style="width:11mm" />    <!-- 두께    -->
+    <col style="width:14mm" />    <!-- 폭      -->
+    <col style="width:14mm" />    <!-- 길이    -->
+    <col style="width:17mm" />    <!-- 중량    -->
+    <col style="width:18mm" />    <!-- 입고일  -->
+    <col style="width:22mm" />    <!-- 보관위치 -->
+    <col style="width:14mm" />    <!-- 상태    -->
+    <col />                       <!-- 확정정보 : auto -->
+    <col style="width:28mm" />    <!-- 메모    -->
+  </colgroup>
   <thead>
     <tr>
       <th>호선</th><th>재질</th><th>두께</th><th>폭</th><th>길이</th>
@@ -2654,16 +2668,17 @@ function MatchingExcelModal({ onClose }: { onClose: () => void }) {
 <title>선별지시서 (매칭)</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: "Malgun Gothic", sans-serif; font-size: 18pt; color: #111; padding: 4mm; }
-  h1 { font-size: 22pt; font-weight: bold; text-align: center; margin-bottom: 2mm; letter-spacing: 1px; }
-  .meta { text-align: center; font-size: 11pt; color: #555; margin-bottom: 2mm; }
-  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  th { background: #1e3a5f; color: #fff; padding: 1px 2px; font-size: 14pt; text-align: center; border: 1px solid #888; line-height: 1.1; }
-  td { padding: 1px 2px; border: 1px solid #aaa; text-align: center; vertical-align: middle; font-size: 18pt; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body { font-family: "Malgun Gothic", sans-serif; font-size: 16pt; color: #111; padding: 4mm; }
+  h1 { font-size: 20pt; font-weight: bold; text-align: center; margin-bottom: 2mm; letter-spacing: 1px; }
+  .meta { text-align: center; font-size: 10pt; color: #555; margin-bottom: 2mm; }
+  /* auto layout — 호선/블록 컬럼이 내용 크기에 따라 자동으로 폭 결정 */
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #1e3a5f; color: #fff; padding: 1px 2px; font-size: 13pt; text-align: center; border: 1px solid #888; line-height: 1.1; white-space: nowrap; }
+  td { padding: 1px 2px; border: 1px solid #aaa; text-align: center; vertical-align: middle; font-size: 16pt; line-height: 1.1; white-space: nowrap; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  td.memo { text-align: left; font-size: 14pt; color: #222; white-space: normal; }
+  td.memo { text-align: left; font-size: 13pt; color: #222; white-space: normal; }
   tr.even { background: #f5f8fc; }
-  .summary { margin-top: 2mm; font-size: 11pt; color: #555; text-align: right; }
+  .summary { margin-top: 2mm; font-size: 10pt; color: #555; text-align: right; }
   @media print {
     body { padding: 3mm; }
     @page { margin: 6mm; size: A4 landscape; }
@@ -2674,6 +2689,18 @@ function MatchingExcelModal({ onClose }: { onClose: () => void }) {
 <h1>선 별 지 시 서</h1>
 <p class="meta">출력일시: ${new Date().toLocaleString("ko-KR")} | 총 ${sel.length}장 · 총중량 ${totalWt}kg | ${summary}</p>
 <table>
+  <colgroup>
+    <col />                       <!-- 호선   : auto -->
+    <col />                       <!-- 블록   : auto -->
+    <col style="width:16mm" />    <!-- 재질    -->
+    <col style="width:11mm" />    <!-- 두께    -->
+    <col style="width:14mm" />    <!-- 폭      -->
+    <col style="width:14mm" />    <!-- 길이    -->
+    <col style="width:22mm" />    <!-- 위치    -->
+    <col style="width:14mm" />    <!-- 상태    -->
+    <col style="width:18mm" />    <!-- 입고일  -->
+    <col style="width:34mm" />    <!-- 비고    -->
+  </colgroup>
   <thead>
     <tr>
       <th>호선</th><th>블록</th><th>재질</th><th>두께</th><th>폭</th><th>길이</th>
