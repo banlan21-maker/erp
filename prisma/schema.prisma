@@ -1361,8 +1361,14 @@ model ShipmentVehicle {
   deliveryId       String?
   deliverySnapshot Json?
 
-  invoiceNo  String?  @unique // 거래명세서 번호 (예: INV-20260611-0001)
+  invoiceNo  String?  @unique // 거래명세서 번호 (예: 20260611-01 — 양식 형식)
   invoicedAt DateTime?
+
+  // 거래명세서 양식 — 사용자 수동 입력 필드 (PDF 화면에서 인라인 편집)
+  issueDate     DateTime? // 발행일자 (default = shippedAt)
+  writerName    String?   // 작성(출고)자
+  writerPhone   String?   // 작성자 연락처
+  receiverName  String?   // 인수(입고)자
 
   items ShipmentItem[]
 
@@ -1388,8 +1394,16 @@ model ShipmentItem {
   width        Float
   length       Float
   weight       Float
-  heatNo       String?  // 매칭/직접입력 판번호 텍스트
+  block        String?  // 블록 (SteelPlan.reservedFor 스냅샷, 사용자 수정 가능)
+  heatNo       String?  // 매칭/직접입력 판번호 텍스트 (양식의 "제품번호")
   manualHeatNo Boolean  @default(false)
+
+  // 거래명세서 양식 — 사용자 수동 입력 (PDF 화면에서 인라인 편집)
+  cutScheduledDate  DateTime? // 절단예정일
+  classSociety      String?   // 선급 (KR/ABS/DNV/LR 등)
+  drawingNo         String?   // 도면번호
+  cuttingEquipment  String?   // 절단장비
+  selectionOrderNo  String?   // 선별지시번호
 
   createdAt DateTime @default(now())
 

@@ -25,8 +25,9 @@ export async function nextShipmentNo(tx: Prisma.TransactionClient, baseDate: Dat
   return `${prefix}${pad(seq, 4)}`;
 }
 
+/** 거래명세서 양식의 송장등록번호 — `YYYYMMDD-NN` (사용자 양식 그대로) */
 export async function nextInvoiceNo(tx: Prisma.TransactionClient, baseDate: Date): Promise<string> {
-  const prefix = `INV-${ymd(baseDate)}-`;
+  const prefix = `${ymd(baseDate)}-`;
   const last = await tx.shipmentVehicle.findMany({
     where: { invoiceNo: { startsWith: prefix } },
     orderBy: { invoiceNo: "desc" },
@@ -38,5 +39,5 @@ export async function nextInvoiceNo(tx: Prisma.TransactionClient, baseDate: Date
     const m = last[0].invoiceNo.match(/-(\d+)$/);
     if (m) seq = parseInt(m[1], 10) + 1;
   }
-  return `${prefix}${pad(seq, 4)}`;
+  return `${prefix}${pad(seq, 2)}`;
 }

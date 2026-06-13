@@ -39,6 +39,7 @@ interface ShipmentItemInput {
   width:           number;
   length:          number;
   weight:          number;
+  block?:          string | null;
   heatNo?:         string | null;
   manualHeatNo:    boolean;
 }
@@ -192,6 +193,7 @@ export async function POST(req: NextRequest) {
             deliverySnapshot: (v.deliverySnapshot as Prisma.InputJsonValue) ?? Prisma.JsonNull,
             invoiceNo,
             invoicedAt: new Date(),
+            issueDate:  shippedAt, // default = 출고일, PDF 화면에서 수정 가능
           },
         });
 
@@ -254,6 +256,7 @@ export async function POST(req: NextRequest) {
               width:      item.width,
               length:     item.length,
               weight:     item.weight,
+              block:      item.block ?? null,
               heatNo:     heatNoText,
               manualHeatNo: item.manualHeatNo,
             },
