@@ -217,19 +217,21 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
           <div className="font-semibold">( 출 고 증 )</div>
         </div>
 
-        {/* 공급자 / 공급받는자 */}
-        <table className="mb-1">
+        {/* 공급자 / 공급받는자 — 좌/우 정확히 50% 분할 (table-layout: fixed)
+            기본 auto layout 은 cell 컨텐츠 길이에 따라 col width 가 변동되어
+            한쪽 회사명/주소가 길면 그 영역이 더 넓게 잡힘. fixed 로 강제. */}
+        <table className="mb-1" style={{ tableLayout: "fixed" }}>
           <colgroup>
-            <col style={{ width: "20px" }} />
-            <col style={{ width: "60px" }} />
-            <col />
-            <col style={{ width: "60px" }} />
-            <col style={{ width: "120px" }} />
-            <col style={{ width: "20px" }} />
-            <col style={{ width: "60px" }} />
-            <col />
-            <col style={{ width: "60px" }} />
-            <col style={{ width: "120px" }} />
+            <col style={{ width: "2.2%" }} />
+            <col style={{ width: "7.8%" }} />
+            <col style={{ width: "23%"  }} />
+            <col style={{ width: "5%"   }} />
+            <col style={{ width: "12%"  }} />
+            <col style={{ width: "2.2%" }} />
+            <col style={{ width: "7.8%" }} />
+            <col style={{ width: "23%"  }} />
+            <col style={{ width: "5%"   }} />
+            <col style={{ width: "12%"  }} />
           </colgroup>
           <tbody>
             <tr>
