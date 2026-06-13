@@ -75,8 +75,9 @@ interface SteelPlanHeatRow {
   width: number;
   length: number;
   heatNo: string;
-  status: "WAITING" | "CUT";
+  status: "WAITING" | "CUT" | "SHIPPED";
   cutAt:         string | null;
+  shippedAt:     string | null;
   sourceFile:    string | null;
   uploadBatchNo: string | null;
   createdAt: string;
@@ -112,7 +113,7 @@ const fmtYMDcompact = (iso: string | null | undefined) => {
 const HEAT_STATUS: Record<string, { label: string; cls: string }> = {
   WAITING: { label: "대기", cls: "bg-yellow-100 text-yellow-700" },
   CUT:     { label: "절단", cls: "bg-blue-100  text-blue-700" },
-  SHIPPED: { label: "출고", cls: "bg-purple-100 text-purple-700" },
+  SHIPPED: { label: "외부", cls: "bg-purple-100 text-purple-700" },
 };
 
 /* ── 엑셀 양식 다운로드 ────────────────────────────────────────────────────── */
@@ -413,7 +414,7 @@ export default function SteelPlanMain() {
         "길이":       fmtL(r.length),
         "판번호":     r.heatNo,
         "상태":       HEAT_STATUS[r.status]?.label ?? r.status,
-        "사용완료일": fmt(r.cutAt),
+        "사용/출고일": r.status === "SHIPPED" ? fmt(r.shippedAt) : fmt(r.cutAt),
       }));
       const ws = XLSX.utils.json_to_sheet(rows_ws);
       ws["!cols"] = [{ wch: 14 },{ wch: 8 },{ wch: 8 },{ wch: 6 },{ wch: 7 },{ wch: 7 },{ wch: 14 },{ wch: 8 },{ wch: 12 }];
@@ -1148,20 +1149,30 @@ export default function SteelPlanMain() {
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-500">총 {total}건</span>
               <button
-                onClick={() => downloadPlanExcel("all")}
-                disabled={excelLoading !== "none"}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                title="전체 데이터를 엑셀로 다운로드"
-              >
-                <Download size={14} /> {excelLoading === "plan-all" ? "다운로드 중..." : "전체 다운로드"}
-              </button>
-              <button
-                onClick={() => downloadPlanExcel("current")}
+                onClick={() => {
+                  const hasFilter = !!search
+                    || Object.values(colFilters).some(v => v && v.length > 0)
+                    || !!memoMode
+                    || !!weightMin
+                    || !!weightMax;
+                  if (selectedIds.size > 0) {
+                    // 선택 우선
+                    downloadPlanExcel("current");
+                    return;
+                  }
+                  if (hasFilter) {
+                    downloadPlanExcel("current");
+                    return;
+                  }
+                  if (confirm(`리스트 전체를 다운로드합니다. (총 ${total}건)\n계속하시겠습니까?`)) {
+                    downloadPlanExcel("all");
+                  }
+                }}
                 disabled={excelLoading !== "none" || total === 0}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                title={selectedIds.size > 0 ? "선택된 항목만 다운로드" : "필터 결과 다운로드"}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                title={selectedIds.size > 0 ? "선택된 항목만 다운로드" : "필터가 있으면 필터 결과, 없으면 전체 다운로드"}
               >
-                <Download size={14} /> {excelLoading === "plan-current" ? "다운로드 중..." : (selectedIds.size > 0 ? `선택 다운로드(${selectedIds.size})` : "필터 다운로드")}
+                <Download size={14} /> {excelLoading !== "none" ? "다운로드 중..." : (selectedIds.size > 0 ? `선택 다운로드(${selectedIds.size})` : "엑셀다운로드")}
               </button>
               <button
                 onClick={handlePrint}
@@ -1642,7 +1653,7 @@ export default function SteelPlanMain() {
                         </th>
                       );
                     })}
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">사용완료일</th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">사용/출고일</th>
                     <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">수정/삭제</th>
                   </tr>
                 </thead>
@@ -1684,7 +1695,11 @@ export default function SteelPlanMain() {
                             <span className={`px-1.5 py-0 rounded-full text-[11px] font-medium ${st.cls}`}>{st.label}</span>
                           </td>
                           <td className="px-2 py-1 text-center text-gray-500 font-mono text-[11px]">
-                            {row.cutAt ? fmtYMDcompact(row.cutAt) : <span className="text-gray-300">-</span>}
+                            {row.status === "SHIPPED" && row.shippedAt
+                              ? fmtYMDcompact(row.shippedAt)
+                              : row.cutAt
+                                ? fmtYMDcompact(row.cutAt)
+                                : <span className="text-gray-300">-</span>}
                           </td>
                           <td className="px-2 py-1 text-center">
                             {editingHeat?.id === row.id ? (
