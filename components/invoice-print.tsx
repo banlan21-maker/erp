@@ -68,6 +68,46 @@ const fmtDate = (iso?: string | null) =>
   iso ? iso.slice(0, 10).replace(/-/g, ".") : "";
 const toYMD = (iso?: string | null) => iso ? iso.slice(0, 10) : "";
 
+/* ─── 거래명세표 레이아웃 (단위: mm) — 여기 숫자만 바꾸면 양식 폭이 즉시 반영 ───
+ *
+ * A4 가로 페이지 = 297 × 210 mm
+ * 시트 padding = 좌우 8mm + 상하 6mm
+ * → 실제 사용 가능 폭 = 297 - 16 = 281 mm
+ *   (두 테이블의 컬럼 폭 합은 이 값을 넘으면 안 됨)
+ *
+ * 어디서 무엇:
+ *   bottomA = '작성(출고)자' + '연락처' + '합계' 행
+ *   bottomB = '인수(입고)자' + '차량번호' + '운전자성명' + '운전자연락처' 행
+ */
+const LAYOUT = {
+  // 페이지 내부 컨텐츠 사용 폭 (계산용 — 실제 padding 은 위 @page 의 sheet padding)
+  contentWidthMm: 281,
+
+  // 하단 테이블 A — 작성자 / 연락처 / 합계 (8 컬럼)
+  bottomA: {
+    writerLabelMm:  25, // '작성(출고)자' 라벨
+    writerValueMm:  55, // 작성자 값 (입력칸)
+    phoneLabelMm:   25, // '작성자 연락처' 라벨
+    phoneValueMm:   55, // 연락처 값 (입력칸)
+    sumLabelMm:     20, // '합 계' 라벨
+    sumQtyMm:       20, // 수량 합계
+    sumWeightMm:    35, // 중량 합계
+    sumAreaMm:      35, // 면적 합계  (총합 = 270, 여유 11)
+  },
+  // 하단 테이블 B — 인수자 / 차량 / 운전자 (8 컬럼)
+  bottomB: {
+    receiverLabelMm:  25, // '인수(입고)자' 라벨
+    receiverValueMm:  50, // 인수자 값 (입력칸)
+    vehicleLabelMm:   20, // '차량번호' 라벨
+    vehicleValueMm:   35, // 차량번호 값
+    driverLabelMm:    25, // '운전자 성명' 라벨
+    driverValueMm:    35, // 운전자 성명 값
+    phoneLabelMm:     30, // '운전자 연락처' 라벨
+    phoneValueMm:     50, // 연락처 값 (총합 = 270, 여유 11)
+  },
+};
+const mm = (v: number) => `${v}mm`;
+
 const fmtNum = (n: number, digits = 0) =>
   isFinite(n) ? n.toLocaleString("ko-KR", { minimumFractionDigits: digits, maximumFractionDigits: digits }) : "";
 
@@ -116,21 +156,25 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
       {/* 인쇄용 / 화면 공통 스타일 */}
       <style jsx global>{`
         @media print {
-          @page { size: A4 landscape; margin: 5mm; }
-          html, body { background: white !important; margin: 0 !important; padding: 0 !important; }
-          /* 페이지 안에서 invoice-sheet 외 모두 숨김 — 사이드바/헤더 등 */
+          /* @page 마진 0 — 시트 내부 padding 으로 안전 영역 확보. 프린터별 마진 비대칭 영향 회피 */
+          @page { size: A4 landscape; margin: 0; }
+          html, body { background: white !important; margin: 0 !important; padding: 0 !important; width: 100% !important; }
+          /* invoice-sheet 외 모두 숨김 — 사이드바/헤더 등 */
           body * { visibility: hidden !important; }
           .invoice-sheet, .invoice-sheet * { visibility: visible !important; }
+          /* fixed + 좌상단 고정으로 인쇄 영역 가득. 내부 padding 으로 좌우 중앙 정렬 */
           .invoice-sheet {
-            position: absolute !important;
+            position: fixed !important;
             left: 0; top: 0;
-            width: 100% !important;
-            min-height: auto !important;
-            padding: 0 !important;
+            width: 297mm !important;
+            height: 210mm !important;
+            padding: 6mm 8mm !important;
             margin: 0 !important;
+            box-sizing: border-box !important;
             box-shadow: none !important;
             page-break-after: avoid;
             page-break-inside: avoid;
+            overflow: hidden;
           }
           .invoice-sheet input { border: none !important; background: transparent !important; }
           .invoice-sheet h1 { font-size: 22px !important; margin: 0 0 4px 0 !important; }
@@ -158,7 +202,7 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
         </button>
       </div>
 
-      <div className="invoice-sheet bg-white mx-auto" style={{ width: "287mm", padding: "4mm", boxSizing: "border-box" }}>
+      <div className="invoice-sheet bg-white mx-auto" style={{ width: "297mm", height: "210mm", padding: "6mm 8mm", boxSizing: "border-box" }}>
         {/* 제목 */}
         <h1 className="text-center text-2xl font-extrabold tracking-[0.3em] mb-1">거 래 명 세 표</h1>
 
@@ -289,17 +333,17 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
           </tbody>
         </table>
 
-        {/* 하단 작성/합계 행 */}
+        {/* 하단 작성/합계 행 — 폭 조정: LAYOUT.bottomA (단위 mm) */}
         <table className="mt-0">
           <colgroup>
-            <col style={{ width: "90px" }} />     {/* 작성(출고)자 라벨 */}
-            <col />                                {/* 작성자 값 */}
-            <col style={{ width: "90px" }} />     {/* 작성자 연락처 라벨 */}
-            <col />                                {/* 작성자 연락처 값 */}
-            <col style={{ width: "55px" }} />     {/* 합계 라벨 */}
-            <col style={{ width: "55px" }} />     {/* 합계 수량 */}
-            <col style={{ width: "70px" }} />     {/* 합계 중량 */}
-            <col style={{ width: "70px" }} />     {/* 합계 면적 */}
+            <col style={{ width: mm(LAYOUT.bottomA.writerLabelMm) }} />
+            <col style={{ width: mm(LAYOUT.bottomA.writerValueMm) }} />
+            <col style={{ width: mm(LAYOUT.bottomA.phoneLabelMm) }} />
+            <col style={{ width: mm(LAYOUT.bottomA.phoneValueMm) }} />
+            <col style={{ width: mm(LAYOUT.bottomA.sumLabelMm) }} />
+            <col style={{ width: mm(LAYOUT.bottomA.sumQtyMm) }} />
+            <col style={{ width: mm(LAYOUT.bottomA.sumWeightMm) }} />
+            <col style={{ width: mm(LAYOUT.bottomA.sumAreaMm) }} />
           </colgroup>
           <tbody>
             <tr>
@@ -319,17 +363,17 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
           </tbody>
         </table>
 
-        {/* 하단 인수/차량/운전자 행 — 별도 테이블, 라벨 좁고 값 넓게 */}
+        {/* 하단 인수/차량/운전자 행 — 폭 조정: LAYOUT.bottomB (단위 mm) */}
         <table className="mt-0">
           <colgroup>
-            <col style={{ width: "90px" }} />     {/* 인수(입고)자 라벨 */}
-            <col />                                {/* 인수자 값 */}
-            <col style={{ width: "70px" }} />     {/* 차량번호 라벨 */}
-            <col />                                {/* 차량번호 값 */}
-            <col style={{ width: "80px" }} />     {/* 운전자 성명 라벨 */}
-            <col />                                {/* 운전자 성명 값 */}
-            <col style={{ width: "90px" }} />     {/* 운전자 연락처 라벨 */}
-            <col />                                {/* 운전자 연락처 값 */}
+            <col style={{ width: mm(LAYOUT.bottomB.receiverLabelMm) }} />
+            <col style={{ width: mm(LAYOUT.bottomB.receiverValueMm) }} />
+            <col style={{ width: mm(LAYOUT.bottomB.vehicleLabelMm) }} />
+            <col style={{ width: mm(LAYOUT.bottomB.vehicleValueMm) }} />
+            <col style={{ width: mm(LAYOUT.bottomB.driverLabelMm) }} />
+            <col style={{ width: mm(LAYOUT.bottomB.driverValueMm) }} />
+            <col style={{ width: mm(LAYOUT.bottomB.phoneLabelMm) }} />
+            <col style={{ width: mm(LAYOUT.bottomB.phoneValueMm) }} />
           </colgroup>
           <tbody>
             <tr>
