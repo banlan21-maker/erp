@@ -151,11 +151,6 @@ export default function SteelPlanMain() {
   /* ── 메모 필터 ("" 전체 / "has" 있음만 / "none" 없음만) — 서버 처리 ── */
   const [memoMode, setMemoMode] = useState<"" | "has" | "none">("");
 
-  /* ── 중량 필터 (클라이언트 측, 현재 페이지 한정) ── */
-  const [weightMin, setWeightMin] = useState("");
-  const [weightMax, setWeightMax] = useState("");
-  const [weightFilterOpen, setWeightFilterOpen] = useState(false);
-
   /* ── 정렬 (단일 컬럼 — 엑셀스타일 통합 드롭다운) ── */
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -1152,9 +1147,7 @@ export default function SteelPlanMain() {
                 onClick={() => {
                   const hasFilter = !!search
                     || Object.values(colFilters).some(v => v && v.length > 0)
-                    || !!memoMode
-                    || !!weightMin
-                    || !!weightMax;
+                    || !!memoMode;
                   if (selectedIds.size > 0) {
                     // 선택 우선
                     downloadPlanExcel("current");
@@ -1292,34 +1285,30 @@ export default function SteelPlanMain() {
                         </th>
                       );
                     })}
-                    <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px] relative">
-                      <div className="flex items-center justify-center gap-0.5">
-                        <span>중량(kg)</span>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setWeightFilterOpen(v => !v); }}
-                          className={`rounded hover:bg-gray-200 p-0.5 inline-flex items-center ${(weightMin || weightMax) ? "text-blue-600" : "text-gray-400"}`}
-                          title={(weightMin || weightMax) ? `중량 ${weightMin || "0"} ~ ${weightMax || "∞"} kg (현재 페이지)` : "중량 범위 필터 (현재 페이지)"}
-                        >
-                          <Filter size={10} fill={(weightMin || weightMax) ? "currentColor" : "none"} />
-                        </button>
-                      </div>
-                      {weightFilterOpen && (
-                        <div className="absolute top-full right-0 z-30 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3 w-56" onClick={e => e.stopPropagation()}>
-                          <div className="text-[11px] text-gray-500 mb-2">중량 범위 (kg) — 현재 페이지에만 적용</div>
-                          <div className="flex items-center gap-1.5">
-                            <input type="number" value={weightMin} onChange={e => setWeightMin(e.target.value)}
-                              placeholder="최소" className="w-20 px-1.5 py-1 text-xs border border-gray-200 rounded text-right" />
-                            <span className="text-xs text-gray-400">~</span>
-                            <input type="number" value={weightMax} onChange={e => setWeightMax(e.target.value)}
-                              placeholder="최대" className="w-20 px-1.5 py-1 text-xs border border-gray-200 rounded text-right" />
+                    {(() => {
+                      const col = "weight";
+                      const label = "중량(kg)";
+                      const filterActive = (colFilters[col]?.length ?? 0) > 0;
+                      const isSort = sortKey === col;
+                      const active = filterActive || isSort;
+                      return (
+                        <th className="px-2 py-1 text-center font-medium text-gray-600 text-[11px]">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <span>{label}</span>
+                            <button
+                              onClick={(e) => { setOpenFilter(col); setFilterAnchorEl(e.currentTarget); }}
+                              className={`rounded hover:bg-gray-200 p-0.5 inline-flex items-center ${active ? "text-blue-600" : "text-gray-400"}`}
+                              title={active ? "필터·정렬 적용 중 (현재 페이지)" : "필터·정렬 (현재 페이지)"}
+                            >
+                              <Filter size={10} fill={filterActive ? "currentColor" : "none"} />
+                              {isSort && (sortDir === "asc"
+                                ? <ArrowUp size={8} className="text-blue-500" />
+                                : <ArrowDown size={8} className="text-blue-500" />)}
+                            </button>
                           </div>
-                          <div className="flex justify-end gap-1 mt-2">
-                            <button onClick={() => { setWeightMin(""); setWeightMax(""); }} className="px-2 py-0.5 text-[11px] border border-gray-200 rounded hover:bg-gray-50">초기화</button>
-                            <button onClick={() => setWeightFilterOpen(false)} className="px-2 py-0.5 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-700">적용</button>
-                          </div>
-                        </div>
-                      )}
-                    </th>
+                        </th>
+                      );
+                    })()}
                     {([
                       ["receivedAt",       "입고일"],
                       ["storageLocation",  "위치"],
@@ -1375,17 +1364,12 @@ export default function SteelPlanMain() {
                   {loading ? (
                     <tr><td colSpan={18} className="py-12 text-center text-gray-400">불러오는 중...</td></tr>
                   ) : (() => {
-                    const wMin = parseFloat(weightMin); const wMax = parseFloat(weightMax);
-                    const filtered = (isFinite(wMin) || isFinite(wMax))
-                      ? rows.filter(r => {
-                          const w = calcWeight(r.thickness, r.width, r.length);
-                          if (isFinite(wMin) && w < wMin) return false;
-                          if (isFinite(wMax) && w > wMax) return false;
-                          return true;
-                        })
+                    const wSel = colFilters.weight;
+                    const filtered = (wSel && wSel.length > 0)
+                      ? rows.filter(r => wSel.includes(calcWeight(r.thickness, r.width, r.length).toFixed(1)))
                       : rows;
                     if (filtered.length === 0) {
-                      return <tr><td colSpan={18} className="py-12 text-center text-gray-400">{rows.length === 0 ? "등록된 강재 계획이 없습니다" : "중량 범위에 맞는 자재가 없습니다"}</td></tr>;
+                      return <tr><td colSpan={18} className="py-12 text-center text-gray-400">{rows.length === 0 ? "등록된 강재 계획이 없습니다" : "필터 조건에 맞는 자재가 없습니다"}</td></tr>;
                     }
                     return filtered.map((row) => {
                       const st = PLAN_STATUS[row.status];
@@ -1499,22 +1483,33 @@ export default function SteelPlanMain() {
           </div>
 
           {/* 컬럼 필터 드롭다운 */}
-          {openFilter && filterAnchorEl && (
-            <ColumnFilterDropdown
-              anchorEl={filterAnchorEl}
-              values={distinctValues[openFilter] ?? []}
-              selected={colFilters[openFilter] ?? []}
-              onApply={(vals) => {
-                setColFilters((prev) => ({ ...prev, [openFilter]: vals }));
-                setPage(1);
-                setOpenFilter(null);
-                setFilterAnchorEl(null);
-              }}
-              onClose={() => { setOpenFilter(null); setFilterAnchorEl(null); }}
-              sortDir={sortKey === openFilter ? sortDir : null}
-              onSort={(dir) => handleSortFor(openFilter, dir)}
-            />
-          )}
+          {openFilter && filterAnchorEl && (() => {
+            // weight 는 derived(계산값) — 클라이언트에서 현재 페이지 rows 기준으로 distinct 생성
+            const values: FilterValue[] = openFilter === "weight"
+              ? Array.from(
+                  new Set(rows.map(r => calcWeight(r.thickness, r.width, r.length).toFixed(1)))
+                )
+                  .map(v => parseFloat(v))
+                  .sort((a, b) => a - b)
+                  .map(v => ({ value: v.toFixed(1), label: v.toFixed(1) }))
+              : (distinctValues[openFilter] ?? []);
+            return (
+              <ColumnFilterDropdown
+                anchorEl={filterAnchorEl}
+                values={values}
+                selected={colFilters[openFilter] ?? []}
+                onApply={(vals) => {
+                  setColFilters((prev) => ({ ...prev, [openFilter]: vals }));
+                  if (openFilter !== "weight") setPage(1); // weight 는 클라이언트 필터라 페이지 유지
+                  setOpenFilter(null);
+                  setFilterAnchorEl(null);
+                }}
+                onClose={() => { setOpenFilter(null); setFilterAnchorEl(null); }}
+                sortDir={sortKey === openFilter ? sortDir : null}
+                onSort={(dir) => handleSortFor(openFilter, dir)}
+              />
+            );
+          })()}
 
           {/* 페이지네이션 */}
           {totalPages > 1 && (

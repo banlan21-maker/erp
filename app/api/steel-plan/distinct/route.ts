@@ -5,10 +5,11 @@ import { prisma } from "@/lib/prisma";
 import { parseList, buildCascadingWhere, nullableInBuilder, dateRangeBuilder } from "@/lib/server-cascading";
 
 const STATUS_LABEL: Record<string, string> = {
-  REGISTERED: "등록",
-  RECEIVED:   "입고완료",
-  ISSUED:     "출고완료",
-  COMPLETED:  "절단완료",
+  REGISTERED:  "등록",
+  RECEIVED:    "입고",
+  ISSUED:      "투입",
+  COMPLETED:   "절단",
+  SHIPPED_OUT: "외부",
 };
 
 // 컬럼 key → 쿼리스트링 파라미터 이름
