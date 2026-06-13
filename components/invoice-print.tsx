@@ -116,17 +116,31 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
       {/* 인쇄용 / 화면 공통 스타일 */}
       <style jsx global>{`
         @media print {
-          @page { size: A4 landscape; margin: 6mm; }
-          body { background: white; }
-          .no-print { display: none !important; }
-          .invoice-sheet { box-shadow: none !important; margin: 0 !important; page-break-after: always; }
+          @page { size: A4 landscape; margin: 5mm; }
+          html, body { background: white !important; margin: 0 !important; padding: 0 !important; }
+          /* 페이지 안에서 invoice-sheet 외 모두 숨김 — 사이드바/헤더 등 */
+          body * { visibility: hidden !important; }
+          .invoice-sheet, .invoice-sheet * { visibility: visible !important; }
+          .invoice-sheet {
+            position: absolute !important;
+            left: 0; top: 0;
+            width: 100% !important;
+            min-height: auto !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            box-shadow: none !important;
+            page-break-after: avoid;
+            page-break-inside: avoid;
+          }
           .invoice-sheet input { border: none !important; background: transparent !important; }
+          .invoice-sheet h1 { font-size: 22px !important; margin: 0 0 4px 0 !important; }
         }
-        .invoice-sheet table { border-collapse: collapse; width: 100%; font-size: 11px; }
-        .invoice-sheet td, .invoice-sheet th { border: 1px solid #555; padding: 2px 4px; vertical-align: middle; }
+        .invoice-sheet table { border-collapse: collapse; width: 100%; font-size: 10.5px; }
+        .invoice-sheet td, .invoice-sheet th { border: 1px solid #555; padding: 1px 3px; vertical-align: middle; line-height: 1.25; }
+        .invoice-sheet tbody tr { height: 18px; }
         .invoice-sheet input.cell {
           width: 100%; border: 0; outline: 0; background: transparent;
-          font-size: 11px; padding: 0;
+          font-size: 10.5px; padding: 0;
         }
         .invoice-sheet input.cell:focus { background: #fffbcd; }
       `}</style>
@@ -144,9 +158,9 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
         </button>
       </div>
 
-      <div className="invoice-sheet bg-white p-4 mx-auto" style={{ width: "279mm", minHeight: "210mm" }}>
+      <div className="invoice-sheet bg-white mx-auto" style={{ width: "287mm", padding: "4mm", boxSizing: "border-box" }}>
         {/* 제목 */}
-        <h1 className="text-center text-3xl font-extrabold tracking-[0.4em] mb-2">거 래 명 세 표</h1>
+        <h1 className="text-center text-2xl font-extrabold tracking-[0.3em] mb-1">거 래 명 세 표</h1>
 
         {/* 상단 발행일자 / 송장번호 / 출고증 */}
         <div className="flex items-center justify-between text-[11px] mb-1 px-1">
@@ -242,7 +256,7 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
               const it = v.items[i];
               if (!it) {
                 return (
-                  <tr key={`empty-${i}`} className="text-center" style={{ height: "20px" }}>
+                  <tr key={`empty-${i}`} className="text-center">
                     <td>{i + 1}</td>
                     {Array.from({ length: 15 }, (_, j) => <td key={j}>&nbsp;</td>)}
                   </tr>
