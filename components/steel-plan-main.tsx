@@ -355,7 +355,7 @@ export default function SteelPlanMain() {
         "길이":       fmtL(r.length),
         "중량(kg)":   calcWeight(r.thickness, r.width, r.length),
         "상태":       PLAN_STATUS[r.status]?.label ?? r.status,
-        "확정호선/블록": r.reservedFor ?? "",
+        "확정정보": r.reservedFor ?? "",
         "보관위치":   r.storageLocation ?? "",
         "입고일":     fmt(r.receivedAt),
         "선별지시일": fmt(r.selectionPrintedAt),
@@ -472,7 +472,7 @@ export default function SteelPlanMain() {
       cf.status?.length           ? `상태: ${cf.status.map(labelOf).join(", ")}` : "",
       cf.receivedAt?.length       ? `입고일: ${cf.receivedAt.join(", ")}`     : "",
       cf.storageLocation?.length  ? `보관위치: ${cf.storageLocation.join(", ")}` : "",
-      cf.reservedFor?.length      ? `확정호선/블록: ${cf.reservedFor.join(", ")}`  : "",
+      cf.reservedFor?.length      ? `확정정보: ${cf.reservedFor.join(", ")}`       : "",
       search                      ? `검색: ${search}`                         : "",
     ].filter(Boolean).join(" / ");
 
@@ -487,7 +487,7 @@ export default function SteelPlanMain() {
         <td>${fmt(r.receivedAt)}</td>
         <td>${r.storageLocation ?? "-"}</td>
         <td>${labelOf(r.status)}</td>
-        <td>${r.status === "RECEIVED" && r.reservedFor ? r.reservedFor : "-"}</td>
+        <td>${r.reservedFor ?? ""}</td>
         <td class="memo">${r.memo ?? ""}</td>
       </tr>`).join("");
 
@@ -521,7 +521,7 @@ export default function SteelPlanMain() {
   <thead>
     <tr>
       <th>호선</th><th>재질</th><th>두께</th><th>폭</th><th>길이</th>
-      <th>중량(kg)</th><th>입고일</th><th>보관위치</th><th>상태</th><th>확정호선/블록</th><th>메모</th>
+      <th>중량(kg)</th><th>입고일</th><th>보관위치</th><th>상태</th><th>확정정보</th><th>메모</th>
     </tr>
   </thead>
   <tbody>${rows_html}</tbody>
