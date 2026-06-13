@@ -43,7 +43,7 @@ export interface DeliveryVendor {
   updatedAt:           string;
 }
 
-interface Props { initial: DeliveryVendor[] }
+interface Props { initial: DeliveryVendor[]; hideHeader?: boolean }
 
 type DraftForm = {
   vendorType:   VendorType;
@@ -94,7 +94,7 @@ const fmtSize = (n: number | null): string => {
 const isPdfMime   = (m: string | null) => m === "application/pdf";
 const isImageMime = (m: string | null) => !!m && m.startsWith("image/");
 
-export default function DeliveryVendorsMain({ initial }: Props) {
+export default function DeliveryVendorsMain({ initial, hideHeader = false }: Props) {
   const [vendors, setVendors] = useState<DeliveryVendor[]>(initial);
   // 활성 탭 (좌측 목록 + 신규 등록 type)
   const [activeType, setActiveType] = useState<VendorType>("DELIVERY");
@@ -339,14 +339,20 @@ export default function DeliveryVendorsMain({ initial }: Props) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Building2 size={24} className="text-blue-600" /> 납품처관리
-          </h2>
-          <p className="text-sm text-gray-500 mt-1">
+        {!hideHeader ? (
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+              <Building2 size={24} className="text-blue-600" /> 납품처관리
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">
+              거래명세표 자동출력에 사용 — <strong>공급처</strong>(우리 회사·자회사)와 <strong>납품처</strong>(거래처)를 함께 관리합니다.
+            </p>
+          </div>
+        ) : (
+          <div className="text-sm text-gray-500">
             거래명세표 자동출력에 사용 — <strong>공급처</strong>(우리 회사·자회사)와 <strong>납품처</strong>(거래처)를 함께 관리합니다.
-          </p>
-        </div>
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <button
             onClick={() => startNewOfType("SUPPLIER")}

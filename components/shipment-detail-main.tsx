@@ -78,7 +78,7 @@ export default function ShipmentDetailMain({ initial }: { initial: Shipment }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <Link href="/cutpart/shipments" className="text-sm text-purple-600 hover:underline inline-flex items-center gap-1"><ArrowLeft size={14} /> 출고장 이력</Link>
+          <Link href="/cutpart/external-shipout?tab=shipments" className="text-sm text-purple-600 hover:underline inline-flex items-center gap-1"><ArrowLeft size={14} /> 외부출고관리</Link>
           <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2 mt-1">
             <Truck size={22} className="text-purple-600" /> {s.shipmentNo}
             {s.status === "ACTIVE"

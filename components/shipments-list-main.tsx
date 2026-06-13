@@ -36,7 +36,7 @@ interface Shipment {
 
 const ymdSlash = (iso: string) => iso.slice(0, 10).replace(/-/g, ".");
 
-export default function ShipmentsListMain() {
+export default function ShipmentsListMain({ hideHeader = false }: { hideHeader?: boolean } = {}) {
   const today = new Date();
   const ym = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -61,12 +61,14 @@ export default function ShipmentsListMain() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Truck size={22} className="text-purple-600" /> 출고장 이력
-        </h2>
-        <p className="text-sm text-gray-500 mt-1">강재 외부 출고 이력 · 거래명세표 · 출고취소</p>
-      </div>
+      {!hideHeader && (
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <Truck size={22} className="text-purple-600" /> 출고장 이력
+          </h2>
+          <p className="text-sm text-gray-500 mt-1">강재 외부 출고 이력 · 거래명세표 · 출고취소</p>
+        </div>
+      )}
 
       <div className="bg-white border border-gray-200 rounded-xl p-3 flex flex-wrap items-end gap-3">
         <label className="text-xs">
