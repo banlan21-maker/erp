@@ -116,21 +116,22 @@ const HEAT_STATUS: Record<string, { label: string; cls: string }> = {
   SHIPPED: { label: "외부", cls: "bg-purple-100 text-purple-700" },
 };
 
-/* ── 엑셀 양식 다운로드 ────────────────────────────────────────────────────── */
-function downloadTemplate() {
+/* ── 강재등록 엑셀 양식 다운로드 ─────────────────────────────────────────── */
+function downloadRegisterTemplate() {
   const ws = XLSX.utils.aoa_to_sheet([
     ["호선", "재질", "두께", "폭", "길이", "판번호"],
     ["RS01", "AH36", 8, 1829, 6096, "HT240001"],
   ]);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "강재입출고");
-  XLSX.writeFile(wb, "강재입출고_양식.xlsx");
+  XLSX.utils.book_append_sheet(wb, ws, "강재등록");
+  XLSX.writeFile(wb, "강재등록_양식.xlsx");
 }
 
 /* ══════════════════════════════════════════════════════════════════════════ */
 export default function SteelPlanMain() {
   const shipoutCart = useShipoutCart();
-  const [shipoutExcelOpen, setShipoutExcelOpen] = useState(false);
+  const [shipoutExcelOpen,  setShipoutExcelOpen]  = useState(false);
+  const [registerExcelOpen, setRegisterExcelOpen] = useState(false);
   const [tab, setTab] = useState<"plan" | "heatno">("plan");
 
   /* ── 강재 전체목록 상태 ── */
@@ -923,9 +924,7 @@ export default function SteelPlanMain() {
   };
 
   /* ── 엑셀 업로드 ── */
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const processUploadFile = async (file: File) => {
     setUploading(true);
 
     const buf = await file.arrayBuffer();
@@ -995,6 +994,12 @@ export default function SteelPlanMain() {
     loadHeat();
   };
 
+  // 기존 <input ref={fileRef}> 호환용 어댑터 (현재는 모달 경로 사용)
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) await processUploadFile(file);
+  };
+
   const inputCls = "border border-gray-300 rounded px-2 py-1 text-sm w-full focus:outline-none focus:ring-1 focus:ring-blue-400";
 
   /* ══ 렌더 ══════════════════════════════════════════════════════════════ */
@@ -1024,17 +1029,11 @@ export default function SteelPlanMain() {
             <Trash2 size={14} /> 리스트 삭제
           </button>
           <button
-            onClick={downloadTemplate}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600"
-          >
-            <Download size={14} /> 양식 다운로드
-          </button>
-          <button
-            onClick={() => fileRef.current?.click()}
+            onClick={() => setRegisterExcelOpen(true)}
             disabled={uploading}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            <Upload size={14} /> {uploading ? "업로드 중..." : "엑셀 업로드"}
+            <Upload size={14} /> {uploading ? "업로드 중..." : "엑셀 강재등록"}
           </button>
           <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileChange} />
           <button
@@ -2427,6 +2426,62 @@ export default function SteelPlanMain() {
       {shipoutExcelOpen && (
         <ShipoutExcelUploadModal onClose={() => setShipoutExcelOpen(false)} cart={shipoutCart} />
       )}
+
+      {/* 강재등록 엑셀 업로드 모달 */}
+      {registerExcelOpen && (
+        <RegisterExcelUploadModal
+          onClose={() => setRegisterExcelOpen(false)}
+          uploading={uploading}
+          onSelect={(file) => { setRegisterExcelOpen(false); processUploadFile(file); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────────── */
+/* 강재등록 엑셀 업로드 모달                                                    */
+/* ──────────────────────────────────────────────────────────────────────────── */
+function RegisterExcelUploadModal({
+  onClose, uploading, onSelect,
+}: {
+  onClose: () => void;
+  uploading: boolean;
+  onSelect: (file: File) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => !uploading && onClose()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+          <h3 className="font-bold text-base text-gray-900 flex items-center gap-2">
+            <Upload size={16} className="text-blue-600" /> 엑셀로 강재 일괄 등록
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><X size={16} /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="text-sm text-gray-700">
+            양식: <strong>호선 · 재질 · 두께 · 폭 · 길이 · 판번호</strong> 컬럼이 헤더 1행에 있는 엑셀.
+            중량은 사양으로 자동 계산.
+          </div>
+          <label className={`block border-2 border-dashed rounded-xl p-8 text-center cursor-pointer ${uploading ? "border-gray-300 bg-gray-50" : "border-blue-300 hover:bg-blue-50/50"}`}>
+            <Upload size={24} className="mx-auto mb-2 text-blue-500" />
+            <div className="text-sm font-semibold text-gray-700">
+              {uploading ? "처리 중…" : "엑셀 파일 선택 또는 드래그"}
+            </div>
+            <input type="file" accept=".xlsx,.xls" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) onSelect(f); }} />
+          </label>
+          <div className="pt-2 border-t border-gray-100 flex items-center justify-between">
+            <div className="text-xs text-gray-500">양식이 필요하신가요?</div>
+            <button
+              onClick={downloadRegisterTemplate}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50"
+            >
+              <Download size={13} /> 강재등록_양식.xlsx
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

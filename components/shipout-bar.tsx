@@ -11,9 +11,21 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   PackageOpen, FileSpreadsheet, Trash2, X, Plus, Truck,
-  ChevronRight, ChevronLeft, AlertTriangle, Save, Loader2, Upload,
+  ChevronRight, ChevronLeft, AlertTriangle, Save, Loader2, Upload, Download,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import { useShipoutCart, type ShipoutCartItem } from "./shipout-cart";
+
+/** 외부출고리스트 양식 다운로드 */
+function downloadShipoutListTemplate() {
+  const ws = XLSX.utils.aoa_to_sheet([
+    ["호선", "재질", "두께", "폭", "길이", "판번호"],
+    ["RS01", "AH36", 8, 1829, 6096, "HT240001"],
+  ]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "외부출고리스트");
+  XLSX.writeFile(wb, "외부출고리스트_양식.xlsx");
+}
 
 const fmtKg = (n: number) => `${n.toLocaleString("ko-KR", { maximumFractionDigits: 1 })} kg`;
 
@@ -768,9 +780,8 @@ export function ExcelUploadModal({ onClose, cart }: { onClose: () => void; cart:
           {!results ? (
             <>
               <div className="text-sm text-gray-700">
-                양식: <strong>재질 · 두께 · 폭 · 길이</strong> 필수 + <strong>호선 · 중량 · 판번호</strong> 선택 (헤더 1행).
-                중량 비면 사양으로 자동 계산.
-                판번호가 있으면 자동매칭, 없으면 사양 5개로 매칭(FIFO).
+                양식: <strong>재질 · 두께 · 폭 · 길이</strong> 필수 + <strong>호선 · 판번호</strong> 선택 (헤더 1행).
+                중량은 사양으로 자동 계산. 판번호가 있으면 자동매칭, 없으면 사양 매칭(FIFO).
               </div>
               <label className={`block border-2 border-dashed rounded-xl p-8 text-center cursor-pointer ${uploading ? "border-gray-300 bg-gray-50" : "border-emerald-300 hover:bg-emerald-50/50"}`}>
                 <Upload size={24} className="mx-auto mb-2 text-emerald-500" />
@@ -780,6 +791,15 @@ export function ExcelUploadModal({ onClose, cart }: { onClose: () => void; cart:
                 <input type="file" accept=".xlsx,.xls" className="hidden"
                   onChange={e => { const f = e.target.files?.[0]; if (f) onSelect(f); }} />
               </label>
+              <div className="pt-2 border-t border-gray-100 flex items-center justify-between">
+                <div className="text-xs text-gray-500">양식이 필요하신가요?</div>
+                <button
+                  onClick={downloadShipoutListTemplate}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-50"
+                >
+                  <Download size={13} /> 외부출고리스트_양식.xlsx
+                </button>
+              </div>
             </>
           ) : (
             <>
