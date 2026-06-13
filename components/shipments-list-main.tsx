@@ -113,7 +113,7 @@ export default function ShipmentsListMain({ hideHeader = false }: { hideHeader?:
               <th className="px-3 py-2.5 text-right">차분 / 총 자재</th>
               <th className="px-3 py-2.5 text-left">송장 / 납품처</th>
               <th className="px-3 py-2.5 text-left">비고</th>
-              <th className="px-3 py-2.5 text-center w-20">관리</th>
+              <th className="px-2 py-2.5 text-center w-10"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -145,14 +145,14 @@ export default function ShipmentsListMain({ hideHeader = false }: { hideHeader?:
                     ))}
                   </td>
                   <td className="px-3 py-2 text-xs text-gray-500 truncate max-w-[200px]">{s.memo ?? ""}</td>
-                  <td className="px-3 py-2 text-center">
+                  <td className="px-2 py-1 text-center">
                     {s.status === "CANCELLED" && (
                       <button
                         onClick={() => handleDelete(s)}
                         title="취소된 출고장 영구삭제"
-                        className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-red-50 text-red-600 border border-red-200 rounded hover:bg-red-100"
+                        className="inline-flex items-center justify-center p-1 text-red-600 hover:bg-red-100 rounded"
                       >
-                        <Trash2 size={12} /> 삭제
+                        <Trash2 size={14} />
                       </button>
                     )}
                   </td>
