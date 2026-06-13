@@ -10,7 +10,7 @@ import {
 import ColumnFilterDropdown, { type FilterValue } from "./column-filter-dropdown";
 import { serializeColFilters } from "@/lib/client-cascading";
 import { useShipoutCart } from "./shipout-cart";
-import ShipoutBar from "./shipout-bar";
+import ShipoutBar, { ExcelUploadModal as ShipoutExcelUploadModal } from "./shipout-bar";
 
 /* ── 컬럼 key → 쿼리스트링 param 이름 (distinct API 와 일치) ── */
 const STEEL_PLAN_QS_KEY: Record<string, string> = {
@@ -118,6 +118,7 @@ function downloadTemplate() {
 /* ══════════════════════════════════════════════════════════════════════════ */
 export default function SteelPlanMain() {
   const shipoutCart = useShipoutCart();
+  const [shipoutExcelOpen, setShipoutExcelOpen] = useState(false);
   const [tab, setTab] = useState<"plan" | "heatno">("plan");
 
   /* ── 강재 전체목록 상태 ── */
@@ -993,6 +994,13 @@ export default function SteelPlanMain() {
           <p className="text-sm text-gray-500 mt-0.5">전체 강재 계획 등록 및 강재 입고처리</p>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => setShipoutExcelOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-purple-300 text-purple-700 rounded-lg hover:bg-purple-50"
+            title="출고 예정 엑셀을 업로드해 자동매칭 후 카트에 담기"
+          >
+            <PackageOpen size={14} /> 출고리스트 업로드
+          </button>
           <button
             onClick={() => { setDeleteVessel(""); setShowDeleteModal(true); }}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-red-300 text-red-600 rounded-lg hover:bg-red-50"
@@ -2330,6 +2338,11 @@ export default function SteelPlanMain() {
 
       {/* 외부 납품처 출고 — 하단 고정 카트바 + 모달들 */}
       <ShipoutBar />
+
+      {/* 카트가 비어있을 때도 직접 진입 가능한 엑셀 일괄 업로드 */}
+      {shipoutExcelOpen && (
+        <ShipoutExcelUploadModal onClose={() => setShipoutExcelOpen(false)} cart={shipoutCart} />
+      )}
     </div>
   );
 }

@@ -651,7 +651,7 @@ function Step2({
 /* ════════════════════════════════════════════════════════════ */
 /* 엑셀 업로드 모달                                              */
 /* ════════════════════════════════════════════════════════════ */
-function ExcelUploadModal({ onClose, cart }: { onClose: () => void; cart: ReturnType<typeof useShipoutCart> }) {
+export function ExcelUploadModal({ onClose, cart }: { onClose: () => void; cart: ReturnType<typeof useShipoutCart> }) {
   interface MatchResult {
     rowNo:        number;
     vesselCode:   string;
