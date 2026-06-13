@@ -88,7 +88,7 @@ type BulkRow = { vesselCode: string; material: string; thickness: string; width:
 
 /* ── 상태 라벨 ─────────────────────────────────────────────────────────────── */
 const PLAN_STATUS: Record<string, { label: string; cls: string }> = {
-  REGISTERED:  { label: "등록", cls: "bg-gray-100 text-gray-700" },
+  REGISTERED:  { label: "대기", cls: "bg-gray-100 text-gray-700" },
   RECEIVED:    { label: "입고", cls: "bg-green-100 text-green-700" },
   ISSUED:      { label: "투입", cls: "bg-cyan-100  text-cyan-700" },
   COMPLETED:   { label: "절단", cls: "bg-blue-100  text-blue-700" },
@@ -424,7 +424,7 @@ export default function SteelPlanMain() {
     }
   };
 
-  /* ── 선별지시서 출력 ── */
+  /* ── 선별지시서 출력 — loadPlan 과 동일한 필터를 전송해 화면과 결과 일치 ── */
   const [printing, setPrinting] = useState(false);
   const handlePrint = async () => {
     setPrinting(true);
@@ -440,20 +440,22 @@ export default function SteelPlanMain() {
     if (cf.receivedAt?.length)          p.set("receivedDates",         cf.receivedAt.join(","));
     if (cf.storageLocation?.length)     p.set("storageLocations",      cf.storageLocation.join(","));
     if (cf.reservedFor?.length)         p.set("reservedFors",          cf.reservedFor.join(","));
+    if (cf.actualHeatNo?.length)        p.set("actualHeatNos",         cf.actualHeatNo.join(","));
+    if (cf.actualVesselCode?.length)    p.set("actualVesselCodes",     cf.actualVesselCode.join(","));
+    if (cf.actualDrawingNo?.length)     p.set("actualDrawingNos",      cf.actualDrawingNo.join(","));
     if (cf.uploadBatchNo?.length)       p.set("uploadBatchNos",        cf.uploadBatchNo.join(","));
     if (cf.selectionPrintedAt?.length)  p.set("selectionPrintedDates", cf.selectionPrintedAt.join(","));
     if (cf.issuedAt?.length)            p.set("issuedDates",           cf.issuedAt.join(","));
+    if (memoMode)                       p.set("memoMode",              memoMode);
     if (sortKey) { p.set("sortBy", sortKey); p.set("sortDir", sortDir); }
-    p.set("all", "true");
+    p.set("all", "true");   // 페이지네이션만 우회 — 필터는 그대로 적용됨
 
     const res  = await fetch(`/api/steel-plan?${p}`);
     const json = await res.json();
     const data: SteelPlanRow[] = json.data;
     setPrinting(false);
 
-    const PLAN_LABEL: Record<string, string> = {
-      REGISTERED: "등록", RECEIVED: "입고완료", ISSUED: "출고완료", COMPLETED: "출고완료",
-    };
+    const labelOf = (s: string) => PLAN_STATUS[s]?.label ?? s;
     const fmt = (iso: string | null) =>
       iso ? new Date(iso).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" }) : "-";
     const wt  = (t: number, w: number, l: number) =>
@@ -465,7 +467,7 @@ export default function SteelPlanMain() {
       cf.thickness?.length        ? `두께: ${cf.thickness.join(", ")}`        : "",
       cf.width?.length            ? `폭: ${cf.width.join(", ")}`              : "",
       cf.length?.length           ? `길이: ${cf.length.join(", ")}`           : "",
-      cf.status?.length           ? `상태: ${cf.status.map((s) => PLAN_LABEL[s] ?? s).join(", ")}` : "",
+      cf.status?.length           ? `상태: ${cf.status.map(labelOf).join(", ")}` : "",
       cf.receivedAt?.length       ? `입고일: ${cf.receivedAt.join(", ")}`     : "",
       cf.storageLocation?.length  ? `보관위치: ${cf.storageLocation.join(", ")}` : "",
       cf.reservedFor?.length      ? `확정호선/블록: ${cf.reservedFor.join(", ")}`  : "",
@@ -482,7 +484,7 @@ export default function SteelPlanMain() {
         <td class="num">${wt(r.thickness, r.width, r.length)}</td>
         <td>${fmt(r.receivedAt)}</td>
         <td>${r.storageLocation ?? "-"}</td>
-        <td>${PLAN_LABEL[r.status] ?? r.status}</td>
+        <td>${labelOf(r.status)}</td>
         <td>${r.status === "RECEIVED" && r.reservedFor ? r.reservedFor : "-"}</td>
         <td class="memo">${r.memo ?? ""}</td>
       </tr>`).join("");
