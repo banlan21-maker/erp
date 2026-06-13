@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import ColumnFilterDropdown, { type FilterValue } from "./column-filter-dropdown";
 import { serializeColFilters } from "@/lib/client-cascading";
+import { useShipoutCart } from "./shipout-cart";
+import ShipoutBar from "./shipout-bar";
 
 /* ── 컬럼 key → 쿼리스트링 param 이름 (distinct API 와 일치) ── */
 const STEEL_PLAN_QS_KEY: Record<string, string> = {
@@ -53,7 +55,7 @@ interface SteelPlanRow {
   thickness: number;
   width: number;
   length: number;
-  status: "REGISTERED" | "RECEIVED" | "ISSUED" | "COMPLETED";
+  status: "REGISTERED" | "RECEIVED" | "ISSUED" | "COMPLETED" | "SHIPPED_OUT";
   receivedAt:         string | null;
   selectionPrintedAt: string | null;
   issuedAt:           string | null;
@@ -85,10 +87,11 @@ type BulkRow = { vesselCode: string; material: string; thickness: string; width:
 
 /* ── 상태 라벨 ─────────────────────────────────────────────────────────────── */
 const PLAN_STATUS: Record<string, { label: string; cls: string }> = {
-  REGISTERED: { label: "등록",     cls: "bg-gray-100 text-gray-700" },
-  RECEIVED:   { label: "입고완료", cls: "bg-green-100 text-green-700" },
-  ISSUED:     { label: "출고완료", cls: "bg-blue-100  text-blue-700" },
-  COMPLETED:  { label: "출고완료", cls: "bg-blue-100  text-blue-700" }, // 레거시
+  REGISTERED:  { label: "등록",       cls: "bg-gray-100 text-gray-700" },
+  RECEIVED:    { label: "입고완료",   cls: "bg-green-100 text-green-700" },
+  ISSUED:      { label: "절단장 투입", cls: "bg-blue-100  text-blue-700" },
+  COMPLETED:   { label: "절단완료",   cls: "bg-blue-100  text-blue-700" },
+  SHIPPED_OUT: { label: "외부 출고",  cls: "bg-purple-100 text-purple-700" },
 };
 
 // 강재 중량 계산 (단위: kg, 밀도 7.85 g/cm³)
@@ -98,6 +101,7 @@ const calcWeight = (t: number, w: number, l: number) =>
 const HEAT_STATUS: Record<string, { label: string; cls: string }> = {
   WAITING: { label: "대기", cls: "bg-yellow-100 text-yellow-700" },
   CUT:     { label: "절단", cls: "bg-blue-100  text-blue-700" },
+  SHIPPED: { label: "출고", cls: "bg-purple-100 text-purple-700" },
 };
 
 /* ── 엑셀 양식 다운로드 ────────────────────────────────────────────────────── */
@@ -113,6 +117,7 @@ function downloadTemplate() {
 
 /* ══════════════════════════════════════════════════════════════════════════ */
 export default function SteelPlanMain() {
+  const shipoutCart = useShipoutCart();
   const [tab, setTab] = useState<"plan" | "heatno">("plan");
 
   /* ── 강재 전체목록 상태 ── */
@@ -1166,6 +1171,37 @@ export default function SteelPlanMain() {
               </button>
               <button onClick={markSelectedIssued} className="flex items-center gap-1.5 px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
                 <PackageOpen size={13} /> 선택 출고
+              </button>
+              {/* 외부 납품처 출고 카트에 담기 — RECEIVED 만 허용 */}
+              <button
+                onClick={() => {
+                  const selected = rows.filter(r => selectedIds.has(r.id));
+                  const eligible = selected.filter(r => r.status === "RECEIVED");
+                  const blocked  = selected.length - eligible.length;
+                  if (eligible.length === 0) {
+                    alert("입고완료(RECEIVED) 상태인 자재만 출고 카트에 담을 수 있습니다.");
+                    return;
+                  }
+                  const result = shipoutCart.add(eligible.map(r => ({
+                    steelPlanId: r.id,
+                    vesselCode:  r.vesselCode,
+                    material:    r.material,
+                    thickness:   r.thickness,
+                    width:       r.width,
+                    length:      r.length,
+                    weight:      calcWeight(r.thickness, r.width, r.length),
+                  })));
+                  setSelectedIds(new Set()); // 선택 비움
+                  alert(
+                    `${result.added}건이 카트에 담겼습니다.` +
+                    (result.duplicates > 0 ? `\n이미 카트에 있는 ${result.duplicates}건은 제외.` : "") +
+                    (blocked > 0 ? `\n입고 전 상태 ${blocked}건은 제외.` : ""),
+                  );
+                }}
+                className="flex items-center gap-1.5 px-3 py-1 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                title="외부 납품처 출고 카트에 담기"
+              >
+                <PackageOpen size={13} /> 출고 카트에 담기
               </button>
               <button onClick={markSelectedIssueCancelled} className="flex items-center gap-1.5 px-3 py-1 text-sm border border-blue-400 text-blue-700 rounded-lg hover:bg-blue-100">
                 <PackageOpen size={13} /> 선택 출고취소
@@ -2291,6 +2327,9 @@ export default function SteelPlanMain() {
           </div>
         </div>
       )}
+
+      {/* 외부 납품처 출고 — 하단 고정 카트바 + 모달들 */}
+      <ShipoutBar />
     </div>
   );
 }
