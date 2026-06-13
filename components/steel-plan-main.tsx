@@ -1161,10 +1161,10 @@ export default function SteelPlanMain() {
                 선택중량 {rows.filter((r) => selectedIds.has(r.id)).reduce((sum, r) => sum + (r.thickness * r.width * r.length * 7.85 / 1_000_000), 0).toFixed(1)}kg
               </span>
               <button onClick={markSelectedReceived} className="flex items-center gap-1.5 px-3 py-1 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700">
-                <PackageCheck size={13} /> 선택 입고
+                <PackageCheck size={13} /> 입고
               </button>
               <button onClick={markSelectedReceiveCancelled} className="flex items-center gap-1.5 px-3 py-1 text-sm border border-green-400 text-green-700 rounded-lg hover:bg-green-100">
-                <PackageCheck size={13} /> 선택 입고취소
+                <PackageCheck size={13} /> 입고취소
               </button>
               <button
                 onClick={() => {
@@ -1175,10 +1175,13 @@ export default function SteelPlanMain() {
                 }}
                 className="flex items-center gap-1.5 px-3 py-1 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
               >
-                위치 설정
+                위치
               </button>
               <button onClick={markSelectedIssued} className="flex items-center gap-1.5 px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                <PackageOpen size={13} /> 선택 출고
+                <PackageOpen size={13} /> 출고
+              </button>
+              <button onClick={markSelectedIssueCancelled} className="flex items-center gap-1.5 px-3 py-1 text-sm border border-blue-400 text-blue-700 rounded-lg hover:bg-blue-100">
+                <PackageOpen size={13} /> 출고취소
               </button>
               {/* 외부 납품처 출고 카트에 담기 — RECEIVED 만 허용 */}
               <button
@@ -1187,7 +1190,7 @@ export default function SteelPlanMain() {
                   const eligible = selected.filter(r => r.status === "RECEIVED");
                   const blocked  = selected.length - eligible.length;
                   if (eligible.length === 0) {
-                    alert("입고완료(RECEIVED) 상태인 자재만 출고 카트에 담을 수 있습니다.");
+                    alert("입고 상태인 자재만 외부 출고 카트에 담을 수 있습니다.");
                     return;
                   }
                   const result = shipoutCart.add(eligible.map(r => ({
@@ -1199,7 +1202,7 @@ export default function SteelPlanMain() {
                     length:      r.length,
                     weight:      calcWeight(r.thickness, r.width, r.length),
                   })));
-                  setSelectedIds(new Set()); // 선택 비움
+                  setSelectedIds(new Set());
                   alert(
                     `${result.added}건이 카트에 담겼습니다.` +
                     (result.duplicates > 0 ? `\n이미 카트에 있는 ${result.duplicates}건은 제외.` : "") +
@@ -1209,13 +1212,10 @@ export default function SteelPlanMain() {
                 className="flex items-center gap-1.5 px-3 py-1 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700"
                 title="외부 납품처 출고 카트에 담기"
               >
-                <PackageOpen size={13} /> 출고 카트에 담기
-              </button>
-              <button onClick={markSelectedIssueCancelled} className="flex items-center gap-1.5 px-3 py-1 text-sm border border-blue-400 text-blue-700 rounded-lg hover:bg-blue-100">
-                <PackageOpen size={13} /> 선택 출고취소
+                <PackageOpen size={13} /> 외부출고
               </button>
               <button onClick={() => openDeleteModal("plan")} className="flex items-center gap-1.5 px-3 py-1 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">
-                <Trash2 size={13} /> 선택 삭제
+                <Trash2 size={13} /> 삭제
               </button>
               <button onClick={() => setSelectedIds(new Set())} className="ml-auto text-sm text-green-600 hover:underline">선택 해제</button>
             </div>
