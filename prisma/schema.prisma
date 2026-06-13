@@ -122,15 +122,22 @@ enum DrawingStatus {
 }
 
 enum SteelPlanStatus {
-  REGISTERED // 등록 (계획 등록)
-  RECEIVED // 입고완료
-  ISSUED // 출고완료 (절단장 투입)
-  COMPLETED // 절단완료 (cutting-logs complete 시 자동 전환, 역순 취소 가드 대상)
+  REGISTERED  // 등록 (계획 등록)
+  RECEIVED    // 입고완료
+  ISSUED      // 절단장 투입 (내부 출고)
+  COMPLETED   // 절단완료 (cutting-logs complete 시 자동 전환, 역순 취소 가드 대상)
+  SHIPPED_OUT // 외부 출고 (납품처로 발송 — Shipment 생성 시 전환)
 }
 
 enum SteelPlanHeatStatus {
   WAITING // 대기
-  CUT // 절단
+  CUT     // 절단
+  SHIPPED // 외부 출고
+}
+
+enum ShipmentStatus {
+  ACTIVE
+  CANCELLED
 }
 
 // Excel 업로드 형식 프리셋
@@ -1283,6 +1290,9 @@ model SteelPlan {
   uploadBatchNo      String? // 업로드 배치번호 (YYMMDDHHMMSS, 같은 업로드끼리 공유)
   reservedFor        String? // 확정 블록 (예: "B80C")
 
+  // 외부 출고 (Shipment) 관계 — 한 SteelPlan 은 한 번 출고됨
+  shipmentItem ShipmentItem?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -1297,11 +1307,94 @@ model SteelPlanHeat {
   heatNo        String // 판번호
   status        SteelPlanHeatStatus @default(WAITING)
   cutAt         DateTime? // 절단 완료일 (CUT 전환 시 기록, WAITING 복원 시 초기화)
+  shippedAt     DateTime? // 외부 출고일 (SHIPPED 전환 시 기록, 복원 시 초기화)
   sourceFile    String? // 업로드 파일명
   uploadBatchNo String? // 업로드 배치번호 (YYMMDDHHMMSS, 같은 업로드끼리 공유)
+  autoCreatedFromShipment Boolean @default(false) // 출고 시 직접입력으로 자동 생성된 판번호
+
+  // 외부 출고 시 어떤 ShipmentItem 에서 참조하는지 (SetNull 으로 출고취소 안전)
+  shipmentItems ShipmentItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([heatNo])
+  @@index([vesselCode, material, thickness, width, length])
+}
+
+// ==========================================
+// 외부 출고 시스템 — 강재 외부 납품 (거래명세서 자동출력)
+// ==========================================
+model Shipment {
+  id           String         @id @default(cuid())
+  shipmentNo   String         @unique // 예: SO-20260611-0001
+  shippedAt    DateTime                // 출고일
+  status       ShipmentStatus @default(ACTIVE)
+  cancelledAt  DateTime?
+  cancelReason String?
+  createdBy    String?                 // 작성자 username (로그인 시스템 도입 후)
+  memo         String?
+
+  vehicles ShipmentVehicle[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shippedAt])
+  @@index([status])
+}
+
+model ShipmentVehicle {
+  id          String   @id @default(cuid())
+  shipmentId  String
+  shipment    Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  sequence    Int      // 1, 2, 3 …
+  vehicleNo   String   // 차량번호
+  driverName  String?
+  driverPhone String?
+  loadLimit   Float?   // 적재한도 (kg)
+  totalWeight Float?   // 합계 중량 (kg)
+
+  // 거래명세서 스냅샷 — 확정 시점 값 보존 (마스터 변경되어도 PDF 재출력 가능)
+  supplierId       String?
+  supplierSnapshot Json?
+  deliveryId       String?
+  deliverySnapshot Json?
+
+  invoiceNo  String?  @unique // 거래명세서 번호 (예: INV-20260611-0001)
+  invoicedAt DateTime?
+
+  items ShipmentItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shipmentId])
+}
+
+model ShipmentItem {
+  id              String @id @default(cuid())
+  vehicleId       String
+  vehicle         ShipmentVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  steelPlanId     String  @unique // 한 SteelPlan 은 한 번만 출고 (cancel 시 해제)
+  steelPlan       SteelPlan @relation(fields: [steelPlanId], references: [id], onDelete: Restrict)
+  steelPlanHeatId String?
+  steelPlanHeat   SteelPlanHeat? @relation(fields: [steelPlanHeatId], references: [id], onDelete: SetNull)
+
+  // 출고 시점 스냅샷 (자재 마스터 변경 무관 PDF 일관성)
+  vesselCode   String
+  material     String
+  thickness    Float
+  width        Float
+  length       Float
+  weight       Float
+  heatNo       String?  // 매칭/직접입력 판번호 텍스트
+  manualHeatNo Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([vehicleId])
+  @@index([steelPlanHeatId])
 }
 
 
