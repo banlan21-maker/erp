@@ -768,7 +768,8 @@ export function ExcelUploadModal({ onClose, cart }: { onClose: () => void; cart:
           {!results ? (
             <>
               <div className="text-sm text-gray-700">
-                양식: <strong>호선 · 재질 · 두께 · 폭 · 길이 · 중량 · 판번호(선택)</strong> 컬럼이 헤더 1행에 있는 엑셀.
+                양식: <strong>재질 · 두께 · 폭 · 길이</strong> 필수 + <strong>호선 · 중량 · 판번호</strong> 선택 (헤더 1행).
+                중량 비면 사양으로 자동 계산.
                 판번호가 있으면 자동매칭, 없으면 사양 5개로 매칭(FIFO).
               </div>
               <label className={`block border-2 border-dashed rounded-xl p-8 text-center cursor-pointer ${uploading ? "border-gray-300 bg-gray-50" : "border-emerald-300 hover:bg-emerald-50/50"}`}>

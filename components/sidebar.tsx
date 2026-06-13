@@ -25,11 +25,11 @@ type MenuItem = { href: string; label: string; icon: ComponentType<{ size?: numb
 const menuGroups: Record<string, MenuItem[]> = {
   cnc: [
     { href: "/cutpart/dashboard",         label: "절단 대시보드", icon: LayoutDashboard },
-    { href: "/cutpart/steel-plan",        label: "강재입고관리",  icon: ClipboardList },
+    { href: "/cutpart/steel-plan",        label: "강재입출고",    icon: ClipboardList },
     { href: "/cutpart/projects",          label: "프로젝트",      icon: FolderOpen },
     { href: "/cutpart/scrap",             label: "잔재관리",      icon: Archive },
-    { href: "/cutpart/worklog",           label: "작업일보관리",   icon: ClipboardList },
     { href: "/cutpart/external-shipout",  label: "외부출고관리",   icon: Truck },
+    { href: "/cutpart/worklog",           label: "작업일보관리",   icon: ClipboardList },
     { href: "/cutpart/reports",           label: "절단보고서",     icon: BarChart2 },
   ],
   schedule: [

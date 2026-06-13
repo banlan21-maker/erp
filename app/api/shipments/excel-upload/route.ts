@@ -28,12 +28,12 @@ const TOL = 0.001;
 
 interface ExcelRow {
   rowNo:       number;
-  vesselCode:  string;
+  vesselCode:  string; // 선택 — 비면 사양만으로 매칭 (모든 호선 대상)
   material:    string;
   thickness:   number;
   width:       number;
   length:      number;
-  weight:      number;
+  weight:      number; // 비면 thickness × width × length × 7.85 / 1,000,000 으로 자동 계산
   heatNo?:     string;
 }
 
@@ -62,7 +62,8 @@ function parseHeader(headers: unknown[]): { idx: Record<string, number>; missing
     });
     if (found >= 0) idx[key] = found;
   }
-  const required = ["vesselCode","material","thickness","width","length","weight"] as const;
+  // 필수 헤더: 재질·두께·폭·길이. (호선·중량·판번호는 선택)
+  const required = ["material","thickness","width","length"] as const;
   const missing = required.filter(r => idx[r] === undefined);
   return { idx, missing };
 }
@@ -98,7 +99,7 @@ export async function POST(req: NextRequest) {
     if (missing.length > 0) {
       return NextResponse.json({
         success: false,
-        error: `필수 컬럼 누락: ${missing.join(", ")} — 헤더에 (호선/재질/두께/폭/길이/중량) 이 포함되어야 합니다.`,
+        error: `필수 컬럼 누락: ${missing.join(", ")} — 헤더에 (재질/두께/폭/길이) 가 반드시 포함되어야 합니다. (호선/중량/판번호는 선택)`,
       }, { status: 400 });
     }
 
@@ -106,20 +107,26 @@ export async function POST(req: NextRequest) {
     const rows: ExcelRow[] = [];
     for (let r = 1; r < grid.length; r++) {
       const row = grid[r];
-      const vesselCode = String(row[idx.vesselCode] ?? "").trim();
+      const vesselCode = idx.vesselCode !== undefined ? String(row[idx.vesselCode] ?? "").trim() : "";
       const material   = String(row[idx.material]   ?? "").trim();
       const thickness  = toNumber(row[idx.thickness]);
       const width      = toNumber(row[idx.width]);
       const length     = toNumber(row[idx.length]);
-      const weight     = toNumber(row[idx.weight]);
-      // 빈 행 skip
-      if (!vesselCode && !material && !isFinite(thickness)) continue;
-      if (!vesselCode || !material || !isFinite(thickness) || !isFinite(width) || !isFinite(length) || !isFinite(weight)) {
+      const weightRaw  = idx.weight !== undefined ? toNumber(row[idx.weight]) : NaN;
+      // 빈 행 skip — 재질·두께 모두 비어있으면 skip
+      if (!material && !isFinite(thickness)) continue;
+      // 필수: 재질·두께·폭·길이
+      if (!material || !isFinite(thickness) || !isFinite(width) || !isFinite(length)) {
         return NextResponse.json({
           success: false,
-          error: `${r + 1}행: 필수 값이 누락되었거나 형식이 잘못되었습니다.`,
+          error: `${r + 1}행: 필수 값 누락 — 재질·두께·폭·길이 모두 있어야 합니다.`,
         }, { status: 400 });
       }
+      // 중량: 비어있거나 0 이면 사양으로 자동 계산 (kg, 밀도 7.85)
+      const weight = isFinite(weightRaw) && weightRaw > 0
+        ? weightRaw
+        : Math.round(thickness * width * length * 7.85 / 1_000_000 * 10) / 10;
+
       const heatNoRaw = idx.heatNo !== undefined ? String(row[idx.heatNo] ?? "").trim() : "";
       rows.push({
         rowNo: r + 1,
@@ -137,10 +144,10 @@ export async function POST(req: NextRequest) {
     const results: MatchResult[] = [];
 
     for (const r of rows) {
-      // 사양에 맞는 RECEIVED 인 SteelPlan 후보 (이미 다른 행이 사용한 건 제외)
+      // 사양에 맞는 RECEIVED 인 SteelPlan 후보 — 호선 비면 호선 무관 매칭
       const planCandidates = await prisma.steelPlan.findMany({
         where: {
-          vesselCode: r.vesselCode,
+          ...(r.vesselCode ? { vesselCode: r.vesselCode } : {}),
           material:   r.material,
           thickness:  { gte: r.thickness - TOL, lte: r.thickness + TOL },
           width:      { gte: r.width     - TOL, lte: r.width     + TOL },
@@ -150,11 +157,11 @@ export async function POST(req: NextRequest) {
         orderBy: [{ receivedAt: "asc" }, { createdAt: "asc" }],
       });
 
-      // 판번호가 있을 때
+      // 판번호가 있을 때 — 호선 비면 호선 무관 매칭
       if (r.heatNo) {
         const heat = await prisma.steelPlanHeat.findFirst({
           where: {
-            vesselCode: r.vesselCode,
+            ...(r.vesselCode ? { vesselCode: r.vesselCode } : {}),
             material:   r.material,
             thickness:  { gte: r.thickness - TOL, lte: r.thickness + TOL },
             width:      { gte: r.width     - TOL, lte: r.width     + TOL },

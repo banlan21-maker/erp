@@ -1005,9 +1005,9 @@ export default function SteelPlanMain() {
         <div>
           <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <PackageOpen size={24} className="text-blue-600" />
-            강재 계획 · 입고관리
+            강재 입출고
           </h2>
-          <p className="text-sm text-gray-500 mt-0.5">전체 강재 계획 등록 및 강재 입고처리</p>
+          <p className="text-sm text-gray-500 mt-0.5">강재 계획 등록 · 입고 · 외부출고 통합 관리</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -1015,7 +1015,7 @@ export default function SteelPlanMain() {
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-purple-300 text-purple-700 rounded-lg hover:bg-purple-50"
             title="출고 예정 엑셀을 업로드해 자동매칭 후 카트에 담기"
           >
-            <PackageOpen size={14} /> 출고리스트 업로드
+            <PackageOpen size={14} /> 외부출고 리스트
           </button>
           <button
             onClick={() => { setDeleteVessel(""); setShowDeleteModal(true); }}
