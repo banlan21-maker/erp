@@ -182,14 +182,10 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
             <tr>
               <td rowSpan={5} className="text-center font-bold bg-gray-50">공<br/>급<br/>자</td>
               <td className="bg-gray-50 text-center">등록번호</td>
-              <td>{S.bizNo ?? ""}</td>
-              <td className="bg-gray-50 text-center"></td>
-              <td></td>
+              <td colSpan={3}>{S.bizNo ?? ""}</td>
               <td rowSpan={5} className="text-center font-bold bg-gray-50">공<br/>급<br/>받<br/>는<br/>자</td>
               <td className="bg-gray-50 text-center">등록번호</td>
-              <td>{D.bizNo ?? ""}</td>
-              <td className="bg-gray-50 text-center"></td>
-              <td></td>
+              <td colSpan={3}>{D.bizNo ?? ""}</td>
             </tr>
             <tr>
               <td className="bg-gray-50 text-center">상  호</td><td>{S.name ?? ""}</td>
@@ -279,30 +275,56 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
           </tbody>
         </table>
 
-        {/* 하단 작성/인수/합계 */}
+        {/* 하단 작성/합계 행 */}
         <table className="mt-0">
+          <colgroup>
+            <col style={{ width: "90px" }} />     {/* 작성(출고)자 라벨 */}
+            <col />                                {/* 작성자 값 */}
+            <col style={{ width: "90px" }} />     {/* 작성자 연락처 라벨 */}
+            <col />                                {/* 작성자 연락처 값 */}
+            <col style={{ width: "55px" }} />     {/* 합계 라벨 */}
+            <col style={{ width: "55px" }} />     {/* 합계 수량 */}
+            <col style={{ width: "70px" }} />     {/* 합계 중량 */}
+            <col style={{ width: "70px" }} />     {/* 합계 면적 */}
+          </colgroup>
           <tbody>
             <tr>
-              <td className="bg-gray-50 text-center font-bold" style={{ width: "90px" }}>작성(출고)자</td>
-              <td style={{ width: "120px" }}>
+              <td className="bg-gray-50 text-center font-bold">작성(출고)자</td>
+              <td>
                 <input className="cell" value={v.writerName ?? ""} onChange={e => setVehicleField("writerName", e.target.value)} />
               </td>
-              <td className="bg-gray-50 text-center font-bold" style={{ width: "90px" }}>작성자 연락처</td>
-              <td style={{ width: "140px" }}>
+              <td className="bg-gray-50 text-center font-bold">작성자 연락처</td>
+              <td>
                 <input className="cell font-mono" value={v.writerPhone ?? ""} onChange={e => setVehicleField("writerPhone", e.target.value)} />
               </td>
               <td className="bg-gray-50 text-center font-bold">합  계</td>
-              <td className="text-right font-bold" style={{ width: "50px" }}>{totalQty}</td>
-              <td className="text-right font-bold" style={{ width: "65px" }}>{fmtNum(totalWeight, 1)}</td>
-              <td className="text-right font-bold" style={{ width: "65px" }}>{fmtNum(totalArea, 3)}</td>
+              <td className="text-right font-bold">{totalQty}</td>
+              <td className="text-right font-bold">{fmtNum(totalWeight, 1)}</td>
+              <td className="text-right font-bold">{fmtNum(totalArea, 3)}</td>
             </tr>
+          </tbody>
+        </table>
+
+        {/* 하단 인수/차량/운전자 행 — 별도 테이블, 라벨 좁고 값 넓게 */}
+        <table className="mt-0">
+          <colgroup>
+            <col style={{ width: "90px" }} />     {/* 인수(입고)자 라벨 */}
+            <col />                                {/* 인수자 값 */}
+            <col style={{ width: "70px" }} />     {/* 차량번호 라벨 */}
+            <col />                                {/* 차량번호 값 */}
+            <col style={{ width: "80px" }} />     {/* 운전자 성명 라벨 */}
+            <col />                                {/* 운전자 성명 값 */}
+            <col style={{ width: "90px" }} />     {/* 운전자 연락처 라벨 */}
+            <col />                                {/* 운전자 연락처 값 */}
+          </colgroup>
+          <tbody>
             <tr>
               <td className="bg-gray-50 text-center font-bold">인수(입고)자</td>
               <td><input className="cell" value={v.receiverName ?? ""} onChange={e => setVehicleField("receiverName", e.target.value)} /></td>
               <td className="bg-gray-50 text-center font-bold">차량번호</td>
               <td className="font-mono">{v.vehicleNo}</td>
               <td className="bg-gray-50 text-center font-bold">운전자 성명</td>
-              <td colSpan={1}>{v.driverName ?? ""}</td>
+              <td>{v.driverName ?? ""}</td>
               <td className="bg-gray-50 text-center font-bold">운전자 연락처</td>
               <td className="font-mono">{v.driverPhone ?? ""}</td>
             </tr>

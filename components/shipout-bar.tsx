@@ -83,6 +83,26 @@ export default function ShipoutBar() {
   const [submitting, setSubmitting] = useState(false);
   const [error,      setError]      = useState("");
 
+  // 작성(출고)자 — localStorage 에서 기본값 복원
+  const [writerName,    setWriterName]    = useState("");
+  const [writerPhone,   setWriterPhone]   = useState("");
+  const [writerDefault, setWriterDefault] = useState(false);
+
+  // 모달 열 때 작성자 기본값 복원
+  useEffect(() => {
+    if (!open) return;
+    try {
+      const isDefault = localStorage.getItem("shipout-writer-default") === "1";
+      if (isDefault) {
+        setWriterName(localStorage.getItem("shipout-writer-name")   ?? "");
+        setWriterPhone(localStorage.getItem("shipout-writer-phone") ?? "");
+        setWriterDefault(true);
+      } else {
+        setWriterName(""); setWriterPhone(""); setWriterDefault(false);
+      }
+    } catch { /* 무시 */ }
+  }, [open]);
+
   // 모달 열 때 카트 내용을 ModalRow 로 변환 + 판번호 후보 조회
   useEffect(() => {
     if (!open) return;
@@ -218,12 +238,7 @@ export default function ShipoutBar() {
       setError("차분이 1대 이상 있어야 합니다.");
       return;
     }
-    // 차량번호 입력 확인
-    const empty = vehicles.find(v => !v.vehicleNo.trim());
-    if (empty) {
-      setError(`차분 ${empty.sequence} — 차량번호를 입력해주세요.`);
-      return;
-    }
+    // 차량번호는 선택 입력 — 검증 안 함
     setStep(2);
   };
 
@@ -239,6 +254,17 @@ export default function ShipoutBar() {
     try {
       const supplierMap = new Map(suppliers.map(s => [s.id, s]));
       const deliveryMap = new Map(deliveries.map(d => [d.id, d]));
+
+      // 작성자 기본값 — 체크박스 ON 이면 localStorage 갱신, OFF 면 제거
+      try {
+        if (writerDefault) {
+          localStorage.setItem("shipout-writer-default", "1");
+          localStorage.setItem("shipout-writer-name",  writerName.trim());
+          localStorage.setItem("shipout-writer-phone", writerPhone.trim());
+        } else {
+          localStorage.removeItem("shipout-writer-default");
+        }
+      } catch { /* 무시 */ }
 
       const payload = {
         shippedAt,
@@ -257,6 +283,8 @@ export default function ShipoutBar() {
             loadLimit:       v.loadLimit ? Number(v.loadLimit) : null,
             supplierId:      v.supplierId, supplierSnapshot: snap(sup),
             deliveryId:      v.deliveryId, deliverySnapshot: snap(del),
+            writerName:      writerName.trim()  || undefined,
+            writerPhone:     writerPhone.trim() || undefined,
             items: rowsM.filter(r => r.vehicleIdx === vi).map(r => ({
               steelPlanId:     r.steelPlanId,
               steelPlanHeatId: r.heatId,
@@ -360,6 +388,25 @@ export default function ShipoutBar() {
 
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {error && <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700 flex items-center gap-2"><AlertTriangle size={14} /> {error}</div>}
+
+              {/* 출고담당자 — 작성(출고)자 + 연락처 + 기본값 체크박스 */}
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 flex flex-wrap items-end gap-3">
+                <div className="flex-1 min-w-[200px]">
+                  <label className="block text-[11px] font-bold text-purple-700 mb-1">작성(출고)자</label>
+                  <input value={writerName} onChange={e => setWriterName(e.target.value)}
+                    placeholder="홍길동" className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded" />
+                </div>
+                <div className="flex-1 min-w-[200px]">
+                  <label className="block text-[11px] font-bold text-purple-700 mb-1">작성자 연락처</label>
+                  <input value={writerPhone} onChange={e => setWriterPhone(e.target.value)}
+                    placeholder="010-1234-5678" className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded font-mono" />
+                </div>
+                <label className="flex items-center gap-1.5 text-xs text-purple-700 select-none cursor-pointer">
+                  <input type="checkbox" checked={writerDefault} onChange={e => setWriterDefault(e.target.checked)} className="w-4 h-4" />
+                  기본값으로 저장
+                  <span className="text-[10px] text-purple-500" title="체크 시 다음 출고장 만들 때 자동으로 입력됨 (이 브라우저)">ⓘ</span>
+                </label>
+              </div>
 
               {step === 1 ? (
                 <Step1
@@ -517,7 +564,7 @@ function Step1({
                     <button onClick={() => removeVehicle(idx)} className="text-xs text-red-600 hover:underline">차분 해제</button>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
-                    <Field label="차량번호 *"><input value={v.vehicleNo} onChange={e => updateVehicle(idx, { vehicleNo: e.target.value })} placeholder="12가 3456" className="cellinp" /></Field>
+                    <Field label="차량번호"><input value={v.vehicleNo} onChange={e => updateVehicle(idx, { vehicleNo: e.target.value })} placeholder="12가 3456 (선택)" className="cellinp" /></Field>
                     <Field label="운전자"><input value={v.driverName} onChange={e => updateVehicle(idx, { driverName: e.target.value })} className="cellinp" /></Field>
                     <Field label="운전자 전화"><input value={v.driverPhone} onChange={e => updateVehicle(idx, { driverPhone: e.target.value })} placeholder="010-..." className="cellinp font-mono" /></Field>
                     <Field label="적재한도 (kg)"><input type="number" value={v.loadLimit} onChange={e => updateVehicle(idx, { loadLimit: e.target.value })} placeholder="예: 25000" className="cellinp text-right" /></Field>

@@ -45,7 +45,7 @@ interface ShipmentItemInput {
 }
 interface VehicleInput {
   sequence:        number;
-  vehicleNo:       string;
+  vehicleNo?:      string;
   driverName?:     string;
   driverPhone?:    string;
   loadLimit?:      number | null;
@@ -53,13 +53,14 @@ interface VehicleInput {
   supplierSnapshot?: unknown;
   deliveryId?:     string | null;
   deliverySnapshot?: unknown;
+  writerName?:     string;
+  writerPhone?:    string;
   items:           ShipmentItemInput[];
 }
 
 function isVehicle(v: unknown): v is VehicleInput {
   return !!v && typeof v === "object"
     && typeof (v as VehicleInput).sequence === "number"
-    && typeof (v as VehicleInput).vehicleNo === "string"
     && Array.isArray((v as VehicleInput).items);
 }
 
@@ -130,7 +131,6 @@ export async function POST(req: NextRequest) {
     const vehicles: VehicleInput[] = [];
     for (const v of vehiclesRaw) {
       if (!isVehicle(v)) return NextResponse.json({ success: false, error: "차분 데이터 형식 오류" }, { status: 400 });
-      if (!v.vehicleNo.trim()) return NextResponse.json({ success: false, error: "차량번호는 필수입니다." }, { status: 400 });
       if (v.items.length === 0) return NextResponse.json({ success: false, error: "각 차분에 자재가 1건 이상 있어야 합니다." }, { status: 400 });
       vehicles.push(v);
     }
@@ -182,7 +182,7 @@ export async function POST(req: NextRequest) {
           data: {
             shipmentId: shipment.id,
             sequence:   v.sequence,
-            vehicleNo:  v.vehicleNo.trim(),
+            vehicleNo:   (v.vehicleNo ?? "").trim(),
             driverName:  v.driverName?.trim()  || null,
             driverPhone: v.driverPhone?.trim() || null,
             loadLimit:   v.loadLimit ?? null,
@@ -193,7 +193,9 @@ export async function POST(req: NextRequest) {
             deliverySnapshot: (v.deliverySnapshot as Prisma.InputJsonValue) ?? Prisma.JsonNull,
             invoiceNo,
             invoicedAt: new Date(),
-            issueDate:  shippedAt, // default = 출고일, PDF 화면에서 수정 가능
+            issueDate:   shippedAt,
+            writerName:  v.writerName?.trim()  || null,
+            writerPhone: v.writerPhone?.trim() || null,
           },
         });
 
