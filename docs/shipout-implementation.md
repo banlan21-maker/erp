@@ -1,7 +1,8 @@
 # 강재 외부 출고 시스템 구현 지침서
 
 > 작성: 2026-06-11
-> 위치: 절단파트 > 강재입고관리 > (전체목록) — 새 흐름 추가
+> 최종 업데이트: 2026-06-13 (Phase A–H 구현 완료, 양식 적용 완료)
+> 위치: 절단파트 > 강재입고관리 > (전체목록) — 출고 흐름 추가 / `/cutpart/shipments` 신규
 > 관련 모듈: SteelPlan / SteelPlanHeat / DeliveryVendor / TransportVehicle(선택)
 
 ---
@@ -349,3 +350,67 @@ await prisma.$transaction(async (tx) => {
 
 - 거래명세표 양식은 사용자가 제공해주실 때까지 임시 한국 표준양식 사용. 양식 받으면 G Phase 만 재작업.
 - 출고 시스템 도입 후 [docs/login-implementation.md](./login-implementation.md) 의 권한 매트릭스에 "출고장 관리" 메뉴 추가 필요 (EXEC, ADMIN 까지 허용 권장. FIELD 는 조회만).
+
+---
+
+## 14. 구현 결과 (2026-06-13 — Phase A–H 완료)
+
+### 14.1 적용 양식
+- 사용자 제공 양식 `docs/강재 출고증양식.xlsx` 기반으로 PDF 페이지 그대로 구현 (Phase G 완료)
+- 양식 빈칸 필드는 인라인 클릭 편집 + 디바운스 자동 저장
+- 송장등록번호 형식: `YYYYMMDD-NN` (양식 그대로)
+
+### 14.2 신규 라우트
+| 경로 | 용도 |
+|---|---|
+| `/cutpart/steel-plan` (기존) | 강재전체목록 + 하단 카트바 + 출고장 만들기 마법사 |
+| `/cutpart/shipments` (신규) | 출고장 이력 목록 |
+| `/cutpart/shipments/[id]` (신규) | 출고장 상세 + 차분별 카드 + 출고 취소 |
+| `/cutpart/shipments/[id]/vehicles/[vid]` (신규) | 거래명세표 페이지 (인라인 편집 + 인쇄) |
+
+### 14.3 API 라우트
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| GET/POST | `/api/shipments` | 이력 조회 / 출고장 생성(트랜잭션) |
+| GET | `/api/shipments/[id]` | 단건 상세 |
+| POST | `/api/shipments/[id]/cancel` | 출고 취소 |
+| PATCH | `/api/shipments/[id]/vehicles/[vid]` | 차분 양식필드 인라인 편집 |
+| PATCH | `/api/shipments/[id]/vehicles/[vid]/items/[iid]` | 자재 행 인라인 편집 |
+| POST | `/api/shipments/excel-upload` | 엑셀 자동매칭 |
+| GET | `/api/steel-plan/heat-match` | 같은 사양 SteelPlanHeat 검색 |
+
+### 14.4 신규 파일 (소스 코드)
+```
+prisma/migrations/20260611000070_shipment_system/migration.sql
+prisma/migrations/20260611000071_shipment_invoice_form/migration.sql
+lib/shipment-numbering.ts                      -- 발번 (SO-YYYYMMDD-NNNN / YYYYMMDD-NN)
+components/shipout-cart.tsx                    -- React Context + sessionStorage 카트
+components/shipout-bar.tsx                     -- 하단 고정바 + 마법사 모달 ① ② + 엑셀
+components/invoice-print.tsx                   -- 거래명세표 양식 (인라인 편집 + 인쇄)
+components/shipments-list-main.tsx             -- 이력 목록
+components/shipment-detail-main.tsx            -- 상세 + 취소
+app/api/shipments/...                          -- 위 API 라우트들
+app/api/steel-plan/heat-match/route.ts
+app/(main)/cutpart/shipments/...               -- 페이지들
+```
+
+### 14.5 사이드바
+- 절단파트 그룹에 **"출고장 관리"** (`/cutpart/shipments`) 메뉴 추가됨
+
+### 14.6 SteelPlan UI 변경 사항
+- `PLAN_STATUS` 라벨 정정:
+  - `ISSUED` = "절단장 투입" (이전: "출고완료" — 혼동 소지)
+  - `SHIPPED_OUT` = "외부 출고" (보라)
+- `HEAT_STATUS.SHIPPED` = "출고" 추가
+- "선택 출고" 옆 **"출고 카트에 담기"** 버튼 (보라, RECEIVED 만 허용)
+
+### 14.7 다음 단계 / 사용자 운영 안내
+- 거래명세표 페이지에서 빈칸(절단예정일/선급/도면번호/절단장비/선별지시번호/발행일자/작성자/인수자) 은 클릭 후 입력 → 1초 후 자동 저장
+- 인쇄: 페이지 우상단 [인쇄] 버튼 → 브라우저 인쇄 다이얼로그 (A4 가로)
+- 출고 취소: 출고장 상세에서 [출고 취소] → 자재는 RECEIVED 로 복원, 출고 시 자동생성된 판번호는 삭제
+- 한 SteelPlan 은 한 번만 출고됨 (스키마 unique 제약). 취소 후에는 다시 출고 가능
+
+### 14.8 거래명세표 PDF — 향후 보강 가능 사항
+- 회사 도장/로고 이미지 삽입
+- 양식 폭/높이 미세 조정 (사용자 인쇄 환경에 따라)
+- `@react-pdf/renderer` 또는 `pdf-lib` 도입해서 PDF 다운로드도 추가 (현재는 브라우저 인쇄로 PDF 저장 가능)
