@@ -1163,7 +1163,7 @@ export default function FieldWorklog({
 
                   {/* 목록 없을 때 안내 */}
                   {!heatLoading && drawingId && heatOptions.length === 0 && (
-                    <p className="text-xs text-yellow-400 px-1">등록된 판번호가 없습니다. 강재입고관리에서 판번호를 먼저 등록하세요.</p>
+                    <p className="text-xs text-yellow-400 px-1">등록된 판번호가 없습니다. 강재입출고에서 판번호를 먼저 등록하세요.</p>
                   )}
                 </div>
               </div>}

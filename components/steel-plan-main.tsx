@@ -123,8 +123,8 @@ function downloadTemplate() {
     ["RS01", "AH36", 8, 1829, 6096, "HT240001"],
   ]);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "강재입고");
-  XLSX.writeFile(wb, "강재입고_양식.xlsx");
+  XLSX.utils.book_append_sheet(wb, ws, "강재입출고");
+  XLSX.writeFile(wb, "강재입출고_양식.xlsx");
 }
 
 /* ══════════════════════════════════════════════════════════════════════════ */

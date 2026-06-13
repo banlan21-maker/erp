@@ -81,7 +81,7 @@ export default function ProjectForm({ defaultCode }: { defaultCode?: string }) {
           ))}
         </datalist>
         <p className="text-xs text-gray-400">
-          강재입고관리에 등록된 호선은 자동완성으로 표시됩니다. 같은 호선으로 여러 블록 등록 가능.
+          강재입출고에 등록된 호선은 자동완성으로 표시됩니다. 같은 호선으로 여러 블록 등록 가능.
         </p>
       </div>
 

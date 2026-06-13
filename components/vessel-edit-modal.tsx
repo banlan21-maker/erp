@@ -73,7 +73,7 @@ export default function VesselEditModal({
             <p>{blockIds.length}개 블록과 그에 속한 모든 강재리스트·BOM·작업지시·작업로그가 함께 삭제됩니다. 되돌릴 수 없습니다.</p>
           </div>
           <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-[11px] text-gray-500">
-            호선코드는 한 번 생성하면 수정할 수 없습니다 (강재입고관리와의 매칭 안전성을 위해). 변경이 필요하면 삭제 후 새 호선을 등록하세요.
+            호선코드는 한 번 생성하면 수정할 수 없습니다 (강재입출고와의 매칭 안전성을 위해). 변경이 필요하면 삭제 후 새 호선을 등록하세요.
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
