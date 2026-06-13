@@ -459,8 +459,7 @@ export default function SteelPlanMain() {
     setPrinting(false);
 
     const labelOf = (s: string) => PLAN_STATUS[s]?.label ?? s;
-    const fmt = (iso: string | null) =>
-      iso ? new Date(iso).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" }) : "-";
+    const fmt = (iso: string | null) => fmtYMDcompact(iso) || "-";   // YY.MM.DD
     const wt  = (t: number, w: number, l: number) =>
       (Math.round(t * w * l * 7.85 / 1_000_000 * 10) / 10).toFixed(1);
 
@@ -499,19 +498,19 @@ export default function SteelPlanMain() {
 <title>선별지시서</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: "Malgun Gothic", sans-serif; font-size: 11px; color: #111; padding: 16px; }
-  h1 { font-size: 16px; font-weight: bold; text-align: center; margin-bottom: 4px; }
-  .meta { text-align: center; font-size: 10px; color: #555; margin-bottom: 12px; }
-  table { width: 100%; border-collapse: collapse; }
-  th { background: #1e3a5f; color: #fff; padding: 5px 4px; font-size: 10px; text-align: center; border: 1px solid #ccc; }
-  td { padding: 4px; border: 1px solid #ddd; text-align: center; vertical-align: middle; }
+  body { font-family: "Malgun Gothic", sans-serif; font-size: 18pt; color: #111; padding: 4mm; }
+  h1 { font-size: 22pt; font-weight: bold; text-align: center; margin-bottom: 2mm; letter-spacing: 1px; }
+  .meta { text-align: center; font-size: 11pt; color: #555; margin-bottom: 2mm; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th { background: #1e3a5f; color: #fff; padding: 1px 2px; font-size: 14pt; text-align: center; border: 1px solid #888; line-height: 1.1; }
+  td { padding: 1px 2px; border: 1px solid #aaa; text-align: center; vertical-align: middle; font-size: 18pt; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  td.memo { text-align: left; font-size: 10px; color: #444; }
+  td.memo { text-align: left; font-size: 14pt; color: #222; white-space: normal; }
   tr.even { background: #f5f8fc; }
-  .summary { margin-top: 8px; font-size: 10px; color: #555; text-align: right; }
+  .summary { margin-top: 2mm; font-size: 11pt; color: #555; text-align: right; }
   @media print {
-    body { padding: 8px; }
-    @page { margin: 10mm; size: A4 landscape; }
+    body { padding: 3mm; }
+    @page { margin: 6mm; size: A4 landscape; }
   }
 </style>
 </head>
@@ -2512,7 +2511,9 @@ function MatchingExcelModal({ onClose }: { onClose: () => void }) {
   const [candidates, setCandidates] = useState<SteelPlanRow[]>([]);
   const [selected, setSelected]     = useState<Set<string>>(new Set());
   const [memos, setMemos]           = useState<Record<string, string>>({});
+  const [blocks, setBlocks]         = useState<Record<string, string>>({});
   const [bulkMemo, setBulkMemo]     = useState("");
+  const [bulkBlock, setBulkBlock]   = useState("");
   const [summary, setSummary]       = useState("");
 
   const handleFile = async (file: File) => {
@@ -2556,15 +2557,15 @@ function MatchingExcelModal({ onClose }: { onClose: () => void }) {
         return;
       }
 
-      // 입고(RECEIVED) 상태 강재 전체 fetch — 페이지네이션 우회
-      const res  = await fetch("/api/steel-plan?all=true&statuses=RECEIVED");
+      // 강재 전체 fetch — 상태 필터 없이 모두 가져와 있는 그대로 표시
+      const res  = await fetch("/api/steel-plan?all=true");
       const json = await res.json();
-      const allRcv: SteelPlanRow[] = json.data ?? [];
+      const allRows: SteelPlanRow[] = json.data ?? [];
 
       // spec 별로 매칭 (한 강재가 여러 spec 에 매칭돼도 1번만)
       const matchedMap = new Map<string, SteelPlanRow>();
       for (const sp of specs) {
-        for (const r of allRcv) {
+        for (const r of allRows) {
           if (
             r.vesselCode === sp.vesselCode &&
             r.material   === sp.material &&
@@ -2578,12 +2579,17 @@ function MatchingExcelModal({ onClose }: { onClose: () => void }) {
       }
       const matched = Array.from(matchedMap.values());
 
-      const memoInit: Record<string, string> = {};
-      for (const r of matched) memoInit[r.id] = r.memo ?? "";
+      const memoInit:  Record<string, string> = {};
+      const blockInit: Record<string, string> = {};
+      for (const r of matched) {
+        memoInit[r.id]  = r.memo ?? "";
+        blockInit[r.id] = r.reservedFor ?? "";
+      }
 
-      setSummary(`엑셀 사양 ${specs.length}건 → 입고 자재 ${matched.length}장 매칭`);
+      setSummary(`엑셀 사양 ${specs.length}건 → 매칭 자재 ${matched.length}장`);
       setCandidates(matched);
       setMemos(memoInit);
+      setBlocks(blockInit);
       setSelected(new Set(matched.map((m) => m.id))); // 기본 전체 선택
       setStep("review");
     } catch (err) {
@@ -2601,7 +2607,7 @@ function MatchingExcelModal({ onClose }: { onClose: () => void }) {
   const selectAll  = () => setSelected(new Set(candidates.map((c) => c.id)));
   const selectNone = () => setSelected(new Set());
 
-  const applyBulk = () => {
+  const applyBulkMemo = () => {
     if (!bulkMemo.trim()) return;
     setMemos((prev) => {
       const next = { ...prev };
@@ -2610,25 +2616,33 @@ function MatchingExcelModal({ onClose }: { onClose: () => void }) {
     });
   };
 
+  const applyBulkBlock = () => {
+    if (!bulkBlock.trim()) return;
+    setBlocks((prev) => {
+      const next = { ...prev };
+      for (const id of selected) next[id] = bulkBlock;
+      return next;
+    });
+  };
+
   const handlePrintMatched = () => {
     const sel = candidates.filter((c) => selected.has(c.id));
     if (sel.length === 0) { alert("선택된 자재가 없습니다."); return; }
 
-    const fmt = (iso: string | null) =>
-      iso ? new Date(iso).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" }) : "-";
+    const esc = (s: string) => s.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
     const rows_html = sel.map((r, i) => `
       <tr class="${i % 2 === 0 ? "even" : ""}">
         <td>${r.vesselCode}</td>
-        <td>${r.reservedFor ?? "-"}</td>
+        <td>${esc(blocks[r.id] ?? "")}</td>
         <td>${r.material}</td>
         <td class="num">${fmtT(r.thickness)}</td>
         <td class="num">${fmtL(r.width)}</td>
         <td class="num">${fmtL(r.length)}</td>
-        <td>${r.storageLocation ?? "-"}</td>
+        <td>${r.storageLocation ?? ""}</td>
         <td>${PLAN_STATUS[r.status]?.label ?? r.status}</td>
-        <td>${fmt(r.receivedAt)}</td>
-        <td class="memo">${(memos[r.id] ?? "").replace(/</g, "&lt;")}</td>
+        <td>${fmtYMDcompact(r.receivedAt)}</td>
+        <td class="memo">${esc(memos[r.id] ?? "")}</td>
       </tr>`).join("");
 
     const totalWt = sel.reduce((s, r) => s + r.thickness * r.width * r.length * 7.85 / 1_000_000, 0).toFixed(1);
@@ -2640,19 +2654,19 @@ function MatchingExcelModal({ onClose }: { onClose: () => void }) {
 <title>선별지시서 (매칭)</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: "Malgun Gothic", sans-serif; font-size: 14px; color: #111; padding: 10px; }
-  h1 { font-size: 22px; font-weight: bold; text-align: center; margin-bottom: 6px; letter-spacing: 1px; }
-  .meta { text-align: center; font-size: 12px; color: #444; margin-bottom: 8px; }
-  table { width: 100%; border-collapse: collapse; }
-  th { background: #1e3a5f; color: #fff; padding: 4px 3px; font-size: 13px; text-align: center; border: 1px solid #ccc; }
-  td { padding: 3px 4px; border: 1px solid #ccc; text-align: center; vertical-align: middle; font-size: 14px; line-height: 1.2; }
+  body { font-family: "Malgun Gothic", sans-serif; font-size: 18pt; color: #111; padding: 4mm; }
+  h1 { font-size: 22pt; font-weight: bold; text-align: center; margin-bottom: 2mm; letter-spacing: 1px; }
+  .meta { text-align: center; font-size: 11pt; color: #555; margin-bottom: 2mm; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th { background: #1e3a5f; color: #fff; padding: 1px 2px; font-size: 14pt; text-align: center; border: 1px solid #888; line-height: 1.1; }
+  td { padding: 1px 2px; border: 1px solid #aaa; text-align: center; vertical-align: middle; font-size: 18pt; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  td.memo { text-align: left; }
+  td.memo { text-align: left; font-size: 14pt; color: #222; white-space: normal; }
   tr.even { background: #f5f8fc; }
-  .summary { margin-top: 6px; font-size: 12px; color: #555; text-align: right; }
+  .summary { margin-top: 2mm; font-size: 11pt; color: #555; text-align: right; }
   @media print {
-    body { padding: 6px; }
-    @page { margin: 8mm; size: A4 landscape; }
+    body { padding: 3mm; }
+    @page { margin: 6mm; size: A4 landscape; }
   }
 </style>
 </head>
@@ -2717,13 +2731,24 @@ function MatchingExcelModal({ onClose }: { onClose: () => void }) {
             </div>
 
             <div className="px-5 py-2 border-b border-gray-200 bg-amber-50 flex items-center gap-2 flex-shrink-0">
-              <span className="text-xs font-medium text-amber-700 whitespace-nowrap">비고 일괄 입력</span>
-              <input value={bulkMemo} onChange={(e) => setBulkMemo(e.target.value)}
-                placeholder="이 칸에 입력하고 [적용] 클릭 — 선택된 자재에 한 번에 입력됨"
+              <span className="text-xs font-medium text-amber-700 whitespace-nowrap w-20">블록 일괄</span>
+              <input value={bulkBlock} onChange={(e) => setBulkBlock(e.target.value)}
+                placeholder="예: F52P — 선택된 자재 블록 컬럼에 한 번에 입력"
                 className="flex-1 h-8 px-2 text-sm border border-gray-300 rounded" />
-              <button onClick={applyBulk}
+              <button onClick={applyBulkBlock}
+                disabled={selected.size === 0 || !bulkBlock.trim()}
+                className="text-xs px-3 py-1.5 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-40 w-32">
+                선택 {selected.size}장에 적용
+              </button>
+            </div>
+            <div className="px-5 py-2 border-b border-gray-200 bg-amber-50 flex items-center gap-2 flex-shrink-0">
+              <span className="text-xs font-medium text-amber-700 whitespace-nowrap w-20">비고 일괄</span>
+              <input value={bulkMemo} onChange={(e) => setBulkMemo(e.target.value)}
+                placeholder="이 칸에 입력하고 [적용] 클릭 — 선택된 자재 비고에 한 번에 입력"
+                className="flex-1 h-8 px-2 text-sm border border-gray-300 rounded" />
+              <button onClick={applyBulkMemo}
                 disabled={selected.size === 0 || !bulkMemo.trim()}
-                className="text-xs px-3 py-1.5 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-40">
+                className="text-xs px-3 py-1.5 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-40 w-32">
                 선택 {selected.size}장에 적용
               </button>
             </div>
@@ -2758,7 +2783,10 @@ function MatchingExcelModal({ onClose }: { onClose: () => void }) {
                         <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSel(r.id)} />
                       </td>
                       <td className="px-2 py-1">{r.vesselCode}</td>
-                      <td className="px-2 py-1">{r.reservedFor ?? ""}</td>
+                      <td className="px-2 py-1">
+                        <input value={blocks[r.id] ?? ""} onChange={(e) => setBlocks((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                          className="w-full px-1.5 py-0.5 text-xs border border-gray-200 rounded focus:border-gray-500 focus:outline-none" />
+                      </td>
                       <td className="px-2 py-1">{r.material}</td>
                       <td className="px-2 py-1 text-right font-mono">{fmtT(r.thickness)}</td>
                       <td className="px-2 py-1 text-right font-mono">{fmtL(r.width)}</td>
