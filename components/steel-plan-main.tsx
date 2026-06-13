@@ -424,6 +424,9 @@ export default function SteelPlanMain() {
     }
   };
 
+  /* ── 선별지시서 출력 (매칭) 모달 ── */
+  const [matchOpen, setMatchOpen] = useState(false);
+
   /* ── 선별지시서 출력 — loadPlan 과 동일한 필터를 전송해 화면과 결과 일치 ── */
   const [printing, setPrinting] = useState(false);
   const handlePrint = async () => {
@@ -1174,6 +1177,13 @@ export default function SteelPlanMain() {
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-800 text-white rounded-lg hover:bg-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Printer size={14} /> {printing ? "준비 중..." : "선별지시서 출력"}
+              </button>
+              <button
+                onClick={() => setMatchOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-800 text-white rounded-lg hover:bg-gray-900"
+                title="엑셀 사양을 업로드해 입고 강재와 매칭한 뒤 선별지시서 출력"
+              >
+                <Printer size={14} /> 선별지시서 출력 (매칭)
               </button>
             </div>
           </div>
@@ -2437,6 +2447,11 @@ export default function SteelPlanMain() {
           onSelect={(file) => { setRegisterExcelOpen(false); processUploadFile(file); }}
         />
       )}
+
+      {/* 선별지시서 출력 (매칭) 모달 */}
+      {matchOpen && (
+        <MatchingExcelModal onClose={() => setMatchOpen(false)} />
+      )}
     </div>
   );
 }
@@ -2483,6 +2498,300 @@ function RegisterExcelUploadModal({
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────────── */
+/* 선별지시서 출력 (매칭) — 엑셀 사양과 입고 강재 매칭 + 비고 일괄/개별 + 출력  */
+/* ──────────────────────────────────────────────────────────────────────────── */
+function MatchingExcelModal({ onClose }: { onClose: () => void }) {
+  const [step, setStep]             = useState<"upload" | "review">("upload");
+  const [loading, setLoading]       = useState(false);
+  const [candidates, setCandidates] = useState<SteelPlanRow[]>([]);
+  const [selected, setSelected]     = useState<Set<string>>(new Set());
+  const [memos, setMemos]           = useState<Record<string, string>>({});
+  const [bulkMemo, setBulkMemo]     = useState("");
+  const [summary, setSummary]       = useState("");
+
+  const handleFile = async (file: File) => {
+    setLoading(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb  = XLSX.read(buf);
+      const ws  = wb.Sheets[wb.SheetNames[0]];
+      const raw = (XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as unknown) as unknown[][];
+
+      // 헤더 행 자동 탐지
+      let headerRow = 0;
+      for (let i = 0; i < Math.min(10, raw.length); i++) {
+        const joined = (raw[i] as string[]).join(" ");
+        if (/재질|두께|폭|길이|material|thickness/i.test(joined)) { headerRow = i; break; }
+      }
+      const headers = (raw[headerRow] as string[]).map((h) => String(h).trim().toLowerCase());
+      const colIdx  = (keys: string[]) => headers.findIndex((h) => keys.some((k) => h.includes(k)));
+      const iVessel    = colIdx(["호선", "vessel"]);
+      const iMaterial  = colIdx(["재질", "material"]);
+      const iThickness = colIdx(["두께", "thickness", "t."]);
+      const iWidth     = colIdx(["폭", "width", "w."]);
+      const iLength    = colIdx(["길이", "length", "l."]);
+
+      type Spec = { vesselCode: string; material: string; thickness: number; width: number; length: number };
+      const specs: Spec[] = [];
+      for (let i = headerRow + 1; i < raw.length; i++) {
+        const r = raw[i] as (string | number)[];
+        const vesselCode = iVessel >= 0 ? String(r[iVessel] ?? "").trim() : "";
+        const material   = iMaterial >= 0 ? String(r[iMaterial] ?? "").trim() : "";
+        const thickness  = iThickness >= 0 ? Number(r[iThickness]) : 0;
+        const width      = iWidth  >= 0 ? Number(r[iWidth])  : 0;
+        const length     = iLength >= 0 ? Number(r[iLength]) : 0;
+        if (!vesselCode || !material || !thickness || !width || !length) continue;
+        specs.push({ vesselCode, material, thickness: fmtT(thickness), width: fmtL(width), length: fmtL(length) });
+      }
+
+      if (specs.length === 0) {
+        alert("엑셀에서 유효한 사양 행을 찾지 못했습니다.\n헤더(호선/재질/두께/폭/길이)가 1행에 있어야 합니다.");
+        setLoading(false);
+        return;
+      }
+
+      // 입고(RECEIVED) 상태 강재 전체 fetch — 페이지네이션 우회
+      const res  = await fetch("/api/steel-plan?all=true&statuses=RECEIVED");
+      const json = await res.json();
+      const allRcv: SteelPlanRow[] = json.data ?? [];
+
+      // spec 별로 매칭 (한 강재가 여러 spec 에 매칭돼도 1번만)
+      const matchedMap = new Map<string, SteelPlanRow>();
+      for (const sp of specs) {
+        for (const r of allRcv) {
+          if (
+            r.vesselCode === sp.vesselCode &&
+            r.material   === sp.material &&
+            fmtT(r.thickness) === sp.thickness &&
+            fmtL(r.width)     === sp.width &&
+            fmtL(r.length)    === sp.length
+          ) {
+            matchedMap.set(r.id, r);
+          }
+        }
+      }
+      const matched = Array.from(matchedMap.values());
+
+      const memoInit: Record<string, string> = {};
+      for (const r of matched) memoInit[r.id] = r.memo ?? "";
+
+      setSummary(`엑셀 사양 ${specs.length}건 → 입고 자재 ${matched.length}장 매칭`);
+      setCandidates(matched);
+      setMemos(memoInit);
+      setSelected(new Set(matched.map((m) => m.id))); // 기본 전체 선택
+      setStep("review");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "파일 처리 실패");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleSel  = (id: string) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const selectAll  = () => setSelected(new Set(candidates.map((c) => c.id)));
+  const selectNone = () => setSelected(new Set());
+
+  const applyBulk = () => {
+    if (!bulkMemo.trim()) return;
+    setMemos((prev) => {
+      const next = { ...prev };
+      for (const id of selected) next[id] = bulkMemo;
+      return next;
+    });
+  };
+
+  const handlePrintMatched = () => {
+    const sel = candidates.filter((c) => selected.has(c.id));
+    if (sel.length === 0) { alert("선택된 자재가 없습니다."); return; }
+
+    const fmt = (iso: string | null) =>
+      iso ? new Date(iso).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" }) : "-";
+
+    const rows_html = sel.map((r, i) => `
+      <tr class="${i % 2 === 0 ? "even" : ""}">
+        <td>${r.vesselCode}</td>
+        <td>${r.reservedFor ?? "-"}</td>
+        <td>${r.material}</td>
+        <td class="num">${fmtT(r.thickness)}</td>
+        <td class="num">${fmtL(r.width)}</td>
+        <td class="num">${fmtL(r.length)}</td>
+        <td>${r.storageLocation ?? "-"}</td>
+        <td>${PLAN_STATUS[r.status]?.label ?? r.status}</td>
+        <td>${fmt(r.receivedAt)}</td>
+        <td class="memo">${(memos[r.id] ?? "").replace(/</g, "&lt;")}</td>
+      </tr>`).join("");
+
+    const totalWt = sel.reduce((s, r) => s + r.thickness * r.width * r.length * 7.85 / 1_000_000, 0).toFixed(1);
+
+    const html = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<title>선별지시서 (매칭)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Malgun Gothic", sans-serif; font-size: 14px; color: #111; padding: 10px; }
+  h1 { font-size: 22px; font-weight: bold; text-align: center; margin-bottom: 6px; letter-spacing: 1px; }
+  .meta { text-align: center; font-size: 12px; color: #444; margin-bottom: 8px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #1e3a5f; color: #fff; padding: 4px 3px; font-size: 13px; text-align: center; border: 1px solid #ccc; }
+  td { padding: 3px 4px; border: 1px solid #ccc; text-align: center; vertical-align: middle; font-size: 14px; line-height: 1.2; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.memo { text-align: left; }
+  tr.even { background: #f5f8fc; }
+  .summary { margin-top: 6px; font-size: 12px; color: #555; text-align: right; }
+  @media print {
+    body { padding: 6px; }
+    @page { margin: 8mm; size: A4 landscape; }
+  }
+</style>
+</head>
+<body>
+<h1>선 별 지 시 서</h1>
+<p class="meta">출력일시: ${new Date().toLocaleString("ko-KR")} | 총 ${sel.length}장 · 총중량 ${totalWt}kg | ${summary}</p>
+<table>
+  <thead>
+    <tr>
+      <th>호선</th><th>블록</th><th>재질</th><th>두께</th><th>폭</th><th>길이</th>
+      <th>위치</th><th>상태</th><th>입고일</th><th>비고</th>
+    </tr>
+  </thead>
+  <tbody>${rows_html}</tbody>
+</table>
+<p class="summary">총 ${sel.length}건</p>
+<script>window.onload = () => { window.print(); }<\/script>
+</body>
+</html>`;
+
+    const w = window.open("", "_blank");
+    if (w) { w.document.write(html); w.document.close(); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm"
+         onClick={() => !loading && onClose()}>
+      <div className={`bg-white rounded-2xl shadow-2xl w-full ${step === "upload" ? "max-w-md" : "max-w-6xl"} max-h-[90vh] overflow-hidden flex flex-col`}
+           onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+          <h3 className="font-bold text-base text-gray-900 flex items-center gap-2">
+            <Printer size={16} className="text-gray-800" /> 선별지시서 출력 (엑셀 매칭)
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><X size={16} /></button>
+        </div>
+
+        {step === "upload" && (
+          <div className="p-5 space-y-4">
+            <div className="text-sm text-gray-700 leading-relaxed">
+              엑셀 양식: <strong>호선 · 재질 · 두께 · 폭 · 길이</strong> 컬럼이 1행에 있는 파일.<br/>
+              업로드하면 강재전체목록의 <strong>입고 상태</strong> 자재 중 사양이 일치하는 강재를 매칭합니다.
+            </div>
+            <label className={`block border-2 border-dashed rounded-xl p-8 text-center cursor-pointer ${loading ? "border-gray-300 bg-gray-50" : "border-gray-400 hover:bg-gray-50"}`}>
+              <Upload size={24} className="mx-auto mb-2 text-gray-500" />
+              <div className="text-sm font-semibold text-gray-700">
+                {loading ? "매칭 중…" : "엑셀 파일 선택 또는 드래그"}
+              </div>
+              <input type="file" accept=".xlsx,.xls" className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+            </label>
+          </div>
+        )}
+
+        {step === "review" && (
+          <>
+            <div className="px-5 py-2.5 border-b border-gray-200 bg-gray-50 flex items-center justify-between gap-3 flex-shrink-0">
+              <div className="text-sm text-gray-700"><strong>{summary}</strong> · 선택 <strong className="text-blue-700">{selected.size}</strong>장</div>
+              <div className="flex items-center gap-2">
+                <button onClick={selectAll}  className="text-xs px-2 py-1 border border-gray-300 rounded hover:bg-white">전체 선택</button>
+                <button onClick={selectNone} className="text-xs px-2 py-1 border border-gray-300 rounded hover:bg-white">선택 해제</button>
+              </div>
+            </div>
+
+            <div className="px-5 py-2 border-b border-gray-200 bg-amber-50 flex items-center gap-2 flex-shrink-0">
+              <span className="text-xs font-medium text-amber-700 whitespace-nowrap">비고 일괄 입력</span>
+              <input value={bulkMemo} onChange={(e) => setBulkMemo(e.target.value)}
+                placeholder="이 칸에 입력하고 [적용] 클릭 — 선택된 자재에 한 번에 입력됨"
+                className="flex-1 h-8 px-2 text-sm border border-gray-300 rounded" />
+              <button onClick={applyBulk}
+                disabled={selected.size === 0 || !bulkMemo.trim()}
+                className="text-xs px-3 py-1.5 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-40">
+                선택 {selected.size}장에 적용
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-100 sticky top-0 z-10">
+                  <tr>
+                    <th className="px-2 py-2 w-8">
+                      <input type="checkbox"
+                        checked={selected.size === candidates.length && candidates.length > 0}
+                        onChange={(e) => e.target.checked ? selectAll() : selectNone()} />
+                    </th>
+                    <th className="px-2 py-2 text-left">호선</th>
+                    <th className="px-2 py-2 text-left">블록</th>
+                    <th className="px-2 py-2 text-left">재질</th>
+                    <th className="px-2 py-2 text-right">두께</th>
+                    <th className="px-2 py-2 text-right">폭</th>
+                    <th className="px-2 py-2 text-right">길이</th>
+                    <th className="px-2 py-2 text-left">위치</th>
+                    <th className="px-2 py-2 text-center">상태</th>
+                    <th className="px-2 py-2 text-left">입고일</th>
+                    <th className="px-2 py-2 text-left">비고</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {candidates.length === 0 ? (
+                    <tr><td colSpan={11} className="py-12 text-center text-gray-400">매칭된 자재가 없습니다.</td></tr>
+                  ) : candidates.map((r) => (
+                    <tr key={r.id} className={`hover:bg-gray-50/60 ${selected.has(r.id) ? "bg-blue-50/40" : ""}`}>
+                      <td className="px-2 py-1 text-center">
+                        <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSel(r.id)} />
+                      </td>
+                      <td className="px-2 py-1">{r.vesselCode}</td>
+                      <td className="px-2 py-1">{r.reservedFor ?? ""}</td>
+                      <td className="px-2 py-1">{r.material}</td>
+                      <td className="px-2 py-1 text-right font-mono">{fmtT(r.thickness)}</td>
+                      <td className="px-2 py-1 text-right font-mono">{fmtL(r.width)}</td>
+                      <td className="px-2 py-1 text-right font-mono">{fmtL(r.length)}</td>
+                      <td className="px-2 py-1">{r.storageLocation ?? ""}</td>
+                      <td className="px-2 py-1 text-center">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${PLAN_STATUS[r.status]?.cls ?? "bg-gray-100"}`}>
+                          {PLAN_STATUS[r.status]?.label ?? r.status}
+                        </span>
+                      </td>
+                      <td className="px-2 py-1 font-mono text-[11px]">{fmtYMDcompact(r.receivedAt)}</td>
+                      <td className="px-2 py-1">
+                        <input value={memos[r.id] ?? ""} onChange={(e) => setMemos((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                          className="w-full px-1.5 py-0.5 text-xs border border-gray-200 rounded focus:border-gray-500 focus:outline-none" />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="px-5 py-3 border-t border-gray-200 flex items-center justify-between gap-2 flex-shrink-0">
+              <button onClick={() => setStep("upload")} className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50">
+                ← 다시 업로드
+              </button>
+              <button onClick={handlePrintMatched}
+                disabled={selected.size === 0}
+                className="inline-flex items-center gap-1 px-4 py-1.5 text-sm bg-gray-800 text-white rounded hover:bg-gray-900 disabled:opacity-40">
+                <Printer size={13} /> 선별지시서 출력 ({selected.size}장)
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
