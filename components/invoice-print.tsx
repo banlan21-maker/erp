@@ -195,15 +195,15 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
         <h1 className="text-center text-2xl font-extrabold tracking-[0.3em] mb-1">거 래 명 세 표</h1>
 
         {/* 상단 발행일자 / 송장번호 / 출고증 */}
-        <div className="flex items-center justify-between text-[11px] mb-1 px-1">
+        <div className="flex items-center justify-between text-[11px] mb-1 px-1 whitespace-nowrap">
           <div className="flex items-center gap-1">
-            <span className="font-semibold">발 행 일 자 :</span>
+            <span className="font-semibold whitespace-nowrap">발 행 일 자 :</span>
             <input
               type="date"
               value={toYMD(v.issueDate)}
               onChange={e => setVehicleField("issueDate", e.target.value ? new Date(e.target.value + "T00:00:00").toISOString() : null)}
-              className="cell border-b border-gray-400 px-1 w-32"
-              style={{ borderBottom: "1px solid #777" }}
+              className="cell border-b border-gray-400 px-1"
+              style={{ borderBottom: "1px solid #777", width: "32mm" }}
             />
           </div>
           <div>송 장 등 록 번 호 : <strong className="font-mono">{v.invoiceNo}</strong></div>
@@ -298,7 +298,9 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
                 <tr key={it.id} className="text-center">
                   <td>{i + 1}</td>
                   <td>
-                    <input type="date" className="cell" value={toYMD(it.cutScheduledDate)}
+                    <input type="date"
+                      className={`cell ${!toYMD(it.cutScheduledDate) ? "print:invisible" : ""}`}
+                      value={toYMD(it.cutScheduledDate)}
                       onChange={e => setItem(i, { cutScheduledDate: e.target.value ? new Date(e.target.value + "T00:00:00").toISOString() : null })} />
                   </td>
                   <td>{it.vesselCode}</td>
@@ -319,33 +321,24 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
               );
             })}
           </tbody>
-          {/* 합계 + 작성자 행 — 본문 자재 테이블 안에 통합 (수량/중량/면적이 본문 컬럼과 자동 정렬) */}
+          {/* 합계 행 — 본문 컬럼과 자동 정렬 (수량/중량/면적) */}
           <tfoot>
             <tr>
-              <td colSpan={2} className="bg-gray-50 text-center font-bold">작성(출고)자</td>
-              {/* 본문 컬럼 3~4 (호선·블록) = 작성자 값 */}
-              <td colSpan={2}>
-                <input className="cell" value={v.writerName ?? ""} onChange={e => setVehicleField("writerName", e.target.value)} />
-              </td>
-              {/* 본문 컬럼 5 (제품번호) = 작성자 연락처 라벨 */}
-              <td className="bg-gray-50 text-center font-bold">작성자<br/>연락처</td>
-              {/* 본문 컬럼 6~7 (선급·도면번호) = 작성자 연락처 값 */}
-              <td colSpan={2}>
-                <input className="cell font-mono" value={v.writerPhone ?? ""} onChange={e => setVehicleField("writerPhone", e.target.value)} />
-              </td>
-              {/* 본문 컬럼 8~11 (재질·두께·폭·길이) = 합계 라벨 */}
+              {/* 본문 컬럼 1~11 (NO~길이) = 빈 좌측 영역 */}
+              <td colSpan={7}></td>
+              {/* 본문 컬럼 8~11 (재질~길이) = 합계 라벨 */}
               <td colSpan={4} className="bg-gray-50 text-center font-bold">합  계</td>
               {/* 본문 컬럼 12~14 = 수량 / 중량 / 면적 합계 (자동 정렬) */}
               <td className="text-right font-bold">{totalQty}</td>
               <td className="text-right font-bold">{fmtNum(totalWeight, 1)}</td>
               <td className="text-right font-bold">{fmtNum(totalArea, 3)}</td>
-              {/* 본문 컬럼 15~16 (절단장비·선별지시번호) = 빈 */}
+              {/* 본문 컬럼 15~16 = 빈 */}
               <td colSpan={2}></td>
             </tr>
           </tfoot>
         </table>
 
-        {/* 하단 인수/차량/운전자 행 — 폭 조정: LAYOUT.bottomB (단위 mm) */}
+        {/* 하단 작성자 + 인수자 두 행 — 같은 colgroup 공유 (라벨/값 폭이 동일) */}
         <table className="mt-0">
           <colgroup>
             <col style={{ width: mm(LAYOUT.bottomB.receiverLabelMm) }} />
@@ -358,6 +351,16 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
             <col style={{ width: mm(LAYOUT.bottomB.phoneValueMm) }} />
           </colgroup>
           <tbody>
+            {/* 작성자 행 — 라벨/값 폭이 아래 인수자 행과 동일 */}
+            <tr>
+              <td className="bg-gray-50 text-center font-bold">작성(출고)자</td>
+              <td><input className="cell" value={v.writerName ?? ""} onChange={e => setVehicleField("writerName", e.target.value)} /></td>
+              <td className="bg-gray-50 text-center font-bold">연락처</td>
+              <td><input className="cell font-mono" value={v.writerPhone ?? ""} onChange={e => setVehicleField("writerPhone", e.target.value)} /></td>
+              {/* 우측 4 컬럼은 빈 영역 */}
+              <td colSpan={4}></td>
+            </tr>
+            {/* 인수자/차량/운전자 행 */}
             <tr>
               <td className="bg-gray-50 text-center font-bold">인수(입고)자</td>
               <td><input className="cell" value={v.receiverName ?? ""} onChange={e => setVehicleField("receiverName", e.target.value)} /></td>
