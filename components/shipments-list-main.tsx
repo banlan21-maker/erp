@@ -6,7 +6,7 @@
  */
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { Truck, RefreshCw, FileSpreadsheet, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Truck, RefreshCw, FileSpreadsheet, AlertCircle, CheckCircle2, Trash2 } from "lucide-react";
 
 interface ShipmentItem {
   id: string;
@@ -59,6 +59,16 @@ export default function ShipmentsListMain({ hideHeader = false }: { hideHeader?:
   }, [from, to, status]);
   useEffect(() => { load(); }, [load]);
 
+  // 취소된 출고장 영구 삭제 — CANCELLED 상태만 서버에서 허용
+  const handleDelete = useCallback(async (s: Shipment) => {
+    if (s.status !== "CANCELLED") return;
+    if (!confirm(`취소된 출고장 ${s.shipmentNo} 을(를) 영구 삭제할까요?\n차분/자재 기록도 함께 사라집니다.`)) return;
+    const res = await fetch(`/api/shipments/${s.id}`, { method: "DELETE" });
+    const json = await res.json();
+    if (!json.success) { alert(json.error || "삭제 실패"); return; }
+    setList(prev => prev.filter(x => x.id !== s.id));
+  }, []);
+
   return (
     <div className="space-y-4">
       {!hideHeader && (
@@ -103,13 +113,14 @@ export default function ShipmentsListMain({ hideHeader = false }: { hideHeader?:
               <th className="px-3 py-2.5 text-right">차분 / 총 자재</th>
               <th className="px-3 py-2.5 text-left">송장 / 납품처</th>
               <th className="px-3 py-2.5 text-left">비고</th>
+              <th className="px-3 py-2.5 text-center w-20">관리</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
-              <tr><td colSpan={6} className="py-12 text-center text-gray-400">불러오는 중…</td></tr>
+              <tr><td colSpan={7} className="py-12 text-center text-gray-400">불러오는 중…</td></tr>
             ) : list.length === 0 ? (
-              <tr><td colSpan={6} className="py-12 text-center text-gray-400">해당 기간 출고 이력이 없습니다.</td></tr>
+              <tr><td colSpan={7} className="py-12 text-center text-gray-400">해당 기간 출고 이력이 없습니다.</td></tr>
             ) : list.map(s => {
               const totalItems = s.vehicles.reduce((sum, v) => sum + v.items.length, 0);
               return (
@@ -134,6 +145,17 @@ export default function ShipmentsListMain({ hideHeader = false }: { hideHeader?:
                     ))}
                   </td>
                   <td className="px-3 py-2 text-xs text-gray-500 truncate max-w-[200px]">{s.memo ?? ""}</td>
+                  <td className="px-3 py-2 text-center">
+                    {s.status === "CANCELLED" && (
+                      <button
+                        onClick={() => handleDelete(s)}
+                        title="취소된 출고장 영구삭제"
+                        className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-red-50 text-red-600 border border-red-200 rounded hover:bg-red-100"
+                      >
+                        <Trash2 size={12} /> 삭제
+                      </button>
+                    )}
+                  </td>
                 </tr>
               );
             })}
