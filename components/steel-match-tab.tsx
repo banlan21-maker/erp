@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import * as XLSX from "xlsx";
-import { Upload, Download, Trash2, RefreshCw, X, FileSpreadsheet, Search, Eye } from "lucide-react";
+import { Upload, Download, Trash2, RefreshCw, X, FileSpreadsheet, Search, Eye, Filter } from "lucide-react";
+import ColumnFilterDropdown from "@/components/column-filter-dropdown";
+import { getAllCascadedOptions, getCascadedFilteredRowsWithPredicates, type ColumnAccessorMap, type TextPredicate } from "@/lib/cascading-filters";
 
 /* ── 상태 정의 ─────────────────────────────────────────────────────────────── */
 const STATUS_LIST = [
@@ -36,6 +38,20 @@ interface Job     { id: string; name: string; statuses: string; specCount: numbe
 interface Spec    { vesselCode: string; material: string; thickness: number; width: number; length: number }
 interface PlanRow { id: string; vesselCode: string; material: string; thickness: number; width: number; length: number; status: string; uploadBatchNo: string | null; receivedAt: string | null; storageLocation: string | null; reservedFor: string | null }
 interface MatchRow { matched: boolean; spec: Spec; plan: PlanRow | null }
+
+// 매칭 결과 테이블 컬럼 (필터·정렬 대상)
+const COLUMNS: { key: string; label: string; align: "left" | "right" }[] = [
+  { key: "vessel",        label: "호선",       align: "left"  },
+  { key: "material",      label: "재질",       align: "left"  },
+  { key: "thickness",     label: "두께",       align: "right" },
+  { key: "width",         label: "폭",         align: "right" },
+  { key: "length",        label: "길이",       align: "right" },
+  { key: "status",        label: "상태",       align: "left"  },
+  { key: "uploadBatchNo", label: "업로드번호", align: "left"  },
+  { key: "receivedAt",    label: "입고일",     align: "left"  },
+  { key: "location",      label: "위치",       align: "left"  },
+  { key: "reservedFor",   label: "확정정보",   align: "left"  },
+];
 
 /* ── 엑셀 파싱 (호선·재질·두께·폭·길이, 호선 빈칸 허용) ──────────────────────── */
 function parseSpecs(raw: unknown[][]): Spec[] {
@@ -80,6 +96,14 @@ export default function SteelMatchTab() {
   const [viewStatuses, setViewStatuses] = useState<Set<string>>(new Set(ALL_KEYS));
   const [search, setSearch]       = useState("");
 
+  // 컬럼 필터·정렬 (표준 cascading 패턴)
+  const [colFilters, setColFilters] = useState<Record<string, string[]>>({});
+  const [predicates, setPredicates] = useState<Record<string, TextPredicate | undefined>>({});
+  const [sortKey, setSortKey]     = useState<string | null>(null);
+  const [sortDir, setSortDir]     = useState<"asc" | "desc">("asc");
+  const [openCol, setOpenCol]     = useState<string | null>(null);
+  const [anchorEl, setAnchorEl]   = useState<HTMLElement | null>(null);
+
   const loadJobs = useCallback(async () => {
     setLoading(true);
     try {
@@ -104,6 +128,7 @@ export default function SteelMatchTab() {
   const openJob = (jobId: string) => {
     setSelJobId(jobId);
     setSearch("");
+    setColFilters({}); setPredicates({}); setSortKey(null); setOpenCol(null); setAnchorEl(null);
     const all = new Set(ALL_KEYS);
     setViewStatuses(all);
     loadMatches(jobId, all);
@@ -131,29 +156,67 @@ export default function SteelMatchTab() {
     } else alert("삭제 실패");
   };
 
-  const filteredRows = rows.filter(r => {
-    if (!search.trim()) return true;
-    const q = search.trim().toLowerCase();
-    const hay = `${r.plan?.vesselCode ?? r.spec.vesselCode} ${r.spec.material} ${r.plan?.uploadBatchNo ?? ""} ${r.plan?.reservedFor ?? ""} ${r.plan?.storageLocation ?? ""}`.toLowerCase();
-    return hay.includes(q);
-  });
+  // 일부 상태만 선택한 경우 '미매칭'은 '선택 상태 범위에 없음'을 의미 — 라벨로 명확화
+  const unmatchedLabel = viewStatuses.size === ALL_KEYS.length ? "미매칭" : "미매칭(선택상태)";
+
+  // 컬럼별 값 추출 (필터·정렬·드롭다운 옵션 공통) — 표시값 기준
+  const accessors = useMemo<ColumnAccessorMap<MatchRow>>(() => ({
+    vessel:        r => r.matched ? r.plan!.vesselCode : (r.spec.vesselCode || "(전체)"),
+    material:      r => r.spec.material,
+    thickness:     r => fmtT(r.spec.thickness),
+    width:         r => fmtL(r.spec.width),
+    length:        r => fmtL(r.spec.length),
+    status:        r => r.matched ? (STATUS_LABEL[r.plan!.status] ?? r.plan!.status) : unmatchedLabel,
+    uploadBatchNo: r => r.plan?.uploadBatchNo ?? "",
+    receivedAt:    r => r.plan?.receivedAt ? fmtYMD(r.plan.receivedAt) : "",
+    location:      r => r.plan?.storageLocation ?? "",
+    reservedFor:   r => r.plan?.reservedFor ?? "",
+  }), [unmatchedLabel]);
+
+  // 컬럼 드롭다운 옵션 (cascading)
+  const distinctValues = useMemo(
+    () => getAllCascadedOptions(rows, colFilters, accessors),
+    [rows, colFilters, accessors],
+  );
+
+  // 표 본문: 컬럼필터+텍스트조건 → 검색 → 정렬
+  const displayRows = useMemo(() => {
+    let r = getCascadedFilteredRowsWithPredicates(rows, colFilters, predicates, accessors);
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      r = r.filter(row => {
+        const hay = `${row.plan?.vesselCode ?? row.spec.vesselCode} ${row.spec.material} ${row.plan?.uploadBatchNo ?? ""} ${row.plan?.reservedFor ?? ""} ${row.plan?.storageLocation ?? ""}`.toLowerCase();
+        return hay.includes(q);
+      });
+    }
+    if (sortKey && accessors[sortKey]) {
+      const acc = accessors[sortKey];
+      r = [...r].sort((a, b) => {
+        const cmp = String(acc(a) ?? "").localeCompare(String(acc(b) ?? ""), "ko", { numeric: true });
+        return sortDir === "asc" ? cmp : -cmp;
+      });
+    }
+    return r;
+  }, [rows, colFilters, predicates, accessors, search, sortKey, sortDir]);
 
   const summary = (() => {
     const counts: Record<string, number> = {};
     let unmatched = 0;
-    for (const r of filteredRows) {
+    for (const r of displayRows) {
       if (r.matched && r.plan) counts[r.plan.status] = (counts[r.plan.status] ?? 0) + 1;
       else unmatched++;
     }
     return { counts, unmatched };
   })();
 
-  // 일부 상태만 선택한 경우 '미매칭'은 '선택 상태 범위에 없음'을 의미 — 라벨로 명확화
-  const unmatchedLabel = viewStatuses.size === ALL_KEYS.length ? "미매칭" : "미매칭(선택상태)";
+  const openFilter = (key: string, el: HTMLElement) => {
+    if (openCol === key) { setOpenCol(null); setAnchorEl(null); }
+    else { setOpenCol(key); setAnchorEl(el); }
+  };
 
   const downloadExcel = () => {
-    if (filteredRows.length === 0) { alert("다운로드할 데이터가 없습니다."); return; }
-    const wsRows = filteredRows.map(r => ({
+    if (displayRows.length === 0) { alert("다운로드할 데이터가 없습니다."); return; }
+    const wsRows = displayRows.map(r => ({
       "호선":       r.matched ? r.plan!.vesselCode : (r.spec.vesselCode || "(전체)"),
       "재질":       r.spec.material,
       "두께":       fmtT(r.spec.thickness),
@@ -232,7 +295,7 @@ export default function SteelMatchTab() {
             <div className="flex items-center gap-2 flex-1 min-w-[200px]">
               <FileSpreadsheet size={15} className="text-blue-600" />
               <span className="text-sm font-semibold text-gray-800">{selJobName}</span>
-              <span className="text-xs text-gray-400">매칭 {filteredRows.length}건</span>
+              <span className="text-xs text-gray-400">매칭 {displayRows.length}건</span>
             </div>
             <div className="relative">
               <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -269,17 +332,28 @@ export default function SteelMatchTab() {
             <table className="w-full text-xs whitespace-nowrap">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  {["호선","재질","두께","폭","길이","상태","업로드번호","입고일","위치","확정정보"].map(h => (
-                    <th key={h} className="px-3 py-2 text-left font-medium text-gray-600">{h}</th>
-                  ))}
+                  {COLUMNS.map(({ key, label, align }) => {
+                    const active = (colFilters[key]?.length ?? 0) > 0 || !!predicates[key];
+                    const isSort = sortKey === key;
+                    return (
+                      <th key={key} className={`px-3 py-2 font-medium text-gray-600 ${align === "right" ? "text-right" : "text-left"}`}>
+                        <button onClick={e => openFilter(key, e.currentTarget)}
+                          className={`inline-flex items-center gap-1 ${align === "right" ? "ml-auto" : ""} hover:text-gray-800`}>
+                          {label}
+                          <Filter size={10} className={active || isSort ? "text-blue-500" : "text-gray-300"} fill={active ? "currentColor" : "none"} />
+                          {isSort && <span className="text-blue-500 text-[9px]">{sortDir === "asc" ? "▲" : "▼"}</span>}
+                        </button>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {rowsLoading ? (
                   <tr><td colSpan={10} className="py-8 text-center text-gray-400">매칭 중...</td></tr>
-                ) : filteredRows.length === 0 ? (
+                ) : displayRows.length === 0 ? (
                   <tr><td colSpan={10} className="py-8 text-center text-gray-400">매칭 결과가 없습니다.</td></tr>
-                ) : filteredRows.map((r, i) => (
+                ) : displayRows.map((r, i) => (
                   <tr key={i} className={`hover:bg-gray-50 ${!r.matched ? "bg-red-50/40" : ""}`}>
                     <td className="px-3 py-1.5 font-medium">{r.matched ? r.plan!.vesselCode : (r.spec.vesselCode || <span className="text-gray-400">(전체)</span>)}</td>
                     <td className="px-3 py-1.5">{r.spec.material}</td>
@@ -301,6 +375,21 @@ export default function SteelMatchTab() {
             </table>
           </div>
         </div>
+      )}
+
+      {/* 컬럼 필터·정렬 드롭다운 */}
+      {openCol && anchorEl && (
+        <ColumnFilterDropdown
+          anchorEl={anchorEl}
+          values={distinctValues[openCol] ?? []}
+          selected={colFilters[openCol] ?? []}
+          onApply={sel => { setColFilters(f => ({ ...f, [openCol]: sel })); setOpenCol(null); setAnchorEl(null); }}
+          onClose={() => { setOpenCol(null); setAnchorEl(null); }}
+          sortDir={sortKey === openCol ? sortDir : null}
+          onSort={dir => { if (dir === null) setSortKey(null); else { setSortKey(openCol); setSortDir(dir); } setOpenCol(null); setAnchorEl(null); }}
+          predicate={predicates[openCol] ?? null}
+          onPredicate={p => setPredicates(prev => ({ ...prev, [openCol]: p ?? undefined }))}
+        />
       )}
 
       {uploadOpen && (
