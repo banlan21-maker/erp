@@ -446,7 +446,6 @@ export default function SteelPlanMain() {
 
   /* ── 선별지시서 출력 — loadPlan 과 동일한 필터를 전송해 화면과 결과 일치 ── */
   const [printing, setPrinting] = useState(false);
-  const [selExcelLoading, setSelExcelLoading] = useState(false);
 
   /* 선별지시서 데이터 조회 (출력·엑셀 공통) — 화면과 동일한 필터 전송 */
   const fetchSelectionRows = async (): Promise<{ data: SteelPlanRow[]; filterDesc: string }> => {
@@ -579,39 +578,6 @@ export default function SteelPlanMain() {
 
     // 출력된 행에 선별지시일 기록 + 로컬 즉시 반영
     markSelectionPrinted(data.map((r) => r.id));
-  };
-
-  /* 선별지시서 엑셀 다운로드 (출력과 동일한 데이터·컬럼) */
-  const handleSelectionExcel = async () => {
-    setSelExcelLoading(true);
-    try {
-      const { data } = await fetchSelectionRows();
-      if (data.length === 0) { alert("다운로드할 데이터가 없습니다."); return; }
-
-      const labelOf = (s: string) => PLAN_STATUS[s]?.label ?? s;
-      const rows_ws = data.map((r) => ({
-        "호선":     r.vesselCode,
-        "재질":     r.material,
-        "두께":     fmtT(r.thickness),
-        "폭":       fmtL(r.width),
-        "길이":     fmtL(r.length),
-        "중량(kg)": calcWeight(r.thickness, r.width, r.length),
-        "입고일":   fmtYMDcompact(r.receivedAt),
-        "위치":     r.storageLocation ?? "",
-        "상태":     labelOf(r.status),
-        "확정정보": r.reservedFor ?? "",
-        "메모":     r.memo ?? "",
-      }));
-      const ws = XLSX.utils.json_to_sheet(rows_ws);
-      ws["!cols"] = autoColWidths(rows_ws);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "선별지시서");
-      const today = new Date().toISOString().split("T")[0];
-      XLSX.writeFile(wb, `선별지시서_${today}.xlsx`);
-      // 엑셀 다운로드는 단순 조회/공유 — 선별지시일은 기록하지 않음 (인쇄 버튼만 기록)
-    } finally {
-      setSelExcelLoading(false);
-    }
   };
 
   /* ── 체크박스 전체 선택 (현재 페이지 기준) ── */
@@ -1054,6 +1020,13 @@ export default function SteelPlanMain() {
       return;
     }
 
+    // 등록 전 확인 — 인식된 강재 건수 표시
+    if (!window.confirm(`엑셀에서 강재 ${items.length}건이 인식되었습니다.\n등록하시겠습니까?`)) {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+
     const res = await fetch("/api/steel-plan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1100,13 +1073,6 @@ export default function SteelPlanMain() {
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-red-300 text-red-600 rounded-lg hover:bg-red-50"
           >
             <Trash2 size={14} /> 리스트 삭제
-          </button>
-          <button
-            onClick={() => setRegisterExcelOpen(true)}
-            disabled={uploading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            <Upload size={14} /> {uploading ? "업로드 중..." : "엑셀 강재등록"}
           </button>
           <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileChange} />
           <button
@@ -1245,14 +1211,6 @@ export default function SteelPlanMain() {
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-800 text-white rounded-lg hover:bg-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Printer size={14} /> {printing ? "준비 중..." : "선별지시서 출력"}
-              </button>
-              <button
-                onClick={handleSelectionExcel}
-                disabled={selExcelLoading || total === 0}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-emerald-700 text-white rounded-lg hover:bg-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed"
-                title="선별지시서를 엑셀 파일로 다운로드"
-              >
-                <Download size={14} /> {selExcelLoading ? "다운로드 중..." : "선별지시서 엑셀"}
               </button>
               <button
                 onClick={() => setMatchOpen(true)}
@@ -2070,7 +2028,17 @@ export default function SteelPlanMain() {
                   입고된 철판 목록을 입력하고 확정하면 강재 전체목록에서 자동으로 입고 처리됩니다.
                 </p>
               </div>
-              <button onClick={() => setShowBulkReceive(false)} className="p-1.5 hover:bg-gray-100 rounded-full"><X size={18} /></button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setRegisterExcelOpen(true)}
+                  disabled={uploading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  title="엑셀 파일로 강재를 일괄 등록"
+                >
+                  <Upload size={14} /> {uploading ? "업로드 중..." : "엑셀 강재등록"}
+                </button>
+                <button onClick={() => setShowBulkReceive(false)} className="p-1.5 hover:bg-gray-100 rounded-full"><X size={18} /></button>
+              </div>
             </div>
 
             {/* 결과 표시 (확정 후) */}
