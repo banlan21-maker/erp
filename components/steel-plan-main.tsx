@@ -2396,7 +2396,7 @@ export default function SteelPlanMain() {
               <>
                 <p className="text-sm text-gray-500">
                   업로드 배치번호를 입력하면 <span className="text-red-600 font-medium">해당 배치만</span> 삭제됩니다.<br />
-                  <span className="text-gray-400 text-xs">예) 260421092030 (테이블의 업로드번호 컬럼 참고)</span>
+                  <span className="text-gray-400 text-xs">예) 20260615-01 (테이블의 업로드번호 컬럼 참고)</span>
                 </p>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-gray-600">업로드 배치번호</label>
@@ -2404,7 +2404,7 @@ export default function SteelPlanMain() {
                     type="text"
                     value={deleteBatchNo}
                     onChange={(e) => setDeleteBatchNo(e.target.value)}
-                    placeholder="예: 260421092030"
+                    placeholder="예: 20260615-01"
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-red-400"
                   />
                 </div>

@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { syncDrawingListBySpecs } from "@/lib/sync-drawing-spec";
 
@@ -125,16 +126,36 @@ export async function GET(req: NextRequest) {
   });
 }
 
-// 업로드 배치번호 생성: YYMMDDHHMMSS
-function genBatchNo(): string {
-  const now = new Date();
-  const yy = String(now.getFullYear()).slice(2);
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const dd = String(now.getDate()).padStart(2, "0");
-  const hh = String(now.getHours()).padStart(2, "0");
-  const mi = String(now.getMinutes()).padStart(2, "0");
-  const ss = String(now.getSeconds()).padStart(2, "0");
-  return `${yy}${mm}${dd}${hh}${mi}${ss}`;
+// 업로드 배치번호 생성: YYYYMMDD-NN  (한국시간 KST 기준 날짜)
+// 해당 날짜의 기존 업로드번호 중 최대 순번 + 1 (예: 20260615-01, -02, -03)
+// 중간 번호(-02)를 지워도 기존 -01/-03 은 그대로 유지되고, 다음 업로드는 최대값+1 로 이어짐
+// 트랜잭션 클라이언트(tx)로 읽어 같은 트랜잭션의 createMany 와 원자적으로 묶음
+async function genBatchNo(tx: Prisma.TransactionClient): Promise<string> {
+  // Docker 컨테이너가 UTC 여도 한국 달력 날짜로 발번 (en-CA → "2026-06-15")
+  const kstDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+  const prefix = `${kstDate.replace(/-/g, "")}-`;   // "20260615-"
+
+  // 같은 날짜의 기존 업로드번호 조회 (steelPlan + steelPlanHeat 양쪽 — 일부만 남아도 재사용 방지)
+  const [plans, heats] = await Promise.all([
+    tx.steelPlan.findMany({
+      where: { uploadBatchNo: { startsWith: prefix } },
+      select: { uploadBatchNo: true }, distinct: ["uploadBatchNo"],
+    }),
+    tx.steelPlanHeat.findMany({
+      where: { uploadBatchNo: { startsWith: prefix } },
+      select: { uploadBatchNo: true }, distinct: ["uploadBatchNo"],
+    }),
+  ]);
+
+  let maxSeq = 0;
+  for (const { uploadBatchNo } of [...plans, ...heats]) {
+    const seq = Number(uploadBatchNo?.split("-")[1]);
+    if (Number.isFinite(seq) && seq > maxSeq) maxSeq = seq;
+  }
+
+  return `${prefix}${String(maxSeq + 1).padStart(2, "0")}`;
 }
 
 // POST /api/steel-plan
@@ -146,36 +167,39 @@ export async function POST(req: NextRequest) {
     memo?: string | null; sourceFile?: string | null;
   }[] = Array.isArray(body) ? body : [body];
 
-  const uploadBatchNo = genBatchNo();
+  // 발번 + 적재를 한 트랜잭션으로 — 부분 실패/중복번호 방지
+  const { uploadBatchNo, count } = await prisma.$transaction(async (tx) => {
+    const uploadBatchNo = await genBatchNo(tx);
 
-  const planData = items.map((item) => ({
-    vesselCode: item.vesselCode, material: item.material.trim().toUpperCase(),
-    thickness: item.thickness,  width: item.width, length: item.length,
-    memo: item.memo ?? null,    sourceFile: item.sourceFile ?? null,
-    uploadBatchNo,
-  }));
-
-  const created = await prisma.steelPlan.createMany({ data: planData });
-
-  const heatData = items
-    .filter((item) => item.heatNo?.trim())
-    .map((item) => ({
+    const planData = items.map((item) => ({
       vesselCode: item.vesselCode, material: item.material.trim().toUpperCase(),
       thickness: item.thickness,  width: item.width, length: item.length,
-      heatNo: item.heatNo!.trim(), sourceFile: item.sourceFile ?? null,
+      memo: item.memo ?? null,    sourceFile: item.sourceFile ?? null,
       uploadBatchNo,
     }));
+    const created = await tx.steelPlan.createMany({ data: planData });
 
-  if (heatData.length > 0) await prisma.steelPlanHeat.createMany({ data: heatData });
+    const heatData = items
+      .filter((item) => item.heatNo?.trim())
+      .map((item) => ({
+        vesselCode: item.vesselCode, material: item.material.trim().toUpperCase(),
+        thickness: item.thickness,  width: item.width, length: item.length,
+        heatNo: item.heatNo!.trim(), sourceFile: item.sourceFile ?? null,
+        uploadBatchNo,
+      }));
+    if (heatData.length > 0) await tx.steelPlanHeat.createMany({ data: heatData });
 
-  // ── 신규 등록 spec 별 DrawingList 자동 동기화 ─────────────────────────
+    return { uploadBatchNo, count: created.count };
+  });
+
+  // ── 신규 등록 spec 별 DrawingList 자동 동기화 (트랜잭션 외부) ──────────
   // CAUTION 으로 떠있던 도면이 새 강재 등록으로 REGISTERED 로 자동 승격되어야 함
-  await syncDrawingListBySpecs(planData.map(p => ({
-    vesselCode: p.vesselCode, material: p.material,
-    thickness:  p.thickness,  width:    p.width, length: p.length,
+  await syncDrawingListBySpecs(items.map((item) => ({
+    vesselCode: item.vesselCode, material: item.material.trim().toUpperCase(),
+    thickness:  item.thickness,  width: item.width, length: item.length,
   })));
 
-  return NextResponse.json({ count: created.count, uploadBatchNo }, { status: 201 });
+  return NextResponse.json({ count, uploadBatchNo }, { status: 201 });
 }
 
 // DELETE /api/steel-plan
