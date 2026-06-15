@@ -5,12 +5,13 @@ import * as XLSX from "xlsx";
 import {
   Upload, Plus, Trash2, RefreshCw, Download, Search, X,
   CheckSquare, Square, ClipboardList, PackageOpen, Hash, PackageCheck, Printer, Filter,
-  ArrowUp, ArrowDown,
+  ArrowUp, ArrowDown, FileSpreadsheet,
 } from "lucide-react";
 import ColumnFilterDropdown, { type FilterValue } from "./column-filter-dropdown";
 import { serializeColFilters } from "@/lib/client-cascading";
 import { useShipoutCart } from "./shipout-cart";
 import ShipoutBar, { ExcelUploadModal as ShipoutExcelUploadModal } from "./shipout-bar";
+import SteelMatchTab from "./steel-match-tab";
 
 /* ── 컬럼 key → 쿼리스트링 param 이름 (distinct API 와 일치) ── */
 const STEEL_PLAN_QS_KEY: Record<string, string> = {
@@ -149,7 +150,7 @@ export default function SteelPlanMain() {
   const shipoutCart = useShipoutCart();
   const [shipoutExcelOpen,  setShipoutExcelOpen]  = useState(false);
   const [registerExcelOpen, setRegisterExcelOpen] = useState(false);
-  const [tab, setTab] = useState<"plan" | "heatno">("plan");
+  const [tab, setTab] = useState<"plan" | "heatno" | "match">("plan");
 
   /* ── 강재 전체목록 상태 ── */
   const [rows, setRows]         = useState<SteelPlanRow[]>([]);
@@ -1087,12 +1088,13 @@ export default function SteelPlanMain() {
       {/* 탭 */}
       <div className="flex border-b border-gray-200">
         {[
-          { key: "plan",   icon: <ClipboardList size={14} />, label: "강재 전체목록" },
-          { key: "heatno", icon: <Hash size={14} />,          label: "판번호 리스트" },
+          { key: "plan",   icon: <ClipboardList size={14} />,   label: "강재 전체목록" },
+          { key: "heatno", icon: <Hash size={14} />,            label: "판번호 리스트" },
+          { key: "match",  icon: <FileSpreadsheet size={14} />, label: "강재매칭" },
         ].map(({ key, icon, label }) => (
           <button
             key={key}
-            onClick={() => setTab(key as "plan" | "heatno")}
+            onClick={() => setTab(key as "plan" | "heatno" | "match")}
             className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
               tab === key ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"
             }`}
@@ -1101,6 +1103,9 @@ export default function SteelPlanMain() {
           </button>
         ))}
       </div>
+
+      {/* ── 강재매칭 탭 ── */}
+      {tab === "match" && <SteelMatchTab />}
 
       {/* ── 강재 전체목록 탭 ── */}
       {tab === "plan" && (

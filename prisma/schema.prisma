@@ -1467,3 +1467,16 @@ model CalendarEvent {
 
   @@index([date])
 }
+
+// ==========================================
+// 강재매칭 — 업로드 사양 목록을 강재전체목록과 매칭 (저장·재조회)
+// ==========================================
+model SteelMatchJob {
+  id        String   @id @default(cuid())
+  name      String   // 매칭 이름 (예: "4506호선 입고자재 매칭작업")
+  statuses  String   @default("ALL") // 매칭 대상 상태: "ALL" 또는 콤마구분 (REGISTERED,RECEIVED,ISSUED,COMPLETED,SHIPPED_OUT)
+  specs     Json     // 업로드 사양 목록 [{ vesselCode, material, thickness, width, length }]
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
