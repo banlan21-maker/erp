@@ -84,6 +84,10 @@ export default function UrgentRegisterForm({
       });
       const data = await res.json();
       if (!data.success) { setError(data.error); return; }
+      // 발생 등록잔재 일부 실패 시 안내 (잔재번호 중복·치수 오류 등)
+      if (data.generated && data.generated.failed > 0) {
+        alert(`발생 등록잔재 ${data.generated.created}건 등록, ${data.generated.failed}건 실패 (잔재번호 중복 또는 치수 오류). 잔재관리에서 확인해 주세요.`);
+      }
       setOk(true);
       setForm({ ...INIT });
       setRemnantType("");
