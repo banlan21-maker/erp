@@ -78,6 +78,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 }
 
+// PATCH /api/steel-match/[id] — 매칭 대상 상태(또는 이름) 수정
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const body = await req.json();
+    const data: { name?: string; statuses?: string } = {};
+    if (body.name !== undefined) { const n = String(body.name).trim(); if (n) data.name = n; }
+    if (body.statuses !== undefined) data.statuses = String(body.statuses) || "ALL";
+    const job = await prisma.steelMatchJob.update({ where: { id }, data });
+    return NextResponse.json({ success: true, data: { id: job.id } });
+  } catch (e) {
+    return NextResponse.json({ success: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+  }
+}
+
 // DELETE /api/steel-match/[id]
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {

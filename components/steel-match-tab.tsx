@@ -53,6 +53,30 @@ const COLUMNS: { key: string; label: string; align: "left" | "right" }[] = [
   { key: "reservedFor",   label: "확정정보",   align: "left"  },
 ];
 
+const statusesLabel  = (s: string) => (!s || s === "ALL") ? "전체" : s.split(",").map(k => STATUS_LABEL[k] ?? k).join("·");
+const parseStatuses  = (s: string): Set<string> => (!s || s === "ALL") ? new Set(ALL_KEYS) : new Set(s.split(",").filter(Boolean));
+const statusesToParam = (set: Set<string>): string => set.size === ALL_KEYS.length ? "ALL" : ALL_KEYS.filter(k => set.has(k)).join(",");
+
+/* ── 매칭 대상 상태 선택 (전체 + 5개, 1개 이상) ──────────────────────────── */
+function StatusPicker({ selected, onChange }: { selected: Set<string>; onChange: (s: Set<string>) => void }) {
+  const allOn = selected.size === ALL_KEYS.length;
+  const chip = (on: boolean) => `px-2.5 py-1 text-xs rounded-full border ${on ? "bg-blue-600 border-blue-600 text-white" : "border-gray-300 text-gray-500 hover:bg-gray-50"}`;
+  const toggle = (key: string) => {
+    const n = new Set(selected);
+    if (n.has(key)) n.delete(key); else n.add(key);
+    if (n.size === 0) return;   // 최소 1개 유지
+    onChange(n);
+  };
+  return (
+    <div className="flex gap-1.5 flex-wrap">
+      <button type="button" onClick={() => onChange(new Set(ALL_KEYS))} className={chip(allOn)}>전체</button>
+      {STATUS_LIST.map(s => (
+        <button type="button" key={s.key} onClick={() => toggle(s.key)} className={chip(selected.has(s.key))}>{s.label}</button>
+      ))}
+    </div>
+  );
+}
+
 /* ── 엑셀 파싱 (호선·재질·두께·폭·길이, 호선 빈칸 허용) ──────────────────────── */
 function parseSpecs(raw: unknown[][]): Spec[] {
   let headerRow = 0;
@@ -93,8 +117,9 @@ export default function SteelMatchTab() {
   const [selJobName, setSelJobName] = useState("");
   const [rows, setRows]           = useState<MatchRow[]>([]);
   const [rowsLoading, setRowsLoading] = useState(false);
-  const [viewStatuses, setViewStatuses] = useState<Set<string>>(new Set(ALL_KEYS));
+  const [selJobStatuses, setSelJobStatuses] = useState<string>("ALL");   // 열린 작업의 저장된 대상상태
   const [search, setSearch]       = useState("");
+  const [editJob, setEditJob]     = useState<Job | null>(null);
 
   // 컬럼 필터·정렬 (표준 cascading 패턴)
   const [colFilters, setColFilters] = useState<Record<string, string[]>>({});
@@ -114,37 +139,28 @@ export default function SteelMatchTab() {
   }, []);
   useEffect(() => { loadJobs(); }, [loadJobs]);
 
-  const loadMatches = useCallback(async (jobId: string, statuses: Set<string>) => {
+  const loadMatches = useCallback(async (jobId: string) => {
     setRowsLoading(true);
     try {
-      const stParam = statuses.size === ALL_KEYS.length ? "ALL" : Array.from(statuses).join(",");
-      const r = await fetch(`/api/steel-match/${jobId}?statuses=${encodeURIComponent(stParam)}`);
+      // 저장된 대상상태로 매칭 (?statuses override 미사용)
+      const r = await fetch(`/api/steel-match/${jobId}`);
       const d = await r.json();
-      if (d.success) { setRows(d.data.rows); setSelJobName(d.data.job.name); }
+      if (d.success) { setRows(d.data.rows); setSelJobName(d.data.job.name); setSelJobStatuses(d.data.job.statuses); }
       else { alert(d.error ?? "조회 실패"); setRows([]); }
     } finally { setRowsLoading(false); }
   }, []);
 
-  const openJob = (jobId: string) => {
+  const openJobFresh = useCallback((jobId: string) => {
     setSelJobId(jobId);
     setSearch("");
     setColFilters({}); setPredicates({}); setSortKey(null); setOpenCol(null); setAnchorEl(null);
-    const all = new Set(ALL_KEYS);
-    setViewStatuses(all);
-    loadMatches(jobId, all);
-  };
+    loadMatches(jobId);
+  }, [loadMatches]);
 
-  const toggleStatus = (key: string) => {
-    const next = new Set(viewStatuses);
-    if (next.has(key)) next.delete(key); else next.add(key);
-    if (next.size === 0) return;             // 최소 1개는 유지
-    setViewStatuses(next);
-    if (selJobId) loadMatches(selJobId, next);
-  };
-  const selectAllStatuses = () => {
-    const all = new Set(ALL_KEYS);
-    setViewStatuses(all);
-    if (selJobId) loadMatches(selJobId, all);
+  // 보기/닫기 토글 — 이미 열린 작업을 다시 누르면 닫힘
+  const toggleJob = (jobId: string) => {
+    if (selJobId === jobId) { setSelJobId(null); setRows([]); setOpenCol(null); setAnchorEl(null); return; }
+    openJobFresh(jobId);
   };
 
   const deleteJob = async (jobId: string, name: string) => {
@@ -156,8 +172,8 @@ export default function SteelMatchTab() {
     } else alert("삭제 실패");
   };
 
-  // 일부 상태만 선택한 경우 '미매칭'은 '선택 상태 범위에 없음'을 의미 — 라벨로 명확화
-  const unmatchedLabel = viewStatuses.size === ALL_KEYS.length ? "미매칭" : "미매칭(선택상태)";
+  // 대상상태가 전체가 아니면 '미매칭'은 '대상상태 범위에 없음'을 의미 — 라벨로 명확화
+  const unmatchedLabel = (!selJobStatuses || selJobStatuses === "ALL") ? "미매칭" : "미매칭(대상상태)";
 
   // 컬럼별 값 추출 (필터·정렬·드롭다운 옵션 공통) — 표시값 기준
   const accessors = useMemo<ColumnAccessorMap<MatchRow>>(() => ({
@@ -263,27 +279,35 @@ export default function SteelMatchTab() {
               <th className="px-3 py-2 text-left font-medium text-gray-600">매칭 이름</th>
               <th className="px-3 py-2 text-left font-medium text-gray-600">업로드일시</th>
               <th className="px-3 py-2 text-right font-medium text-gray-600">사양수</th>
-              <th className="px-3 py-2 text-center font-medium text-gray-600 w-28">작업</th>
+              <th className="px-3 py-2 text-left font-medium text-gray-600">대상상태</th>
+              <th className="px-3 py-2 text-center font-medium text-gray-600 w-40">작업</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
-              <tr><td colSpan={4} className="py-8 text-center text-gray-400">불러오는 중...</td></tr>
+              <tr><td colSpan={5} className="py-8 text-center text-gray-400">불러오는 중...</td></tr>
             ) : jobs.length === 0 ? (
-              <tr><td colSpan={4} className="py-8 text-center text-gray-400">저장된 매칭 작업이 없습니다. [엑셀 업로드 매칭]으로 시작하세요.</td></tr>
-            ) : jobs.map(j => (
-              <tr key={j.id} className={`hover:bg-blue-50/40 ${selJobId === j.id ? "bg-blue-50" : ""}`}>
+              <tr><td colSpan={5} className="py-8 text-center text-gray-400">저장된 매칭 작업이 없습니다. [엑셀 업로드 매칭]으로 시작하세요.</td></tr>
+            ) : jobs.map(j => {
+              const open = selJobId === j.id;
+              return (
+              <tr key={j.id} className={`hover:bg-blue-50/40 ${open ? "bg-blue-50" : ""}`}>
                 <td className="px-3 py-2 font-medium text-gray-800">{j.name}</td>
                 <td className="px-3 py-2 text-gray-500">{fmtDateTime(j.createdAt)}</td>
                 <td className="px-3 py-2 text-right text-gray-600">{j.specCount}</td>
+                <td className="px-3 py-2 text-gray-500">{statusesLabel(j.statuses)}</td>
                 <td className="px-3 py-2 text-center">
                   <div className="flex items-center justify-center gap-1">
-                    <button onClick={() => openJob(j.id)} className="inline-flex items-center gap-1 px-2 py-1 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-700"><Eye size={11} /> 보기</button>
+                    <button onClick={() => toggleJob(j.id)} className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded ${open ? "bg-gray-600 text-white hover:bg-gray-700" : "bg-blue-600 text-white hover:bg-blue-700"}`}>
+                      <Eye size={11} /> {open ? "닫기" : "보기"}
+                    </button>
+                    <button onClick={() => setEditJob(j)} className="inline-flex items-center gap-1 px-2 py-1 text-[11px] border border-gray-300 text-gray-600 rounded hover:bg-gray-50">수정</button>
                     <button onClick={() => deleteJob(j.id, j.name)} className="inline-flex items-center gap-1 px-2 py-1 text-[11px] border border-red-300 text-red-600 rounded hover:bg-red-50"><Trash2 size={11} /></button>
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -307,24 +331,17 @@ export default function SteelMatchTab() {
             </button>
           </div>
 
-          {/* 상태 필터 */}
+          {/* 대상상태 (저장된 매칭 조건 — 수정은 작업 목록의 [수정]) */}
           <div className="px-4 py-2.5 border-b border-gray-200 flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-gray-500 font-medium">상태:</span>
-            <button onClick={selectAllStatuses}
-              className={`px-2.5 py-1 text-xs rounded-full border ${viewStatuses.size === ALL_KEYS.length ? "bg-blue-600 border-blue-600 text-white" : "border-gray-300 text-gray-600 hover:bg-gray-50"}`}>
-              전체
-            </button>
-            {STATUS_LIST.map(s => {
-              const on = viewStatuses.has(s.key);
-              const cnt = summary.counts[s.key] ?? 0;
-              return (
-                <button key={s.key} onClick={() => toggleStatus(s.key)}
-                  className={`px-2.5 py-1 text-xs rounded-full border ${on ? "bg-blue-600 border-blue-600 text-white" : "border-gray-300 text-gray-500 hover:bg-gray-50"}`}>
-                  {s.label}{on && cnt > 0 ? ` ${cnt}` : ""}
-                </button>
-              );
-            })}
+            <span className="text-xs text-gray-500 font-medium">대상상태:</span>
+            {(!selJobStatuses || selJobStatuses === "ALL" ? ALL_KEYS : selJobStatuses.split(",").filter(Boolean)).map(k => (
+              <span key={k} className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700">
+                {STATUS_LABEL[k] ?? k}{summary.counts[k] ? ` ${summary.counts[k]}` : ""}
+              </span>
+            ))}
             {summary.unmatched > 0 && <span className="text-xs text-red-500 ml-1">미매칭 {summary.unmatched}건</span>}
+            <button onClick={() => { const j = jobs.find(x => x.id === selJobId); if (j) setEditJob(j); }}
+              className="ml-auto text-xs px-2 py-1 border border-gray-300 text-gray-600 rounded hover:bg-gray-50">대상상태 수정</button>
           </div>
 
           {/* 결과 테이블 */}
@@ -395,9 +412,61 @@ export default function SteelMatchTab() {
       {uploadOpen && (
         <UploadMatchModal
           onClose={() => setUploadOpen(false)}
-          onCreated={(id) => { setUploadOpen(false); loadJobs(); openJob(id); }}
+          onCreated={(id) => { setUploadOpen(false); loadJobs(); openJobFresh(id); }}
         />
       )}
+
+      {editJob && (
+        <EditStatusModal
+          job={editJob}
+          onClose={() => setEditJob(null)}
+          onSaved={() => { const id = editJob.id; setEditJob(null); loadJobs(); if (selJobId === id) loadMatches(id); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── 대상상태 수정 ─────────────────────────────────────────────────────────── */
+function EditStatusModal({ job, onClose, onSaved }: { job: Job; onClose: () => void; onSaved: () => void }) {
+  const [statuses, setStatuses] = useState<Set<string>>(parseStatuses(job.statuses));
+  const [loading, setLoading]   = useState(false);
+
+  const save = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`/api/steel-match/${job.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ statuses: statusesToParam(statuses) }),
+      });
+      const d = await r.json();
+      if (!d.success) { alert(d.error ?? "수정 실패"); return; }
+      onSaved();
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => !loading && onClose()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+          <h3 className="font-bold text-base text-gray-900">매칭 대상 상태 수정</h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><X size={16} /></button>
+        </div>
+        <div className="p-5 space-y-3">
+          <div className="text-sm text-gray-700"><strong>{job.name}</strong></div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5">매칭 대상 상태 <span className="text-gray-400 font-normal">(1개 이상)</span></label>
+            <StatusPicker selected={statuses} onChange={setStatuses} />
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+            <button onClick={onClose} className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50">취소</button>
+            <button onClick={save} disabled={loading} className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40">
+              {loading ? "저장 중..." : "저장"}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -407,6 +476,7 @@ function UploadMatchModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [step, setStep]       = useState<"upload" | "confirm">("upload");
   const [specs, setSpecs]     = useState<Spec[]>([]);
   const [name, setName]       = useState("");
+  const [statuses, setStatuses] = useState<Set<string>>(new Set(ALL_KEYS));
   const [loading, setLoading] = useState(false);
 
   const handleFile = async (file: File) => {
@@ -433,11 +503,10 @@ function UploadMatchModal({ onClose, onCreated }: { onClose: () => void; onCreat
     if (!name.trim()) { alert("매칭 이름을 입력하세요. (예: 4506호선 입고자재 매칭작업)"); return; }
     setLoading(true);
     try {
-      // 상태는 전체로 저장 — 매칭 결과 보기 화면에서 상태별 필터링
       const r = await fetch("/api/steel-match", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), statuses: "ALL", specs }),
+        body: JSON.stringify({ name: name.trim(), statuses: statusesToParam(statuses), specs }),
       });
       const d = await r.json();
       if (!d.success) { alert(d.error ?? "생성 실패"); return; }
@@ -477,7 +546,11 @@ function UploadMatchModal({ onClose, onCreated }: { onClose: () => void; onCreat
               <input value={name} onChange={e => setName(e.target.value)} placeholder="예: 4506호선 입고자재 매칭작업"
                 className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" autoFocus />
             </div>
-            <p className="text-xs text-gray-500">생성 후 [보기]에서 상태(대기·입고·투입·절단·외부)별로 매칭 결과를 필터링할 수 있습니다.</p>
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1.5">매칭 대상 상태 <span className="text-gray-400 font-normal">(1개 이상)</span></label>
+              <StatusPicker selected={statuses} onChange={setStatuses} />
+              <p className="text-[11px] text-gray-400 mt-1">선택한 상태의 강재전체목록 자재와만 매칭합니다. 매칭값이 없으면 &apos;미매칭&apos;으로 표시됩니다.</p>
+            </div>
             <div className="flex items-center justify-between pt-2 border-t border-gray-100">
               <button onClick={() => setStep("upload")} className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50">← 다시 업로드</button>
               <button onClick={create} disabled={loading} className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40">
