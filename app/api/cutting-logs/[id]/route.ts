@@ -132,6 +132,7 @@ export async function PATCH(
         block: string | null;
         alternateVesselCode: string | null;
         assignedRemnantId: string | null;
+        assignedRemnant: { type: string } | null;
       } | null = null;
       if (log.drawingNo && log.projectId) {
         const target = await prisma.drawingList.findFirst({
@@ -143,6 +144,7 @@ export async function PATCH(
           orderBy: { createdAt: "asc" },
           select: {
             id: true, block: true, alternateVesselCode: true, assignedRemnantId: true,
+            assignedRemnant: { select: { type: true } },
           },
         });
         if (target) {
@@ -165,6 +167,14 @@ export async function PATCH(
               data:  { status: "EXHAUSTED" },
             });
           }
+          // 이 도면에서 발생한 등록잔재에 원판 판번호 전파 (원재 → 등록잔재 판번호 연속)
+          // 등록잔재는 블록강재등록 시 drawingListId 로 도면에 연결되어 생성됨 → 절단완료 시 실사용 판번호 기입
+          if (log.heatNo?.trim()) {
+            await prisma.remnant.updateMany({
+              where: { drawingListId: target.id, type: "REGISTERED" },
+              data:  { heatNo: log.heatNo.trim() },
+            });
+          }
         }
       }
 
@@ -183,7 +193,8 @@ export async function PATCH(
       // R8: SteelPlan 측 갱신 조건과 대칭 — drawingNo 도 필수
       //     (drawingNo 없으면 SteelPlan/SteelPlanHeat 둘 다 갱신 스킵 → 모순 상태 방지)
       const effectiveVessel = targetDrawing?.alternateVesselCode?.trim() || project?.projectCode;
-      if (log.drawingNo && log.heatNo?.trim() && effectiveVessel && log.material && log.thickness && log.width && log.length) {
+      // 잔재(등록/현장/여유) 사용 절단은 정규원재(SteelPlan/SteelPlanHeat)를 건드리지 않음 — 여유원재는 아래 전용 블록에서 처리
+      if (!targetDrawing?.assignedRemnantId && log.drawingNo && log.heatNo?.trim() && effectiveVessel && log.material && log.thickness && log.width && log.length) {
         await prisma.steelPlanHeat.updateMany({
           where: {
             heatNo: log.heatNo.trim(),
@@ -196,6 +207,46 @@ export async function PATCH(
         });
       }
 
+      // ── 여유원재(SURPLUS) 사용 절단 — 실물 판번호 추적 ─────────────────────
+      // 여유원재는 미절단 원판이므로 현장에서 입력한 실물 판번호를
+      //   ① 잔재 레코드에 기록  ② 판번호리스트(SteelPlanHeat)에 CUT 으로 등록 (정규원재처럼 추적)
+      // 발생 등록잔재로의 판번호 연결은 위 drawingListId 전파(절단완료)에서 처리됨
+      if (
+        targetDrawing?.assignedRemnantId &&
+        targetDrawing.assignedRemnant?.type === "SURPLUS" &&
+        log.heatNo?.trim() && effectiveVessel &&
+        log.material && log.thickness && log.width && log.length
+      ) {
+        const hn  = log.heatNo.trim();
+        const mat = log.material.trim().toUpperCase();
+        await prisma.remnant.update({
+          where: { id: targetDrawing.assignedRemnantId },
+          data:  { heatNo: hn },
+        });
+        const existingHeat = await prisma.steelPlanHeat.findFirst({
+          where: {
+            heatNo: hn, vesselCode: effectiveVessel,
+            material: { equals: mat, mode: "insensitive" },
+            thickness: log.thickness, width: log.width, length: log.length,
+          },
+          select: { id: true },
+        });
+        if (existingHeat) {
+          await prisma.steelPlanHeat.update({
+            where: { id: existingHeat.id },
+            data:  { status: "CUT", cutAt: log.endAt ?? new Date() },
+          });
+        } else {
+          await prisma.steelPlanHeat.create({
+            data: {
+              heatNo: hn, vesselCode: effectiveVessel, material: mat,
+              thickness: log.thickness, width: log.width, length: log.length,
+              status: "CUT", cutAt: log.endAt ?? new Date(),
+            },
+          });
+        }
+      }
+
       // ── SteelPlan: 사용된 강재 1장 RECEIVED/ISSUED → COMPLETED ────────────
       // 우선순위 매칭:
       //   1차) 이 블록 reservedFor 매칭 (신규 "호선/블록" + 구형 "블록")
@@ -204,7 +255,7 @@ export async function PATCH(
       // alt vessel: targetDrawing.alternateVesselCode 우선
       // R5: log.drawingNo 필수 — DELETE 의 복원 가드(line 353)가 drawingNo 기반이라
       //     비대칭 방지 위해 complete 측도 drawingNo 없으면 SteelPlan 갱신 스킵
-      if (log.drawingNo && log.material && log.thickness && log.width && log.length && effectiveVessel) {
+      if (!targetDrawing?.assignedRemnantId && log.drawingNo && log.material && log.thickness && log.width && log.length && effectiveVessel) {
         const blockCode = targetDrawing?.block ?? "UNKNOWN";
         const newFmt    = project ? `${project.projectCode}/${blockCode}` : null;
         const allowedReservedFor = [

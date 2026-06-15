@@ -12,6 +12,7 @@ interface DrawingRow {
   id: string; drawingNo: string | null; heatNo: string | null;
   material: string; thickness: number; width: number; length: number; qty: number; block: string | null;
   assignedRemnantId?: string | null;
+  assignedRemnant?: { type: string; heatNo: string | null } | null;
 }
 interface CuttingPause {
   reason: string; reasonText: string | null;
@@ -151,6 +152,7 @@ export default function FieldWorklog({
   const selWorker = workers.find(w => w.id === s1.operatorId);
   const selDrawing    = drawings.find(d => d.id === drawingId);
   const isRemnantDraw = !!selDrawing?.assignedRemnantId;
+  const isSurplusDraw = selDrawing?.assignedRemnant?.type === "SURPLUS";   // 여유원재 사용 절단 — 실물 판번호 입력 필요
 
   const refreshLogs = useCallback(async () => {
     const res = await fetch(`/api/cutting-logs?date=${new Date().toISOString().slice(0, 10)}&includeStuck=true`);
@@ -321,11 +323,13 @@ export default function FieldWorklog({
 
   const handleDrawingSelect = async (did: string) => {
     setDrawingId(did);
-    setHeatNo("");
     setHeatOptions([]);
-    if (!did) return;
     const row = drawings.find(d => d.id === did);
-    if (!row || !s1.vesselCode) return;
+    // 여유원재 사용 절단: 잔재의 기존 판번호로 프리필 (현장에서 수정 가능), 그 외엔 초기화
+    setHeatNo(row?.assignedRemnant?.type === "SURPLUS" ? (row.assignedRemnant.heatNo ?? "") : "");
+    if (!did || !row || !s1.vesselCode) return;
+    // 잔재 사용 행은 판번호리스트(heat-options) 조회 불필요 (정규원재만 조회)
+    if (row.assignedRemnantId) return;
     setHeatLoading(true);
     try {
       const params = new URLSearchParams({
@@ -345,6 +349,12 @@ export default function FieldWorklog({
     if (!s1.projectId){ setError("호선·블록을 선택하세요."); return; }
     if (!s1.operatorId){ setError("작업자를 선택하세요."); return; }
     if (!drawingId)    { setError("도면번호를 선택하세요."); return; }
+    {
+      const selRow = drawings.find(d => d.id === drawingId);
+      if (selRow?.assignedRemnant?.type === "SURPLUS" && !heatNo.trim()) {
+        setError("여유원재는 실물 판번호를 입력하세요."); return;
+      }
+    }
 
     setLoading(true);
     try {
@@ -1127,10 +1137,23 @@ export default function FieldWorklog({
                 </div>
               )}
 
-              {/* Heat NO — 등록잔재사용 행은 판번호 불필요 */}
-              {isRemnantDraw && (
+              {/* Heat NO — 등록잔재/현장잔재 사용 행은 판번호 불필요, 여유원재는 실물 판번호 입력 */}
+              {isRemnantDraw && !isSurplusDraw && (
                 <div className="bg-orange-950 border border-orange-700 rounded-xl px-3 py-2.5 text-xs text-orange-300">
                   등록잔재 사용 절단 — 판번호 없이 작업 시작 가능합니다.
+                </div>
+              )}
+              {isSurplusDraw && (
+                <div>
+                  <label className="text-xs text-gray-400 font-medium mb-1.5 block">
+                    판번호(Heat NO) <span className="text-orange-400">(여유원재 — 실물 판번호 입력)</span>
+                  </label>
+                  <input
+                    value={heatNo}
+                    onChange={e => setHeatNo(e.target.value)}
+                    placeholder="실물 판번호 입력"
+                    className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white placeholder-gray-500 font-mono"
+                  />
                 </div>
               )}
               {!isRemnantDraw && <div>

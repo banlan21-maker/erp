@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
 
       const waitingRows = await prisma.drawingList.findMany({
         where: { projectId, status: "WAITING" },
+        include: { assignedRemnant: { select: { type: true, heatNo: true } } },
         orderBy: { createdAt: "asc" },
       });
 
