@@ -34,9 +34,9 @@ export default function ScrapMain({
 
   const tabs: { key: TabKey; icon: React.ReactNode; label: string }[] = [
     { key: "register",   icon: <PackagePlus size={14} />, label: "잔재등록" },
-    { key: "remnant",    icon: <Package size={14} />,     label: "현장잔재" },
     { key: "surplus",    icon: <Layers size={14} />,      label: "여유원재" },
     { key: "registered", icon: <Boxes size={14} />,       label: "등록잔재" },
+    { key: "remnant",    icon: <Package size={14} />,     label: "현장잔재" },
     { key: "urgent",     icon: <Zap size={14} />,         label: "돌발등록" },
   ];
 

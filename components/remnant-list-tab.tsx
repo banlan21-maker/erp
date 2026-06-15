@@ -244,7 +244,7 @@ export default function RemnantListTab({
   // 종류별 컬럼 구성: 여유원재는 발생블록/폭2/길이2 숨김, 등록잔재만 발생도면번호 표시
   const cols = ALL_COLS.filter(c => {
     if (c.key === "drawingNo") return typeFilter === "REGISTERED";
-    if (typeFilter === "SURPLUS" && (c.key === "block" || c.key === "width2" || c.key === "length2")) return false;
+    if (typeFilter === "SURPLUS" && (c.key === "block" || c.key === "shape" || c.key === "width2" || c.key === "length2")) return false;
     return true;
   });
   const weightIdx = cols.findIndex(c => c.key === "weight");

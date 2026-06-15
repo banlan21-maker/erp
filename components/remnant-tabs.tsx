@@ -360,18 +360,23 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
         <div>
           <label className="block text-xs font-semibold text-gray-700 mb-1.5">종류 <span className="text-red-500">*</span></label>
           <div className="flex gap-2 flex-wrap">
-            {Object.entries(TYPE_LABEL).map(([v, l]) => (
+            {([
+              ["SURPLUS",    "여유원재"],
+              ["REGISTERED", "등록잔재"],
+              ["REMNANT",    "현장잔재"],
+            ] as const).map(([v, l]) => (
               <label key={v} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border cursor-pointer text-xs font-medium transition-all ${
                 type === v ? "border-blue-500 bg-blue-50 text-blue-700" : "border-gray-200 text-gray-600 hover:border-gray-300"
               }`}>
-                <input type="radio" name="bulk-type" value={v} checked={type === v} onChange={() => setType(v)} className="hidden" />
+                <input type="radio" name="bulk-type" value={v} checked={type === v} onChange={() => { setType(v); if (v === "SURPLUS") handleShapeChange("RECTANGLE"); }} className="hidden" />
                 {l}
               </label>
             ))}
           </div>
         </div>
 
-        {/* 형태 */}
+        {/* 형태 — 여유원재는 사각형만이므로 형태 선택 숨김 (RECTANGLE 고정) */}
+        {!isSurplus && (
         <div>
           <label className="block text-xs font-semibold text-gray-700 mb-1.5">형태 <span className="text-red-500">*</span></label>
           <div className="flex gap-2 flex-wrap">
@@ -386,6 +391,7 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
           </div>
           {isIrregular && <p className="text-[11px] text-orange-500 mt-1">* 불규칙형은 각 행마다 중량을 직접 입력해주세요.</p>}
         </div>
+        )}
 
         {/* 발생 출처 */}
         <div>
@@ -438,7 +444,7 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs text-gray-500">행별 입력 · <span className="font-mono">Enter</span> 다음칸 · <span className="font-mono">Shift+Enter</span> 다음행 · <span className="font-mono">↑↓←→</span> 셀 이동</p>
-          <span className="text-xs text-gray-400">공통 설정: <strong className="text-blue-600">{typeLabel(type)}</strong> · <strong className="text-indigo-600">{shapeLabel(shape)}</strong></span>
+          <span className="text-xs text-gray-400">공통 설정: <strong className="text-blue-600">{typeLabel(type)}</strong>{!isSurplus && <> · <strong className="text-indigo-600">{shapeLabel(shape)}</strong></>}</span>
         </div>
 
         <div className="overflow-x-auto">
