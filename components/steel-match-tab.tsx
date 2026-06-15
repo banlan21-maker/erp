@@ -37,8 +37,6 @@ interface Spec    { vesselCode: string; material: string; thickness: number; wid
 interface PlanRow { id: string; vesselCode: string; material: string; thickness: number; width: number; length: number; status: string; uploadBatchNo: string | null; receivedAt: string | null; storageLocation: string | null; reservedFor: string | null }
 interface MatchRow { matched: boolean; spec: Spec; plan: PlanRow | null }
 
-const statusesLabel = (s: string) => (!s || s === "ALL") ? "전체" : s.split(",").map(k => STATUS_LABEL[k] ?? k).join("·");
-
 /* ── 엑셀 파싱 (호선·재질·두께·폭·길이, 호선 빈칸 허용) ──────────────────────── */
 function parseSpecs(raw: unknown[][]): Spec[] {
   let headerRow = 0;
@@ -202,21 +200,19 @@ export default function SteelMatchTab() {
               <th className="px-3 py-2 text-left font-medium text-gray-600">매칭 이름</th>
               <th className="px-3 py-2 text-left font-medium text-gray-600">업로드일시</th>
               <th className="px-3 py-2 text-right font-medium text-gray-600">사양수</th>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">기본 대상상태</th>
               <th className="px-3 py-2 text-center font-medium text-gray-600 w-28">작업</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
-              <tr><td colSpan={5} className="py-8 text-center text-gray-400">불러오는 중...</td></tr>
+              <tr><td colSpan={4} className="py-8 text-center text-gray-400">불러오는 중...</td></tr>
             ) : jobs.length === 0 ? (
-              <tr><td colSpan={5} className="py-8 text-center text-gray-400">저장된 매칭 작업이 없습니다. [엑셀 업로드 매칭]으로 시작하세요.</td></tr>
+              <tr><td colSpan={4} className="py-8 text-center text-gray-400">저장된 매칭 작업이 없습니다. [엑셀 업로드 매칭]으로 시작하세요.</td></tr>
             ) : jobs.map(j => (
               <tr key={j.id} className={`hover:bg-blue-50/40 ${selJobId === j.id ? "bg-blue-50" : ""}`}>
                 <td className="px-3 py-2 font-medium text-gray-800">{j.name}</td>
                 <td className="px-3 py-2 text-gray-500">{fmtDateTime(j.createdAt)}</td>
                 <td className="px-3 py-2 text-right text-gray-600">{j.specCount}</td>
-                <td className="px-3 py-2 text-gray-500">{statusesLabel(j.statuses)}</td>
                 <td className="px-3 py-2 text-center">
                   <div className="flex items-center justify-center gap-1">
                     <button onClick={() => openJob(j.id)} className="inline-flex items-center gap-1 px-2 py-1 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-700"><Eye size={11} /> 보기</button>
@@ -322,7 +318,6 @@ function UploadMatchModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [step, setStep]       = useState<"upload" | "confirm">("upload");
   const [specs, setSpecs]     = useState<Spec[]>([]);
   const [name, setName]       = useState("");
-  const [statuses, setStatuses] = useState<Set<string>>(new Set(ALL_KEYS));
   const [loading, setLoading] = useState(false);
 
   const handleFile = async (file: File) => {
@@ -345,21 +340,15 @@ function UploadMatchModal({ onClose, onCreated }: { onClose: () => void; onCreat
     } finally { setLoading(false); }
   };
 
-  const toggle = (key: string) => setStatuses(prev => {
-    const next = new Set(prev);
-    if (next.has(key)) next.delete(key); else next.add(key);
-    return next.size === 0 ? prev : next;
-  });
-
   const create = async () => {
     if (!name.trim()) { alert("매칭 이름을 입력하세요. (예: 4506호선 입고자재 매칭작업)"); return; }
     setLoading(true);
     try {
-      const stParam = statuses.size === ALL_KEYS.length ? "ALL" : Array.from(statuses).join(",");
+      // 상태는 전체로 저장 — 매칭 결과 보기 화면에서 상태별 필터링
       const r = await fetch("/api/steel-match", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), statuses: stParam, specs }),
+        body: JSON.stringify({ name: name.trim(), statuses: "ALL", specs }),
       });
       const d = await r.json();
       if (!d.success) { alert(d.error ?? "생성 실패"); return; }
@@ -399,20 +388,7 @@ function UploadMatchModal({ onClose, onCreated }: { onClose: () => void; onCreat
               <input value={name} onChange={e => setName(e.target.value)} placeholder="예: 4506호선 입고자재 매칭작업"
                 className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" autoFocus />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1.5">기본 대상 상태 <span className="text-gray-400 font-normal">(보기에서 변경 가능)</span></label>
-              <div className="flex gap-1.5 flex-wrap">
-                {STATUS_LIST.map(s => {
-                  const on = statuses.has(s.key);
-                  return (
-                    <button key={s.key} type="button" onClick={() => toggle(s.key)}
-                      className={`px-2.5 py-1 text-xs rounded-full border ${on ? "bg-blue-600 border-blue-600 text-white" : "border-gray-300 text-gray-500 hover:bg-gray-50"}`}>
-                      {s.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            <p className="text-xs text-gray-500">생성 후 [보기]에서 상태(대기·입고·투입·절단·외부)별로 매칭 결과를 필터링할 수 있습니다.</p>
             <div className="flex items-center justify-between pt-2 border-t border-gray-100">
               <button onClick={() => setStep("upload")} className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50">← 다시 업로드</button>
               <button onClick={create} disabled={loading} className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40">
