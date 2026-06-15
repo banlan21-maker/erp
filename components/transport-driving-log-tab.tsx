@@ -22,7 +22,7 @@ interface DrivingLog {
   endTime: string | null;
   startMileage: number | null;
   endMileage: number | null;
-  fuelCost: number | null;
+  fuelLiters: number | null;
   tollCost: number | null;
   memo: string | null;
   createdAt: string;
@@ -36,11 +36,13 @@ const LOG_INIT = {
   departure: "", destination: "", purpose: "",
   startTime: "", endTime: "",
   startMileage: "", endMileage: "",
-  fuelCost: "", tollCost: "", memo: "",
+  fuelLiters: "", tollCost: "", memo: "",
 };
 
 const won = (n: number | null) =>
   n != null ? n.toLocaleString() + "원" : "-";
+const liter = (n: number | null) =>
+  n != null ? n.toLocaleString() + "L" : "-";
 const km = (n: number | null) =>
   n != null ? n.toLocaleString() + "km" : "-";
 const distance = (s: number | null, e: number | null) =>
@@ -152,7 +154,7 @@ export default function TransportDrivingLogTab({
       "출발지", "도착지", "목적",
       "출발시간", "도착시간",
       "출발km", "도착km", "주행거리(km)",
-      "유류비(원)", "통행료(원)", "메모",
+      "주유량(L)", "통행료(원)", "메모",
     ];
 
     const toRow = (l: DrivingLog) => [
@@ -169,7 +171,7 @@ export default function TransportDrivingLogTab({
       l.startMileage ?? "",
       l.endMileage ?? "",
       l.startMileage != null && l.endMileage != null && l.endMileage >= l.startMileage ? l.endMileage - l.startMileage : "",
-      l.fuelCost ?? "",
+      l.fuelLiters ?? "",
       l.tollCost ?? "",
       l.memo ?? "",
     ];
@@ -185,7 +187,7 @@ export default function TransportDrivingLogTab({
       [
         "합계", "", "", "", "", "", "", "", "", "", "", "",
         all.reduce((s, l) => s + (l.startMileage != null && l.endMileage != null && l.endMileage >= l.startMileage ? l.endMileage - l.startMileage : 0), 0),
-        all.reduce((s, l) => s + (l.fuelCost ?? 0), 0),
+        all.reduce((s, l) => s + (l.fuelLiters ?? 0), 0),
         all.reduce((s, l) => s + (l.tollCost ?? 0), 0),
         `총 ${all.length}건`,
       ],
@@ -220,7 +222,7 @@ export default function TransportDrivingLogTab({
         [
           "합계", "", "", "", "", "", "", "", "", "", "", "",
           group.reduce((s, l) => s + (l.startMileage != null && l.endMileage != null && l.endMileage >= l.startMileage ? l.endMileage - l.startMileage : 0), 0),
-          group.reduce((s, l) => s + (l.fuelCost ?? 0), 0),
+          group.reduce((s, l) => s + (l.fuelLiters ?? 0), 0),
           group.reduce((s, l) => s + (l.tollCost ?? 0), 0),
           `총 ${group.length}건`,
         ],
@@ -265,7 +267,7 @@ export default function TransportDrivingLogTab({
           endTime:      form.endTime      || null,
           startMileage: form.startMileage || null,
           endMileage:   form.endMileage   || null,
-          fuelCost:     form.fuelCost     || null,
+          fuelLiters:     form.fuelLiters     || null,
           tollCost:     form.tollCost     || null,
           memo:         form.memo         || null,
         }),
@@ -293,7 +295,7 @@ export default function TransportDrivingLogTab({
       endTime:      log.endTime      ?? "",
       startMileage: log.startMileage != null ? String(log.startMileage) : "",
       endMileage:   log.endMileage   != null ? String(log.endMileage)   : "",
-      fuelCost:     log.fuelCost     != null ? String(log.fuelCost)     : "",
+      fuelLiters:     log.fuelLiters     != null ? String(log.fuelLiters)     : "",
       tollCost:     log.tollCost     != null ? String(log.tollCost)     : "",
       memo:         log.memo         ?? "",
     });
@@ -315,7 +317,7 @@ export default function TransportDrivingLogTab({
         endTime:      editForm.endTime,
         startMileage: editForm.startMileage,
         endMileage:   editForm.endMileage,
-        fuelCost:     editForm.fuelCost,
+        fuelLiters:     editForm.fuelLiters,
         tollCost:     editForm.tollCost,
         memo:         editForm.memo,
       }),
@@ -337,7 +339,7 @@ export default function TransportDrivingLogTab({
     (acc, l) => ({
       count:    acc.count + 1,
       distance: acc.distance + (l.startMileage != null && l.endMileage != null && l.endMileage >= l.startMileage ? l.endMileage - l.startMileage : 0),
-      fuel:     acc.fuel    + (l.fuelCost  ?? 0),
+      fuel:     acc.fuel    + (l.fuelLiters  ?? 0),
       toll:     acc.toll    + (l.tollCost  ?? 0),
     }),
     { count: 0, distance: 0, fuel: 0, toll: 0 }
@@ -357,7 +359,7 @@ export default function TransportDrivingLogTab({
     { key: "startMileage",label: "출발거리",    align: "right" as const },
     { key: "endMileage",  label: "도착거리",    align: "right" as const },
     { key: "distance",    label: "운행거리",    align: "right" as const },
-    { key: "fuelCost",    label: "유류비",      align: "right" as const },
+    { key: "fuelLiters",    label: "주유량(L)",   align: "right" as const },
     { key: "tollCost",    label: "통행료",      align: "right" as const },
     { key: "memo",        label: "비고",        align: "left"  as const },
   ], []);
@@ -374,7 +376,7 @@ export default function TransportDrivingLogTab({
       case "startMileage": return l.startMileage != null ? String(l.startMileage) : "";
       case "endMileage":   return l.endMileage   != null ? String(l.endMileage)   : "";
       case "distance":     return (l.startMileage != null && l.endMileage != null && l.endMileage >= l.startMileage) ? String(l.endMileage - l.startMileage) : "";
-      case "fuelCost":     return l.fuelCost != null ? String(l.fuelCost) : "";
+      case "fuelLiters":     return l.fuelLiters != null ? String(l.fuelLiters) : "";
       case "tollCost":     return l.tollCost != null ? String(l.tollCost) : "";
       case "memo":         return l.memo ?? "";
       default:             return "";
@@ -506,7 +508,7 @@ export default function TransportDrivingLogTab({
         {[
           { label: "총 운행건수", value: `${summary.count}건` },
           { label: "총 운행거리", value: `${summary.distance.toLocaleString()}km` },
-          { label: "총 유류비", value: `${summary.fuel.toLocaleString()}원` },
+          { label: "총 주유량", value: `${summary.fuel.toLocaleString()}L` },
           { label: "총 통행료", value: `${summary.toll.toLocaleString()}원` },
         ].map(item => (
           <div key={item.label} className="bg-white rounded-xl border border-gray-200 p-4">
@@ -589,7 +591,7 @@ export default function TransportDrivingLogTab({
                     <td className="px-2 py-1.5 border-r border-gray-100"><Input type="number" value={editForm.startMileage} onChange={e => setE("startMileage", e.target.value)} className="h-7 text-xs w-20 text-right" /></td>
                     <td className="px-2 py-1.5 border-r border-gray-100"><Input type="number" value={editForm.endMileage} onChange={e => setE("endMileage", e.target.value)} className="h-7 text-xs w-20 text-right" /></td>
                     <td className="px-2 py-1.5 text-xs text-gray-400 text-right border-r border-gray-100">-</td>
-                    <td className="px-2 py-1.5 border-r border-gray-100"><Input type="number" value={editForm.fuelCost} onChange={e => setE("fuelCost", e.target.value)} className="h-7 text-xs w-20 text-right" /></td>
+                    <td className="px-2 py-1.5 border-r border-gray-100"><Input type="number" step="any" value={editForm.fuelLiters} onChange={e => setE("fuelLiters", e.target.value)} className="h-7 text-xs w-20 text-right" /></td>
                     <td className="px-2 py-1.5 border-r border-gray-100"><Input type="number" value={editForm.tollCost} onChange={e => setE("tollCost", e.target.value)} className="h-7 text-xs w-20 text-right" /></td>
                     <td className="px-2 py-1.5 border-r border-gray-100"><Input value={editForm.memo} onChange={e => setE("memo", e.target.value)} className="h-7 text-xs w-28" /></td>
                     <td className="px-2 py-1.5">
@@ -623,7 +625,7 @@ export default function TransportDrivingLogTab({
                         ? <span className="text-blue-600">{distance(log.startMileage, log.endMileage)}</span>
                         : <span className="text-gray-300">-</span>}
                     </td>
-                    <td className="px-3 py-2 text-gray-600 text-right border-r border-gray-100">{won(log.fuelCost)}</td>
+                    <td className="px-3 py-2 text-gray-600 text-right border-r border-gray-100">{liter(log.fuelLiters)}</td>
                     <td className="px-3 py-2 text-gray-600 text-right border-r border-gray-100">{won(log.tollCost)}</td>
                     <td className="px-3 py-2 text-gray-500 text-xs max-w-[140px] truncate border-r border-gray-100" title={log.memo ?? ""}>{log.memo || "-"}</td>
                     <td className="px-3 py-2 text-center">
@@ -846,8 +848,8 @@ export default function TransportDrivingLogTab({
               {/* 비용 */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">유류비 (원)</label>
-                  <Input type="number" value={form.fuelCost} onChange={e => set("fuelCost", e.target.value)} placeholder="0" />
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">주유량 (L)</label>
+                  <Input type="number" step="any" value={form.fuelLiters} onChange={e => set("fuelLiters", e.target.value)} placeholder="0" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">통행료 (원)</label>

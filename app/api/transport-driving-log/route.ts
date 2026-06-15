@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     const {
       vehicleId, date, driver, departure, destination, purpose,
       startTime, endTime, startMileage, endMileage,
-      fuelCost, tollCost, memo,
+      fuelCost, fuelLiters, tollCost, memo,
     } = body;
 
     if (!vehicleId)        return NextResponse.json({ success: false, error: "차량을 선택해주세요." },  { status: 400 });
@@ -72,6 +72,7 @@ export async function POST(req: NextRequest) {
           startMileage: startMileage != null && startMileage !== "" ? Number(startMileage) : null,
           endMileage:   parsedEnd,
           fuelCost:     fuelCost     != null && fuelCost     !== "" ? Number(fuelCost)     : null,
+          fuelLiters:   fuelLiters   != null && fuelLiters   !== "" ? Number(fuelLiters)   : null,
           tollCost:     tollCost     != null && tollCost     !== "" ? Number(tollCost)     : null,
           memo:         memo         || null,
         },

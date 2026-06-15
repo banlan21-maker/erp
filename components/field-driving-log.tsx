@@ -16,7 +16,7 @@ const INIT = {
   purpose: "", departure: "", destination: "",
   startTime: "", endTime: "",
   startMileage: "", endMileage: "",
-  fuelCost: "", tollCost: "", memo: "",
+  fuelLiters: "", tollCost: "", memo: "",
 };
 
 /* ── 공통 스타일 ── */
@@ -206,7 +206,7 @@ export default function FieldDrivingLog({
           endTime:      form.endTime      || null,
           startMileage: form.startMileage || null,
           endMileage:   form.endMileage   || null,
-          fuelCost:     form.fuelCost     || null,
+          fuelLiters:   form.fuelLiters   || null,
           tollCost:     form.tollCost     || null,
           memo:         form.memo         || null,
         }),
@@ -558,14 +558,15 @@ export default function FieldDrivingLog({
         {/* ⑧ 비용 */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={labelCls}>유류비 (원)</label>
+            <label className={labelCls}>주유량 (L)</label>
             <input
               type="number"
-              value={form.fuelCost}
-              onChange={e => set("fuelCost", e.target.value)}
+              step="any"
+              value={form.fuelLiters}
+              onChange={e => set("fuelLiters", e.target.value)}
               placeholder="0"
               className={fieldCls}
-              inputMode="numeric"
+              inputMode="decimal"
             />
           </div>
           <div>

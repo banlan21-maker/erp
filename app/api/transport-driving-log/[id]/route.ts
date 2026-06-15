@@ -11,7 +11,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const {
       date, driver, departure, destination, purpose,
       startTime, endTime, startMileage, endMileage,
-      fuelCost, tollCost, memo,
+      fuelCost, fuelLiters, tollCost, memo,
     } = body;
 
     const data: any = {};
@@ -25,6 +25,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (startMileage !== undefined) data.startMileage = startMileage !== "" && startMileage != null ? Number(startMileage) : null;
     if (endMileage   !== undefined) data.endMileage   = endMileage   !== "" && endMileage   != null ? Number(endMileage)   : null;
     if (fuelCost     !== undefined) data.fuelCost     = fuelCost     !== "" && fuelCost     != null ? Number(fuelCost)     : null;
+    if (fuelLiters   !== undefined) data.fuelLiters   = fuelLiters   !== "" && fuelLiters   != null ? Number(fuelLiters)   : null;
     if (tollCost     !== undefined) data.tollCost     = tollCost     !== "" && tollCost     != null ? Number(tollCost)     : null;
     if (memo         !== undefined) data.memo         = memo         || null;
 

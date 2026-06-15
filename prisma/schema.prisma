@@ -1102,8 +1102,9 @@ model TransportDrivingLog {
   endTime      String? // 도착시간 HH:MM
   startMileage Int? // 출발 전 주행거리 (km)
   endMileage   Int? // 도착 후 주행거리 (km)
-  fuelCost     Int? // 유류비 (원)
-  tollCost     Int? // 통행료 (원)
+  fuelCost     Int?   // 유류비(원) — legacy, 미사용 (주유량으로 대체)
+  fuelLiters   Float? // 주유량 (L)
+  tollCost     Int?   // 통행료 (원)
   memo         String?
 
   createdAt DateTime @default(now())
