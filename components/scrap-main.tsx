@@ -15,9 +15,11 @@ interface ProjectOption {
 interface RemnantOption {
   id: string;
   remnantNo: string;
+  type: string;
   material: string;
   thickness: number;
   weight: number;
+  heatNo: string | null;
   needsConsult: boolean;
 }
 

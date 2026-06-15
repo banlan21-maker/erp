@@ -79,6 +79,7 @@ export async function POST(request: NextRequest) {
       requestDate, dueDate,
       materialMemo, drawingNo, destination, useWeight,
       remnantId, status, registeredBy, memo,
+      generatedRemnants,
     } = body;
 
     if (!title?.trim()) {
@@ -120,6 +121,58 @@ export async function POST(request: NextRequest) {
         where: { id: remnantId, reservedFor: null },
         data:  { reservedFor: urgentNo },
       });
+    }
+
+    // 사용 잔재(여유원재/등록잔재)에서 발생하는 등록잔재 생성 — 블록자재등록의 발생잔재와 동일 개념
+    // 원재(여유원재)·등록잔재에서만 발생 가능, 부모(원재/등록잔재)의 판번호를 그대로 이어받음
+    const genList: Array<{ remnantNo?: string; shape?: string; width1?: number | string; length1?: number | string; width2?: number | string; length2?: number | string }> =
+      Array.isArray(generatedRemnants) ? generatedRemnants : [];
+    if (remnantId && genList.length > 0) {
+      const parent = await prisma.remnant.findUnique({
+        where: { id: remnantId },
+        select: {
+          type: true, material: true, thickness: true, heatNo: true,
+          sourceProjectId: true, sourceVesselName: true, sourceBlock: true,
+        },
+      });
+      if (parent && (parent.type === "SURPLUS" || parent.type === "REGISTERED")) {
+        const year = new Date().getFullYear();
+        const prefix = `REM-${year}-`;
+        const last = await prisma.remnant.findFirst({
+          where: { remnantNo: { startsWith: prefix } },
+          orderBy: { remnantNo: "desc" },
+          select: { remnantNo: true },
+        });
+        let seq = last ? parseInt(last.remnantNo.split("-")[2], 10) + 1 : 1;
+
+        for (const g of genList) {
+          const w1 = Number(g.width1), l1 = Number(g.length1);
+          if (!w1 || !l1) continue;
+          const shape = g.shape === "L_SHAPE" ? "L_SHAPE" : "RECTANGLE";
+          const w2 = g.width2 ? Number(g.width2) : null;
+          const l2 = g.length2 ? Number(g.length2) : null;
+          const area = shape === "L_SHAPE" ? (w1 * l1 - (w2 ?? 0) * (l2 ?? 0)) : (w1 * l1);
+          const weight = Math.round(parent.thickness * area * 7.85 / 1_000_000 * 10) / 10;
+          const customNo = g.remnantNo?.toString().trim();
+          const remnantNo = customNo || `${prefix}${String(seq++).padStart(3, "0")}`;
+          try {
+            await prisma.remnant.create({
+              data: {
+                remnantNo, type: "REGISTERED", shape,
+                material: parent.material, thickness: parent.thickness, weight,
+                width1: w1, length1: l1, width2: w2, length2: l2,
+                sourceProjectId:  parent.sourceProjectId,
+                sourceVesselName: parent.sourceVesselName,
+                sourceBlock:      parent.sourceBlock,
+                parentRemnantId:  remnantId,
+                heatNo:           parent.heatNo,      // 부모(원재/등록잔재) 판번호 이어받음
+                registeredBy:     registeredBy || "돌발",
+                status: "IN_STOCK",
+              },
+            });
+          } catch { /* 잔재번호 중복 등 개별 실패는 돌발 등록을 막지 않음 */ }
+        }
+      }
     }
 
     return NextResponse.json({ success: true, data: work }, { status: 201 });

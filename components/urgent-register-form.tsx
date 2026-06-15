@@ -7,7 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 interface Project { id: string; projectCode: string; projectName: string }
-interface Remnant { id: string; remnantNo: string; material: string; thickness: number; weight: number; needsConsult: boolean }
+interface Remnant { id: string; remnantNo: string; type: string; material: string; thickness: number; weight: number; heatNo: string | null; needsConsult: boolean }
+
+// 발생 등록잔재 입력 항목 (여유원재/등록잔재 사용 시)
+type GenItem = { remnantNo: string; shape: string; width1: string; length1: string; width2: string; length2: string };
+const emptyGen: GenItem = { remnantNo: "", shape: "RECTANGLE", width1: "", length1: "", width2: "", length2: "" };
+const REMNANT_TYPES: [string, string][] = [["SURPLUS", "여유원재"], ["REGISTERED", "등록잔재"], ["REMNANT", "현장잔재"]];
 
 const URGENCY_OPTIONS = [
   { value: "URGENT",   label: "⚡ 긴급",    desc: "당일·즉시 처리 필요",    color: "border-red-400 bg-red-50 text-red-700" },
@@ -39,7 +44,16 @@ export default function UrgentRegisterForm({
   const [form,   setForm]   = useState({ ...INIT });
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
+  // 사용 예정 잔재: 유형 먼저 선택 → 해당 유형 목록만 표시
+  const [remnantType, setRemnantType] = useState("");   // "" | SURPLUS | REGISTERED | REMNANT
+  const [genItems, setGenItems] = useState<GenItem[]>([]);
+  const updateGen = (i: number, k: keyof GenItem, v: string) =>
+    setGenItems(arr => arr.map((it, idx) => idx === i ? { ...it, [k]: v } : it));
+
   const selRemnant = remnants.find(r => r.id === form.remnantId);
+  const filteredRemnants = remnantType ? remnants.filter(r => r.type === remnantType) : [];
+  // 여유원재·등록잔재 사용 시에만 발생 등록잔재 등록 가능 (현장잔재는 불가)
+  const canGenRemnant = !!form.remnantId && (remnantType === "SURPLUS" || remnantType === "REGISTERED");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,6 +77,7 @@ export default function UrgentRegisterForm({
           destination:  form.destination  || null,
           useWeight:    form.useWeight    || null,
           remnantId:    form.remnantId    || null,
+          generatedRemnants: canGenRemnant ? genItems.filter(it => it.width1 && it.length1) : [],
           registeredBy: form.registeredBy || null,
           memo:         form.memo         || null,
         }),
@@ -71,6 +86,8 @@ export default function UrgentRegisterForm({
       if (!data.success) { setError(data.error); return; }
       setOk(true);
       setForm({ ...INIT });
+      setRemnantType("");
+      setGenItems([]);
       setTimeout(() => {
         setOk(false);
         router.push("/cutpart/urgent/list");
@@ -212,29 +229,105 @@ export default function UrgentRegisterForm({
           </div>
         </div>
 
-        {/* 사용 예정 잔재 */}
+        {/* 사용 예정 잔재 — 유형 먼저 선택 → 목록 표시 */}
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
+          <label className="block text-xs font-medium text-gray-600 mb-1.5">
             사용 예정 잔재 <span className="text-gray-400">(선택)</span>
           </label>
-          <select
-            value={form.remnantId}
-            onChange={e => set("remnantId", e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">-- 선택 안 함 --</option>
-            {remnants.map(r => (
-              <option key={r.id} value={r.id}>
-                {r.remnantNo} — {r.material} t{r.thickness} · {r.weight}kg
-                {r.needsConsult ? " ⚠️" : ""}
-              </option>
+          {/* 유형 선택 버튼 3개 */}
+          <div className="flex gap-2 mb-2">
+            {REMNANT_TYPES.map(([v, l]) => (
+              <button
+                type="button"
+                key={v}
+                onClick={() => { setRemnantType(remnantType === v ? "" : v); set("remnantId", ""); setGenItems([]); }}
+                className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium transition-all ${
+                  remnantType === v ? "border-orange-500 bg-orange-50 text-orange-700" : "border-gray-200 text-gray-500 hover:border-gray-300"
+                }`}
+              >
+                {l}
+              </button>
             ))}
-          </select>
+          </div>
+          {/* 선택된 유형의 목록 */}
+          {!remnantType ? (
+            <p className="text-xs text-gray-400 px-1 py-2">잔재 유형(여유원재 / 등록잔재 / 현장잔재)을 먼저 선택하세요.</p>
+          ) : (
+            <select
+              value={form.remnantId}
+              onChange={e => { set("remnantId", e.target.value); setGenItems([]); }}
+              className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">-- 선택 안 함 ({filteredRemnants.length}건) --</option>
+              {filteredRemnants.map(r => (
+                <option key={r.id} value={r.id}>
+                  {r.remnantNo} — {r.material} t{r.thickness} · {r.weight}kg
+                  {r.heatNo ? ` · 판:${r.heatNo}` : ""}
+                  {r.needsConsult ? " ⚠️" : ""}
+                </option>
+              ))}
+            </select>
+          )}
           {selRemnant?.needsConsult && (
             <p className="mt-1.5 text-xs text-purple-700 bg-purple-50 border border-purple-200 rounded-md px-3 py-2 flex items-center gap-1.5">
               <AlertTriangle size={12} />
               이 자재는 협의가 필요한 등록잔재입니다. 담당자 확인 후 진행하세요.
             </p>
+          )}
+
+          {/* 발생 등록잔재 — 여유원재/등록잔재 사용 시 (블록자재등록의 발생잔재와 동일) */}
+          {canGenRemnant && (
+            <div className="mt-3 border border-orange-200 bg-orange-50/40 rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-orange-700">이 자재에서 발생하는 등록잔재</span>
+                <button
+                  type="button"
+                  onClick={() => setGenItems(arr => [...arr, { ...emptyGen }])}
+                  className="text-xs px-2 py-1 border border-orange-300 text-orange-700 rounded hover:bg-orange-100"
+                >
+                  + 잔재 추가
+                </button>
+              </div>
+              {genItems.length === 0 && (
+                <p className="text-[11px] text-gray-400">필요 시 [잔재 추가]로 발생 등록잔재를 등록하세요. 재질·두께·판번호는 사용 자재에서 자동 적용됩니다.</p>
+              )}
+              {genItems.map((it, i) => (
+                <div key={i} className="flex flex-wrap gap-2 items-end bg-white border border-gray-200 rounded-md p-2">
+                  <div>
+                    <label className="text-[10px] text-gray-500 block mb-0.5">잔재번호</label>
+                    <input className="h-7 text-xs border rounded px-2 w-24" placeholder="자동" value={it.remnantNo} onChange={e => updateGen(i, "remnantNo", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-500 block mb-0.5">형태</label>
+                    <select className="h-7 text-xs border rounded px-1 bg-white" value={it.shape} onChange={e => updateGen(i, "shape", e.target.value)}>
+                      <option value="RECTANGLE">사각형</option>
+                      <option value="L_SHAPE">L자형</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-500 block mb-0.5">폭1 <span className="text-red-400">*</span></label>
+                    <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={it.width1} onChange={e => updateGen(i, "width1", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-500 block mb-0.5">길이1 <span className="text-red-400">*</span></label>
+                    <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={it.length1} onChange={e => updateGen(i, "length1", e.target.value)} />
+                  </div>
+                  {it.shape === "L_SHAPE" && (
+                    <>
+                      <div>
+                        <label className="text-[10px] text-gray-500 block mb-0.5">폭2</label>
+                        <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={it.width2} onChange={e => updateGen(i, "width2", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 block mb-0.5">길이2</label>
+                        <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={it.length2} onChange={e => updateGen(i, "length2", e.target.value)} />
+                      </div>
+                    </>
+                  )}
+                  <button type="button" onClick={() => setGenItems(arr => arr.filter((_, idx) => idx !== i))} className="text-xs text-red-500 hover:text-red-700 pb-1.5">삭제</button>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
