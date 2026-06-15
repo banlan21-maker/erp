@@ -110,6 +110,23 @@ const fmtYMDcompact = (iso: string | null | undefined) => {
   return `${yy}.${mm}.${dd}`;
 };
 
+/* 엑셀 컬럼 폭 자동 계산 — 헤더/셀 내용 길이에 맞춰 wch 산정 (한글·전각은 폭 2로) */
+function autoColWidths(rows: Record<string, unknown>[], headers?: string[]): { wch: number }[] {
+  const keys = headers ?? (rows.length > 0 ? Object.keys(rows[0]) : []);
+  if (keys.length === 0) return [];
+  const dispLen = (v: unknown) => {
+    const s = String(v ?? "");
+    let len = 0;
+    for (const ch of s) len += ch.charCodeAt(0) > 0x2e7f ? 2 : 1;   // 한글/한자/전각 → 2
+    return len;
+  };
+  return keys.map((k) => {
+    let max = dispLen(k);
+    for (const r of rows) max = Math.max(max, dispLen(r[k]));
+    return { wch: Math.min(Math.max(max + 2, 6), 60) };   // 여유 +2, 최소 6, 최대 60
+  });
+}
+
 const HEAT_STATUS: Record<string, { label: string; cls: string }> = {
   WAITING: { label: "대기", cls: "bg-yellow-100 text-yellow-700" },
   CUT:     { label: "절단", cls: "bg-blue-100  text-blue-700" },
@@ -429,8 +446,10 @@ export default function SteelPlanMain() {
 
   /* ── 선별지시서 출력 — loadPlan 과 동일한 필터를 전송해 화면과 결과 일치 ── */
   const [printing, setPrinting] = useState(false);
-  const handlePrint = async () => {
-    setPrinting(true);
+  const [selExcelLoading, setSelExcelLoading] = useState(false);
+
+  /* 선별지시서 데이터 조회 (출력·엑셀 공통) — 화면과 동일한 필터 전송 */
+  const fetchSelectionRows = async (): Promise<{ data: SteelPlanRow[]; filterDesc: string }> => {
     const p = new URLSearchParams();
     if (search) p.set("search", search);
     const cf = colFilters;
@@ -455,14 +474,9 @@ export default function SteelPlanMain() {
 
     const res  = await fetch(`/api/steel-plan?${p}`);
     const json = await res.json();
-    const data: SteelPlanRow[] = json.data;
-    setPrinting(false);
+    const data: SteelPlanRow[] = json.data ?? [];
 
     const labelOf = (s: string) => PLAN_STATUS[s]?.label ?? s;
-    const fmt = (iso: string | null) => fmtYMDcompact(iso) || "-";   // YY.MM.DD
-    const wt  = (t: number, w: number, l: number) =>
-      (Math.round(t * w * l * 7.85 / 1_000_000 * 10) / 10).toFixed(1);
-
     const filterDesc = [
       cf.vesselCode?.length       ? `호선: ${cf.vesselCode.join(", ")}`       : "",
       cf.material?.length         ? `재질: ${cf.material.join(", ")}`         : "",
@@ -471,24 +485,52 @@ export default function SteelPlanMain() {
       cf.length?.length           ? `길이: ${cf.length.join(", ")}`           : "",
       cf.status?.length           ? `상태: ${cf.status.map(labelOf).join(", ")}` : "",
       cf.receivedAt?.length       ? `입고일: ${cf.receivedAt.join(", ")}`     : "",
-      cf.storageLocation?.length  ? `보관위치: ${cf.storageLocation.join(", ")}` : "",
+      cf.storageLocation?.length  ? `위치: ${cf.storageLocation.join(", ")}`  : "",
       cf.reservedFor?.length      ? `확정정보: ${cf.reservedFor.join(", ")}`       : "",
       search                      ? `검색: ${search}`                         : "",
     ].filter(Boolean).join(" / ");
 
+    return { data, filterDesc };
+  };
+
+  /* 선별지시 행에 선별지시일 기록 (출력·엑셀 공통) */
+  const markSelectionPrinted = (ids: string[]) => {
+    if (ids.length === 0) return;
+    const now = new Date().toISOString();
+    updateRowsLocally(ids, { selectionPrintedAt: now });
+    fetch("/api/steel-plan/mark-printed", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    }).catch(() => {});
+  };
+
+  /* 선별지시서 출력 (인쇄) */
+  const handlePrint = async () => {
+    setPrinting(true);
+    const { data, filterDesc } = await fetchSelectionRows();
+    setPrinting(false);
+    if (data.length === 0) { alert("출력할 데이터가 없습니다."); return; }
+
+    const labelOf = (s: string) => PLAN_STATUS[s]?.label ?? s;
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const fmt = (iso: string | null) => fmtYMDcompact(iso) || "-";   // YY.MM.DD
+    const wt  = (t: number, w: number, l: number) =>
+      (Math.round(t * w * l * 7.85 / 1_000_000 * 10) / 10).toFixed(1);
+
     const rows_html = data.map((r, i) => `
       <tr class="${i % 2 === 0 ? "even" : ""}">
-        <td>${r.vesselCode}</td>
-        <td>${r.material}</td>
+        <td>${esc(r.vesselCode)}</td>
+        <td>${esc(r.material)}</td>
         <td class="num">${fmtT(r.thickness)}</td>
         <td class="num">${fmtL(r.width)}</td>
         <td class="num">${fmtL(r.length)}</td>
         <td class="num">${wt(r.thickness, r.width, r.length)}</td>
         <td>${fmt(r.receivedAt)}</td>
-        <td>${r.storageLocation ?? "-"}</td>
+        <td>${esc(r.storageLocation ?? "-")}</td>
         <td>${labelOf(r.status)}</td>
-        <td>${r.reservedFor ?? ""}</td>
-        <td class="memo">${r.memo ?? ""}</td>
+        <td>${esc(r.reservedFor ?? "")}</td>
+        <td class="memo">${esc(r.memo ?? "")}</td>
       </tr>`).join("");
 
     const html = `<!DOCTYPE html>
@@ -501,8 +543,8 @@ export default function SteelPlanMain() {
   body { font-family: "Malgun Gothic", sans-serif; font-size: 16pt; color: #111; padding: 4mm; }
   h1 { font-size: 20pt; font-weight: bold; text-align: center; margin-bottom: 2mm; letter-spacing: 1px; }
   .meta { text-align: center; font-size: 10pt; color: #555; margin-bottom: 2mm; }
-  /* auto layout — 호선/확정정보 컬럼이 내용 크기에 따라 자동으로 폭 결정 */
-  table { width: 100%; border-collapse: collapse; }
+  /* auto layout — 모든 컬럼이 내용 길이에 따라 자동으로 폭 결정 */
+  table { width: 100%; border-collapse: collapse; table-layout: auto; }
   th { background: #1e3a5f; color: #fff; padding: 1px 2px; font-size: 13pt; text-align: center; border: 1px solid #888; line-height: 1.1; white-space: nowrap; }
   td { padding: 1px 2px; border: 1px solid #aaa; text-align: center; vertical-align: middle; font-size: 16pt; line-height: 1.1; white-space: nowrap; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -519,23 +561,10 @@ export default function SteelPlanMain() {
 <h1>선별지시서</h1>
 <p class="meta">출력일시: ${new Date().toLocaleString("ko-KR")} | 총수량: ${data.length}장 | 총중량: ${data.reduce((s, r) => s + r.thickness * r.width * r.length * 7.85 / 1_000_000, 0).toFixed(1)}kg${filterDesc ? " | 필터: " + filterDesc : ""}</p>
 <table>
-  <colgroup>
-    <col />                       <!-- 호선   : auto (내용에 따라) -->
-    <col style="width:16mm" />    <!-- 재질    -->
-    <col style="width:11mm" />    <!-- 두께    -->
-    <col style="width:14mm" />    <!-- 폭      -->
-    <col style="width:14mm" />    <!-- 길이    -->
-    <col style="width:17mm" />    <!-- 중량    -->
-    <col style="width:18mm" />    <!-- 입고일  -->
-    <col style="width:22mm" />    <!-- 보관위치 -->
-    <col style="width:14mm" />    <!-- 상태    -->
-    <col />                       <!-- 확정정보 : auto -->
-    <col style="width:28mm" />    <!-- 메모    -->
-  </colgroup>
   <thead>
     <tr>
       <th>호선</th><th>재질</th><th>두께</th><th>폭</th><th>길이</th>
-      <th>중량(kg)</th><th>입고일</th><th>보관위치</th><th>상태</th><th>확정정보</th><th>메모</th>
+      <th>중량(kg)</th><th>입고일</th><th>위치</th><th>상태</th><th>확정정보</th><th>메모</th>
     </tr>
   </thead>
   <tbody>${rows_html}</tbody>
@@ -549,14 +578,40 @@ export default function SteelPlanMain() {
     if (win) { win.document.write(html); win.document.close(); }
 
     // 출력된 행에 선별지시일 기록 + 로컬 즉시 반영
-    const now = new Date().toISOString();
-    const printedIds = data.map((r) => r.id);
-    updateRowsLocally(printedIds, { selectionPrintedAt: now });
-    fetch("/api/steel-plan/mark-printed", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: printedIds }),
-    });
+    markSelectionPrinted(data.map((r) => r.id));
+  };
+
+  /* 선별지시서 엑셀 다운로드 (출력과 동일한 데이터·컬럼) */
+  const handleSelectionExcel = async () => {
+    setSelExcelLoading(true);
+    try {
+      const { data } = await fetchSelectionRows();
+      if (data.length === 0) { alert("다운로드할 데이터가 없습니다."); return; }
+
+      const labelOf = (s: string) => PLAN_STATUS[s]?.label ?? s;
+      const rows_ws = data.map((r) => ({
+        "호선":     r.vesselCode,
+        "재질":     r.material,
+        "두께":     fmtT(r.thickness),
+        "폭":       fmtL(r.width),
+        "길이":     fmtL(r.length),
+        "중량(kg)": calcWeight(r.thickness, r.width, r.length),
+        "입고일":   fmtYMDcompact(r.receivedAt),
+        "위치":     r.storageLocation ?? "",
+        "상태":     labelOf(r.status),
+        "확정정보": r.reservedFor ?? "",
+        "메모":     r.memo ?? "",
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows_ws);
+      ws["!cols"] = autoColWidths(rows_ws);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "선별지시서");
+      const today = new Date().toISOString().split("T")[0];
+      XLSX.writeFile(wb, `선별지시서_${today}.xlsx`);
+      // 엑셀 다운로드는 단순 조회/공유 — 선별지시일은 기록하지 않음 (인쇄 버튼만 기록)
+    } finally {
+      setSelExcelLoading(false);
+    }
   };
 
   /* ── 체크박스 전체 선택 (현재 페이지 기준) ── */
@@ -1192,6 +1247,14 @@ export default function SteelPlanMain() {
                 <Printer size={14} /> {printing ? "준비 중..." : "선별지시서 출력"}
               </button>
               <button
+                onClick={handleSelectionExcel}
+                disabled={selExcelLoading || total === 0}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-emerald-700 text-white rounded-lg hover:bg-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="선별지시서를 엑셀 파일로 다운로드"
+              >
+                <Download size={14} /> {selExcelLoading ? "다운로드 중..." : "선별지시서 엑셀"}
+              </button>
+              <button
                 onClick={() => setMatchOpen(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-800 text-white rounded-lg hover:bg-gray-900"
                 title="엑셀 사양을 업로드해 입고 강재와 매칭한 뒤 선별지시서 출력"
@@ -1437,7 +1500,7 @@ export default function SteelPlanMain() {
                           <td className="px-2 py-1 text-center">
                             {(row.status === "RECEIVED" || row.status === "ISSUED") && row.reservedFor ? (
                               <span className="px-1.5 py-0 rounded text-[11px] font-semibold bg-purple-100 text-purple-700">
-                                {row.reservedFor} 확정
+                                {row.reservedFor}
                               </span>
                             ) : (
                               <span className="text-gray-300">-</span>
@@ -2643,17 +2706,17 @@ function MatchingExcelModal({ onClose }: { onClose: () => void }) {
     const sel = candidates.filter((c) => selected.has(c.id));
     if (sel.length === 0) { alert("선택된 자재가 없습니다."); return; }
 
-    const esc = (s: string) => s.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
     const rows_html = sel.map((r, i) => `
       <tr class="${i % 2 === 0 ? "even" : ""}">
-        <td>${r.vesselCode}</td>
+        <td>${esc(r.vesselCode)}</td>
         <td>${esc(blocks[r.id] ?? "")}</td>
-        <td>${r.material}</td>
+        <td>${esc(r.material)}</td>
         <td class="num">${fmtT(r.thickness)}</td>
         <td class="num">${fmtL(r.width)}</td>
         <td class="num">${fmtL(r.length)}</td>
-        <td>${r.storageLocation ?? ""}</td>
+        <td>${esc(r.storageLocation ?? "")}</td>
         <td>${PLAN_STATUS[r.status]?.label ?? r.status}</td>
         <td>${fmtYMDcompact(r.receivedAt)}</td>
         <td class="memo">${esc(memos[r.id] ?? "")}</td>
@@ -2671,8 +2734,8 @@ function MatchingExcelModal({ onClose }: { onClose: () => void }) {
   body { font-family: "Malgun Gothic", sans-serif; font-size: 16pt; color: #111; padding: 4mm; }
   h1 { font-size: 20pt; font-weight: bold; text-align: center; margin-bottom: 2mm; letter-spacing: 1px; }
   .meta { text-align: center; font-size: 10pt; color: #555; margin-bottom: 2mm; }
-  /* auto layout — 호선/블록 컬럼이 내용 크기에 따라 자동으로 폭 결정 */
-  table { width: 100%; border-collapse: collapse; }
+  /* auto layout — 모든 컬럼이 내용 길이에 따라 자동으로 폭 결정 */
+  table { width: 100%; border-collapse: collapse; table-layout: auto; }
   th { background: #1e3a5f; color: #fff; padding: 1px 2px; font-size: 13pt; text-align: center; border: 1px solid #888; line-height: 1.1; white-space: nowrap; }
   td { padding: 1px 2px; border: 1px solid #aaa; text-align: center; vertical-align: middle; font-size: 16pt; line-height: 1.1; white-space: nowrap; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -2689,18 +2752,6 @@ function MatchingExcelModal({ onClose }: { onClose: () => void }) {
 <h1>선 별 지 시 서</h1>
 <p class="meta">출력일시: ${new Date().toLocaleString("ko-KR")} | 총 ${sel.length}장 · 총중량 ${totalWt}kg | ${summary}</p>
 <table>
-  <colgroup>
-    <col />                       <!-- 호선   : auto -->
-    <col />                       <!-- 블록   : auto -->
-    <col style="width:16mm" />    <!-- 재질    -->
-    <col style="width:11mm" />    <!-- 두께    -->
-    <col style="width:14mm" />    <!-- 폭      -->
-    <col style="width:14mm" />    <!-- 길이    -->
-    <col style="width:22mm" />    <!-- 위치    -->
-    <col style="width:14mm" />    <!-- 상태    -->
-    <col style="width:18mm" />    <!-- 입고일  -->
-    <col style="width:34mm" />    <!-- 비고    -->
-  </colgroup>
   <thead>
     <tr>
       <th>호선</th><th>블록</th><th>재질</th><th>두께</th><th>폭</th><th>길이</th>
@@ -2716,6 +2767,31 @@ function MatchingExcelModal({ onClose }: { onClose: () => void }) {
 
     const w = window.open("", "_blank");
     if (w) { w.document.write(html); w.document.close(); }
+  };
+
+  /* 선별지시서(매칭) 엑셀 다운로드 — 출력과 동일한 데이터·컬럼 */
+  const handleExportMatchedExcel = () => {
+    const sel = candidates.filter((c) => selected.has(c.id));
+    if (sel.length === 0) { alert("선택된 자재가 없습니다."); return; }
+
+    const rows_ws = sel.map((r) => ({
+      "호선":   r.vesselCode,
+      "블록":   blocks[r.id] ?? "",
+      "재질":   r.material,
+      "두께":   fmtT(r.thickness),
+      "폭":     fmtL(r.width),
+      "길이":   fmtL(r.length),
+      "위치":   r.storageLocation ?? "",
+      "상태":   PLAN_STATUS[r.status]?.label ?? r.status,
+      "입고일": fmtYMDcompact(r.receivedAt),
+      "비고":   memos[r.id] ?? "",
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows_ws);
+    ws["!cols"] = autoColWidths(rows_ws);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "선별지시서");
+    const today = new Date().toISOString().split("T")[0];
+    XLSX.writeFile(wb, `선별지시서_매칭_${today}.xlsx`);
   };
 
   return (
@@ -2839,11 +2915,18 @@ function MatchingExcelModal({ onClose }: { onClose: () => void }) {
               <button onClick={() => setStep("upload")} className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50">
                 ← 다시 업로드
               </button>
-              <button onClick={handlePrintMatched}
-                disabled={selected.size === 0}
-                className="inline-flex items-center gap-1 px-4 py-1.5 text-sm bg-gray-800 text-white rounded hover:bg-gray-900 disabled:opacity-40">
-                <Printer size={13} /> 선별지시서 출력 ({selected.size}장)
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={handleExportMatchedExcel}
+                  disabled={selected.size === 0}
+                  className="inline-flex items-center gap-1 px-4 py-1.5 text-sm bg-emerald-700 text-white rounded hover:bg-emerald-800 disabled:opacity-40">
+                  <Download size={13} /> 엑셀 다운로드 ({selected.size}장)
+                </button>
+                <button onClick={handlePrintMatched}
+                  disabled={selected.size === 0}
+                  className="inline-flex items-center gap-1 px-4 py-1.5 text-sm bg-gray-800 text-white rounded hover:bg-gray-900 disabled:opacity-40">
+                  <Printer size={13} /> 선별지시서 출력 ({selected.size}장)
+                </button>
+              </div>
             </div>
           </>
         )}
