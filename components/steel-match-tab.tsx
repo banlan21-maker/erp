@@ -515,8 +515,8 @@ function UploadMatchModal({ onClose, onCreated }: { onClose: () => void; onCreat
   };
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => !loading && onClose()}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
         <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
           <h3 className="font-bold text-base text-gray-900 flex items-center gap-2"><Upload size={16} className="text-blue-600" /> 강재매칭 — 엑셀 업로드</h3>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><X size={16} /></button>
