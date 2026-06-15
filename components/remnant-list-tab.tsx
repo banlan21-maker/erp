@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type ReactNode } from "react";
 import { Filter, X, Search, RefreshCw, Package, StickyNote } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
@@ -50,6 +50,7 @@ type RemnantRow = {
   sourceBlock: string | null; sourceVesselName: string | null; status: string;
   reservedFor: string | null;
   heatNo: string | null;
+  drawingNo: string | null;
   location: string | null;
   memo: string | null;
   registeredBy: string;
@@ -61,24 +62,65 @@ type RemnantRow = {
 
 const PAGE_SIZE = 50;
 
-const COLS = [
-  { key: "remnantNo",  label: "잔재번호",      align: "left",   filterable: true  },
-  { key: "vessel",     label: "발생호선",      align: "left",   filterable: true  },
-  { key: "block",      label: "발생블록",      align: "left",   filterable: true  },
-  { key: "heatNo",     label: "발생판번호",    align: "left",   filterable: true  },
-  { key: "shape",      label: "형태",          align: "left",   filterable: true  },
-  { key: "material",   label: "재질",          align: "left",   filterable: true  },
-  { key: "thickness",  label: "두께",          align: "right",  filterable: true  },
-  { key: "width1",     label: "폭1",           align: "right",  filterable: true  },
-  { key: "width2",     label: "폭2",           align: "right",  filterable: true  },
-  { key: "length1",    label: "길이1",         align: "right",  filterable: true  },
-  { key: "length2",    label: "길이2",         align: "right",  filterable: true  },
-  { key: "weight",     label: "중량(kg)",      align: "right",  filterable: true  },
-  { key: "location",   label: "위치",          align: "left",   filterable: true  },
-  { key: "status",     label: "상태",           align: "center", filterable: true  },
-  { key: "usedVessel", label: "사용호선/블록", align: "left",   filterable: false }, // 파생값 — 필터 미지원
-  { key: "memo",       label: "메모",          align: "center", filterable: false },
-] as const;
+type RemnantCol = {
+  key: string;
+  label: string;
+  align: "left" | "right" | "center";
+  filterable: boolean;
+  render: (r: RemnantRow) => ReactNode;
+};
+
+// 전체 컬럼 정의 (렌더 포함) — typeFilter 에 따라 일부만 표시
+//  · 여유원재(SURPLUS): 발생블록 / 폭2 / 길이2 숨김
+//  · 등록잔재(REGISTERED): 발생도면번호 표시 (발생블록과 발생판번호 사이)
+const ALL_COLS: RemnantCol[] = [
+  { key: "remnantNo", label: "잔재번호", align: "left", filterable: true,
+    render: r => <span className="font-mono text-blue-600 font-medium">{r.remnantNo}</span> },
+  { key: "vessel", label: "발생호선", align: "left", filterable: true,
+    render: r => <span className="text-gray-700">{r.sourceProject?.projectCode ?? r.sourceVesselName ?? "-"}</span> },
+  { key: "block", label: "발생블록", align: "left", filterable: true,
+    render: r => <span className="text-gray-700">{r.sourceBlock ?? "-"}</span> },
+  { key: "drawingNo", label: "발생도면번호", align: "left", filterable: false,
+    render: r => <span className="font-mono text-gray-600">{r.drawingNo ?? "-"}</span> },
+  { key: "heatNo", label: "발생판번호", align: "left", filterable: true,
+    render: r => <span className="font-mono text-gray-600">{r.heatNo ?? "-"}</span> },
+  { key: "shape", label: "형태", align: "left", filterable: true,
+    render: r => <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-[10px] font-medium">{SHAPE_LABEL[r.shape] ?? r.shape}</span> },
+  { key: "material", label: "재질", align: "left", filterable: true,
+    render: r => <span className="px-1.5 py-0.5 bg-slate-100 rounded font-medium">{r.material}</span> },
+  { key: "thickness", label: "두께", align: "right", filterable: true,
+    render: r => r.thickness },
+  { key: "width1", label: "폭1", align: "right", filterable: true,
+    render: r => r.width1?.toLocaleString() ?? "-" },
+  { key: "width2", label: "폭2", align: "right", filterable: true,
+    render: r => r.width2?.toLocaleString() ?? "-" },
+  { key: "length1", label: "길이1", align: "right", filterable: true,
+    render: r => r.length1?.toLocaleString() ?? "-" },
+  { key: "length2", label: "길이2", align: "right", filterable: true,
+    render: r => r.length2?.toLocaleString() ?? "-" },
+  { key: "weight", label: "중량(kg)", align: "right", filterable: true,
+    render: r => <span className="font-semibold">{r.weight.toFixed(1)}</span> },
+  { key: "location", label: "위치", align: "left", filterable: true,
+    render: r => r.location ?? <span className="text-gray-300">-</span> },
+  { key: "status", label: "상태", align: "center", filterable: true,
+    render: r => {
+      const ds = remnantDisplayStatus(r);
+      return <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${ds.cls}`}>{ds.label}</span>;
+    } },
+  // 확정정보 — 강재전체목록 확정정보와 동일 역할 (정규=호선/블록, 돌발=돌발번호)
+  { key: "usedVessel", label: "확정정보", align: "left", filterable: false,
+    render: r => {
+      const v = r.reservedFor
+        ?? (r.assignedToLists?.length > 0
+            ? `${r.assignedToLists[0].project?.projectCode ?? "-"} / ${r.assignedToLists[0].block ?? "-"}`
+            : null);
+      return v ? <span className="font-mono text-[11px] text-blue-700">{v}</span> : <span className="text-gray-300">-</span>;
+    } },
+  { key: "memo", label: "메모", align: "center", filterable: false,
+    render: r => r.memo && r.memo.trim()
+      ? <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[10px] font-medium" title={r.memo}><StickyNote size={11} /> 메모</span>
+      : null },
+];
 
 export default function RemnantListTab({
   typeFilter,
@@ -199,6 +241,14 @@ export default function RemnantListTab({
   const activeCount = Object.values(filters).filter(v => v.length > 0).length;
   const totalWeight = remnants.reduce((s, r) => s + r.weight, 0);
 
+  // 종류별 컬럼 구성: 여유원재는 발생블록/폭2/길이2 숨김, 등록잔재만 발생도면번호 표시
+  const cols = ALL_COLS.filter(c => {
+    if (c.key === "drawingNo") return typeFilter === "REGISTERED";
+    if (typeFilter === "SURPLUS" && (c.key === "block" || c.key === "width2" || c.key === "length2")) return false;
+    return true;
+  });
+  const weightIdx = cols.findIndex(c => c.key === "weight");
+
   const openFilter = (col: string, el: HTMLElement) => {
     if (openCol === col) { setOpenCol(null); setAnchorEl(null); return; }
     setOpenCol(col); setAnchorEl(el);
@@ -251,7 +301,7 @@ export default function RemnantListTab({
           <table className="w-full text-xs whitespace-nowrap">
             <thead className="bg-gray-50 border-b">
               <tr>
-                {COLS.map(({ key, label, align, filterable }) => {
+                {cols.map(({ key, label, align, filterable }) => {
                   const active = (filters[key]?.length ?? 0) > 0;
                   // 여유원재(SURPLUS) 는 '발생판번호' 대신 '판번호' 로 표시
                   const displayLabel = (typeFilter === "SURPLUS" && key === "heatNo") ? "판번호" : label;
@@ -282,7 +332,7 @@ export default function RemnantListTab({
             </thead>
             <tbody className="divide-y">
               {sortedRemnants.length === 0 ? (
-                <tr><td colSpan={COLS.length} className="text-center py-8 text-gray-400">
+                <tr><td colSpan={cols.length} className="text-center py-8 text-gray-400">
                   {activeCount > 0 || search ? "검색·필터 조건에 맞는 데이터가 없습니다." : "등록된 잔재가 없습니다."}
                   {(activeCount > 0 || search) && (
                     <button onClick={() => { setFilters({}); setSearch(""); }} className="ml-2 text-blue-500 hover:underline">초기화</button>
@@ -290,50 +340,17 @@ export default function RemnantListTab({
                 </td></tr>
               ) : sortedRemnants.map(r => (
                 <tr key={r.id} onClick={() => setDetailItem(r)} className="hover:bg-blue-50/40 cursor-pointer transition-colors">
-                  <td className="px-3 py-2 font-mono text-blue-600 font-medium">{r.remnantNo}</td>
-                  <td className="px-3 py-2 text-gray-700">{r.sourceProject?.projectCode ?? r.sourceVesselName ?? "-"}</td>
-                  <td className="px-3 py-2 text-gray-700">{r.sourceBlock ?? "-"}</td>
-                  <td className="px-3 py-2 font-mono text-gray-600">{r.heatNo ?? "-"}</td>
-                  <td className="px-3 py-2"><span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-[10px] font-medium">{SHAPE_LABEL[r.shape] ?? r.shape}</span></td>
-                  <td className="px-3 py-2"><span className="px-1.5 py-0.5 bg-slate-100 rounded font-medium">{r.material}</span></td>
-                  <td className="px-3 py-2 text-right">{r.thickness}</td>
-                  <td className="px-3 py-2 text-right">{r.width1?.toLocaleString() ?? "-"}</td>
-                  <td className="px-3 py-2 text-right">{r.width2?.toLocaleString() ?? "-"}</td>
-                  <td className="px-3 py-2 text-right">{r.length1?.toLocaleString() ?? "-"}</td>
-                  <td className="px-3 py-2 text-right">{r.length2?.toLocaleString() ?? "-"}</td>
-                  <td className="px-3 py-2 text-right font-semibold">{r.weight.toFixed(1)}</td>
-                  <td className="px-3 py-2 text-gray-600">{r.location ?? <span className="text-gray-300">-</span>}</td>
-                  <td className="px-3 py-2 text-center">
-                    {(() => {
-                      const ds = remnantDisplayStatus(r);
-                      return (
-                        <div className="inline-flex flex-col items-center gap-0.5">
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${ds.cls}`}>{ds.label}</span>
-                          {ds.reservedFor && <span className="text-[9px] text-blue-600 font-mono">{ds.reservedFor}</span>}
-                        </div>
-                      );
-                    })()}
-                  </td>
-                  <td className="px-3 py-2 text-gray-700">
-                    {r.status === "EXHAUSTED" && r.assignedToLists?.length > 0
-                      ? `${r.assignedToLists[0].project?.projectCode ?? "-"} / ${r.assignedToLists[0].block ?? "-"}`
-                      : "-"}
-                  </td>
-                  <td className="px-3 py-2 text-center">
-                    {r.memo && r.memo.trim() ? (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[10px] font-medium" title={r.memo}>
-                        <StickyNote size={11} /> 메모
-                      </span>
-                    ) : null}
-                  </td>
+                  {cols.map(c => (
+                    <td key={c.key} className={`px-3 py-2 text-${c.align}`}>{c.render(r)}</td>
+                  ))}
                 </tr>
               ))}
             </tbody>
             <tfoot className="bg-gray-50 border-t">
               <tr>
-                <td colSpan={11} className="px-3 py-2 text-gray-500 font-medium">합계 ({remnants.length}건 / 전체 {total}건)</td>
+                <td colSpan={weightIdx} className="px-3 py-2 text-gray-500 font-medium">합계 ({remnants.length}건 / 전체 {total}건)</td>
                 <td className="px-3 py-2 text-right font-bold text-gray-700">{totalWeight.toFixed(1)}kg</td>
-                <td /><td /><td />
+                {cols.length - weightIdx - 1 > 0 && <td colSpan={cols.length - weightIdx - 1} />}
               </tr>
             </tfoot>
           </table>

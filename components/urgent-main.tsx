@@ -572,7 +572,7 @@ function RemnantPickerModal({
               <option value="">두께 전체</option>
               {thicknesses.map(t => <option key={t} value={t}>{t}t</option>)}
             </select>
-            <span className="text-xs text-gray-400 ml-auto">{filtered.length}건</span>
+            <span className="text-xs text-gray-400 ml-auto">{filterType ? `${filtered.length}건` : ""}</span>
           </div>
           {/* 형태 + 유형 필터 버튼 */}
           <div className="flex flex-wrap gap-3">
@@ -599,7 +599,6 @@ function RemnantPickerModal({
             <div className="w-px bg-gray-200" />
             <div className="flex gap-1 items-center">
               {[
-                { value: "",           label: "유형 전체" },
                 { value: "REMNANT",    label: "현장잔재" },
                 { value: "SURPLUS",    label: "여유원재" },
                 { value: "REGISTERED", label: "등록잔재" },
@@ -622,7 +621,9 @@ function RemnantPickerModal({
 
         {/* 목록 */}
         <div className="flex-1 overflow-y-auto">
-          {filtered.length === 0 ? (
+          {!filterType ? (
+            <div className="py-16 text-center text-gray-400 text-sm">먼저 잔재 유형(현장잔재 / 여유원재 / 등록잔재)을 선택하세요.</div>
+          ) : filtered.length === 0 ? (
             <div className="py-16 text-center text-gray-400 text-sm">검색 결과가 없습니다.</div>
           ) : (
             <table className="w-full text-sm">

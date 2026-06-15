@@ -300,7 +300,7 @@ export async function POST(request: NextRequest) {
 
     // 잔재 연결 또는 잔재 지정이 필요한 경우 개별 create로 ID 추적
     let createdCount = 0;
-    const createdRows: Array<{ id: string; thickness: number; material: string; block: string | null }> = [];
+    const createdRows: Array<{ id: string; thickness: number; material: string; block: string | null; drawingNo: string | null }> = [];
 
     const needIndividual = remnantsData.length > 0 || assignmentsData.length > 0;
     if (needIndividual) {
@@ -310,7 +310,7 @@ export async function POST(request: NextRequest) {
         const dl = await prisma.drawingList.create({
           data: { ...row, assignedRemnantId },
         });
-        createdRows.push({ id: dl.id, thickness: dl.thickness, material: dl.material, block: dl.block });
+        createdRows.push({ id: dl.id, thickness: dl.thickness, material: dl.material, block: dl.block, drawingNo: dl.drawingNo });
         createdCount++;
       }
     } else {
@@ -374,6 +374,7 @@ export async function POST(request: NextRequest) {
           length2: rem.length2 ?? null,
           sourceProjectId: project.id,
           sourceBlock: dlRow.block,
+          drawingNo: dlRow.drawingNo,   // 발생도면번호 — 정규작업 도면에서 등록잔재 생성 시 기록
           drawingListId: dlRow.id,
           parentRemnantId,
           registeredBy: "system",

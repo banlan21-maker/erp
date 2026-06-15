@@ -1,18 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-// 돌발번호 자동채번: URG-YYYY-NNN
+// 돌발번호 자동채번: D-YYMMDD-NN (한국시간 기준 당일 순번, 예: D-260615-01)
 async function generateUrgentNo(): Promise<string> {
-  const year = new Date().getFullYear();
-  const prefix = `URG-${year}-`;
-  const last = await prisma.urgentWork.findFirst({
+  // Docker 컨테이너가 UTC 여도 한국 달력 날짜로 발번
+  const kstFull = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());                       // "2026-06-15"
+  const yymmdd = kstFull.slice(2).replace(/-/g, "");   // "260615"
+  const prefix = `D-${yymmdd}-`;
+
+  const rows = await prisma.urgentWork.findMany({
     where: { urgentNo: { startsWith: prefix } },
-    orderBy: { urgentNo: "desc" },
+    select: { urgentNo: true },
   });
-  const seq = last ? parseInt(last.urgentNo.split("-")[2], 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(3, "0")}`;
+  let maxSeq = 0;
+  for (const { urgentNo } of rows) {
+    const seq = Number(urgentNo.split("-")[2]);
+    if (Number.isFinite(seq) && seq > maxSeq) maxSeq = seq;
+  }
+  return `${prefix}${String(maxSeq + 1).padStart(2, "0")}`;
 }
 
 // GET /api/urgent-works
@@ -22,8 +32,8 @@ export async function GET(request: NextRequest) {
     const status  = searchParams.get("status");
     const urgency = searchParams.get("urgency");
 
-    const where: any = {};
-    if (status)  where.status  = status;
+    const where: Prisma.UrgentWorkWhereInput = {};
+    if (status)  where.status  = status as Prisma.UrgentWorkWhereInput["status"];
     if (urgency) where.urgency = urgency;
 
     const works = await prisma.urgentWork.findMany({
@@ -54,8 +64,8 @@ export async function GET(request: NextRequest) {
       ],
     });
     return NextResponse.json({ success: true, data: works });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }
 
@@ -103,8 +113,17 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // 사용 예정 잔재의 확정정보(reservedFor)에 돌발번호 기록 — 강재전체목록 확정정보와 동일 역할
+    // 이미 다른 작업에 선점된 잔재는 덮어쓰지 않음 (선점 보호)
+    if (remnantId) {
+      await prisma.remnant.updateMany({
+        where: { id: remnantId, reservedFor: null },
+        data:  { reservedFor: urgentNo },
+      });
+    }
+
     return NextResponse.json({ success: true, data: work }, { status: 201 });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }

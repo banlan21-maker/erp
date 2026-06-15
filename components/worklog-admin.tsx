@@ -96,20 +96,24 @@ function fmtHM(ms: number): string {
   if (ms <= 0) return "-";
   const h = Math.floor(ms / 3600000);
   const m = Math.floor((ms % 3600000) / 60000);
-  return h > 0 ? `${h}시간 ${m}분` : `${m}분`;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;   // HH:MM
 }
 function fmtPauseMin(ms: number): string {
   if (ms <= 0) return "-";
-  return `${Math.round(ms / 60000)}분`;
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;   // HH:MM
 }
 function fmtDate(iso: string): string {
   const d = new Date(iso);
-  return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getDate()).padStart(2,"0")}`;
+  const yy = String(d.getFullYear()).slice(2);
+  return `${yy}.${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getDate()).padStart(2,"0")}`;   // YY.MM.DD
 }
 
 // ─── 컬럼 정의 (순서 = 테이블 표시 순서) ─────────────────────────────────
 
 const COLUMNS = [
+  { key: "status",     label: "상태",     align: "center" as const, filterable: true  },
   { key: "hosin",      label: "호선",     align: "left"  as const, filterable: true  },
   { key: "block",      label: "블록",     align: "left"  as const, filterable: true  },
   { key: "drawingNo",  label: "도면번호",  align: "left"  as const, filterable: true  },
@@ -281,7 +285,7 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
       ? Math.round(thickness * (w1 * l1 - (w2 ?? 0) * (l2 ?? 0)) * 7.85 / 1_000_000 * 10) / 10
       : null;
     const statusDef = !log
-      ? { label: "작업 전", cls: "bg-gray-100 text-gray-600" }
+      ? { label: "대기", cls: "bg-gray-100 text-gray-600" }
       : log.status === "COMPLETED" ? { label: "완료",   cls: "bg-green-100 text-green-700" }
       : log.status === "PAUSED"    ? { label: "중단중", cls: "bg-yellow-100 text-yellow-700" }
       :                              { label: "진행중", cls: "bg-blue-100 text-blue-700" };
@@ -884,6 +888,7 @@ export default function WorklogAdmin({
 
   const getVal = (d: Drawing, log: CuttingLog | null, col: FCKey): string => {
     switch (col) {
+      case "status":     return log ? "완료" : "대기";
       case "hosin":      return d.project?.projectCode ?? "";
       case "block":      return d.block ?? "";
       case "drawingNo":  return d.drawingNo ?? "";
@@ -1175,6 +1180,12 @@ export default function WorklogAdmin({
                     return (
                       <tr key={d.id} className={`transition-colors ${hasCut ? "hover:bg-green-50/30" : "hover:bg-gray-50/60"}`}>
                         <td className="px-2 py-1 text-center text-gray-400">{rowNo}</td>
+                        {/* 상태 */}
+                        <td className="px-3 py-1 text-center">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${hasCut ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+                            {hasCut ? "완료" : "대기"}
+                          </span>
+                        </td>
                         {/* 호선 */}
                         <td className="px-3 py-1 text-gray-600 font-mono text-[11px]">{d.project?.projectCode ?? "-"}</td>
                         {/* 블록 */}
@@ -1256,7 +1267,7 @@ export default function WorklogAdmin({
                   })}
                   {filteredDrawings.length === 0 && (
                     <tr>
-                      <td colSpan={21} className="px-4 py-10 text-center text-gray-400">
+                      <td colSpan={22} className="px-4 py-10 text-center text-gray-400">
                         {drawings.length === 0 ? "확정된 강재리스트가 없습니다." : "필터 결과가 없습니다."}
                       </td>
                     </tr>
