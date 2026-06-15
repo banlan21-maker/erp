@@ -2602,16 +2602,17 @@ function MatchingExcelModal({ onClose }: { onClose: () => void }) {
         return;
       }
 
-      // 강재 전체 fetch — 상태 필터 없이 모두 가져와 있는 그대로 표시
-      const res  = await fetch("/api/steel-plan?all=true");
+      // 강재 전체 fetch 후 '입고(RECEIVED)' 상태 자재만 매칭 대상으로 사용
+      const res  = await fetch("/api/steel-plan?all=true&statuses=RECEIVED");
       const json = await res.json();
-      const allRows: SteelPlanRow[] = json.data ?? [];
+      const allRows: SteelPlanRow[] = (json.data ?? []).filter((r: SteelPlanRow) => r.status === "RECEIVED");
 
-      // spec 별로 매칭 (한 강재가 여러 spec 에 매칭돼도 1번만)
+      // spec 별로 매칭 (한 강재가 여러 spec 에 매칭돼도 1번만) — 입고 상태만
       const matchedMap = new Map<string, SteelPlanRow>();
       for (const sp of specs) {
         for (const r of allRows) {
           if (
+            r.status === "RECEIVED" &&
             r.vesselCode === sp.vesselCode &&
             r.material   === sp.material &&
             fmtT(r.thickness) === sp.thickness &&
