@@ -34,7 +34,7 @@ const fmtYMD = (iso: string | null) => {
 };
 const fmtDateTime = (iso: string) => new Date(iso).toLocaleString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 
-interface Job     { id: string; name: string; statuses: string; specCount: number; createdAt: string }
+interface Job     { id: string; name: string; author: string | null; statuses: string; specCount: number; createdAt: string }
 interface Spec    { vesselCode: string; material: string; thickness: number; width: number; length: number }
 interface PlanRow { id: string; vesselCode: string; material: string; thickness: number; width: number; length: number; status: string; uploadBatchNo: string | null; receivedAt: string | null; storageLocation: string | null; reservedFor: string | null }
 interface MatchRow { matched: boolean; spec: Spec; plan: PlanRow | null }
@@ -273,29 +273,31 @@ export default function SteelMatchTab() {
 
       {/* 매칭 작업 목록 */}
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <table className="w-full text-xs">
+        <table className="w-full text-xs table-fixed">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">매칭 이름</th>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">업로드일시</th>
-              <th className="px-3 py-2 text-right font-medium text-gray-600">사양수</th>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">대상상태</th>
-              <th className="px-3 py-2 text-center font-medium text-gray-600 w-40">작업</th>
+              <th className="px-3 py-2 text-left font-medium text-gray-600 w-1/6">매칭 이름</th>
+              <th className="px-3 py-2 text-left font-medium text-gray-600 w-1/6">작성자</th>
+              <th className="px-3 py-2 text-left font-medium text-gray-600 w-1/6">업로드일시</th>
+              <th className="px-3 py-2 text-right font-medium text-gray-600 w-1/6">사양수</th>
+              <th className="px-3 py-2 text-left font-medium text-gray-600 w-1/6">대상상태</th>
+              <th className="px-3 py-2 text-center font-medium text-gray-600 w-1/6">작업</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
-              <tr><td colSpan={5} className="py-8 text-center text-gray-400">불러오는 중...</td></tr>
+              <tr><td colSpan={6} className="py-8 text-center text-gray-400">불러오는 중...</td></tr>
             ) : jobs.length === 0 ? (
-              <tr><td colSpan={5} className="py-8 text-center text-gray-400">저장된 매칭 작업이 없습니다. [엑셀 업로드 매칭]으로 시작하세요.</td></tr>
+              <tr><td colSpan={6} className="py-8 text-center text-gray-400">저장된 매칭 작업이 없습니다. [엑셀 업로드 매칭]으로 시작하세요.</td></tr>
             ) : jobs.map(j => {
               const open = selJobId === j.id;
               return (
               <tr key={j.id} className={`hover:bg-blue-50/40 ${open ? "bg-blue-50" : ""}`}>
-                <td className="px-3 py-2 font-medium text-gray-800">{j.name}</td>
-                <td className="px-3 py-2 text-gray-500">{fmtDateTime(j.createdAt)}</td>
+                <td className="px-3 py-2 font-medium text-gray-800 truncate" title={j.name}>{j.name}</td>
+                <td className="px-3 py-2 text-gray-600 truncate" title={j.author ?? ""}>{j.author || "-"}</td>
+                <td className="px-3 py-2 text-gray-500 truncate">{fmtDateTime(j.createdAt)}</td>
                 <td className="px-3 py-2 text-right text-gray-600">{j.specCount}</td>
-                <td className="px-3 py-2 text-gray-500">{statusesLabel(j.statuses)}</td>
+                <td className="px-3 py-2 text-gray-500 truncate" title={statusesLabel(j.statuses)}>{statusesLabel(j.statuses)}</td>
                 <td className="px-3 py-2 text-center">
                   <div className="flex items-center justify-center gap-1">
                     <button onClick={() => toggleJob(j.id)} className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded ${open ? "bg-gray-600 text-white hover:bg-gray-700" : "bg-blue-600 text-white hover:bg-blue-700"}`}>
@@ -476,6 +478,7 @@ function UploadMatchModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [step, setStep]       = useState<"upload" | "confirm">("upload");
   const [specs, setSpecs]     = useState<Spec[]>([]);
   const [name, setName]       = useState("");
+  const [author, setAuthor]   = useState("");
   const [statuses, setStatuses] = useState<Set<string>>(new Set(ALL_KEYS));
   const [loading, setLoading] = useState(false);
 
@@ -506,7 +509,7 @@ function UploadMatchModal({ onClose, onCreated }: { onClose: () => void; onCreat
       const r = await fetch("/api/steel-match", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), statuses: statusesToParam(statuses), specs }),
+        body: JSON.stringify({ name: name.trim(), author: author.trim() || null, statuses: statusesToParam(statuses), specs }),
       });
       const d = await r.json();
       if (!d.success) { alert(d.error ?? "생성 실패"); return; }
@@ -541,10 +544,17 @@ function UploadMatchModal({ onClose, onCreated }: { onClose: () => void; onCreat
             <div className="text-sm bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-blue-700">
               사양 <strong>{specs.length}건</strong> 인식됨. 매칭 이름과 기본 대상 상태를 설정하세요.
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">매칭 이름 <span className="text-red-500">*</span></label>
-              <input value={name} onChange={e => setName(e.target.value)} placeholder="예: 4506호선 입고자재 매칭작업"
-                className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" autoFocus />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">매칭 이름 <span className="text-red-500">*</span></label>
+                <input value={name} onChange={e => setName(e.target.value)} placeholder="예: 4506호선 입고자재 매칭작업"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" autoFocus />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">작성자</label>
+                <input value={author} onChange={e => setAuthor(e.target.value)} placeholder="이름"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1.5">매칭 대상 상태 <span className="text-gray-400 font-normal">(1개 이상)</span></label>

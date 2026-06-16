@@ -15,6 +15,7 @@ export async function GET() {
       data: jobs.map(j => ({
         id: j.id,
         name: j.name,
+        author: j.author,
         statuses: j.statuses,
         specCount: Array.isArray(j.specs) ? (j.specs as unknown[]).length : 0,
         createdAt: j.createdAt.toISOString(),
@@ -30,6 +31,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const name = (body.name ?? "").toString().trim();
+    const author = body.author ? String(body.author).trim() : null;
     const statuses = (body.statuses ?? "ALL").toString();
     const rawSpecs: unknown[] = Array.isArray(body.specs) ? body.specs : [];
 
@@ -55,7 +57,7 @@ export async function POST(req: NextRequest) {
     }
 
     const job = await prisma.steelMatchJob.create({
-      data: { name, statuses, specs: specs as unknown as Prisma.InputJsonValue },
+      data: { name, author, statuses, specs: specs as unknown as Prisma.InputJsonValue },
     });
     return NextResponse.json({ success: true, data: { id: job.id } }, { status: 201 });
   } catch (e) {

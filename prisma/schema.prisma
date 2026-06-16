@@ -1474,6 +1474,7 @@ model CalendarEvent {
 model SteelMatchJob {
   id        String   @id @default(cuid())
   name      String   // 매칭 이름 (예: "4506호선 입고자재 매칭작업")
+  author    String?  // 작성자
   statuses  String   @default("ALL") // 매칭 대상 상태: "ALL" 또는 콤마구분 (REGISTERED,RECEIVED,ISSUED,COMPLETED,SHIPPED_OUT)
   specs     Json     // 업로드 사양 목록 [{ vesselCode, material, thickness, width, length }]
   createdAt DateTime @default(now())
