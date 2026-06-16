@@ -768,7 +768,7 @@ export default function DrawingTable({
           강재리스트가 없습니다. Excel 파일을 업로드하거나 강재 추가 버튼으로 직접 입력하세요.
         </div>
         {showAddModal && (
-          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setShowAddModal(false)}>
+          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl" onClick={e => e.stopPropagation()}>
               <div className="px-5 py-4 border-b flex items-center justify-between">
                 <h3 className="font-bold text-gray-900 flex items-center gap-2"><Plus size={16} className="text-blue-600" /> 강재 1행 추가</h3>
@@ -1072,7 +1072,7 @@ export default function DrawingTable({
 
       {/* 단건 강재 추가 모달 */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setShowAddModal(false)}>
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl" onClick={e => e.stopPropagation()}>
             <div className="px-5 py-4 border-b flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2"><Plus size={16} className="text-blue-600" /> 강재 1행 추가</h3>

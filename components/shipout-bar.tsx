@@ -410,8 +410,8 @@ export default function ShipoutBar() {
 
       {/* 출고장 만들기 마법사 — 모달 ① + ② */}
       {open && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => !submitting && setOpen(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl max-h-[95vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl max-h-[95vh] flex flex-col">
             <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-bold text-lg text-gray-900 flex items-center gap-2">
                 <Truck size={20} className="text-purple-600" /> 출고장 만들기

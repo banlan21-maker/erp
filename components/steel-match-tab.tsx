@@ -447,8 +447,8 @@ function EditStatusModal({ job, onClose, onSaved }: { job: Job; onClose: () => v
   };
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => !loading && onClose()}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
         <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
           <h3 className="font-bold text-base text-gray-900">매칭 대상 상태 수정</h3>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><X size={16} /></button>
