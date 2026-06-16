@@ -376,9 +376,9 @@ export default function SteelMatchTab() {
                   <tr key={i} className={`hover:bg-gray-50 ${!r.matched ? "bg-red-50/40" : ""}`}>
                     <td className="px-3 py-1.5 font-medium">{r.matched ? r.plan!.vesselCode : (r.spec.vesselCode || <span className="text-gray-400">(전체)</span>)}</td>
                     <td className="px-3 py-1.5">{r.spec.material}</td>
-                    <td className="px-3 py-1.5">{fmtT(r.spec.thickness)}</td>
-                    <td className="px-3 py-1.5">{fmtL(r.spec.width)}</td>
-                    <td className="px-3 py-1.5">{fmtL(r.spec.length)}</td>
+                    <td className="px-3 py-1.5 text-right">{fmtT(r.spec.thickness)}</td>
+                    <td className="px-3 py-1.5 text-right">{fmtL(r.spec.width)}</td>
+                    <td className="px-3 py-1.5 text-right">{fmtL(r.spec.length)}</td>
                     <td className="px-3 py-1.5">
                       {r.matched
                         ? <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_CLS[r.plan!.status] ?? "bg-gray-100 text-gray-600"}`}>{STATUS_LABEL[r.plan!.status] ?? r.plan!.status}</span>
