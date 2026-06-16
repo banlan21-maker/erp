@@ -871,8 +871,8 @@ export function ExcelUploadModal({ onClose, cart }: { onClose: () => void; cart:
   };
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => !uploading && onClose()}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
         <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-between">
           <h3 className="font-bold text-lg text-gray-900 flex items-center gap-2">
             <FileSpreadsheet size={18} className="text-emerald-600" /> 엑셀로 출고자재 일괄 추가
