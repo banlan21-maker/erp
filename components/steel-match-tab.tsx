@@ -504,6 +504,7 @@ function UploadMatchModal({ onClose, onCreated }: { onClose: () => void; onCreat
 
   const create = async () => {
     if (!name.trim()) { alert("매칭 이름을 입력하세요. (예: 4506호선 입고자재 매칭작업)"); return; }
+    if (!author.trim()) { alert("작성자를 입력하세요."); return; }
     setLoading(true);
     try {
       const r = await fetch("/api/steel-match", {
@@ -551,7 +552,7 @@ function UploadMatchModal({ onClose, onCreated }: { onClose: () => void; onCreat
                   className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" autoFocus />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">작성자</label>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">작성자 <span className="text-red-500">*</span></label>
                 <input value={author} onChange={e => setAuthor(e.target.value)} placeholder="이름"
                   className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>

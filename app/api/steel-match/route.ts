@@ -38,6 +38,9 @@ export async function POST(req: NextRequest) {
     if (!name) {
       return NextResponse.json({ success: false, error: "매칭 이름을 입력하세요." }, { status: 400 });
     }
+    if (!author) {
+      return NextResponse.json({ success: false, error: "작성자를 입력하세요." }, { status: 400 });
+    }
 
     const specs: Spec[] = rawSpecs
       .map((raw) => {
