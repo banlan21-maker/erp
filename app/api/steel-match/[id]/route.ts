@@ -70,6 +70,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       success: true,
       data: {
         job: { id: job.id, name: job.name, statuses: job.statuses, createdAt: job.createdAt.toISOString() },
+        specs,   // 사용자가 업로드한 원본 사양 목록 (왼쪽 패널용)
         rows,
       },
     });

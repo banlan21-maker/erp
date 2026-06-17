@@ -115,6 +115,7 @@ export default function SteelMatchTab() {
 
   const [selJobId, setSelJobId]   = useState<string | null>(null);
   const [selJobName, setSelJobName] = useState("");
+  const [selJobSpecs, setSelJobSpecs] = useState<Spec[]>([]);   // 원본 업로드 사양 (왼쪽 패널)
   const [rows, setRows]           = useState<MatchRow[]>([]);
   const [rowsLoading, setRowsLoading] = useState(false);
   const [selJobStatuses, setSelJobStatuses] = useState<string>("ALL");   // 열린 작업의 저장된 대상상태
@@ -145,8 +146,8 @@ export default function SteelMatchTab() {
       // 저장된 대상상태로 매칭 (?statuses override 미사용)
       const r = await fetch(`/api/steel-match/${jobId}`);
       const d = await r.json();
-      if (d.success) { setRows(d.data.rows); setSelJobName(d.data.job.name); setSelJobStatuses(d.data.job.statuses); }
-      else { alert(d.error ?? "조회 실패"); setRows([]); }
+      if (d.success) { setRows(d.data.rows); setSelJobSpecs(d.data.specs ?? []); setSelJobName(d.data.job.name); setSelJobStatuses(d.data.job.statuses); }
+      else { alert(d.error ?? "조회 실패"); setRows([]); setSelJobSpecs([]); }
     } finally { setRowsLoading(false); }
   }, []);
 
@@ -159,7 +160,7 @@ export default function SteelMatchTab() {
 
   // 보기/닫기 토글 — 이미 열린 작업을 다시 누르면 닫힘
   const toggleJob = (jobId: string) => {
-    if (selJobId === jobId) { setSelJobId(null); setRows([]); setOpenCol(null); setAnchorEl(null); return; }
+    if (selJobId === jobId) { setSelJobId(null); setRows([]); setSelJobSpecs([]); setOpenCol(null); setAnchorEl(null); return; }
     openJobFresh(jobId);
   };
 
@@ -314,10 +315,45 @@ export default function SteelMatchTab() {
         </table>
       </div>
 
-      {/* 매칭 결과 */}
+      {/* 매칭 결과: 왼쪽 원본 리스트 + 오른쪽 매칭 현황 */}
       {selJobId && (
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center gap-3 flex-wrap">
+        <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-start">
+          {/* 왼쪽: 사용자가 등록한 원본 리스트 */}
+          <div className="w-full lg:w-[360px] lg:shrink-0 bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
+              <span className="text-sm font-semibold text-gray-800">원본 리스트</span>
+              <span className="ml-2 text-xs text-gray-400">{selJobSpecs.length}건</span>
+            </div>
+            <div className="overflow-auto max-h-[70vh]">
+              <table className="w-full text-xs whitespace-nowrap">
+                <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium text-gray-600">호선</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-600">재질</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-600">두께</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-600">폭</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-600">길이</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {selJobSpecs.length === 0 ? (
+                    <tr><td colSpan={5} className="py-8 text-center text-gray-400">사양 없음</td></tr>
+                  ) : selJobSpecs.map((s, i) => (
+                    <tr key={i} className="hover:bg-gray-50">
+                      <td className="px-3 py-1.5 font-medium">{s.vesselCode || <span className="text-gray-400">(전체)</span>}</td>
+                      <td className="px-3 py-1.5">{s.material}</td>
+                      <td className="px-3 py-1.5 text-right">{fmtT(s.thickness)}</td>
+                      <td className="px-3 py-1.5 text-right">{fmtL(s.width)}</td>
+                      <td className="px-3 py-1.5 text-right">{fmtL(s.length)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {/* 오른쪽: 매칭 현황 */}
+          <div className="flex-1 min-w-0 bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2 flex-1 min-w-[200px]">
               <FileSpreadsheet size={15} className="text-blue-600" />
               <span className="text-sm font-semibold text-gray-800">{selJobName}</span>
@@ -392,6 +428,7 @@ export default function SteelMatchTab() {
                 ))}
               </tbody>
             </table>
+          </div>
           </div>
         </div>
       )}
