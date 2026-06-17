@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import * as XLSX from "xlsx";
-import { Upload, Download, Trash2, RefreshCw, X, FileSpreadsheet, Search, Eye, Filter } from "lucide-react";
+import { Upload, Download, Trash2, RefreshCw, X, FileSpreadsheet, Search, Eye, Filter, Truck } from "lucide-react";
 import ColumnFilterDropdown from "@/components/column-filter-dropdown";
 import { getAllCascadedOptions, getCascadedFilteredRowsWithPredicates, type ColumnAccessorMap, type TextPredicate } from "@/lib/cascading-filters";
+import { useShipoutCart, type ShipoutCartItem } from "@/components/shipout-cart";
 
 /* ── 상태 정의 ─────────────────────────────────────────────────────────────── */
 const STATUS_LIST = [
@@ -26,6 +27,8 @@ const ALL_KEYS = STATUS_LIST.map(s => s.key);
 
 const fmtT = (v: number) => parseFloat(v.toFixed(1));
 const fmtL = (v: number) => Math.round(v);
+// 중량(kg) = 두께×폭×길이×비중(7.85)/1e6 — 출고 카트/엑셀 흐름과 동일 공식 (반올림 0.1)
+const calcWeight = (t: number, w: number, l: number) => parseFloat(((t * w * l * 7.85) / 1_000_000).toFixed(1));
 const fmtYMD = (iso: string | null) => {
   if (!iso) return "";
   const d = new Date(iso);
@@ -109,9 +112,13 @@ function parseSpecs(raw: unknown[][]): Spec[] {
 }
 
 export default function SteelMatchTab() {
+  const cart = useShipoutCart();
   const [jobs, setJobs]           = useState<Job[]>([]);
   const [loading, setLoading]     = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
+
+  // 출고 카트 담기용 선택 (plan.id 기준, 입고(RECEIVED) 매칭 행만 선택 가능)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const [selJobId, setSelJobId]   = useState<string | null>(null);
   const [selJobName, setSelJobName] = useState("");
@@ -142,6 +149,7 @@ export default function SteelMatchTab() {
 
   const loadMatches = useCallback(async (jobId: string) => {
     setRowsLoading(true);
+    setSelectedIds(new Set());
     try {
       // 저장된 대상상태로 매칭 (?statuses override 미사용)
       const r = await fetch(`/api/steel-match/${jobId}`);
@@ -160,7 +168,7 @@ export default function SteelMatchTab() {
 
   // 보기/닫기 토글 — 이미 열린 작업을 다시 누르면 닫힘
   const toggleJob = (jobId: string) => {
-    if (selJobId === jobId) { setSelJobId(null); setRows([]); setSelJobSpecs([]); setOpenCol(null); setAnchorEl(null); return; }
+    if (selJobId === jobId) { setSelJobId(null); setRows([]); setSelJobSpecs([]); setSelectedIds(new Set()); setOpenCol(null); setAnchorEl(null); return; }
     openJobFresh(jobId);
   };
 
@@ -225,6 +233,69 @@ export default function SteelMatchTab() {
     }
     return { counts, unmatched };
   })();
+
+  /* ── 출고 카트 담기 ─────────────────────────────────────────────── */
+  // 선택 가능(=출고 후보) 강재: 매칭됨 + 입고(RECEIVED) 상태. plan.id → plan 맵
+  const selectablePlanById = useMemo(() => {
+    const m = new Map<string, PlanRow>();
+    for (const r of rows) if (r.matched && r.plan && r.plan.status === "RECEIVED") m.set(r.plan.id, r.plan);
+    return m;
+  }, [rows]);
+
+  // 현재 화면(displayRows)에서 아직 카트에 없는 선택 가능 행들 (전체선택 대상)
+  const selectableVisibleIds = useMemo(() => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const r of displayRows) {
+      const id = r.plan?.id;
+      if (r.matched && r.plan && r.plan.status === "RECEIVED" && id && !cart.has(id) && !seen.has(id)) {
+        out.push(id); seen.add(id);
+      }
+    }
+    return out;
+  }, [displayRows, cart]);
+
+  // 실제 담을 수 있는 선택 건수 (선택됨 + 출고 후보 + 카트 미포함)
+  const validSelectedIds = useMemo(
+    () => [...selectedIds].filter(id => selectablePlanById.has(id) && !cart.has(id)),
+    [selectedIds, selectablePlanById, cart],
+  );
+
+  const allVisibleSelected = selectableVisibleIds.length > 0 && selectableVisibleIds.every(id => selectedIds.has(id));
+
+  const toggleAll = () => {
+    setSelectedIds(prev => {
+      const n = new Set(prev);
+      if (allVisibleSelected) selectableVisibleIds.forEach(id => n.delete(id));
+      else selectableVisibleIds.forEach(id => n.add(id));
+      return n;
+    });
+  };
+
+  const toggleOne = (id: string) => {
+    setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  };
+
+  const addToCart = () => {
+    const ids = validSelectedIds;
+    if (ids.length === 0) { alert("출고할 강재를 선택하세요.\n(입고 상태이면서 카트에 없는 강재만 담을 수 있습니다.)"); return; }
+    if (!confirm(`원본 ${selJobSpecs.length}장 / 선택 ${ids.length}장\n\n선택한 강재를 출고 카트에 담으시겠습니까?`)) return;
+    const items: ShipoutCartItem[] = ids.map(id => {
+      const p = selectablePlanById.get(id)!;
+      return {
+        steelPlanId: p.id,
+        vesselCode:  p.vesselCode,
+        material:    p.material,
+        thickness:   p.thickness,
+        width:       p.width,
+        length:      p.length,
+        weight:      calcWeight(p.thickness, p.width, p.length),
+      };
+    });
+    const { added, duplicates } = cart.add(items);
+    setSelectedIds(new Set());
+    alert(`출고 카트에 ${added}건 담았습니다.${duplicates ? `\n(${duplicates}건은 이미 카트에 있어 제외)` : ""}\n\n하단 카트바에서 [출고장 만들기]로 진행하세요.`);
+  };
 
   const openFilter = (key: string, el: HTMLElement) => {
     if (openCol === key) { setOpenCol(null); setAnchorEl(null); }
@@ -364,6 +435,11 @@ export default function SteelMatchTab() {
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="호선·재질·업로드번호 검색"
                 className="pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg w-56 focus:outline-none focus:ring-2 focus:ring-blue-400" />
             </div>
+            <button onClick={addToCart} disabled={validSelectedIds.length === 0}
+              title="입고 상태 강재만 출고 카트에 담을 수 있습니다."
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed">
+              <Truck size={14} /> 출고 카트에 담기{validSelectedIds.length ? ` (${validSelectedIds.length})` : ""}
+            </button>
             <button onClick={downloadExcel} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700">
               <Download size={14} /> 엑셀 다운로드
             </button>
@@ -387,6 +463,12 @@ export default function SteelMatchTab() {
             <table className="w-full text-xs whitespace-nowrap">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
+                  <th className="px-2 py-2 w-9 text-center">
+                    <input type="checkbox" checked={allVisibleSelected} onChange={toggleAll}
+                      disabled={selectableVisibleIds.length === 0}
+                      title="화면의 입고 강재 전체선택"
+                      className="align-middle accent-purple-600 disabled:opacity-30" />
+                  </th>
                   {COLUMNS.map(({ key, label, align }) => {
                     const active = (colFilters[key]?.length ?? 0) > 0 || !!predicates[key];
                     const isSort = sortKey === key;
@@ -405,11 +487,20 @@ export default function SteelMatchTab() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {rowsLoading ? (
-                  <tr><td colSpan={10} className="py-8 text-center text-gray-400">매칭 중...</td></tr>
+                  <tr><td colSpan={11} className="py-8 text-center text-gray-400">매칭 중...</td></tr>
                 ) : displayRows.length === 0 ? (
-                  <tr><td colSpan={10} className="py-8 text-center text-gray-400">매칭 결과가 없습니다.</td></tr>
-                ) : displayRows.map((r, i) => (
-                  <tr key={i} className={`hover:bg-gray-50 ${!r.matched ? "bg-red-50/40" : ""}`}>
+                  <tr><td colSpan={11} className="py-8 text-center text-gray-400">매칭 결과가 없습니다.</td></tr>
+                ) : displayRows.map((r, i) => {
+                  const selectable = r.matched && !!r.plan && r.plan.status === "RECEIVED";
+                  const inCart = !!r.plan && cart.has(r.plan.id);
+                  return (
+                  <tr key={i} className={`hover:bg-gray-50 ${!r.matched ? "bg-red-50/40" : ""} ${inCart ? "bg-purple-50/60" : ""}`}>
+                    <td className="px-2 py-1.5 text-center">
+                      {selectable && (inCart
+                        ? <span className="text-[10px] font-semibold text-purple-600" title="이미 출고 카트에 담김">담김</span>
+                        : <input type="checkbox" checked={selectedIds.has(r.plan!.id)} onChange={() => toggleOne(r.plan!.id)}
+                            className="align-middle accent-purple-600" />)}
+                    </td>
                     <td className="px-3 py-1.5 font-medium">{r.matched ? r.plan!.vesselCode : (r.spec.vesselCode || <span className="text-gray-400">(전체)</span>)}</td>
                     <td className="px-3 py-1.5">{r.spec.material}</td>
                     <td className="px-3 py-1.5 text-right">{fmtT(r.spec.thickness)}</td>
@@ -425,7 +516,8 @@ export default function SteelMatchTab() {
                     <td className="px-3 py-1.5 text-gray-600">{r.plan?.storageLocation ?? "-"}</td>
                     <td className="px-3 py-1.5 text-purple-700">{r.plan?.reservedFor ?? "-"}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
