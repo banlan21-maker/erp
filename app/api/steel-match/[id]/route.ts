@@ -51,6 +51,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }));
 
     const rows: MatchRow[] = [];
+    // 같은 강재(plan.id)가 여러(중복) 사양에 매칭돼도 결과에는 1번만 노출
+    // — 중복 행 + 체크박스 동반선택(하나 누르면 2개 선택) 방지
+    const seenPlanIds = new Set<string>();
     for (const s of specs) {
       const matches = plans.filter(p =>
         (!s.vesselCode || p.vesselCode === s.vesselCode) &&
@@ -62,7 +65,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       if (matches.length === 0) {
         rows.push({ matched: false, spec: s, plan: null });
       } else {
-        for (const p of matches) rows.push({ matched: true, spec: s, plan: p });
+        // 아직 다른 사양에 잡히지 않은 강재만 새 행으로 추가
+        for (const p of matches) {
+          if (seenPlanIds.has(p.id)) continue;
+          seenPlanIds.add(p.id);
+          rows.push({ matched: true, spec: s, plan: p });
+        }
       }
     }
 

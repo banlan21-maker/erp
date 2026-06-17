@@ -494,7 +494,7 @@ export default function SteelMatchTab() {
                   const selectable = r.matched && !!r.plan && r.plan.status === "RECEIVED";
                   const inCart = !!r.plan && cart.has(r.plan.id);
                   return (
-                  <tr key={i} className={`hover:bg-gray-50 ${!r.matched ? "bg-red-50/40" : ""} ${inCart ? "bg-purple-50/60" : ""}`}>
+                  <tr key={r.plan?.id ?? `u-${i}`} className={`hover:bg-gray-50 ${!r.matched ? "bg-red-50/40" : ""} ${inCart ? "bg-purple-50/60" : ""}`}>
                     <td className="px-2 py-1.5 text-center">
                       {selectable && (inCart
                         ? <span className="text-[10px] font-semibold text-purple-600" title="이미 출고 카트에 담김">담김</span>
