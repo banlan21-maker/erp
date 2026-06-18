@@ -1291,11 +1291,19 @@ model SteelPlan {
   uploadBatchNo      String? // 업로드 배치번호 (YYMMDDHHMMSS, 같은 업로드끼리 공유)
   reservedFor        String? // 확정 블록 (예: "B80C")
 
+  // 외부 출고 선별 확정 (출고등록) — 판번호 확인 후 선별지시서 출력 시 마킹.
+  // 상태(status)는 입고(RECEIVED) 유지하며, 확정정보에 빨간 "출고"로 표시. 되돌리기 가능.
+  shipoutMarkedAt    DateTime? // 출고 확정(선별) 시각
+  shipoutHeatNo      String?   // 출고 확정 시 입력한 판번호 (추적용)
+
   // 외부 출고 (Shipment) 관계 — 한 SteelPlan 은 한 번 출고됨
   shipmentItems ShipmentItem[]  // 출고 이력 (ACTIVE 1건만 의미 있음 — application 강제)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // 출고등록 판번호 매칭(사양+상태 동등 + FIFO) 조회 성능
+  @@index([vesselCode, material, status, thickness, width, length])
 }
 
 model SteelPlanHeat {

@@ -5,7 +5,7 @@ import * as XLSX from "xlsx";
 import {
   Upload, Plus, Trash2, RefreshCw, Download, Search, X,
   CheckSquare, Square, ClipboardList, PackageOpen, Hash, PackageCheck, Printer, Filter,
-  ArrowUp, ArrowDown, FileSpreadsheet,
+  ArrowUp, ArrowDown, FileSpreadsheet, Truck,
 } from "lucide-react";
 import ColumnFilterDropdown, { type FilterValue } from "./column-filter-dropdown";
 import { serializeColFilters } from "@/lib/client-cascading";
@@ -65,6 +65,8 @@ interface SteelPlanRow {
   sourceFile:      string | null;
   uploadBatchNo:   string | null;
   reservedFor:     string | null;
+  shipoutMarkedAt: string | null;
+  shipoutHeatNo:   string | null;
   createdAt: string;
 }
 
@@ -217,6 +219,7 @@ export default function SteelPlanMain() {
   const emptyBulkRow = (): BulkRow => ({ vesselCode: "", material: "", thickness: "", width: "", length: "", qty: "1", storageLocation: "" });
   const [showBulkReceive, setShowBulkReceive]   = useState(false);
   const [bulkRows,        setBulkRows]          = useState<BulkRow[]>([emptyBulkRow()]);
+  const [showShipoutRegister, setShowShipoutRegister] = useState(false);
   const [bulkSubmitting,  setBulkSubmitting]    = useState(false);
   const [bulkResults,     setBulkResults]       = useState<{ vesselCode: string; material: string; thickness: number; width: number; length: number; qty: number; matched: number; notFound: boolean; error?: string }[] | null>(null);
   const [bulkReceiveDate, setBulkReceiveDate]   = useState(() => new Date().toISOString().slice(0, 10));
@@ -635,6 +638,17 @@ export default function SteelPlanMain() {
   /* ── rows 로컬 업데이트 헬퍼 ── */
   const updateRowsLocally = (ids: string[], patch: Partial<SteelPlanRow>) => {
     setRows((prev) => prev.map((r) => ids.includes(r.id) ? { ...r, ...patch } : r));
+  };
+
+  /* ── 출고 확정 취소 (확정정보 "출고" 빨간 배지 클릭) ── */
+  const unmarkShipout = async (row: SteelPlanRow) => {
+    if (!confirm(`'${row.vesselCode}' 출고 확정을 취소하시겠습니까?${row.shipoutHeatNo ? `\n(판번호: ${row.shipoutHeatNo})` : ""}`)) return;
+    updateRowsLocally([row.id], { shipoutMarkedAt: null, shipoutHeatNo: null });
+    await fetch("/api/steel-plan/shipout-mark", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "unmark", ids: [row.id] }),
+    }).catch(() => {});
   };
 
   /* ── 입고 처리 (행별 버튼) — Optimistic Update ── */
@@ -1082,6 +1096,13 @@ export default function SteelPlanMain() {
           >
             <PackageCheck size={14} /> 입고등록
           </button>
+          <button
+            onClick={() => setShowShipoutRegister(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+            title="판번호를 입력해 출고할 강재를 확인하고 선별지시서를 출력"
+          >
+            <Truck size={14} /> 출고등록
+          </button>
         </div>
       </div>
 
@@ -1461,7 +1482,22 @@ export default function SteelPlanMain() {
                             <span className={`px-1.5 py-0 rounded-full text-[11px] font-medium ${st.cls}`}>{st.label}</span>
                           </td>
                           <td className="px-2 py-1 text-center">
-                            {(row.status === "RECEIVED" || row.status === "ISSUED") && row.reservedFor ? (
+                            {row.shipoutMarkedAt && row.status === "RECEIVED" ? (
+                              <span className="inline-flex items-center justify-center gap-1">
+                                {row.reservedFor && (
+                                  <span className="px-1 py-0 rounded text-[10px] font-semibold bg-purple-100 text-purple-700">
+                                    {row.reservedFor}
+                                  </span>
+                                )}
+                                <button
+                                  onClick={() => unmarkShipout(row)}
+                                  title={`출고 확정${row.shipoutHeatNo ? ` (판번호 ${row.shipoutHeatNo})` : ""} — 클릭 시 취소`}
+                                  className="px-1.5 py-0 rounded text-[11px] font-semibold bg-red-100 text-red-700 hover:bg-red-200"
+                                >
+                                  {row.vesselCode} 출고
+                                </button>
+                              </span>
+                            ) : (row.status === "RECEIVED" || row.status === "ISSUED") && row.reservedFor ? (
                               <span className="px-1.5 py-0 rounded text-[11px] font-semibold bg-purple-100 text-purple-700">
                                 {row.reservedFor}
                               </span>
@@ -2501,6 +2537,14 @@ export default function SteelPlanMain() {
       {matchOpen && (
         <MatchingExcelModal onClose={() => setMatchOpen(false)} />
       )}
+
+      {/* 출고등록 모달 — 판번호 확인 + 선별지시서 출력 + 출고 확정 */}
+      {showShipoutRegister && (
+        <ShipoutRegisterModal
+          onClose={() => setShowShipoutRegister(false)}
+          onDone={() => { setShowShipoutRegister(false); loadPlan(); }}
+        />
+      )}
     </div>
   );
 }
@@ -2902,6 +2946,245 @@ function MatchingExcelModal({ onClose }: { onClose: () => void }) {
             </div>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────────── */
+/* 출고등록 — 판번호 입력 → 입고 강재 매칭 → 선별지시서 출력 + 출고 확정 마킹        */
+/* ──────────────────────────────────────────────────────────────────────────── */
+interface ShipoutPick {
+  planId: string;
+  heatNo: string;
+  vesselCode: string;
+  material: string;
+  thickness: number;
+  width: number;
+  length: number;
+  storageLocation: string | null;
+}
+
+function ShipoutRegisterModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [input, setInput]       = useState("");
+  const [picked, setPicked]     = useState<ShipoutPick[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy]         = useState(false);
+  const [msg, setMsg]           = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const addHeat = async () => {
+    const heatNo = input.trim();
+    if (!heatNo || busy) return;
+    if (picked.some((p) => p.heatNo.toLowerCase() === heatNo.toLowerCase())) {
+      setMsg({ type: "err", text: `이미 추가된 판번호: ${heatNo}` });
+      setInput("");
+      return;
+    }
+    setBusy(true);
+    try {
+      const exclude = picked.map((p) => p.planId).join(",");
+      const r = await fetch(`/api/steel-plan/shipout-match?heatNo=${encodeURIComponent(heatNo)}&exclude=${encodeURIComponent(exclude)}`);
+      const d = await r.json();
+      if (!d.success) { setMsg({ type: "err", text: d.error ?? "조회 실패" }); return; }
+      if (!d.matched) {
+        const reasonMap: Record<string, string> = {
+          NOT_FOUND:     "등록되지 않은 판번호",
+          ALREADY_USED:  "이미 절단·사용된 판번호 (남은 원판 없음)",
+          ALREADY_MARKED:"이미 출고 확정된 판번호",
+          NOT_RECEIVED:  "매칭되는 입고 강재 없음 (미입고 또는 소진)",
+        };
+        setMsg({ type: "err", text: `${heatNo} — ${reasonMap[d.reason] ?? "매칭 실패"}` });
+        return;
+      }
+      const p = d.plan;
+      setPicked((prev) => [...prev, {
+        planId: p.id, heatNo, vesselCode: p.vesselCode, material: p.material,
+        thickness: p.thickness, width: p.width, length: p.length, storageLocation: p.storageLocation,
+      }]);
+      setSelected((prev) => new Set(prev).add(p.id));
+      setMsg({ type: "ok", text: `추가됨: ${heatNo} → ${p.vesselCode} ${p.material} ${fmtT(p.thickness)}×${fmtL(p.width)}×${fmtL(p.length)}` });
+      setInput("");
+    } catch (e) {
+      setMsg({ type: "err", text: e instanceof Error ? e.message : "네트워크 오류" });
+    } finally {
+      setBusy(false);
+      setTimeout(() => inputRef.current?.focus(), 0);
+    }
+  };
+
+  const removeRow = (planId: string) => {
+    setPicked((prev) => prev.filter((p) => p.planId !== planId));
+    setSelected((prev) => { const n = new Set(prev); n.delete(planId); return n; });
+  };
+  const toggle = (planId: string) => setSelected((prev) => {
+    const n = new Set(prev); if (n.has(planId)) n.delete(planId); else n.add(planId); return n;
+  });
+  const allChecked = picked.length > 0 && picked.every((p) => selected.has(p.planId));
+  const toggleAll = () => setSelected(allChecked ? new Set() : new Set(picked.map((p) => p.planId)));
+
+  const selRows = picked.filter((p) => selected.has(p.planId));
+
+  const writeSelectionSheet = (win: Window, rows: ShipoutPick[]) => {
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const wt  = (t: number, w: number, l: number) => (Math.round(t * w * l * 7.85 / 1_000_000 * 10) / 10).toFixed(1);
+    const body = rows.map((r, i) => `
+      <tr class="${i % 2 === 0 ? "even" : ""}">
+        <td>${esc(r.vesselCode)}</td>
+        <td>${esc(r.heatNo)}</td>
+        <td>${esc(r.material)}</td>
+        <td class="num">${fmtT(r.thickness)}</td>
+        <td class="num">${fmtL(r.width)}</td>
+        <td class="num">${fmtL(r.length)}</td>
+        <td class="num">${wt(r.thickness, r.width, r.length)}</td>
+        <td>${esc(r.storageLocation ?? "-")}</td>
+      </tr>`).join("");
+    const totalWt = rows.reduce((s, r) => s + r.thickness * r.width * r.length * 7.85 / 1_000_000, 0).toFixed(1);
+    const html = `<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"/><title>선별지시서 (출고)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Malgun Gothic", sans-serif; font-size: 16pt; color: #111; padding: 4mm; }
+  h1 { font-size: 20pt; font-weight: bold; text-align: center; margin-bottom: 2mm; letter-spacing: 1px; }
+  .meta { text-align: center; font-size: 10pt; color: #555; margin-bottom: 2mm; }
+  table { width: 100%; border-collapse: collapse; table-layout: auto; }
+  th { background: #1e3a5f; color: #fff; padding: 1px 2px; font-size: 13pt; text-align: center; border: 1px solid #888; line-height: 1.1; white-space: nowrap; }
+  td { padding: 1px 2px; border: 1px solid #aaa; text-align: center; vertical-align: middle; font-size: 16pt; line-height: 1.1; white-space: nowrap; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.even { background: #f5f8fc; }
+  @media print { body { padding: 3mm; } @page { margin: 6mm; size: A4 landscape; } }
+</style></head>
+<body>
+<h1>선 별 지 시 서</h1>
+<p class="meta">출력일시: ${new Date().toLocaleString("ko-KR")} | 총수량: ${rows.length}장 | 총중량: ${totalWt}kg</p>
+<table>
+  <thead><tr>
+    <th>호선</th><th>판번호</th><th>재질</th><th>두께</th><th>폭</th><th>길이</th><th>중량(kg)</th><th>위치</th>
+  </tr></thead>
+  <tbody>${body}</tbody>
+</table>
+<script>window.onload = () => { window.print(); }<\/script>
+</body></html>`;
+    win.document.write(html); win.document.close();
+  };
+
+  const printAndMark = async () => {
+    if (selRows.length === 0) { alert("선택된 자재가 없습니다."); return; }
+    // 인쇄창은 클릭 제스처 안에서 빈 창으로 먼저 열고(팝업 차단 회피),
+    // 확정(mark)이 성공한 뒤에 내용을 채워 인쇄 — 인쇄됨/확정실패 불일치 방지
+    const win = window.open("", "_blank", "width=1100,height=750");
+    setBusy(true);
+    try {
+      const r = await fetch("/api/steel-plan/shipout-mark", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "mark", items: selRows.map((p) => ({ id: p.planId, heatNo: p.heatNo })) }),
+      });
+      const d = await r.json();
+      if (!d.success) { win?.close(); alert(d.error ?? "출고 확정 처리 실패"); return; }
+      if (win) writeSelectionSheet(win, selRows);
+      if (typeof d.count === "number" && typeof d.requested === "number" && d.count < d.requested) {
+        alert(`요청 ${d.requested}장 중 ${d.count}건만 출고 확정되었습니다.\n(나머지는 이미 처리/선점되어 제외 — 인쇄 내용과 다를 수 있습니다.)`);
+      } else {
+        alert(`${d.count}건 출고 확정 처리되었습니다.\n강재전체목록 확정정보에 빨간 '출고'로 표시됩니다.`);
+      }
+      onDone();
+    } catch (e) {
+      win?.close();
+      alert(e instanceof Error ? e.message : "네트워크 오류");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+        <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+          <h3 className="font-bold text-base text-gray-900 flex items-center gap-2">
+            <Truck size={18} className="text-purple-600" /> 출고등록 — 판번호 확인
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><X size={16} /></button>
+        </div>
+
+        <div className="p-5 space-y-3 flex-1 overflow-y-auto">
+          <div className="text-sm text-gray-600">
+            현장에서 적어온 <strong>판번호</strong>를 한 장씩 입력하고 <kbd className="px-1 bg-gray-100 border rounded text-xs">Enter</kbd>. 입고된 강재와 자동 매칭됩니다.
+            <span className="block text-xs text-gray-400 mt-0.5">출력 시 선택 강재가 <strong className="text-red-500">출고 확정</strong>되어 강재전체목록 확정정보에 빨간 &apos;출고&apos;로 표시됩니다. (배지 클릭으로 되돌리기 가능 · 사양 단위 매칭이며 판번호는 추적 기록용)</span>
+          </div>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Hash size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                ref={inputRef}
+                autoFocus
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addHeat(); } }}
+                placeholder="판번호 입력 후 Enter (예: HT240001)"
+                className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+              />
+            </div>
+            <button onClick={addHeat} disabled={busy || !input.trim()}
+              className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-40">
+              추가
+            </button>
+          </div>
+          {msg && (
+            <div className={`text-xs px-3 py-1.5 rounded ${msg.type === "ok" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-600 border border-red-200"}`}>
+              {msg.text}
+            </div>
+          )}
+
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="w-8 px-2 py-2 text-center">
+                    <input type="checkbox" checked={allChecked} onChange={toggleAll} disabled={picked.length === 0} className="accent-purple-600" />
+                  </th>
+                  <th className="px-2 py-2 text-left font-medium text-gray-600">판번호</th>
+                  <th className="px-2 py-2 text-left font-medium text-gray-600">호선</th>
+                  <th className="px-2 py-2 text-left font-medium text-gray-600">재질</th>
+                  <th className="px-2 py-2 text-right font-medium text-gray-600">두께</th>
+                  <th className="px-2 py-2 text-right font-medium text-gray-600">폭</th>
+                  <th className="px-2 py-2 text-right font-medium text-gray-600">길이</th>
+                  <th className="px-2 py-2 text-left font-medium text-gray-600">보관위치</th>
+                  <th className="w-8 px-2 py-2"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {picked.length === 0 ? (
+                  <tr><td colSpan={9} className="py-8 text-center text-gray-400">판번호를 입력하면 매칭된 자재가 표시됩니다.</td></tr>
+                ) : picked.map((p) => (
+                  <tr key={p.planId} className={`hover:bg-gray-50 ${selected.has(p.planId) ? "bg-purple-50/40" : ""}`}>
+                    <td className="px-2 py-1.5 text-center">
+                      <input type="checkbox" checked={selected.has(p.planId)} onChange={() => toggle(p.planId)} className="accent-purple-600" />
+                    </td>
+                    <td className="px-2 py-1.5 font-mono font-semibold">{p.heatNo}</td>
+                    <td className="px-2 py-1.5 font-medium">{p.vesselCode}</td>
+                    <td className="px-2 py-1.5">{p.material}</td>
+                    <td className="px-2 py-1.5 text-right font-mono">{fmtT(p.thickness)}</td>
+                    <td className="px-2 py-1.5 text-right font-mono">{fmtL(p.width)}</td>
+                    <td className="px-2 py-1.5 text-right font-mono">{fmtL(p.length)}</td>
+                    <td className="px-2 py-1.5">{p.storageLocation ?? "-"}</td>
+                    <td className="px-2 py-1.5 text-center">
+                      <button onClick={() => removeRow(p.planId)} className="text-gray-400 hover:text-red-600"><Trash2 size={13} /></button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="px-5 py-3 border-t border-gray-200 flex items-center justify-between gap-2 flex-shrink-0">
+          <div className="text-sm text-gray-500">매칭 {picked.length}장 · 선택 {selRows.length}장</div>
+          <button onClick={printAndMark} disabled={busy || selRows.length === 0}
+            className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm bg-gray-800 text-white rounded hover:bg-gray-900 disabled:opacity-40">
+            <Printer size={14} /> 선별지시서 출력 + 출고확정 ({selRows.length}장)
+          </button>
+        </div>
       </div>
     </div>
   );

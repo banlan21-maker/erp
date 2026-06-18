@@ -288,6 +288,9 @@ export async function POST(req: NextRequest) {
               status:          SteelPlanStatus.SHIPPED_OUT,
               issuedAt:        shippedAt,
               storageLocation: null,
+              // 출고등록(가벼운 선별 마킹)된 강재가 정식 출고되면 마킹 정리 — 유령 '출고' 배지 방지
+              shipoutMarkedAt: null,
+              shipoutHeatNo:   null,
             },
           });
         }
