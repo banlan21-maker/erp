@@ -374,11 +374,11 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
               <td className="bg-gray-50 text-center font-bold">인수(입고)자</td>
               <td><input className="cell" value={v.receiverName ?? ""} onChange={e => setVehicleField("receiverName", e.target.value)} /></td>
               <td className="bg-gray-50 text-center font-bold">차량번호</td>
-              <td className="font-mono">{v.vehicleNo}</td>
+              <td><input className="cell font-mono" value={v.vehicleNo ?? ""} onChange={e => setVehicleField("vehicleNo", e.target.value)} /></td>
               <td className="bg-gray-50 text-center font-bold">운전자 성명</td>
-              <td>{v.driverName ?? ""}</td>
+              <td><input className="cell" value={v.driverName ?? ""} onChange={e => setVehicleField("driverName", e.target.value)} /></td>
               <td className="bg-gray-50 text-center font-bold">운전자 연락처</td>
-              <td className="font-mono">{v.driverPhone ?? ""}</td>
+              <td><input className="cell font-mono" value={v.driverPhone ?? ""} onChange={e => setVehicleField("driverPhone", e.target.value)} /></td>
             </tr>
           </tbody>
         </table>
@@ -403,6 +403,9 @@ async function flushVehiclePatch(v: InvoiceVehicle) {
         writerName:   v.writerName,
         writerPhone:  v.writerPhone,
         receiverName: v.receiverName,
+        vehicleNo:    v.vehicleNo,
+        driverName:   v.driverName,
+        driverPhone:  v.driverPhone,
       }),
     });
   } catch { /* 다음 디바운스에 재시도됨 */ }

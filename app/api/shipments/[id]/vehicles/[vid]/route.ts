@@ -32,11 +32,8 @@ export async function PATCH(
     if (body.writerName   !== undefined) data.writerName   = norm(body.writerName);
     if (body.writerPhone  !== undefined) data.writerPhone  = norm(body.writerPhone);
     if (body.receiverName !== undefined) data.receiverName = norm(body.receiverName);
-    if (body.vehicleNo    !== undefined) {
-      const v = norm(body.vehicleNo);
-      if (!v) return NextResponse.json({ success: false, error: "차량번호는 비울 수 없습니다." }, { status: 400 });
-      data.vehicleNo = v;
-    }
+    // 차량번호는 거래명세표 출력 전에 입력 — 시작값이 빈 문자열일 수 있으므로 빈값 허용("" 저장)
+    if (body.vehicleNo    !== undefined) data.vehicleNo = norm(body.vehicleNo) ?? "";
     if (body.driverName  !== undefined) data.driverName  = norm(body.driverName);
     if (body.driverPhone !== undefined) data.driverPhone = norm(body.driverPhone);
     if (body.loadLimit   !== undefined) data.loadLimit   = body.loadLimit == null ? null : Number(body.loadLimit);

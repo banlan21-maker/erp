@@ -253,6 +253,13 @@ export default function ShipoutBar() {
   /* ─── 검증 → 모달 ② 진입 ─── */
   const goToStep2 = () => {
     setError("");
+    // 판번호 중복 입력 방지 — 같은 판번호(한 물리 철판)가 두 번 나가는 것 차단
+    const heatNos = rowsM.map(r => r.heatNo.trim()).filter(Boolean);
+    const dupHeat = heatNos.find((h, i) => heatNos.indexOf(h) !== i);
+    if (dupHeat) {
+      setError(`판번호 '${dupHeat}'가 중복 입력되었습니다. 같은 판번호는 한 번만 사용할 수 있습니다.`);
+      return;
+    }
     // 모든 자재가 배차됐는가
     const missing = rowsM.filter(r => r.vehicleIdx === null);
     if (missing.length > 0) {
@@ -530,7 +537,7 @@ export default function ShipoutBar() {
 /* Step 1 — 판번호 매칭 + 차분 만들기                            */
 /* ════════════════════════════════════════════════════════════ */
 function Step1({
-  rowsM, setRow, vehicles, updateVehicle, addVehicle, removeVehicle,
+  rowsM, setRow, vehicles, addVehicle, removeVehicle,
   checked, toggleCheck, setCheckedAll, unassignedRows, checkedWeight,
 }: {
   rowsM:  ModalRow[];
@@ -635,30 +642,43 @@ function Step1({
             {vehicles.map((v, idx) => {
               const myRows = rowsM.filter(r => r.vehicleIdx === idx);
               const totalW = myRows.reduce((s, r) => s + r.weight, 0);
-              const limit  = Number(v.loadLimit);
-              const over   = isFinite(limit) && limit > 0 && totalW > limit;
               return (
-                <div key={v.id} className={`border-2 rounded-xl p-3 ${over ? "border-red-400 bg-red-50/30" : "border-gray-200"}`}>
+                <div key={v.id} className="border-2 border-gray-200 rounded-xl p-3">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-bold">차분 #{v.sequence}</span>
                       <span className="text-xs text-gray-600">{myRows.length}건 · {fmtKg(totalW)}</span>
-                      {over && <span className="text-xs text-red-600 font-semibold flex items-center gap-1"><AlertTriangle size={11} /> 적재한도 초과</span>}
                     </div>
                     <button onClick={() => removeVehicle(idx)} className="text-xs text-red-600 hover:underline">차분 해제</button>
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
-                    <Field label="차량번호"><input value={v.vehicleNo} onChange={e => updateVehicle(idx, { vehicleNo: e.target.value })} placeholder="12가 3456 (선택)" className="cellinp" /></Field>
-                    <Field label="운전자"><input value={v.driverName} onChange={e => updateVehicle(idx, { driverName: e.target.value })} className="cellinp" /></Field>
-                    <Field label="운전자 전화"><input value={v.driverPhone} onChange={e => updateVehicle(idx, { driverPhone: e.target.value })} placeholder="010-..." className="cellinp font-mono" /></Field>
-                    <Field label="적재한도 (kg)"><input type="number" value={v.loadLimit} onChange={e => updateVehicle(idx, { loadLimit: e.target.value })} placeholder="예: 25000" className="cellinp text-right" /></Field>
-                  </div>
-                  <div className="text-[11px] text-gray-500 flex flex-wrap gap-1">
-                    {myRows.map(r => (
-                      <span key={r.steelPlanId} className="bg-white border border-gray-200 rounded px-1.5 py-0.5">
-                        {r.vesselCode} · {r.material} · {r.thickness}T · {r.weight.toFixed(1)}kg
-                      </span>
-                    ))}
+                  {/* 차분별 실제 자재 리스트 (확인용). 차량번호·운전자 등은 거래명세표 출력 전에 입력 */}
+                  <div className="border border-gray-100 rounded-lg overflow-x-auto">
+                    <table className="w-full text-[11px]">
+                      <thead className="bg-gray-50 text-gray-500">
+                        <tr>
+                          <th className="px-2 py-1 text-left">호선</th>
+                          <th className="px-2 py-1 text-left">재질</th>
+                          <th className="px-2 py-1 text-right">두께</th>
+                          <th className="px-2 py-1 text-right">폭</th>
+                          <th className="px-2 py-1 text-right">길이</th>
+                          <th className="px-2 py-1 text-right">중량(kg)</th>
+                          <th className="px-2 py-1 text-left">판번호</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {myRows.map(r => (
+                          <tr key={r.steelPlanId}>
+                            <td className="px-2 py-1 font-medium">{r.vesselCode}</td>
+                            <td className="px-2 py-1">{r.material}</td>
+                            <td className="px-2 py-1 text-right font-mono">{r.thickness}</td>
+                            <td className="px-2 py-1 text-right font-mono">{r.width}</td>
+                            <td className="px-2 py-1 text-right font-mono">{r.length}</td>
+                            <td className="px-2 py-1 text-right font-mono">{r.weight.toFixed(1)}</td>
+                            <td className="px-2 py-1 font-mono">{r.heatNo || "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               );
