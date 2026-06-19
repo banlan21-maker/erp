@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ProjectStatus } from "@prisma/client";
+import { syncDrawingListBySpecs } from "@/lib/sync-drawing-spec";
 
 // GET /api/projects/[id] - 프로젝트 상세 조회
 export async function GET(
@@ -59,6 +60,22 @@ export async function PATCH(
         ...(storageLocation !== undefined ? { storageLocation: storageLocation?.trim() || null } : {}),
       },
     });
+
+    // 호선코드(projectCode) 변경 시 도면↔강재 매칭 상태 재계산
+    // (안 하면 코드를 맞게 바꿔도 옛 매칭 상태가 남아 연결이 안 보임)
+    if (projectCode) {
+      const drawings = await prisma.drawingList.findMany({
+        where: { projectId: id },
+        select: { material: true, thickness: true, width: true, length: true, alternateVesselCode: true },
+      });
+      const specMap = new Map<string, { vesselCode: string; material: string; thickness: number; width: number; length: number }>();
+      for (const d of drawings) {
+        const vessel = d.alternateVesselCode?.trim() || project.projectCode;
+        const key = `${vessel}|${d.material}|${d.thickness}|${d.width}|${d.length}`;
+        if (!specMap.has(key)) specMap.set(key, { vesselCode: vessel, material: d.material, thickness: d.thickness, width: d.width, length: d.length });
+      }
+      if (specMap.size > 0) await syncDrawingListBySpecs([...specMap.values()]);
+    }
 
     return NextResponse.json({ success: true, data: project });
   } catch (error) {

@@ -34,7 +34,7 @@ export default function VesselEditModal({
     setError(null);
     const code = newCode.trim().toUpperCase();
     if (!code) { setError("호선코드를 입력하세요."); return; }
-    if (code === vesselCode) { setError("호선코드가 변경되지 않았습니다."); return; }
+    // 코드가 같아도 진행 — projectCode를 다시 보내면 도면↔강재 매칭이 재계산됨(연결 복구)
     setSaving(true);
     try {
       const results = await Promise.all(blockIds.map(id =>
@@ -117,6 +117,7 @@ export default function VesselEditModal({
               <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs text-amber-800">
                 <p className="font-bold mb-1">⚠️ 호선코드는 매칭의 키입니다 (복구용)</p>
                 <p>이 호선의 <strong>{blockIds.length}개 블록</strong> 코드가 함께 바뀝니다. <strong>강재입출고의 강재 호선코드는 바뀌지 않으므로</strong>, 강재와 동일한 코드로 맞춰야 매칭이 복구됩니다.</p>
+                <p className="mt-1">저장하면 도면↔강재 매칭이 <strong>재계산</strong>됩니다. 코드가 이미 맞는데 연결이 안 보이면, <strong>그대로 한 번 더 저장</strong>해 재계산하세요.</p>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">새 호선코드</label>
@@ -130,9 +131,9 @@ export default function VesselEditModal({
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
                 <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>취소</Button>
-                <Button size="sm" onClick={handleRename} disabled={saving || !newCode.trim() || newCode.trim().toUpperCase() === vesselCode}
+                <Button size="sm" onClick={handleRename} disabled={saving || !newCode.trim()}
                   className="bg-blue-600 hover:bg-blue-700 font-bold gap-1.5 disabled:opacity-40">
-                  <Save size={13} /> {saving ? "변경 중..." : "호선코드 변경"}
+                  <Save size={13} /> {saving ? "처리 중..." : (newCode.trim().toUpperCase() === vesselCode ? "매칭 재계산" : "호선코드 변경")}
                 </Button>
               </div>
             </>
