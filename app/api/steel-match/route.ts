@@ -17,6 +17,7 @@ export async function GET() {
         name: j.name,
         author: j.author,
         statuses: j.statuses,
+        reservedFilter: j.reservedFilter,
         specCount: Array.isArray(j.specs) ? (j.specs as unknown[]).length : 0,
         createdAt: j.createdAt.toISOString(),
       })),
@@ -33,6 +34,7 @@ export async function POST(req: NextRequest) {
     const name = (body.name ?? "").toString().trim();
     const author = body.author ? String(body.author).trim() : null;
     const statuses = (body.statuses ?? "ALL").toString();
+    const reservedFilter = body.reservedFilter === "NONE" ? "NONE" : "ANY";
     const rawSpecs: unknown[] = Array.isArray(body.specs) ? body.specs : [];
 
     if (!name) {
@@ -60,7 +62,7 @@ export async function POST(req: NextRequest) {
     }
 
     const job = await prisma.steelMatchJob.create({
-      data: { name, author, statuses, specs: specs as unknown as Prisma.InputJsonValue },
+      data: { name, author, statuses, reservedFilter, specs: specs as unknown as Prisma.InputJsonValue },
     });
     return NextResponse.json({ success: true, data: { id: job.id } }, { status: 201 });
   } catch (e) {

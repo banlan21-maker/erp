@@ -14,6 +14,7 @@ type PlanRow = {
   id: string; vesselCode: string; material: string; thickness: number; width: number; length: number;
   status: PlanStatus; uploadBatchNo: string | null; receivedAt: string | null;
   storageLocation: string | null; reservedFor: string | null;
+  shipoutMarkedAt: string | null; shipoutLabel: string | null;
 };
 type MatchRow = { matched: boolean; spec: Spec; plan: PlanRow | null };
 
@@ -38,16 +39,24 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const specs = (Array.isArray(job.specs) ? job.specs : []) as unknown as Spec[];
 
+    // 확정정보 필터: "NONE"이면 블록확정(reservedFor)·출고마킹(shipoutMarkedAt) 모두 없는 강재만
+    const reservedNone = job.reservedFilter === "NONE";
+
     const plansRaw = await prisma.steelPlan.findMany({
-      where: { status: { in: statuses } },
+      where: {
+        status: { in: statuses },
+        ...(reservedNone ? { reservedFor: null, shipoutMarkedAt: null } : {}),
+      },
       select: {
         id: true, vesselCode: true, material: true, thickness: true, width: true, length: true,
         status: true, uploadBatchNo: true, receivedAt: true, storageLocation: true, reservedFor: true,
+        shipoutMarkedAt: true, shipoutLabel: true,
       },
     });
     const plans: PlanRow[] = plansRaw.map(p => ({
       ...p,
       receivedAt: p.receivedAt ? p.receivedAt.toISOString() : null,
+      shipoutMarkedAt: p.shipoutMarkedAt ? p.shipoutMarkedAt.toISOString() : null,
     }));
 
     const rows: MatchRow[] = [];
@@ -77,7 +86,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({
       success: true,
       data: {
-        job: { id: job.id, name: job.name, statuses: job.statuses, createdAt: job.createdAt.toISOString() },
+        job: { id: job.id, name: job.name, statuses: job.statuses, reservedFilter: job.reservedFilter, createdAt: job.createdAt.toISOString() },
         specs,   // 사용자가 업로드한 원본 사양 목록 (왼쪽 패널용)
         rows,
       },
@@ -92,9 +101,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   try {
     const { id } = await params;
     const body = await req.json();
-    const data: { name?: string; statuses?: string } = {};
+    const data: { name?: string; statuses?: string; reservedFilter?: string } = {};
     if (body.name !== undefined) { const n = String(body.name).trim(); if (n) data.name = n; }
     if (body.statuses !== undefined) data.statuses = String(body.statuses) || "ALL";
+    if (body.reservedFilter !== undefined) data.reservedFilter = body.reservedFilter === "NONE" ? "NONE" : "ANY";
     const job = await prisma.steelMatchJob.update({ where: { id }, data });
     return NextResponse.json({ success: true, data: { id: job.id } });
   } catch (e) {

@@ -1295,6 +1295,7 @@ model SteelPlan {
   // 상태(status)는 입고(RECEIVED) 유지하며, 확정정보에 빨간 "출고"로 표시. 되돌리기 가능.
   shipoutMarkedAt    DateTime? // 출고 확정(선별) 시각
   shipoutHeatNo      String?   // 출고 확정 시 입력한 판번호 (추적용)
+  shipoutLabel       String?   // 확정정보 표시 라벨 (예: 매칭이름). null이면 호선코드로 대체
 
   // 외부 출고 (Shipment) 관계 — 한 SteelPlan 은 한 번 출고됨
   shipmentItems ShipmentItem[]  // 출고 이력 (ACTIVE 1건만 의미 있음 — application 강제)
@@ -1484,6 +1485,7 @@ model SteelMatchJob {
   name      String   // 매칭 이름 (예: "4506호선 입고자재 매칭작업")
   author    String?  // 작성자
   statuses  String   @default("ALL") // 매칭 대상 상태: "ALL" 또는 콤마구분 (REGISTERED,RECEIVED,ISSUED,COMPLETED,SHIPPED_OUT)
+  reservedFilter String @default("ANY") // 확정정보 필터: "ANY"(상관없이) | "NONE"(확정정보 없는것만)
   specs     Json     // 업로드 사양 목록 [{ vesselCode, material, thickness, width, length }]
   createdAt DateTime @default(now())
 

@@ -67,6 +67,7 @@ interface SteelPlanRow {
   reservedFor:     string | null;
   shipoutMarkedAt: string | null;
   shipoutHeatNo:   string | null;
+  shipoutLabel:    string | null;
   createdAt: string;
 }
 
@@ -642,8 +643,8 @@ export default function SteelPlanMain() {
 
   /* ── 출고 확정 취소 (확정정보 "출고" 빨간 배지 클릭) ── */
   const unmarkShipout = async (row: SteelPlanRow) => {
-    if (!confirm(`'${row.vesselCode}' 출고 확정을 취소하시겠습니까?${row.shipoutHeatNo ? `\n(판번호: ${row.shipoutHeatNo})` : ""}`)) return;
-    updateRowsLocally([row.id], { shipoutMarkedAt: null, shipoutHeatNo: null });
+    if (!confirm(`'${row.shipoutLabel ?? row.vesselCode}' 출고 확정을 취소하시겠습니까?${row.shipoutHeatNo ? `\n(판번호: ${row.shipoutHeatNo})` : ""}`)) return;
+    updateRowsLocally([row.id], { shipoutMarkedAt: null, shipoutHeatNo: null, shipoutLabel: null });
     await fetch("/api/steel-plan/shipout-mark", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1494,7 +1495,7 @@ export default function SteelPlanMain() {
                                   title={`출고 확정${row.shipoutHeatNo ? ` (판번호 ${row.shipoutHeatNo})` : ""} — 클릭 시 취소`}
                                   className="px-1.5 py-0 rounded text-[11px] font-semibold bg-red-100 text-red-700 hover:bg-red-200"
                                 >
-                                  {row.vesselCode} 출고
+                                  {row.shipoutLabel ?? row.vesselCode} 출고
                                 </button>
                               </span>
                             ) : (row.status === "RECEIVED" || row.status === "ISSUED") && row.reservedFor ? (
