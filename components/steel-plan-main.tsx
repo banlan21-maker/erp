@@ -115,23 +115,6 @@ const fmtYMDcompact = (iso: string | null | undefined) => {
   return `${yy}.${mm}.${dd}`;
 };
 
-/* 엑셀 컬럼 폭 자동 계산 — 헤더/셀 내용 길이에 맞춰 wch 산정 (한글·전각은 폭 2로) */
-function autoColWidths(rows: Record<string, unknown>[], headers?: string[]): { wch: number }[] {
-  const keys = headers ?? (rows.length > 0 ? Object.keys(rows[0]) : []);
-  if (keys.length === 0) return [];
-  const dispLen = (v: unknown) => {
-    const s = String(v ?? "");
-    let len = 0;
-    for (const ch of s) len += ch.charCodeAt(0) > 0x2e7f ? 2 : 1;   // 한글/한자/전각 → 2
-    return len;
-  };
-  return keys.map((k) => {
-    let max = dispLen(k);
-    for (const r of rows) max = Math.max(max, dispLen(r[k]));
-    return { wch: Math.min(Math.max(max + 2, 6), 60) };   // 여유 +2, 최소 6, 최대 60
-  });
-}
-
 const HEAT_STATUS: Record<string, { label: string; cls: string }> = {
   WAITING: { label: "대기", cls: "bg-yellow-100 text-yellow-700" },
   CUT:     { label: "절단", cls: "bg-blue-100  text-blue-700" },
