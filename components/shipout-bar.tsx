@@ -791,7 +791,7 @@ function Step2({
 /* ════════════════════════════════════════════════════════════ */
 /* 엑셀 업로드 모달                                              */
 /* ════════════════════════════════════════════════════════════ */
-export function ExcelUploadModal({ onClose, cart }: { onClose: () => void; cart: ReturnType<typeof useShipoutCart> }) {
+export function ExcelUploadModal({ onClose, cart, embedded = false }: { onClose: () => void; cart: ReturnType<typeof useShipoutCart>; embedded?: boolean }) {
   interface MatchResult {
     rowNo:        number;
     vesselCode:   string;
@@ -870,16 +870,8 @@ export function ExcelUploadModal({ onClose, cart }: { onClose: () => void; cart:
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-        <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-between">
-          <h3 className="font-bold text-lg text-gray-900 flex items-center gap-2">
-            <FileSpreadsheet size={18} className="text-emerald-600" /> 엑셀로 출고자재 일괄 추가
-          </h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><X size={16} /></button>
-        </div>
-
+  const bodyAndFooter = (
+    <>
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {error && <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">{error}</div>}
 
@@ -1004,6 +996,21 @@ export function ExcelUploadModal({ onClose, cart }: { onClose: () => void; cart:
             </button>
           )}
         </div>
+    </>
+  );
+
+  if (embedded) return <div className="flex flex-col max-h-[70vh]">{bodyAndFooter}</div>;
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+        <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-between">
+          <h3 className="font-bold text-lg text-gray-900 flex items-center gap-2">
+            <FileSpreadsheet size={18} className="text-emerald-600" /> 엑셀로 출고자재 일괄 추가
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><X size={16} /></button>
+        </div>
+        {bodyAndFooter}
       </div>
     </div>
   );
