@@ -109,16 +109,15 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
 
   const [savedMark, setSavedMark] = useState(false);
 
-  // 디바운스 PATCH (단순 setTimeout)
+  // 디바운스 PATCH (단순 setTimeout) — onUpdate 유무와 무관하게 항상 서버 저장
   useEffect(() => {
-    if (!onUpdate) return;
     if (JSON.stringify(v) === JSON.stringify(vehicle)) return;
     const t = setTimeout(async () => {
       await flushVehiclePatch(v);
       for (const it of v.items) {
         await flushItemPatch(v.shipmentId, v.id, it);
       }
-      onUpdate(v);
+      onUpdate?.(v);
       setSavedMark(true);
       setTimeout(() => setSavedMark(false), 1500);
     }, 600);

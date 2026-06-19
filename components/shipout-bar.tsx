@@ -686,13 +686,6 @@ function Step1({
           </div>
         )}
       </div>
-      <style jsx>{`
-        .cellinp {
-          width: 100%; padding: 0.375rem 0.5rem; font-size: 0.875rem;
-          border: 1px solid rgb(229 231 235); border-radius: 0.375rem; outline: 0;
-        }
-        .cellinp:focus { border-color: rgb(59 130 246); box-shadow: 0 0 0 2px rgb(59 130 246 / 0.4); }
-      `}</style>
     </div>
   );
 }
@@ -721,15 +714,6 @@ function HeatPicker({ row, onChange }: { row: ModalRow; onChange: (p: Partial<Mo
         </datalist>
       )}
       {row.manualHeatNo && row.heatNo && <span className="text-[10px] text-amber-700">신규</span>}
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="text-[10px] text-gray-500 font-medium mb-0.5">{label}</div>
-      {children}
     </div>
   );
 }
