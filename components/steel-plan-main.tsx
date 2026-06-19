@@ -2966,6 +2966,7 @@ interface ShipoutPick {
 }
 
 function ShipoutRegisterModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const cart = useShipoutCart();
   const [input, setInput]       = useState("");
   const [picked, setPicked]     = useState<ShipoutPick[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -3024,6 +3025,27 @@ function ShipoutRegisterModal({ onClose, onDone }: { onClose: () => void; onDone
   const toggleAll = () => setSelected(allChecked ? new Set() : new Set(picked.map((p) => p.planId)));
 
   const selRows = picked.filter((p) => selected.has(p.planId));
+  const selWeight = selRows.reduce((s, p) => s + calcWeight(p.thickness, p.width, p.length), 0);
+
+  // 선택 자재를 기존 출고 카트에 담아 외부출고관리(출고장)로 연결 — 판번호도 함께 전달
+  const addToCart = () => {
+    if (selRows.length === 0) { alert("선택된 자재가 없습니다."); return; }
+    const { added, duplicates } = cart.add(selRows.map((p) => ({
+      steelPlanId: p.planId,
+      vesselCode:  p.vesselCode,
+      material:    p.material,
+      thickness:   p.thickness,
+      width:       p.width,
+      length:      p.length,
+      weight:      calcWeight(p.thickness, p.width, p.length),
+      prefilledHeatNo: p.heatNo,
+    })));
+    alert(
+      `출고 카트에 ${added}건 담았습니다.${duplicates > 0 ? `\n(이미 담긴 ${duplicates}건 제외)` : ""}\n` +
+      `하단 [출고 카트] 바에서 [출고장 만들기]로 외부출고관리에 등록하세요.`,
+    );
+    onDone();   // 모달 닫고 목록 새로고침 → 하단 카트바 노출
+  };
 
   const writeSelectionSheet = (win: Window, rows: ShipoutPick[]) => {
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -3149,13 +3171,14 @@ function ShipoutRegisterModal({ onClose, onDone }: { onClose: () => void; onDone
                   <th className="px-2 py-2 text-right font-medium text-gray-600">두께</th>
                   <th className="px-2 py-2 text-right font-medium text-gray-600">폭</th>
                   <th className="px-2 py-2 text-right font-medium text-gray-600">길이</th>
+                  <th className="px-2 py-2 text-right font-medium text-gray-600">중량(kg)</th>
                   <th className="px-2 py-2 text-left font-medium text-gray-600">보관위치</th>
                   <th className="w-8 px-2 py-2"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {picked.length === 0 ? (
-                  <tr><td colSpan={9} className="py-8 text-center text-gray-400">판번호를 입력하면 매칭된 자재가 표시됩니다.</td></tr>
+                  <tr><td colSpan={10} className="py-8 text-center text-gray-400">판번호를 입력하면 매칭된 자재가 표시됩니다.</td></tr>
                 ) : picked.map((p) => (
                   <tr key={p.planId} className={`hover:bg-gray-50 ${selected.has(p.planId) ? "bg-purple-50/40" : ""}`}>
                     <td className="px-2 py-1.5 text-center">
@@ -3167,6 +3190,7 @@ function ShipoutRegisterModal({ onClose, onDone }: { onClose: () => void; onDone
                     <td className="px-2 py-1.5 text-right font-mono">{fmtT(p.thickness)}</td>
                     <td className="px-2 py-1.5 text-right font-mono">{fmtL(p.width)}</td>
                     <td className="px-2 py-1.5 text-right font-mono">{fmtL(p.length)}</td>
+                    <td className="px-2 py-1.5 text-right font-mono">{calcWeight(p.thickness, p.width, p.length).toLocaleString()}</td>
                     <td className="px-2 py-1.5">{p.storageLocation ?? "-"}</td>
                     <td className="px-2 py-1.5 text-center">
                       <button onClick={() => removeRow(p.planId)} className="text-gray-400 hover:text-red-600"><Trash2 size={13} /></button>
@@ -3178,12 +3202,22 @@ function ShipoutRegisterModal({ onClose, onDone }: { onClose: () => void; onDone
           </div>
         </div>
 
-        <div className="px-5 py-3 border-t border-gray-200 flex items-center justify-between gap-2 flex-shrink-0">
-          <div className="text-sm text-gray-500">매칭 {picked.length}장 · 선택 {selRows.length}장</div>
-          <button onClick={printAndMark} disabled={busy || selRows.length === 0}
-            className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm bg-gray-800 text-white rounded hover:bg-gray-900 disabled:opacity-40">
-            <Printer size={14} /> 선별지시서 출력 + 출고확정 ({selRows.length}장)
-          </button>
+        <div className="px-5 py-3 border-t border-gray-200 flex items-center justify-between gap-2 flex-shrink-0 flex-wrap">
+          <div className="text-sm text-gray-600">
+            매칭 {picked.length}장 · 선택 <strong>{selRows.length}</strong>장
+            <span className="ml-2 text-gray-500">선택중량 <strong className="text-gray-800">{selWeight.toLocaleString()}</strong> kg</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={addToCart} disabled={busy || selRows.length === 0}
+              title="선택 자재를 출고 카트에 담아 출고장(외부출고관리)으로 진행"
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-40">
+              <Truck size={14} /> 출고 카트에 담기 ({selRows.length})
+            </button>
+            <button onClick={printAndMark} disabled={busy || selRows.length === 0}
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm bg-gray-800 text-white rounded hover:bg-gray-900 disabled:opacity-40">
+              <Printer size={14} /> 선별지시서 출력 + 출고확정 ({selRows.length})
+            </button>
+          </div>
         </div>
       </div>
     </div>
