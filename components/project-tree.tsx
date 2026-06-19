@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   ChevronDown, ChevronRight, FolderOpen, Folder,
-  FileSpreadsheet, Plus, MapPin, ClipboardList, Pencil, Trash2,
+  FileSpreadsheet, Plus, MapPin, ClipboardList, Pencil,
 } from "lucide-react";
 import BlockEditModal from "@/components/block-edit-modal";
 import VesselEditModal from "@/components/vessel-edit-modal";
@@ -96,13 +96,13 @@ export default function ProjectTree({ vessels }: { vessels: VesselGroup[] }) {
                 전체 강재리스트
               </Link>
 
-              {/* 호선 삭제 버튼 (코드 변경은 지원 안 함 — 강재 매칭 안전성) */}
+              {/* 호선 수정 (호선코드 변경 / 전체 삭제) */}
               <button
                 onClick={() => setEditingVessel(vessel)}
-                className="flex items-center gap-1.5 px-3 py-2 text-[11px] text-gray-400 hover:text-red-400 hover:bg-gray-700 transition-colors border-l border-gray-700"
-                title="호선 전체 삭제 (호선코드는 한 번 만든 후 수정 불가)"
+                className="flex items-center gap-1.5 px-3 py-2 text-[11px] text-gray-400 hover:text-white hover:bg-gray-700 transition-colors border-l border-gray-700"
+                title="호선 수정 — 호선코드 변경 / 전체 삭제"
               >
-                <Trash2 size={12} />
+                <Pencil size={12} />
               </button>
             </div>
 
