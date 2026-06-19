@@ -641,9 +641,9 @@ export default function SteelPlanMain() {
     setRows((prev) => prev.map((r) => ids.includes(r.id) ? { ...r, ...patch } : r));
   };
 
-  /* ── 출고 확정 취소 (확정정보 "출고" 빨간 배지 클릭) ── */
+  /* ── 출고 선별 취소 (확정정보 "선별" 빨간 배지 클릭) ── */
   const unmarkShipout = async (row: SteelPlanRow) => {
-    if (!confirm(`'${row.shipoutLabel ?? row.vesselCode}' 출고 확정을 취소하시겠습니까?${row.shipoutHeatNo ? `\n(판번호: ${row.shipoutHeatNo})` : ""}`)) return;
+    if (!confirm(`'${row.shipoutLabel ?? row.vesselCode}' 출고 선별을 취소하시겠습니까?${row.shipoutHeatNo ? `\n(판번호: ${row.shipoutHeatNo})` : ""}`)) return;
     updateRowsLocally([row.id], { shipoutMarkedAt: null, shipoutHeatNo: null, shipoutLabel: null });
     await fetch("/api/steel-plan/shipout-mark", {
       method: "POST",
@@ -1491,7 +1491,11 @@ export default function SteelPlanMain() {
                             <span className={`px-1.5 py-0 rounded-full text-[11px] font-medium ${st.cls}`}>{st.label}</span>
                           </td>
                           <td className="px-2 py-1 text-center">
-                            {row.shipoutMarkedAt && row.status === "RECEIVED" ? (
+                            {row.status === "SHIPPED_OUT" ? (
+                              <span className="px-1.5 py-0 rounded text-[11px] font-semibold bg-red-100 text-red-700">
+                                {row.shipoutLabel ?? row.vesselCode} 출고
+                              </span>
+                            ) : row.shipoutMarkedAt && row.status === "RECEIVED" ? (
                               <span className="inline-flex items-center justify-center gap-1">
                                 {row.reservedFor && (
                                   <span className="px-1 py-0 rounded text-[10px] font-semibold bg-purple-100 text-purple-700">
@@ -1500,10 +1504,10 @@ export default function SteelPlanMain() {
                                 )}
                                 <button
                                   onClick={() => unmarkShipout(row)}
-                                  title={`출고 확정${row.shipoutHeatNo ? ` (판번호 ${row.shipoutHeatNo})` : ""} — 클릭 시 취소`}
+                                  title={`선별 확정${row.shipoutHeatNo ? ` (판번호 ${row.shipoutHeatNo})` : ""} — 클릭 시 취소`}
                                   className="px-1.5 py-0 rounded text-[11px] font-semibold bg-red-100 text-red-700 hover:bg-red-200"
                                 >
-                                  {row.shipoutLabel ?? row.vesselCode} 출고
+                                  {row.shipoutLabel ?? row.vesselCode} 선별
                                 </button>
                               </span>
                             ) : (row.status === "RECEIVED" || row.status === "ISSUED") && row.reservedFor ? (
@@ -3001,7 +3005,7 @@ function ShipoutRegisterModal({ onClose, onDone }: { onClose: () => void; onDone
         const reasonMap: Record<string, string> = {
           NOT_FOUND:     "등록되지 않은 판번호",
           ALREADY_USED:  "이미 절단·사용된 판번호 (남은 원판 없음)",
-          ALREADY_MARKED:"이미 출고 확정된 판번호",
+          ALREADY_MARKED:"이미 선별/출고된 판번호",
           NOT_RECEIVED:  "매칭되는 입고 강재 없음 (미입고 또는 소진)",
         };
         setMsg({ type: "err", text: `${heatNo} — ${reasonMap[d.reason] ?? "매칭 실패"}` });
@@ -3112,12 +3116,12 @@ function ShipoutRegisterModal({ onClose, onDone }: { onClose: () => void; onDone
         body: JSON.stringify({ action: "mark", items: selRows.map((p) => ({ id: p.planId, heatNo: p.heatNo })) }),
       });
       const d = await r.json();
-      if (!d.success) { win?.close(); alert(d.error ?? "출고 확정 처리 실패"); return; }
+      if (!d.success) { win?.close(); alert(d.error ?? "선별 확정 처리 실패"); return; }
       if (win) writeSelectionSheet(win, selRows);
       if (typeof d.count === "number" && typeof d.requested === "number" && d.count < d.requested) {
-        alert(`요청 ${d.requested}장 중 ${d.count}건만 출고 확정되었습니다.\n(나머지는 이미 처리/선점되어 제외 — 인쇄 내용과 다를 수 있습니다.)`);
+        alert(`요청 ${d.requested}장 중 ${d.count}건만 선별 확정되었습니다.\n(나머지는 이미 처리/선점되어 제외 — 인쇄 내용과 다를 수 있습니다.)`);
       } else {
-        alert(`${d.count}건 출고 확정 처리되었습니다.\n강재전체목록 확정정보에 빨간 '출고'로 표시됩니다.`);
+        alert(`${d.count}건 선별 확정 처리되었습니다.\n강재전체목록 확정정보에 빨간 '선별'로 표시됩니다.`);
       }
       onDone();
     } catch (e) {
@@ -3141,7 +3145,7 @@ function ShipoutRegisterModal({ onClose, onDone }: { onClose: () => void; onDone
         <div className="p-5 space-y-3 flex-1 overflow-y-auto">
           <div className="text-sm text-gray-600">
             현장에서 적어온 <strong>판번호</strong>를 한 장씩 입력하고 <kbd className="px-1 bg-gray-100 border rounded text-xs">Enter</kbd>. 입고된 강재와 자동 매칭됩니다.
-            <span className="block text-xs text-gray-400 mt-0.5">출력 시 선택 강재가 <strong className="text-red-500">출고 확정</strong>되어 강재전체목록 확정정보에 빨간 &apos;출고&apos;로 표시됩니다. (배지 클릭으로 되돌리기 가능 · 사양 단위 매칭이며 판번호는 추적 기록용)</span>
+            <span className="block text-xs text-gray-400 mt-0.5">출력 시 선택 강재가 <strong className="text-red-500">선별 확정</strong>되어 강재전체목록 확정정보에 빨간 &apos;선별&apos;로 표시됩니다. (상태는 입고 유지 · 배지 클릭으로 되돌리기 가능 · 사양 단위 매칭이며 판번호는 추적 기록용)</span>
           </div>
           <div className="flex gap-2">
             <div className="relative flex-1">
@@ -3224,7 +3228,7 @@ function ShipoutRegisterModal({ onClose, onDone }: { onClose: () => void; onDone
             </button>
             <button onClick={printAndMark} disabled={busy || selRows.length === 0}
               className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm bg-gray-800 text-white rounded hover:bg-gray-900 disabled:opacity-40">
-              <Printer size={14} /> 선별지시서 출력 + 출고확정 ({selRows.length})
+              <Printer size={14} /> 선별지시서 출력 ({selRows.length})
             </button>
           </div>
         </div>

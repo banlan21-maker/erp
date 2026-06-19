@@ -195,7 +195,9 @@ export default function SteelMatchTab() {
     uploadBatchNo: r => r.plan?.uploadBatchNo ?? "",
     receivedAt:    r => r.plan?.receivedAt ? fmtYMD(r.plan.receivedAt) : "",
     location:      r => r.plan?.storageLocation ?? "",
-    reservedFor:   r => r.plan?.shipoutMarkedAt ? `${r.plan.shipoutLabel ?? r.plan.vesselCode} 출고` : (r.plan?.reservedFor ?? ""),
+    reservedFor:   r => r.plan?.status === "SHIPPED_OUT"
+      ? `${r.plan.shipoutLabel ?? r.plan.vesselCode} 출고`
+      : r.plan?.shipoutMarkedAt ? `${r.plan.shipoutLabel ?? r.plan.vesselCode} 선별` : (r.plan?.reservedFor ?? ""),
   }), [unmatchedLabel]);
 
   // 컬럼 드롭다운 옵션 (cascading)
@@ -315,11 +317,11 @@ export default function SteelMatchTab() {
     win.document.write(html); win.document.close();
   };
 
-  // 선택 강재를 선별지시서로 출력하고 '매칭이름 출고'로 확정(마킹). 상태는 입고 유지.
+  // 선택 강재를 선별지시서로 출력하고 '매칭이름 선별'로 확정(마킹). 상태는 입고 유지.
   const printAndMark = async () => {
     const ids = validSelectedIds;
-    if (ids.length === 0) { alert("출고할 강재를 선택하세요.\n(입고 상태이며 아직 출고확정되지 않은 강재만 가능)"); return; }
-    if (!confirm(`원본 ${selJobSpecs.length}장 / 선택 ${ids.length}장\n\n선별지시서를 출력하고 선택 강재를 '${selJobName} 출고'로 확정하시겠습니까?\n(강재 상태는 입고 유지 · 확정정보 배지 클릭으로 되돌리기 가능)`)) return;
+    if (ids.length === 0) { alert("선별할 강재를 선택하세요.\n(입고 상태이며 아직 선별/출고되지 않은 강재만 가능)"); return; }
+    if (!confirm(`원본 ${selJobSpecs.length}장 / 선택 ${ids.length}장\n\n선별지시서를 출력하고 선택 강재를 '${selJobName} 선별'로 확정하시겠습니까?\n(강재 상태는 입고 유지 · 확정정보 배지 클릭으로 되돌리기 가능)`)) return;
     const selPlans = ids.map(id => selectablePlanById.get(id)!);
     const win = window.open("", "_blank", "width=1100,height=750");   // 제스처 내 동기 오픈(팝업 차단 회피)
     setMarking(true);
@@ -329,13 +331,13 @@ export default function SteelMatchTab() {
         body: JSON.stringify({ action: "mark", items: ids.map(id => ({ id, label: selJobName })) }),
       });
       const d = await r.json();
-      if (!d.success) { win?.close(); alert(d.error ?? "출고 확정 처리 실패"); return; }
+      if (!d.success) { win?.close(); alert(d.error ?? "선별 확정 처리 실패"); return; }
       if (win) writeSelectionSheet(win, selPlans);
       setSelectedIds(new Set());
       if (typeof d.count === "number" && typeof d.requested === "number" && d.count < d.requested) {
-        alert(`요청 ${d.requested}장 중 ${d.count}건만 확정되었습니다.\n(나머지는 이미 처리/선점되어 제외 — 인쇄 내용과 다를 수 있습니다.)`);
+        alert(`요청 ${d.requested}장 중 ${d.count}건만 선별 확정되었습니다.\n(나머지는 이미 처리/선점되어 제외 — 인쇄 내용과 다를 수 있습니다.)`);
       } else {
-        alert(`${d.count}건을 '${selJobName} 출고'로 확정했습니다.\n강재전체목록 확정정보에 빨간색으로 표시됩니다.`);
+        alert(`${d.count}건을 '${selJobName} 선별'로 확정했습니다.\n강재전체목록 확정정보에 빨간 '선별'로 표시됩니다.`);
       }
       if (selJobId) loadMatches(selJobId);   // 매칭 결과 새로고침 (확정정보 반영)
     } catch (e) {
@@ -550,7 +552,7 @@ export default function SteelMatchTab() {
                         ? <input type="checkbox" checked={selectedIds.has(r.plan!.id)} onChange={() => toggleOne(r.plan!.id)}
                             className="align-middle accent-gray-700" />
                         : marked
-                          ? <span className="text-[10px] font-semibold text-red-600" title="이미 출고 확정됨">확정</span>
+                          ? <span className="text-[10px] font-semibold text-red-600" title="이미 선별/출고됨">선별</span>
                           : null}
                     </td>
                     <td className="px-3 py-1.5 font-medium">{r.matched ? r.plan!.vesselCode : (r.spec.vesselCode || <span className="text-gray-400">(전체)</span>)}</td>
@@ -567,11 +569,13 @@ export default function SteelMatchTab() {
                     <td className="px-3 py-1.5 text-gray-500 font-mono">{r.plan?.receivedAt ? fmtYMD(r.plan.receivedAt) : "-"}</td>
                     <td className="px-3 py-1.5 text-gray-600">{r.plan?.storageLocation ?? "-"}</td>
                     <td className="px-3 py-1.5">
-                      {r.plan?.shipoutMarkedAt
+                      {r.plan?.status === "SHIPPED_OUT"
                         ? <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700">{(r.plan.shipoutLabel ?? r.plan.vesselCode)} 출고</span>
-                        : r.plan?.reservedFor
-                          ? <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-700">{r.plan.reservedFor}</span>
-                          : <span className="text-gray-300">-</span>}
+                        : r.plan?.shipoutMarkedAt
+                          ? <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700">{(r.plan.shipoutLabel ?? r.plan.vesselCode)} 선별</span>
+                          : r.plan?.reservedFor
+                            ? <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-700">{r.plan.reservedFor}</span>
+                            : <span className="text-gray-300">-</span>}
                     </td>
                   </tr>
                   );
@@ -772,7 +776,7 @@ function UploadMatchModal({ onClose, onCreated }: { onClose: () => void; onCreat
                   </button>
                 ))}
               </div>
-              <p className="text-[11px] text-gray-400 mt-1">&apos;확정정보 없는것만&apos;: 블록확정·출고확정(매칭이름 출고)이 없는 강재만 불러옵니다. (이전 매칭에서 출고확정된 강재 제외)</p>
+              <p className="text-[11px] text-gray-400 mt-1">&apos;확정정보 없는것만&apos;: 블록확정·선별/출고가 없는 강재만 불러옵니다. (이전에 선별/출고된 강재 제외)</p>
             </div>
             <div className="flex items-center justify-between pt-2 border-t border-gray-100">
               <button onClick={() => setStep("upload")} className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50">← 다시 업로드</button>
