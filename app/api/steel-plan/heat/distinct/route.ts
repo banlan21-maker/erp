@@ -7,6 +7,7 @@ import { parseList, buildCascadingWhere, nullableInBuilder } from "@/lib/server-
 const HEAT_STATUS_LABEL: Record<string, string> = {
   WAITING: "대기",
   CUT:     "절단",
+  SHIPPED: "외부",
 };
 
 const QS_KEY: Record<string, string> = {
