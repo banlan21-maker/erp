@@ -5,11 +5,15 @@
  * 선택 → 기존 출고 카트에 담기 → 하단 카트바 [출고장 만들기] 마법사로 출고증 발행.
  * (남은 자재는 풀에 그대로 유지 · 카트에서 빼면 배차취소)
  * 선별 취소(unmark)도 여기서 가능.
+ *
+ * 컬럼 필터·정렬: 표준 cascading 패턴 (lib/cascading-filters + ColumnFilterDropdown).
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { RefreshCw, Truck, Undo2 } from "lucide-react";
+import { RefreshCw, Truck, Undo2, Search, Filter } from "lucide-react";
 import { useShipoutCart } from "@/components/shipout-cart";
+import ColumnFilterDropdown from "@/components/column-filter-dropdown";
+import { getAllCascadedOptions, getCascadedFilteredRowsWithPredicates, type ColumnAccessorMap, type TextPredicate } from "@/lib/cascading-filters";
 
 interface Row {
   id: string;
@@ -28,11 +32,25 @@ const fmtT = (v: number) => parseFloat(v.toFixed(1));
 const fmtL = (v: number) => Math.round(v);
 const calcWeight = (t: number, w: number, l: number) => parseFloat(((t * w * l * 7.85) / 1_000_000).toFixed(1));
 const fmtYMD = (iso: string | null) => {
-  if (!iso) return "-";
+  if (!iso) return "";
   const d = new Date(iso);
-  if (isNaN(d.getTime())) return "-";
+  if (isNaN(d.getTime())) return "";
   return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
 };
+
+// 필터·정렬 대상 컬럼
+const COLUMNS: { key: string; label: string; align: "left" | "right" }[] = [
+  { key: "shipout",   label: "선별",     align: "left"  },
+  { key: "vessel",    label: "호선",     align: "left"  },
+  { key: "material",  label: "재질",     align: "left"  },
+  { key: "thickness", label: "두께",     align: "right" },
+  { key: "width",     label: "폭",       align: "right" },
+  { key: "length",    label: "길이",     align: "right" },
+  { key: "weight",    label: "중량(kg)", align: "right" },
+  { key: "location",  label: "보관위치", align: "left"  },
+  { key: "heatNo",    label: "판번호",   align: "left"  },
+  { key: "markedAt",  label: "선별일",   align: "left"  },
+];
 
 export default function SelectionListTab() {
   const cart = useShipoutCart();
@@ -40,6 +58,15 @@ export default function SelectionListTab() {
   const [loading, setLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [search, setSearch] = useState("");
+
+  // 컬럼 필터·정렬 (표준 cascading 패턴)
+  const [colFilters, setColFilters] = useState<Record<string, string[]>>({});
+  const [predicates, setPredicates] = useState<Record<string, TextPredicate | undefined>>({});
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [openCol, setOpenCol] = useState<string | null>(null);
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -52,10 +79,54 @@ export default function SelectionListTab() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  // 카트에 없는 선별 강재만 선택 대상
-  const selectableIds = useMemo(() => rows.filter(r => !cart.has(r.id)).map(r => r.id), [rows, cart]);
-  const validSelected = useMemo(() => [...selectedIds].filter(id => selectableIds.includes(id)), [selectedIds, selectableIds]);
-  const allSelected = selectableIds.length > 0 && selectableIds.every(id => selectedIds.has(id));
+  // 컬럼별 값 추출 (필터·정렬·드롭다운 옵션 공통)
+  const accessors = useMemo<ColumnAccessorMap<Row>>(() => ({
+    shipout:   r => `${r.shipoutLabel ?? r.vesselCode} 선별`,
+    vessel:    r => r.vesselCode,
+    material:  r => r.material,
+    thickness: r => fmtT(r.thickness),
+    width:     r => fmtL(r.width),
+    length:    r => fmtL(r.length),
+    weight:    r => calcWeight(r.thickness, r.width, r.length),
+    location:  r => r.storageLocation ?? "",
+    heatNo:    r => r.shipoutHeatNo ?? "",
+    markedAt:  r => fmtYMD(r.shipoutMarkedAt),
+  }), []);
+
+  const distinctValues = useMemo(
+    () => getAllCascadedOptions(rows, colFilters, accessors),
+    [rows, colFilters, accessors],
+  );
+
+  // 컬럼필터+텍스트조건 → 검색 → 정렬
+  const displayRows = useMemo(() => {
+    let r = getCascadedFilteredRowsWithPredicates(rows, colFilters, predicates, accessors);
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      r = r.filter(row => `${row.vesselCode} ${row.material} ${row.shipoutHeatNo ?? ""} ${row.shipoutLabel ?? ""} ${row.storageLocation ?? ""}`.toLowerCase().includes(q));
+    }
+    if (sortKey && accessors[sortKey]) {
+      const acc = accessors[sortKey];
+      r = [...r].sort((a, b) => {
+        const cmp = String(acc(a) ?? "").localeCompare(String(acc(b) ?? ""), "ko", { numeric: true });
+        return sortDir === "asc" ? cmp : -cmp;
+      });
+    }
+    return r;
+  }, [rows, colFilters, predicates, accessors, search, sortKey, sortDir]);
+
+  const openFilter = (key: string, el: HTMLElement) => {
+    if (openCol === key) { setOpenCol(null); setAnchorEl(null); }
+    else { setOpenCol(key); setAnchorEl(el); }
+  };
+
+  // 카트에 없는 행만 선택 대상. 전체선택은 현재 화면(displayRows) 기준.
+  const selectableVisibleIds = useMemo(() => displayRows.filter(r => !cart.has(r.id)).map(r => r.id), [displayRows, cart]);
+  const validSelected = useMemo(
+    () => [...selectedIds].filter(id => rows.some(r => r.id === id) && !cart.has(id)),
+    [selectedIds, rows, cart],
+  );
+  const allSelected = selectableVisibleIds.length > 0 && selectableVisibleIds.every(id => selectedIds.has(id));
   const selWeight = useMemo(
     () => validSelected.reduce((s, id) => { const r = rows.find(x => x.id === id); return s + (r ? calcWeight(r.thickness, r.width, r.length) : 0); }, 0),
     [validSelected, rows],
@@ -63,8 +134,8 @@ export default function SelectionListTab() {
 
   const toggleAll = () => setSelectedIds(prev => {
     const n = new Set(prev);
-    if (allSelected) selectableIds.forEach(id => n.delete(id));
-    else selectableIds.forEach(id => n.add(id));
+    if (allSelected) selectableVisibleIds.forEach(id => n.delete(id));
+    else selectableVisibleIds.forEach(id => n.add(id));
     return n;
   });
   const toggleOne = (id: string) => setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -115,7 +186,12 @@ export default function SelectionListTab() {
           <h3 className="text-sm font-semibold text-gray-700">선별 목록 (출고 예약 풀)</h3>
           <p className="text-xs text-gray-500 mt-0.5">선별지시서로 확정된 강재 모음 — 선택해 출고 카트에 담아 출고증을 발행합니다. 상태는 입고 유지.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="호선·재질·판번호·위치 검색"
+              className="pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg w-52 focus:outline-none focus:ring-2 focus:ring-purple-400" />
+          </div>
           <button onClick={load} className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
             <RefreshCw size={14} /> 새로고침
           </button>
@@ -131,7 +207,7 @@ export default function SelectionListTab() {
       </div>
 
       <div className="text-xs text-gray-500">
-        선별 {rows.length}장 · 선택 <strong className="text-gray-800">{validSelected.length}</strong>장
+        선별 {rows.length}장{displayRows.length !== rows.length ? ` · 표시 ${displayRows.length}장` : ""} · 선택 <strong className="text-gray-800">{validSelected.length}</strong>장
         <span className="ml-2">선택중량 <strong className="text-gray-800">{selWeight.toLocaleString()}</strong> kg</span>
       </div>
 
@@ -142,26 +218,31 @@ export default function SelectionListTab() {
               <tr>
                 <th className="px-2 py-2 w-9 text-center">
                   <input type="checkbox" checked={allSelected} onChange={toggleAll}
-                    disabled={selectableIds.length === 0} className="align-middle accent-purple-600 disabled:opacity-30" />
+                    disabled={selectableVisibleIds.length === 0} title="화면 전체선택"
+                    className="align-middle accent-purple-600 disabled:opacity-30" />
                 </th>
-                <th className="px-3 py-2 text-left font-medium text-gray-600">선별</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-600">호선</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-600">재질</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">두께</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">폭</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">길이</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">중량(kg)</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-600">보관위치</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-600">판번호</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-600">선별일</th>
+                {COLUMNS.map(({ key, label, align }) => {
+                  const active = (colFilters[key]?.length ?? 0) > 0 || !!predicates[key];
+                  const isSort = sortKey === key;
+                  return (
+                    <th key={key} className={`px-3 py-2 font-medium text-gray-600 ${align === "right" ? "text-right" : "text-left"}`}>
+                      <button onClick={e => openFilter(key, e.currentTarget)}
+                        className={`inline-flex items-center gap-1 ${align === "right" ? "ml-auto" : ""} hover:text-gray-800`}>
+                        {label}
+                        <Filter size={10} className={active || isSort ? "text-purple-500" : "text-gray-300"} fill={active ? "currentColor" : "none"} />
+                        {isSort && <span className="text-purple-500 text-[9px]">{sortDir === "asc" ? "▲" : "▼"}</span>}
+                      </button>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr><td colSpan={11} className="py-8 text-center text-gray-400">불러오는 중...</td></tr>
-              ) : rows.length === 0 ? (
-                <tr><td colSpan={11} className="py-8 text-center text-gray-400">선별된 강재가 없습니다. 강재매칭/출고등록에서 선별지시서를 출력하면 여기에 모입니다.</td></tr>
-              ) : rows.map((r) => {
+              ) : displayRows.length === 0 ? (
+                <tr><td colSpan={11} className="py-8 text-center text-gray-400">{rows.length === 0 ? "선별된 강재가 없습니다. 강재매칭/출고등록에서 선별지시서를 출력하면 여기에 모입니다." : "필터 조건에 맞는 강재가 없습니다."}</td></tr>
+              ) : displayRows.map((r) => {
                 const inCart = cart.has(r.id);
                 return (
                   <tr key={r.id} className={`hover:bg-gray-50 ${inCart ? "bg-purple-50/60" : ""}`}>
@@ -181,7 +262,7 @@ export default function SelectionListTab() {
                     <td className="px-3 py-1.5 text-right font-mono">{calcWeight(r.thickness, r.width, r.length).toLocaleString()}</td>
                     <td className="px-3 py-1.5 text-gray-600">{r.storageLocation ?? "-"}</td>
                     <td className="px-3 py-1.5 font-mono">{r.shipoutHeatNo ?? "-"}</td>
-                    <td className="px-3 py-1.5 text-gray-500 font-mono">{fmtYMD(r.shipoutMarkedAt)}</td>
+                    <td className="px-3 py-1.5 text-gray-500 font-mono">{fmtYMD(r.shipoutMarkedAt) || "-"}</td>
                   </tr>
                 );
               })}
@@ -189,6 +270,21 @@ export default function SelectionListTab() {
           </table>
         </div>
       </div>
+
+      {/* 컬럼 필터·정렬 드롭다운 */}
+      {openCol && anchorEl && (
+        <ColumnFilterDropdown
+          anchorEl={anchorEl}
+          values={distinctValues[openCol] ?? []}
+          selected={colFilters[openCol] ?? []}
+          onApply={sel => { setColFilters(f => ({ ...f, [openCol]: sel })); setOpenCol(null); setAnchorEl(null); }}
+          onClose={() => { setOpenCol(null); setAnchorEl(null); }}
+          sortDir={sortKey === openCol ? sortDir : null}
+          onSort={dir => { if (dir === null) setSortKey(null); else { setSortKey(openCol); setSortDir(dir); } setOpenCol(null); setAnchorEl(null); }}
+          predicate={predicates[openCol] ?? null}
+          onPredicate={p => setPredicates(prev => ({ ...prev, [openCol]: p ?? undefined }))}
+        />
+      )}
     </div>
   );
 }
