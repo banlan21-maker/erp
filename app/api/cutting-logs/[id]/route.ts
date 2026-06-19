@@ -271,6 +271,8 @@ export async function PATCH(
           length:     log.length,
           status:     { in: ["RECEIVED", "ISSUED"] as ("RECEIVED" | "ISSUED")[] },
           actualHeatNo: null,
+          // 출고 선별/예정(shipoutMarkedAt)된 강재는 절단완료 소진 대상에서 제외 (절단↔출고 상호배제)
+          shipoutMarkedAt: null,
         };
         // 1차: 이 블록 예약 매칭
         let targetPlan = await prisma.steelPlan.findFirst({

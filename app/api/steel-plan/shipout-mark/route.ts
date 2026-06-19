@@ -44,9 +44,10 @@ export async function POST(req: NextRequest) {
     let count = 0;
     await prisma.$transaction(async (tx) => {
       for (const it of items) {
-        // RECEIVED·미마킹일 때만 — 동시 선점/상태변경 방어, 없는 id는 무시(P2025 회피)
+        // RECEIVED·미마킹·블록미확정일 때만 — 동시 선점/상태변경 방어 + 절단확정(reservedFor) 강재 차단
+        // (없는 id/조건 불일치는 count에 안 잡혀 무시 — count<requested로 클라이언트 통지)
         const r = await tx.steelPlan.updateMany({
-          where: { id: it.id, status: "RECEIVED", shipoutMarkedAt: null },
+          where: { id: it.id, status: "RECEIVED", shipoutMarkedAt: null, reservedFor: null },
           data:  { shipoutMarkedAt: now, shipoutHeatNo: it.heatNo, shipoutLabel: it.label },
         });
         count += r.count;

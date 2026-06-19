@@ -152,12 +152,15 @@ export async function POST(req: NextRequest) {
           thickness:  { gte: r.thickness - TOL, lte: r.thickness + TOL },
           width:      { gte: r.width     - TOL, lte: r.width     + TOL },
           length:     { gte: r.length    - TOL, lte: r.length    + TOL },
+          // 블록확정(절단용)·출고예정 강재는 출고 자동매칭에서 제외 (절단↔출고 상호배제)
+          reservedFor: null,
+          shipoutMarkedAt: null,
           NOT: { id: { in: Array.from(usedSteelPlanIds) } },
         },
         orderBy: [{ receivedAt: "asc" }, { createdAt: "asc" }],
       });
 
-      // 판번호가 있을 때 — 호선 비면 호선 무관 매칭
+      // 판번호가 있을 때 — 호선 비면 호선 무관 매칭. 미사용(WAITING) 판번호만
       if (r.heatNo) {
         const heat = await prisma.steelPlanHeat.findFirst({
           where: {
@@ -167,6 +170,7 @@ export async function POST(req: NextRequest) {
             width:      { gte: r.width     - TOL, lte: r.width     + TOL },
             length:     { gte: r.length    - TOL, lte: r.length    + TOL },
             heatNo:     r.heatNo,
+            status:     "WAITING",
           },
         });
         // 판번호 기록 자체가 없으면 HEAT_NOT_FOUND (사용자가 등록해야 함)

@@ -238,7 +238,8 @@ export default function SteelMatchTab() {
   // 선택 가능 강재: 매칭됨 + 입고(RECEIVED) + 아직 출고확정(마킹) 안 됨. plan.id → plan 맵
   const selectablePlanById = useMemo(() => {
     const m = new Map<string, PlanRow>();
-    for (const r of rows) if (r.matched && r.plan && r.plan.status === "RECEIVED" && !r.plan.shipoutMarkedAt) m.set(r.plan.id, r.plan);
+    // 입고 + 미마킹 + 블록미확정(절단용 reservedFor 없음)만 선별/출고 선택 가능 (절단↔출고 상호배제)
+    for (const r of rows) if (r.matched && r.plan && r.plan.status === "RECEIVED" && !r.plan.shipoutMarkedAt && !r.plan.reservedFor) m.set(r.plan.id, r.plan);
     return m;
   }, [rows]);
 
@@ -541,7 +542,7 @@ export default function SteelMatchTab() {
                   <tr><td colSpan={11} className="py-8 text-center text-gray-400">매칭 결과가 없습니다.</td></tr>
                 ) : displayRows.map((r, i) => {
                   const marked = !!r.plan?.shipoutMarkedAt;
-                  const selectable = r.matched && !!r.plan && r.plan.status === "RECEIVED" && !marked;
+                  const selectable = r.matched && !!r.plan && r.plan.status === "RECEIVED" && !marked && !r.plan.reservedFor;
                   return (
                   <tr key={r.plan?.id ?? `u-${i}`} className={`hover:bg-gray-50 ${!r.matched ? "bg-red-50/40" : ""} ${marked ? "bg-red-50/40" : ""}`}>
                     <td className="px-2 py-1.5 text-center">

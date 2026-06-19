@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
     // 모든 SteelPlan 이 RECEIVED 인지 확인
     const targets = await prisma.steelPlan.findMany({
       where: { id: { in: allSteelPlanIds } },
-      select: { id: true, status: true, vesselCode: true },
+      select: { id: true, status: true, vesselCode: true, reservedFor: true },
     });
     if (targets.length !== allSteelPlanIds.length) {
       return NextResponse.json({ success: false, error: "존재하지 않는 자재가 포함되어 있습니다." }, { status: 400 });
@@ -155,6 +155,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: false,
         error: `RECEIVED 가 아닌 자재가 ${notReceived.length}건 있습니다. 새로고침 후 다시 시도하세요.`,
+      }, { status: 409 });
+    }
+    // 블록확정(절단용, reservedFor)된 강재는 외부출고 불가 — 절단 확정취소가 먼저 (절단↔출고 상호배제)
+    const blockReserved = targets.filter(t => t.reservedFor);
+    if (blockReserved.length > 0) {
+      return NextResponse.json({
+        success: false,
+        error: `블록확정(절단용)된 강재가 ${blockReserved.length}건 있습니다. 블록강재리스트에서 확정취소 후 출고하세요.`,
       }, { status: 409 });
     }
     // 활성(ACTIVE) 출고장에 이미 등록된 자재 확인 — 취소된(CANCELLED) ShipmentItem 은 무시

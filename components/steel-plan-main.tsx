@@ -790,7 +790,12 @@ export default function SteelPlanMain() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids: targetIds, issuedAt: iso }),
     });
-    if (!res.ok) loadPlan();
+    if (!res.ok) {
+      // 서버 거부 사유(출고 선별/예정·블록 미확정 등)를 사용자에게 표시 후 롤백
+      const data = await res.json().catch(() => null);
+      alert(data?.error ?? "출고 처리에 실패했습니다.");
+      loadPlan();
+    }
   };
 
   /* ── 다중 선택 출고취소 (ISSUED → RECEIVED) ── */
@@ -1283,10 +1288,12 @@ export default function SteelPlanMain() {
               <button
                 onClick={() => {
                   const selected = rows.filter(r => selectedIds.has(r.id));
-                  const eligible = selected.filter(r => r.status === "RECEIVED");
-                  const blocked  = selected.length - eligible.length;
+                  // 블록확정(절단용 reservedFor)된 강재는 출고 불가 — 서버 409 이전에 클라이언트에서 즉시 제외 (절단↔출고 상호배제)
+                  const eligible = selected.filter(r => r.status === "RECEIVED" && !r.reservedFor);
+                  const blockedStatus   = selected.filter(r => r.status !== "RECEIVED").length;
+                  const blockedReserved = selected.filter(r => r.status === "RECEIVED" && r.reservedFor).length;
                   if (eligible.length === 0) {
-                    alert("입고 상태인 자재만 외부 출고 카트에 담을 수 있습니다.");
+                    alert("외부 출고 카트에 담을 수 있는 강재가 없습니다.\n(입고 상태 + 블록 미확정 강재만 가능)");
                     return;
                   }
                   const result = shipoutCart.add(eligible.map(r => ({
@@ -1302,7 +1309,8 @@ export default function SteelPlanMain() {
                   alert(
                     `${result.added}건이 카트에 담겼습니다.` +
                     (result.duplicates > 0 ? `\n이미 카트에 있는 ${result.duplicates}건은 제외.` : "") +
-                    (blocked > 0 ? `\n입고 전 상태 ${blocked}건은 제외.` : ""),
+                    (blockedStatus   > 0 ? `\n입고 전 상태 ${blockedStatus}건은 제외.` : "") +
+                    (blockedReserved > 0 ? `\n블록확정(절단용) ${blockedReserved}건은 제외.` : ""),
                   );
                 }}
                 className="flex items-center gap-1.5 px-3 py-1 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700"

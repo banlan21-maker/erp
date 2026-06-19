@@ -96,7 +96,8 @@ export async function POST(request: NextRequest) {
       if (toConfirm <= 0) continue;
 
       const plans = await prisma.steelPlan.findMany({
-        where: { vesselCode: steelVessel, material, thickness, width, length, status: "RECEIVED", reservedFor: null },
+        // 출고 선별/예정(shipoutMarkedAt)된 강재는 절단 일괄확정 대상에서 제외 (절단↔출고 상호배제)
+        where: { vesselCode: steelVessel, material, thickness, width, length, status: "RECEIVED", reservedFor: null, shipoutMarkedAt: null },
         take: toConfirm,
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       });

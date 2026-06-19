@@ -56,6 +56,7 @@ export async function GET(req: NextRequest) {
         length:    { gte: heat.length - FLOAT_TOL, lte: heat.length + FLOAT_TOL },
         status: "RECEIVED",
         shipoutMarkedAt: null,
+        reservedFor: null,   // 블록확정(절단용) 강재는 출고 대상에서 제외 (절단↔출고 상호배제)
         ...(exclude.length ? { id: { notIn: exclude } } : {}),
       },
       orderBy: [{ receivedAt: "asc" }, { createdAt: "asc" }],

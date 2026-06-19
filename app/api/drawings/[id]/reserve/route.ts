@@ -33,7 +33,8 @@ export async function POST(
     const steelVesselCode = (drawing as { alternateVesselCode?: string | null }).alternateVesselCode?.trim() || projectCode;
     const reservedFor = `${projectCode}/${block}`;
 
-    // 같은 규격의 RECEIVED SteelPlan 중 미확정(reservedFor가 null) 판 1개 찾기
+    // 같은 규격의 RECEIVED SteelPlan 중 미확정(reservedFor=null) + 출고예정 아님(shipoutMarkedAt=null) 판 1개
+    // 출고 선별/예정된 강재는 절단 블록확정 대상에서 제외 (절단↔출고 상호배제)
     const steelPlan = await prisma.steelPlan.findFirst({
       where: {
         vesselCode: steelVesselCode,
@@ -43,6 +44,7 @@ export async function POST(
         length,
         status: "RECEIVED",
         reservedFor: null,
+        shipoutMarkedAt: null,
       },
     });
     if (!steelPlan) {

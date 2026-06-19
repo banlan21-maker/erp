@@ -38,12 +38,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: true, data: {} });
   }
 
-  // 후보 철판 (RECEIVED + 미예약) — 한 번에 조회 후 JS에서 관대 매칭
+  // 후보 철판 (RECEIVED + 미예약 + 출고예정 아님) — 한 번에 조회 후 JS에서 관대 매칭
+  // 출고 선별/예정(shipoutMarkedAt)된 강재는 절단 가용에서 제외 (절단↔출고 상호배제)
   const plates = await prisma.steelPlan.findMany({
     where: {
       vesselCode: { in: [...vessels] },
       status: "RECEIVED",
       reservedFor: null,
+      shipoutMarkedAt: null,
     },
     select: { vesselCode: true, material: true, thickness: true, width: true, length: true },
   });

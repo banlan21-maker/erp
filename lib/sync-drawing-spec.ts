@@ -87,12 +87,14 @@ export async function syncDrawingListBySpec(
   if (candidates.length === 0) return;
 
   // 2. 매칭 SteelPlan 풀 — COMPLETED 는 이미 절단된 강재라 매칭 대상 아님
+  //    출고 선별/예정(shipoutMarkedAt)된 강재도 절단 매칭 풀에서 제외 (절단↔출고 상호배제)
   const plans = await prisma.steelPlan.findMany({
     where: {
       vesselCode: effectiveVessel,
       material:   { equals: norm, mode: "insensitive" },
       thickness, width, length,
       status:     { in: ["REGISTERED", "RECEIVED", "ISSUED"] },
+      shipoutMarkedAt: null,
     },
     select: { status: true, reservedFor: true },
   });

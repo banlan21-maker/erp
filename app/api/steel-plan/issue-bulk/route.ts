@@ -22,6 +22,18 @@ export async function POST(req: NextRequest) {
 
     const issuedDate = issuedAt ? new Date(issuedAt) : new Date();
 
+    // 출고 선별/예정(shipoutMarkedAt)된 철판은 절단투입 불가 — 출고확정 취소가 먼저 (절단↔출고 상호배제)
+    // (조용히 마킹을 지우고 투입하면 출고흐름이 선별해둔 강재를 가로채게 됨)
+    const shipoutMarked = await prisma.steelPlan.count({
+      where: { id: { in: ids }, shipoutMarkedAt: { not: null } },
+    });
+    if (shipoutMarked > 0) {
+      return NextResponse.json(
+        { error: `출고 선별/예정된 철판이 ${shipoutMarked}장 있습니다. 출고확정 취소 후 투입하세요.` },
+        { status: 409 }
+      );
+    }
+
     // 블록 확정(reservedFor)이 없는 철판은 출고 불가
     const unconfirmed = await prisma.steelPlan.count({
       where: { id: { in: ids }, status: "RECEIVED", reservedFor: null },
@@ -35,8 +47,8 @@ export async function POST(req: NextRequest) {
 
     const { count } = await prisma.steelPlan.updateMany({
       where: { id: { in: ids }, status: "RECEIVED" },
-      // 출고 처리 시 보관위치도 자동 미지정(null) — 적치장을 떠났으므로. 출고 마킹도 정리.
-      data:  { status: "ISSUED", issuedAt: issuedDate, storageLocation: null, shipoutMarkedAt: null, shipoutHeatNo: null, shipoutLabel: null },
+      // 출고 처리 시 보관위치도 자동 미지정(null) — 적치장을 떠났으므로
+      data:  { status: "ISSUED", issuedAt: issuedDate, storageLocation: null },
     });
 
     return NextResponse.json({ success: true, count });
