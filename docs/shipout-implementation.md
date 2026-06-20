@@ -414,3 +414,37 @@ app/(main)/cutpart/shipments/...               -- 페이지들
 - 회사 도장/로고 이미지 삽입
 - 양식 폭/높이 미세 조정 (사용자 인쇄 환경에 따라)
 - `@react-pdf/renderer` 또는 `pdf-lib` 도입해서 PDF 다운로드도 추가 (현재는 브라우저 인쇄로 PDF 저장 가능)
+
+---
+
+## 15. 이후 확장 (2026-06-19 ~ 2026-06-20)
+
+> 본 문서 §1~14는 **원판 출고 최초 구현(2026-06-13)** 기준이다. 이후 출고 워크플로우는 **선별지시/출고장 분리**로 재편되었고 **잔재 출고**가 추가되었다. 최신 사양·진행상황은 [절단파트 구현 지침서 §9](./절단파트%20구현%20지침서.md) 가 단일 출처(living doc)이며, 여기서는 §4 데이터 모델의 갱신점만 정리한다.
+
+### 15.1 선별지시 / 출고장 분리 (§9.1~9.9, 2026-06-19)
+- 선별(`SteelPlan.shipoutMarkedAt`/`shipoutLabel` 마킹, 상태 RECEIVED 유지) ↔ 출고장(SHIPPED_OUT) 개념 분리.
+- [선별 목록] 탭(선별 풀) → 출고 카트 → 출고장 마법사로 출고증 발행.
+- 절단↔출고 상호배제 가드(reservedFor ↔ shipoutMarkedAt 반대편 필드 제외). 진입점 통합.
+
+### 15.2 원판 + 잔재 통합 출고 — §4.2 모델 갱신 (§9.10, 2026-06-20, 커밋 adb9e77f)
+원판뿐 아니라 **잔재(Remnant)** 도 선별 목록에 담아 같은 출고장으로 출고. `ShipmentItem` 이 원판/잔재 둘 다 담도록 확장됨 (위 §4.2 의 `steelPlanId String` 은 **구버전** — 현재는 아래):
+
+```prisma
+model ShipmentItem {
+  // ...
+  steelPlanId String?  // nullable 로 변경 (잔재 출고면 null)
+  steelPlan   SteelPlan? @relation(...)
+  remnantId   String?  // ★ 잔재 출고 (원판과 정확히 한쪽만 = XOR)
+  remnant     Remnant?   @relation(..., onDelete: Restrict)
+  // ...
+}
+model Remnant {
+  // ...
+  shipoutMarkedAt DateTime?  // ★ 선별 목록 멤버십 마킹
+  shipmentItems   ShipmentItem[]
+}
+```
+마이그레이션 `20260620000010_remnant_shipout_and_shipment_remnant`.
+
+- 잔재 lifecycle: 선별 마킹(IN_STOCK 유지) → 출고 확정 `EXHAUSTED` → 출고 취소 `IN_STOCK` 복원.
+- 불변식: 출고 잔재는 항상 `status=IN_STOCK` + `reservedFor=null` (PENDING/절단확정/소진 차단). 자세한 흐름·파일·검증은 §9.10.
