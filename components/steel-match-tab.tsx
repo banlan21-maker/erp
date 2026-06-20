@@ -449,7 +449,7 @@ export default function SteelMatchTab() {
       {selJobId && (
         <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-start">
           {/* 왼쪽: 사용자가 등록한 원본 리스트 */}
-          <div className="w-full lg:w-[360px] lg:shrink-0 bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <div className="w-full lg:w-[460px] lg:shrink-0 bg-white border border-gray-200 rounded-lg overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
               <span className="text-sm font-semibold text-gray-800">원본 리스트</span>
               <span className="ml-2 text-xs text-gray-400">{selJobSpecs.length}건</span>
