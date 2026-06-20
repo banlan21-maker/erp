@@ -31,7 +31,9 @@ import { nextShipmentNo, nextInvoiceNo } from "@/lib/shipment-numbering";
 export const dynamic = "force-dynamic";
 
 interface ShipmentItemInput {
-  steelPlanId:     string;
+  kind?:           "plate" | "remnant";  // 없으면 plate (하위 호환)
+  steelPlanId?:    string;               // plate 전용
+  remnantId?:      string;               // remnant 전용
   steelPlanHeatId?: string | null;
   vesselCode:      string;
   material:        string;
@@ -43,6 +45,8 @@ interface ShipmentItemInput {
   heatNo?:         string | null;
   manualHeatNo:    boolean;
 }
+// 항목이 잔재 출고인지 판별 (kind 명시 우선, 아니면 remnantId 유무로)
+const isRemnantItem = (i: ShipmentItemInput) => i.kind === "remnant" || (!i.steelPlanId && !!i.remnantId);
 interface VehicleInput {
   sequence:        number;
   vehicleNo?:      string;
@@ -135,53 +139,107 @@ export async function POST(req: NextRequest) {
       vehicles.push(v);
     }
 
-    // 중복 steelPlanId 차단 (한 차분/차분간)
-    const allSteelPlanIds = vehicles.flatMap(v => v.items.map(i => i.steelPlanId));
-    const dupe = allSteelPlanIds.find((id, i) => allSteelPlanIds.indexOf(id) !== i);
-    if (dupe) {
-      return NextResponse.json({ success: false, error: `자재가 중복 배차되었습니다: ${dupe}` }, { status: 400 });
+    // 원판/잔재 분리
+    const allItems = vehicles.flatMap(v => v.items);
+    // 항목 형태 검증 — 원판/잔재 정확히 한쪽만 (양쪽 다 비거나 둘 다 채워진 유령 행 차단)
+    for (const it of allItems) {
+      const hasPlate = !!it.steelPlanId;
+      const hasRem   = !!it.remnantId;
+      if (hasPlate && hasRem) {
+        return NextResponse.json({ success: false, error: "한 자재에 원판과 잔재를 동시에 지정할 수 없습니다." }, { status: 400 });
+      }
+      if (isRemnantItem(it) ? !hasRem : !hasPlate) {
+        return NextResponse.json({ success: false, error: "자재 식별자(원판/잔재 ID)가 없는 항목이 있습니다." }, { status: 400 });
+      }
+    }
+    const allSteelPlanIds = allItems.filter(i => !isRemnantItem(i)).map(i => i.steelPlanId!).filter(Boolean);
+    const allRemnantIds   = allItems.filter(i =>  isRemnantItem(i)).map(i => i.remnantId!).filter(Boolean);
+
+    // 중복 배차 차단 (원판·잔재 각각)
+    const dupePlan = allSteelPlanIds.find((id, i) => allSteelPlanIds.indexOf(id) !== i);
+    if (dupePlan) {
+      return NextResponse.json({ success: false, error: `원판이 중복 배차되었습니다: ${dupePlan}` }, { status: 400 });
+    }
+    const dupeRem = allRemnantIds.find((id, i) => allRemnantIds.indexOf(id) !== i);
+    if (dupeRem) {
+      return NextResponse.json({ success: false, error: `잔재가 중복 배차되었습니다: ${dupeRem}` }, { status: 400 });
     }
 
-    // 모든 SteelPlan 이 RECEIVED 인지 확인
-    const targets = await prisma.steelPlan.findMany({
-      where: { id: { in: allSteelPlanIds } },
-      select: { id: true, status: true, vesselCode: true, reservedFor: true },
-    });
-    if (targets.length !== allSteelPlanIds.length) {
-      return NextResponse.json({ success: false, error: "존재하지 않는 자재가 포함되어 있습니다." }, { status: 400 });
+    // ── 원판(SteelPlan) 검증 ────────────────────────────────────────────────
+    if (allSteelPlanIds.length > 0) {
+      const targets = await prisma.steelPlan.findMany({
+        where: { id: { in: allSteelPlanIds } },
+        select: { id: true, status: true, vesselCode: true, reservedFor: true },
+      });
+      if (targets.length !== allSteelPlanIds.length) {
+        return NextResponse.json({ success: false, error: "존재하지 않는 원판이 포함되어 있습니다." }, { status: 400 });
+      }
+      const notReceived = targets.filter(t => t.status !== "RECEIVED");
+      if (notReceived.length > 0) {
+        return NextResponse.json({
+          success: false,
+          error: `RECEIVED 가 아닌 원판이 ${notReceived.length}건 있습니다. 새로고침 후 다시 시도하세요.`,
+        }, { status: 409 });
+      }
+      // 블록확정(절단용, reservedFor)된 강재는 외부출고 불가 — 절단 확정취소가 먼저 (절단↔출고 상호배제)
+      const blockReserved = targets.filter(t => t.reservedFor);
+      if (blockReserved.length > 0) {
+        return NextResponse.json({
+          success: false,
+          error: `블록확정(절단용)된 강재가 ${blockReserved.length}건 있습니다. 블록강재리스트에서 확정취소 후 출고하세요.`,
+        }, { status: 409 });
+      }
+      // 활성(ACTIVE) 출고장에 이미 등록된 자재 확인 — 취소된(CANCELLED) ShipmentItem 은 무시
+      const alreadyActive = await prisma.shipmentItem.findMany({
+        where: { steelPlanId: { in: allSteelPlanIds }, vehicle: { shipment: { status: "ACTIVE" } } },
+        select: { steelPlanId: true, vehicle: { select: { shipment: { select: { shipmentNo: true } } } } },
+      });
+      if (alreadyActive.length > 0) {
+        const sample = alreadyActive.slice(0, 3).map(x => `${x.steelPlanId} (출고장 ${x.vehicle.shipment.shipmentNo})`);
+        return NextResponse.json({
+          success: false,
+          error: `이미 출고된 원판이 ${alreadyActive.length}건 있습니다.\n` + sample.join("\n"),
+        }, { status: 409 });
+      }
     }
-    const notReceived = targets.filter(t => t.status !== "RECEIVED");
-    if (notReceived.length > 0) {
-      return NextResponse.json({
-        success: false,
-        error: `RECEIVED 가 아닌 자재가 ${notReceived.length}건 있습니다. 새로고침 후 다시 시도하세요.`,
-      }, { status: 409 });
-    }
-    // 블록확정(절단용, reservedFor)된 강재는 외부출고 불가 — 절단 확정취소가 먼저 (절단↔출고 상호배제)
-    const blockReserved = targets.filter(t => t.reservedFor);
-    if (blockReserved.length > 0) {
-      return NextResponse.json({
-        success: false,
-        error: `블록확정(절단용)된 강재가 ${blockReserved.length}건 있습니다. 블록강재리스트에서 확정취소 후 출고하세요.`,
-      }, { status: 409 });
-    }
-    // 활성(ACTIVE) 출고장에 이미 등록된 자재 확인 — 취소된(CANCELLED) ShipmentItem 은 무시
-    const alreadyActive = await prisma.shipmentItem.findMany({
-      where: {
-        steelPlanId: { in: allSteelPlanIds },
-        vehicle: { shipment: { status: "ACTIVE" } },
-      },
-      select: {
-        steelPlanId: true,
-        vehicle: { select: { shipment: { select: { shipmentNo: true } } } },
-      },
-    });
-    if (alreadyActive.length > 0) {
-      const sample = alreadyActive.slice(0, 3).map(x => `${x.steelPlanId} (출고장 ${x.vehicle.shipment.shipmentNo})`);
-      return NextResponse.json({
-        success: false,
-        error: `이미 출고된 자재가 ${alreadyActive.length}건 있습니다.\n` + sample.join("\n"),
-      }, { status: 409 });
+
+    // ── 잔재(Remnant) 검증 ──────────────────────────────────────────────────
+    if (allRemnantIds.length > 0) {
+      const rems = await prisma.remnant.findMany({
+        where: { id: { in: allRemnantIds } },
+        select: { id: true, status: true, remnantNo: true, reservedFor: true },
+      });
+      if (rems.length !== allRemnantIds.length) {
+        return NextResponse.json({ success: false, error: "존재하지 않는 잔재가 포함되어 있습니다." }, { status: 400 });
+      }
+      // 출고 가능 상태(IN_STOCK)만 — PENDING(미절단)/EXHAUSTED(이미 소진) 차단.
+      // (출고원천을 IN_STOCK 으로 고정해야 출고취소 시 IN_STOCK 복원이 정합)
+      const notInStock = rems.filter(r => r.status !== "IN_STOCK");
+      if (notInStock.length > 0) {
+        return NextResponse.json({
+          success: false,
+          error: `출고 가능한(재고) 상태가 아닌 잔재가 ${notInStock.length}건 있습니다. 새로고침 후 다시 시도하세요.`,
+        }, { status: 409 });
+      }
+      // 블록확정(절단용, reservedFor)된 잔재는 외부출고 불가 — 절단↔출고 상호배제 (원판과 동일)
+      const remReserved = rems.filter(r => r.reservedFor);
+      if (remReserved.length > 0) {
+        return NextResponse.json({
+          success: false,
+          error: `블록확정(절단용)된 잔재가 ${remReserved.length}건 있습니다. 일괄확정/도면에서 확정취소 후 출고하세요.`,
+        }, { status: 409 });
+      }
+      const remActive = await prisma.shipmentItem.findMany({
+        where: { remnantId: { in: allRemnantIds }, vehicle: { shipment: { status: "ACTIVE" } } },
+        select: { remnantId: true, vehicle: { select: { shipment: { select: { shipmentNo: true } } } } },
+      });
+      if (remActive.length > 0) {
+        const sample = remActive.slice(0, 3).map(x => `${x.remnantId} (출고장 ${x.vehicle.shipment.shipmentNo})`);
+        return NextResponse.json({
+          success: false,
+          error: `이미 출고된 잔재가 ${remActive.length}건 있습니다.\n` + sample.join("\n"),
+        }, { status: 409 });
+      }
     }
 
     const shippedAt = new Date(`${shippedAtStr}T00:00:00.000Z`);
@@ -226,6 +284,38 @@ export async function POST(req: NextRequest) {
         });
 
         for (const item of v.items) {
+          // ── 잔재 출고 — remnantId 로 ShipmentItem 생성, 잔재 소진(EXHAUSTED) + 선별마킹 정리 ──
+          if (isRemnantItem(item)) {
+            const remHeatNo = (item.heatNo ?? "").trim() || null;
+            await tx.shipmentItem.create({
+              data: {
+                vehicleId:       vehicle.id,
+                steelPlanId:     null,
+                remnantId:       item.remnantId!,
+                steelPlanHeatId: null,
+                vesselCode: item.vesselCode,
+                material:   item.material,
+                thickness:  item.thickness,
+                width:      item.width,
+                length:     item.length,
+                weight:     item.weight,
+                block:      item.block ?? null,
+                heatNo:     remHeatNo,
+                manualHeatNo: false,
+              },
+            });
+            // 원자적 소진 — IN_STOCK 일 때만 EXHAUSTED 전환. 동시 출고 race 시 한쪽만 성공.
+            const exhaust = await tx.remnant.updateMany({
+              where: { id: item.remnantId!, status: "IN_STOCK" },
+              data:  { status: "EXHAUSTED", shipoutMarkedAt: null },
+            });
+            if (exhaust.count !== 1) {
+              throw new Error(`잔재(${item.remnantId})가 이미 출고/소진되어 처리할 수 없습니다. 새로고침 후 다시 시도하세요.`);
+            }
+            continue;
+          }
+
+          // ── 원판 출고 ── (기존 로직 그대로)
           // 판번호 처리
           let heatId: string | null = item.steelPlanHeatId ?? null;
           const heatNoText = (item.heatNo ?? "").trim() || null;
@@ -276,7 +366,7 @@ export async function POST(req: NextRequest) {
           await tx.shipmentItem.create({
             data: {
               vehicleId:       vehicle.id,
-              steelPlanId:     item.steelPlanId,
+              steelPlanId:     item.steelPlanId!,
               steelPlanHeatId: heatId,
               vesselCode: item.vesselCode,
               material:   item.material,
@@ -291,7 +381,7 @@ export async function POST(req: NextRequest) {
           });
 
           await tx.steelPlan.update({
-            where: { id: item.steelPlanId },
+            where: { id: item.steelPlanId! },
             data:  {
               status:          SteelPlanStatus.SHIPPED_OUT,
               issuedAt:        shippedAt,

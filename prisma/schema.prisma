@@ -1254,6 +1254,11 @@ model Remnant {
   reservedFor  String? // 확정된 호선/블록 (예: "RS01/F50P") — 일괄확정 시 채워지면 선점됨
   registeredBy String // 등록자
 
+  // 외부 출고 선별 — 선별목록(출고 예약 풀)에 추가되면 마킹. status 는 그대로 두고
+  // 마킹만 (되돌리기 가능). 정식 출고(Shipment) 확정 시 마킹 정리 + status=EXHAUSTED.
+  shipoutMarkedAt DateTime?
+  shipmentItems   ShipmentItem[] // 외부 출고 이력 (ACTIVE 1건만 의미 있음 — application 강제)
+
   // 레거시 필드 (미사용, 데이터 보존용)
   originalVesselName String?
   drawingNo          String?
@@ -1392,8 +1397,11 @@ model ShipmentItem {
   id              String @id @default(cuid())
   vehicleId       String
   vehicle         ShipmentVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  steelPlanId     String          // 한 SteelPlan 은 활성 출고장(ACTIVE)에서만 한 번 — application 레벨에서 강제 (cancel 시 ShipmentItem 보존 위해 DB unique 제거)
-  steelPlan       SteelPlan @relation(fields: [steelPlanId], references: [id], onDelete: Restrict)
+  // 출고 대상은 원판(SteelPlan) 또는 잔재(Remnant) 둘 중 하나 — 정확히 한쪽만 채워짐
+  steelPlanId     String?         // 원판 출고 (활성 출고장에서 1회만 — application 강제). 잔재 출고면 null
+  steelPlan       SteelPlan? @relation(fields: [steelPlanId], references: [id], onDelete: Restrict)
+  remnantId       String?         // 잔재 출고 (여유원재/등록잔재/현장잔재). 원판 출고면 null
+  remnant         Remnant?   @relation(fields: [remnantId], references: [id], onDelete: Restrict)
   steelPlanHeatId String?
   steelPlanHeat   SteelPlanHeat? @relation(fields: [steelPlanHeatId], references: [id], onDelete: SetNull)
 
@@ -1419,6 +1427,7 @@ model ShipmentItem {
 
   @@index([vehicleId])
   @@index([steelPlanHeatId])
+  @@index([remnantId])
 }
 
 

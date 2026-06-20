@@ -10,7 +10,12 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback } from "react";
 
 export interface ShipoutCartItem {
+  // steelPlanId 는 카트의 "고유 키" 로 쓰인다(has/remove/중복제거). cuid 라 테이블이 달라도 충돌 없음.
+  //  - 원판(plate): SteelPlan.id
+  //  - 잔재(remnant): Remnant.id (remnantId 와 동일)
   steelPlanId:      string;
+  kind?:            "plate" | "remnant";  // 없으면 plate (하위 호환)
+  remnantId?:       string;               // kind==="remnant" 일 때만
   vesselCode:       string;
   material:         string;
   thickness:        number;
@@ -19,6 +24,8 @@ export interface ShipoutCartItem {
   weight:           number;  // kg
   // 엑셀 업로드로 들어온 경우 사용자가 미리 적은 판번호
   prefilledHeatNo?: string;
+  // 잔재 표시용 (선택) — UI 라벨에만 사용
+  remnantNo?:       string;
 }
 
 interface CartContextValue {

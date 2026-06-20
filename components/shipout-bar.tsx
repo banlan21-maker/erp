@@ -148,11 +148,13 @@ export default function ShipoutBar() {
       }));
       setRowsM(init);
 
-      // 사양별 heat options 일괄 조회 — 같은 사양은 한 번만
+      // 사양별 heat options 일괄 조회 — 같은 사양은 한 번만.
+      // 잔재(remnant)는 판번호 매칭 대상이 아님(자체 heatNo만 스냅샷) → 제외.
       const specKey = (r: ModalRow) =>
         `${r.vesselCode}|${r.material}|${r.thickness}|${r.width}|${r.length}`;
       const groups = new Map<string, ModalRow[]>();
       for (const r of init) {
+        if (r.kind === "remnant") continue;
         const k = specKey(r);
         if (!groups.has(k)) groups.set(k, []);
         groups.get(k)!.push(r);
@@ -253,8 +255,9 @@ export default function ShipoutBar() {
   /* ─── 검증 → 모달 ② 진입 ─── */
   const goToStep2 = () => {
     setError("");
-    // 판번호 중복 입력 방지 — 같은 판번호(한 물리 철판)가 두 번 나가는 것 차단
-    const heatNos = rowsM.map(r => r.heatNo.trim()).filter(Boolean);
+    // 판번호 중복 입력 방지 — 같은 판번호(한 물리 철판)가 두 번 나가는 것 차단.
+    // 잔재는 원판의 판번호를 공유할 수 있어(같은 모재 출처) 중복검사 제외 — 원판끼리만 검사.
+    const heatNos = rowsM.filter(r => r.kind !== "remnant").map(r => r.heatNo.trim()).filter(Boolean);
     const dupHeat = heatNos.find((h, i) => heatNos.indexOf(h) !== i);
     if (dupHeat) {
       setError(`판번호 '${dupHeat}'가 중복 입력되었습니다. 같은 판번호는 한 번만 사용할 수 있습니다.`);
@@ -333,7 +336,21 @@ export default function ShipoutBar() {
             deliveryId:      v.deliveryId, deliverySnapshot: snap(del),
             writerName:      writerName.trim()  || undefined,
             writerPhone:     writerPhone.trim() || undefined,
-            items: rowsM.filter(r => r.vehicleIdx === vi).map(r => ({
+            items: rowsM.filter(r => r.vehicleIdx === vi).map(r => r.kind === "remnant" ? {
+              // 잔재 출고 — steelPlanId/heatId 없이 remnantId 로. 판번호는 스냅샷 텍스트만.
+              kind:            "remnant" as const,
+              remnantId:       r.remnantId,
+              vesselCode:      r.vesselCode,
+              material:        r.material,
+              thickness:       r.thickness,
+              width:           r.width,
+              length:          r.length,
+              weight:          r.weight,
+              block:           r.block.trim() || null,
+              heatNo:          r.heatNo.trim() || null,
+              manualHeatNo:    false,
+            } : {
+              kind:            "plate" as const,
               steelPlanId:     r.steelPlanId,
               steelPlanHeatId: r.heatId,
               vesselCode:      r.vesselCode,
@@ -345,7 +362,7 @@ export default function ShipoutBar() {
               block:           r.block.trim() || null,
               heatNo:          r.heatNo.trim() || null,
               manualHeatNo:    r.manualHeatNo,
-            })),
+            }),
           };
         }),
       };
@@ -605,7 +622,10 @@ function Step1({
                     <td className="px-2 py-1 text-center">
                       <input type="checkbox" checked={isChecked} onChange={() => toggleCheck(r.steelPlanId)} />
                     </td>
-                    <td className="px-2 py-1 font-mono">{r.vesselCode}</td>
+                    <td className="px-2 py-1 font-mono">
+                      {r.kind === "remnant" && <span className="mr-1 px-1 py-0.5 rounded text-[9px] font-semibold bg-amber-100 text-amber-700">잔재</span>}
+                      {r.vesselCode}
+                    </td>
                     <td className="px-2 py-1">{r.material}</td>
                     <td className="px-2 py-1 text-right">{r.thickness}</td>
                     <td className="px-2 py-1 text-right">{r.width}</td>
@@ -668,7 +688,10 @@ function Step1({
                       <tbody className="divide-y divide-gray-50">
                         {myRows.map(r => (
                           <tr key={r.steelPlanId}>
-                            <td className="px-2 py-1 font-medium">{r.vesselCode}</td>
+                            <td className="px-2 py-1 font-medium">
+                              {r.kind === "remnant" && <span className="mr-1 px-1 py-0.5 rounded text-[9px] font-semibold bg-amber-100 text-amber-700">잔재</span>}
+                              {r.vesselCode}
+                            </td>
                             <td className="px-2 py-1">{r.material}</td>
                             <td className="px-2 py-1 text-right font-mono">{r.thickness}</td>
                             <td className="px-2 py-1 text-right font-mono">{r.width}</td>
@@ -691,6 +714,17 @@ function Step1({
 }
 
 function HeatPicker({ row, onChange }: { row: ModalRow; onChange: (p: Partial<ModalRow>) => void }) {
+  // 잔재: 판번호 매칭 없음(자체 heatNo 텍스트만). 원판: 사양 후보 datalist + 신규 표시.
+  if (row.kind === "remnant") {
+    return (
+      <input
+        value={row.heatNo}
+        onChange={e => onChange({ heatNo: e.target.value, heatId: null, manualHeatNo: false })}
+        placeholder="판번호(선택)"
+        className="w-32 px-1.5 py-0.5 text-xs border border-gray-300 rounded font-mono"
+      />
+    );
+  }
   return (
     <div className="flex items-center gap-1">
       <input

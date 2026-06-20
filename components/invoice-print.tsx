@@ -318,11 +318,11 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
                   <td><input className="cell text-center font-mono text-[10px]" value={it.drawingNo ?? ""} onChange={e => setItem(i, { drawingNo: e.target.value })} /></td>
                   <td>{it.material}</td>
                   <td className="text-right">{it.thickness}</td>
-                  <td className="text-right">{fmtNum(it.width)}</td>
-                  <td className="text-right">{fmtNum(it.length)}</td>
+                  <td className="text-right">{it.width ? fmtNum(it.width) : ""}</td>
+                  <td className="text-right">{it.length ? fmtNum(it.length) : ""}</td>
                   <td className="text-right">1</td>
                   <td className="text-right">{fmtNum(it.weight, 1)}</td>
-                  <td className="text-right">{fmtNum(area_m2(it.width, it.length), 3)}</td>
+                  <td className="text-right">{it.width && it.length ? fmtNum(area_m2(it.width, it.length), 3) : ""}</td>
                   <td><input className="cell text-center" value={it.cuttingEquipment ?? ""} onChange={e => setItem(i, { cuttingEquipment: e.target.value })} /></td>
                   <td><input className="cell text-center font-mono text-[10px]" value={it.selectionOrderNo ?? ""} onChange={e => setItem(i, { selectionOrderNo: e.target.value })} /></td>
                 </tr>

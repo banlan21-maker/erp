@@ -48,6 +48,19 @@ export async function POST(
       // 2/3. 자재·판번호 처리
       for (const v of ship.vehicles) {
         for (const item of v.items) {
+          // ── 잔재 출고 복원 — 소진(EXHAUSTED) → 재고(IN_STOCK) ──
+          if (item.remnantId) {
+            const rem = await tx.remnant.findUnique({ where: { id: item.remnantId } });
+            if (rem && rem.status === "EXHAUSTED") {
+              await tx.remnant.update({ where: { id: rem.id }, data: { status: "IN_STOCK" } });
+            } else if (rem) {
+              warnings.push(`잔재 ${rem.remnantNo} 상태가 소진이 아니라 복원 건너뜀 (현재: ${rem.status})`);
+            }
+            continue; // 잔재는 SteelPlan/Heat 처리 없음
+          }
+
+          // ── 원판 복원 ──
+          if (!item.steelPlanId) continue;
           // SteelPlan 복원
           const sp = await tx.steelPlan.findUnique({ where: { id: item.steelPlanId } });
           if (sp && sp.status === SteelPlanStatus.SHIPPED_OUT) {
