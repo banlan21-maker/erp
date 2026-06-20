@@ -36,8 +36,9 @@ const fmtYMD = (iso: string | null) => {
 };
 const fmtDateTime = (iso: string) => new Date(iso).toLocaleString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 
-interface Job     { id: string; name: string; author: string | null; statuses: string; reservedFilter: string; specCount: number; createdAt: string }
+interface Job     { id: string; name: string; author: string | null; statuses: string; reservedFilter: string; specCount: number; selectedCount: number; createdAt: string }
 interface Spec    { vesselCode: string; material: string; thickness: number; width: number; length: number }
+interface SpecRow extends Spec { selected?: boolean }   // 왼쪽 원본 리스트 (선별 여부 포함)
 interface PlanRow { id: string; vesselCode: string; material: string; thickness: number; width: number; length: number; status: string; uploadBatchNo: string | null; receivedAt: string | null; storageLocation: string | null; reservedFor: string | null; shipoutMarkedAt: string | null; shipoutLabel: string | null }
 interface MatchRow { matched: boolean; spec: Spec; plan: PlanRow | null }
 
@@ -121,7 +122,7 @@ export default function SteelMatchTab() {
 
   const [selJobId, setSelJobId]   = useState<string | null>(null);
   const [selJobName, setSelJobName] = useState("");
-  const [selJobSpecs, setSelJobSpecs] = useState<Spec[]>([]);   // 원본 업로드 사양 (왼쪽 패널)
+  const [selJobSpecs, setSelJobSpecs] = useState<SpecRow[]>([]);   // 원본 업로드 사양 + 선별 여부 (왼쪽 패널)
   const [rows, setRows]           = useState<MatchRow[]>([]);
   const [rowsLoading, setRowsLoading] = useState(false);
   const [selJobStatuses, setSelJobStatuses] = useState<string>("ALL");   // 열린 작업의 저장된 대상상태
@@ -339,7 +340,8 @@ export default function SteelMatchTab() {
       } else {
         alert(`${d.count}건을 '${selJobName} 선별'로 확정했습니다.\n강재전체목록 확정정보에 빨간 '선별'로 표시됩니다.`);
       }
-      if (selJobId) loadMatches(selJobId);   // 매칭 결과 새로고침 (확정정보 반영)
+      if (selJobId) loadMatches(selJobId);   // 매칭 결과 새로고침 (확정정보 + 왼쪽 선별 반영)
+      loadJobs();                            // 목록 선별수 갱신
     } catch (e) {
       win?.close();
       alert(e instanceof Error ? e.message : "네트워크 오류");
@@ -400,7 +402,7 @@ export default function SteelMatchTab() {
               <th className="px-3 py-2 text-left font-medium text-gray-600 w-1/6">매칭 이름</th>
               <th className="px-3 py-2 text-left font-medium text-gray-600 w-1/6">작성자</th>
               <th className="px-3 py-2 text-left font-medium text-gray-600 w-1/6">업로드일시</th>
-              <th className="px-3 py-2 text-right font-medium text-gray-600 w-1/6">사양수</th>
+              <th className="px-3 py-2 text-right font-medium text-gray-600 w-1/6">사양수 / 선별</th>
               <th className="px-3 py-2 text-left font-medium text-gray-600 w-1/6">대상상태</th>
               <th className="px-3 py-2 text-center font-medium text-gray-600 w-1/6">작업</th>
             </tr>
@@ -417,7 +419,12 @@ export default function SteelMatchTab() {
                 <td className="px-3 py-2 font-medium text-gray-800 truncate" title={j.name}>{j.name}</td>
                 <td className="px-3 py-2 text-gray-600 truncate" title={j.author ?? ""}>{j.author || "-"}</td>
                 <td className="px-3 py-2 text-gray-500 truncate">{fmtDateTime(j.createdAt)}</td>
-                <td className="px-3 py-2 text-right text-gray-600">{j.specCount}</td>
+                <td className="px-3 py-2 text-right tabular-nums"
+                    title={j.selectedCount >= j.specCount ? "전체 선별 완료" : `미선별 ${j.specCount - j.selectedCount}건`}>
+                  <span className="text-gray-600">{j.specCount}</span>
+                  <span className="text-gray-300"> / </span>
+                  <span className={`font-semibold ${j.selectedCount >= j.specCount && j.specCount > 0 ? "text-green-600" : "text-amber-600"}`}>{j.selectedCount}</span>
+                </td>
                 <td className="px-3 py-2 text-gray-500 truncate" title={`${statusesLabel(j.statuses)}${j.reservedFilter === "NONE" ? " · 미확정만" : ""}`}>
                   {statusesLabel(j.statuses)}
                   {j.reservedFilter === "NONE" && <span className="ml-1 text-[10px] text-amber-600">미확정만</span>}
@@ -446,11 +453,20 @@ export default function SteelMatchTab() {
             <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
               <span className="text-sm font-semibold text-gray-800">원본 리스트</span>
               <span className="ml-2 text-xs text-gray-400">{selJobSpecs.length}건</span>
+              {(() => {
+                const unsel = selJobSpecs.filter(s => !s.selected).length;
+                return unsel > 0
+                  ? <span className="ml-2 text-xs font-semibold text-blue-600">미선별 {unsel}</span>
+                  : selJobSpecs.length > 0
+                    ? <span className="ml-2 text-xs font-semibold text-red-600">전체 선별</span>
+                    : null;
+              })()}
             </div>
             <div className="overflow-auto max-h-[70vh]">
               <table className="w-full text-xs whitespace-nowrap">
                 <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                   <tr>
+                    <th className="px-3 py-2 text-center font-medium text-gray-600">선별</th>
                     <th className="px-3 py-2 text-left font-medium text-gray-600">호선</th>
                     <th className="px-3 py-2 text-left font-medium text-gray-600">재질</th>
                     <th className="px-3 py-2 text-right font-medium text-gray-600">두께</th>
@@ -460,9 +476,14 @@ export default function SteelMatchTab() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {selJobSpecs.length === 0 ? (
-                    <tr><td colSpan={5} className="py-8 text-center text-gray-400">사양 없음</td></tr>
+                    <tr><td colSpan={6} className="py-8 text-center text-gray-400">사양 없음</td></tr>
                   ) : selJobSpecs.map((s, i) => (
-                    <tr key={i} className="hover:bg-gray-50">
+                    <tr key={i} className={`hover:bg-gray-50 ${s.selected ? "" : "bg-blue-50/40"}`}>
+                      <td className="px-3 py-1.5 text-center">
+                        {s.selected
+                          ? <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700">선별</span>
+                          : <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">미선별</span>}
+                      </td>
                       <td className="px-3 py-1.5 font-medium">{s.vesselCode || <span className="text-gray-400">(전체)</span>}</td>
                       <td className="px-3 py-1.5">{s.material}</td>
                       <td className="px-3 py-1.5 text-right">{fmtT(s.thickness)}</td>

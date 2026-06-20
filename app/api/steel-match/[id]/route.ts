@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { computeSelectedFlags } from "@/lib/steel-match-select";
 
 type PlanStatus = "REGISTERED" | "RECEIVED" | "ISSUED" | "COMPLETED" | "SHIPPED_OUT";
 const ALL_STATUSES: PlanStatus[] = ["REGISTERED", "RECEIVED", "ISSUED", "COMPLETED", "SHIPPED_OUT"];
@@ -83,11 +84,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       }
     }
 
+    // 사양별 선별 여부 — 확정정보 필터와 무관하게 '이 작업으로 선별된 강재(라벨=매칭이름)' 기준
+    const markedPlates = await prisma.steelPlan.findMany({
+      where: { shipoutMarkedAt: { not: null }, shipoutLabel: job.name },
+      select: { vesselCode: true, material: true, thickness: true, width: true, length: true },
+    });
+    const selectedFlags = computeSelectedFlags(specs, markedPlates);
+    const specsOut = specs.map((s, i) => ({ ...s, selected: selectedFlags[i] }));
+
     return NextResponse.json({
       success: true,
       data: {
         job: { id: job.id, name: job.name, statuses: job.statuses, reservedFilter: job.reservedFilter, createdAt: job.createdAt.toISOString() },
-        specs,   // 사용자가 업로드한 원본 사양 목록 (왼쪽 패널용)
+        specs: specsOut,   // 사용자가 업로드한 원본 사양 목록 + 선별 여부 (왼쪽 패널용)
         rows,
       },
     });

@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { computeSelectedFlags, type MarkedPlate } from "@/lib/steel-match-select";
 
 type Spec = { vesselCode: string; material: string; thickness: number; width: number; length: number };
 
@@ -10,17 +11,37 @@ type Spec = { vesselCode: string; material: string; thickness: number; width: nu
 export async function GET() {
   try {
     const jobs = await prisma.steelMatchJob.findMany({ orderBy: { createdAt: "desc" } });
+
+    // 선별된 강재 전체(라벨 있는 것만)를 라벨별로 묶어 작업별 선별수 계산.
+    // 라벨 = 선별 당시 매칭이름(job.name) 이므로 같은 이름끼리 매핑된다.
+    const markedAll = await prisma.steelPlan.findMany({
+      where: { shipoutMarkedAt: { not: null }, shipoutLabel: { not: null } },
+      select: { vesselCode: true, material: true, thickness: true, width: true, length: true, shipoutLabel: true },
+    });
+    const byLabel = new Map<string, MarkedPlate[]>();
+    for (const p of markedAll) {
+      const k = p.shipoutLabel!;
+      let arr = byLabel.get(k);
+      if (!arr) { arr = []; byLabel.set(k, arr); }
+      arr.push(p);
+    }
+
     return NextResponse.json({
       success: true,
-      data: jobs.map(j => ({
-        id: j.id,
-        name: j.name,
-        author: j.author,
-        statuses: j.statuses,
-        reservedFilter: j.reservedFilter,
-        specCount: Array.isArray(j.specs) ? (j.specs as unknown[]).length : 0,
-        createdAt: j.createdAt.toISOString(),
-      })),
+      data: jobs.map(j => {
+        const specs = (Array.isArray(j.specs) ? j.specs : []) as unknown as Spec[];
+        const selectedCount = computeSelectedFlags(specs, byLabel.get(j.name) ?? []).filter(Boolean).length;
+        return {
+          id: j.id,
+          name: j.name,
+          author: j.author,
+          statuses: j.statuses,
+          reservedFilter: j.reservedFilter,
+          specCount: specs.length,
+          selectedCount,
+          createdAt: j.createdAt.toISOString(),
+        };
+      }),
     });
   } catch (e) {
     return NextResponse.json({ success: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
