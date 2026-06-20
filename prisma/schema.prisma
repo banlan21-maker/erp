@@ -1500,3 +1500,79 @@ model SteelMatchJob {
 
   @@index([createdAt])
 }
+
+// ==========================================
+// 업무관리 — 업무일지 + 사용자간 공유(피드/멘션) + 일정
+// 로그인 없이 "사용자 선택"(localStorage) 방식. 사용자는 업무관리 전용(WorkUser).
+// ==========================================
+model WorkUser {
+  id        String   @id @default(cuid())
+  name      String   @unique // 이름 (식별 + @멘션 키)
+  dept      String?  // 부서/팀
+  color     String?  // 표시 색상 (배지용, 예: "#2563eb")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  logs      WorkLog[]
+  posts     WorkPost[]        @relation("WorkPostAuthor")
+  mentions  WorkPostMention[]
+  schedules WorkSchedule[]
+}
+
+// 일일 업무일지 — (사용자 + 날짜) 1건. 어제 칸은 전일 todayWork 를 자동 표시(저장 안 함).
+model WorkLog {
+  id           String   @id @default(cuid())
+  userId       String
+  user         WorkUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date         DateTime // 그 날짜 (달력일을 UTC 자정으로 정규화 저장)
+  todayWork    String   @default("") // 오늘 업무내용
+  tomorrowPlan String   @default("") // 내일 계획
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([date])
+}
+
+// 공유 글/메모 — 피드 + 중요메모(상단고정) + @멘션. 멘션된 사용자 일지/피드에도 표시.
+model WorkPost {
+  id        String   @id @default(cuid())
+  authorId  String
+  author    WorkUser @relation("WorkPostAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  content   String
+  important Boolean  @default(false) // 중요 메모(달력 아래 상단 고정)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  mentions  WorkPostMention[]
+
+  @@index([createdAt])
+  @@index([important])
+}
+
+// @멘션 — 글이 어떤 사용자를 소환했는지. 그 사용자 일지/피드 집계에 사용.
+model WorkPostMention {
+  id     String   @id @default(cuid())
+  postId String
+  post   WorkPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId String
+  user   WorkUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([userId])
+}
+
+// 일정 — 업무 대시보드 달력 표시
+model WorkSchedule {
+  id        String    @id @default(cuid())
+  date      DateTime  // 일정 날짜 (달력일을 UTC 자정으로 정규화 저장)
+  title     String
+  color     String?
+  userId    String?   // 담당/등록자 (선택)
+  user      WorkUser? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([date])
+}

@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import type { ComponentType } from "react";
 
-export type ModuleType = "cnc" | "material" | "management" | "schedule";
+export type ModuleType = "cnc" | "material" | "management" | "schedule" | "work";
 
 type SidebarMode = "full" | "mini" | "hidden";
 
@@ -52,6 +52,11 @@ const menuGroups: Record<string, MenuItem[]> = {
     { href: "/management/vendors",    label: "거래처 관리",   icon: Package },
     { href: "/meal",                  label: "식수 관리",     icon: UtensilsCrossed },
   ],
+  work: [
+    { href: "/work/dashboard", label: "업무 대시보드", icon: LayoutDashboard },
+    { href: "/work/journal",   label: "업무일지",      icon: ClipboardList },
+    { href: "/work/users",     label: "사용자 등록",   icon: Users },
+  ],
 };
 
 export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
@@ -79,11 +84,13 @@ export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
   if (module === "cnc")           moduleLabel = "CNC 절단";
   else if (module === "material") moduleLabel = "구매/자재";
   else if (module === "schedule") moduleLabel = "스케줄";
+  else if (module === "work")     moduleLabel = "업무관리";
 
   let moduleShort = "MNG";
   if (module === "cnc")           moduleShort = "CNC";
   else if (module === "material") moduleShort = "MAT";
   else if (module === "schedule") moduleShort = "SCH";
+  else if (module === "work")     moduleShort = "WRK";
 
   const linkClass = (href: string) => `
     flex items-center gap-3 rounded-lg text-sm font-medium transition-all duration-200
