@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Package, Truck, Wrench, CreditCard, type LucideIcon } from "lucide-react";
+import { Package, PackageOpen, Truck, Wrench, CreditCard, type LucideIcon } from "lucide-react";
 
 /**
  * 현장 페이지 모음 — /field
@@ -34,6 +34,18 @@ const LINKS: FieldLink[] = [
       bg:     "from-blue-900/40 to-blue-950",
       icon:   "text-blue-300 bg-blue-500/15",
       label:  "text-blue-100",
+    },
+  },
+  {
+    href: "/field/shipout",
+    label: "현장 출고관리",
+    description: "판번호 입력 · 출고장 발행",
+    icon: PackageOpen,
+    accent: {
+      border: "border-orange-500/60 active:border-orange-400",
+      bg:     "from-orange-900/40 to-orange-950",
+      icon:   "text-orange-300 bg-orange-500/15",
+      label:  "text-orange-100",
     },
   },
   {
