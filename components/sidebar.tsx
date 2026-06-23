@@ -133,9 +133,9 @@ export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
           </Link>
         ))}
 
-        {/* CNC 모듈 - 현장 작업일보 링크 */}
+        {/* CNC 모듈 - 현장 작업일보 / 현장 출고관리 링크 */}
         {module === "cnc" && (
-          <div className="pt-2 mt-2 border-t border-gray-700">
+          <div className="pt-2 mt-2 border-t border-gray-700 space-y-1">
             <a
               href="/field/worklog"
               target="_blank"
@@ -151,6 +151,25 @@ export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
               {!isMini && (
                 <span className="flex-1 flex items-center justify-between">
                   현장 작업일보
+                  <ExternalLink size={12} className="opacity-60" />
+                </span>
+              )}
+            </a>
+            <a
+              href="/field/shipout"
+              target="_blank"
+              rel="noopener noreferrer"
+              title={isMini ? "현장 출고관리 (새창)" : undefined}
+              className={`
+                flex items-center gap-3 rounded-lg text-sm font-medium transition-colors
+                text-amber-400 hover:bg-gray-800 hover:text-amber-300
+                ${isMini ? "justify-center px-0 py-2.5" : "px-3 py-2"}
+              `}
+            >
+              <Truck size={18} className="flex-shrink-0" />
+              {!isMini && (
+                <span className="flex-1 flex items-center justify-between">
+                  현장 출고관리
                   <ExternalLink size={12} className="opacity-60" />
                 </span>
               )}

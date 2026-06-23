@@ -24,6 +24,8 @@ export interface ShipoutCartItem {
   weight:           number;  // kg
   // 엑셀 업로드로 들어온 경우 사용자가 미리 적은 판번호
   prefilledHeatNo?: string;
+  // 현장 출고: 판번호 조회로 확정된 SteelPlanHeat.id (정확히 그 heat 를 SHIPPED 전환)
+  steelPlanHeatId?: string;
   // 잔재 표시용 (선택) — UI 라벨에만 사용
   remnantNo?:       string;
 }
