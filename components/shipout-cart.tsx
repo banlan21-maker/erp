@@ -39,31 +39,32 @@ interface CartContextValue {
   has:         (steelPlanId: string) => boolean;
 }
 
-const STORAGE_KEY = "shipout-cart-v1";
+const DEFAULT_STORAGE_KEY = "shipout-cart-v1";
 
 const CartCtx = createContext<CartContextValue | null>(null);
 
-export function ShipoutCartProvider({ children }: { children: React.ReactNode }) {
+// storageKey 로 흐름별 카트 분리 (PC=기본, 현장=별도) — 같은 탭에서 상호 오염 방지
+export function ShipoutCartProvider({ children, storageKey = DEFAULT_STORAGE_KEY }: { children: React.ReactNode; storageKey?: string }) {
   const [items, setItems] = useState<ShipoutCartItem[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
   // 마운트 시 sessionStorage 복원
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem(STORAGE_KEY);
+      const raw = sessionStorage.getItem(storageKey);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) setItems(parsed);
       }
     } catch { /* 무시 */ }
     setHydrated(true);
-  }, []);
+  }, [storageKey]);
 
   // 변경 시 sessionStorage 동기화 (hydrated 이후)
   useEffect(() => {
     if (!hydrated) return;
-    try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(items)); } catch { /* 무시 */ }
-  }, [items, hydrated]);
+    try { sessionStorage.setItem(storageKey, JSON.stringify(items)); } catch { /* 무시 */ }
+  }, [items, hydrated, storageKey]);
 
   const add: CartContextValue["add"] = useCallback((newItems) => {
     let added = 0, duplicates = 0;
@@ -89,8 +90,8 @@ export function ShipoutCartProvider({ children }: { children: React.ReactNode })
   // router.push 가 끼면 sessionStorage 가 안 비워질 수 있으므로 직접도 제거
   const clear = useCallback(() => {
     setItems([]);
-    try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* 무시 */ }
-  }, []);
+    try { sessionStorage.removeItem(storageKey); } catch { /* 무시 */ }
+  }, [storageKey]);
 
   const totalWeight = useMemo(
     () => items.reduce((s, x) => s + (x.weight || 0), 0),

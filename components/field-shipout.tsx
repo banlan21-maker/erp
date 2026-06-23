@@ -10,7 +10,7 @@
  * 카트는 PC와 동일한 ShipoutCartProvider(sessionStorage) 사용.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Search, PackageOpen, Truck, Trash2, X, Loader2, CheckCircle2, AlertTriangle,
   ChevronLeft, ListChecks, ClipboardList, MapPin, RefreshCw,
@@ -40,7 +40,7 @@ interface Vendor {
 
 export default function FieldShipout() {
   return (
-    <ShipoutCartProvider>
+    <ShipoutCartProvider storageKey="field-shipout-cart-v1">
       <Inner />
     </ShipoutCartProvider>
   );
@@ -241,17 +241,31 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }
   const [driverName, setDriverName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [vendorLoading, setVendorLoading] = useState(false);
+  const [vendorError, setVendorError] = useState("");
+
+  const loadVendors = useCallback(async () => {
+    setVendorLoading(true); setVendorError("");
+    try {
+      const [s, d] = await Promise.all([
+        fetch("/api/delivery-vendors?type=SUPPLIER").then(r => r.json()),
+        fetch("/api/delivery-vendors?type=DELIVERY").then(r => r.json()),
+      ]);
+      if (!s.success) throw new Error(s.error || "공급처를 불러오지 못했습니다.");
+      if (!d.success) throw new Error(d.error || "납품처를 불러오지 못했습니다.");
+      setSuppliers(s.data); setDeliveries(d.data);
+    } catch (e) {
+      setVendorError(e instanceof Error ? e.message : "거래처를 불러오지 못했습니다.");
+    } finally { setVendorLoading(false); }
+  }, []);
 
   useEffect(() => {
     try {
       setWriterName(localStorage.getItem("shipout-writer-name") ?? "");
       setSupplierId(localStorage.getItem("shipout-supplier-id") ?? "");
     } catch { /* 무시 */ }
-    Promise.all([
-      fetch("/api/delivery-vendors?type=SUPPLIER").then(r => r.json()),
-      fetch("/api/delivery-vendors?type=DELIVERY").then(r => r.json()),
-    ]).then(([s, d]) => { if (s.success) setSuppliers(s.data); if (d.success) setDeliveries(d.data); }).catch(() => {});
-  }, []);
+    loadVendors();
+  }, [loadVendors]);
 
   const snap = (v: Vendor | undefined) => v ? {
     bizNo: v.bizNo, name: v.name, ceo: v.ceo, address: v.address,
@@ -261,6 +275,7 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }
   const submit = async () => {
     setError("");
     if (cart.items.length === 0) { setError("담은 자재가 없습니다."); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(shippedAt)) { setError("출고일을 선택하세요."); return; }
     if (!writerName.trim())  { setError("작성(출고)자를 입력하세요."); return; }
     if (!supplierId)         { setError("공급처를 선택하세요."); return; }
     if (!deliveryId)         { setError("납품처를 선택하세요."); return; }
@@ -344,7 +359,17 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }
 
         {/* 송장 정보 */}
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-3">
-          <Field label="출고일">
+          {vendorLoading && <div className="text-xs text-gray-400 flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" /> 거래처 불러오는 중…</div>}
+          {vendorError && (
+            <div className="bg-red-950/60 border border-red-800 rounded-xl px-3 py-2 text-xs text-red-300 flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5"><AlertTriangle size={14} /> {vendorError}</span>
+              <button onClick={loadVendors} className="underline text-red-200 flex-shrink-0">다시 시도</button>
+            </div>
+          )}
+          {!vendorLoading && !vendorError && suppliers.length === 0 && deliveries.length === 0 && (
+            <div className="text-xs text-amber-300">등록된 공급처/납품처가 없습니다. 사무실에서 거래처를 먼저 등록하세요.</div>
+          )}
+          <Field label="출고일 *">
             <input type="date" value={shippedAt} onChange={e => setShippedAt(e.target.value)} className={inputCls} />
           </Field>
           <Field label="작성(출고)자 *">
@@ -402,13 +427,17 @@ function ShipmentListTab() {
   const [to, setTo]     = useState(todayKst());
   const [list, setList] = useState<Shipment[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const load = useCallback(async () => {
-    setLoading(true);
+    setLoading(true); setError("");
     try {
       const p = new URLSearchParams({ from, to, status: "ACTIVE" });
       const r = await fetch(`/api/shipments?${p}`).then(r => r.json());
       if (r.success) setList(r.data);
+      else setError(r.error || "출고장을 불러오지 못했습니다.");
+    } catch {
+      setError("네트워크 오류로 출고장을 불러오지 못했습니다.");
     } finally { setLoading(false); }
   }, [from, to]);
   useEffect(() => { load(); }, [load]);
@@ -419,14 +448,19 @@ function ShipmentListTab() {
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center gap-2">
-        <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={inputCls} />
-        <span className="text-gray-500">~</span>
-        <input type="date" value={to} onChange={e => setTo(e.target.value)} className={inputCls} />
-        <button onClick={load} className="p-2.5 bg-gray-800 rounded-xl text-gray-300"><RefreshCw size={16} /></button>
+        <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={`${inputCls} flex-1 min-w-0`} />
+        <span className="text-gray-500 flex-shrink-0">~</span>
+        <input type="date" value={to} onChange={e => setTo(e.target.value)} className={`${inputCls} flex-1 min-w-0`} />
+        <button onClick={load} className="p-2.5 bg-gray-800 rounded-xl text-gray-300 flex-shrink-0"><RefreshCw size={16} /></button>
       </div>
 
       {loading ? (
         <p className="text-center text-gray-500 py-10">불러오는 중…</p>
+      ) : error ? (
+        <div className="bg-red-950/60 border border-red-800 rounded-2xl p-4 text-center text-sm text-red-300">
+          <AlertTriangle size={18} className="inline mr-1" /> {error}
+          <button onClick={load} className="block mx-auto mt-2 underline text-red-200">다시 시도</button>
+        </div>
       ) : list.length === 0 ? (
         <p className="text-center text-gray-600 py-10">해당 기간 출고장이 없습니다.</p>
       ) : (

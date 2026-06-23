@@ -355,11 +355,16 @@ export async function POST(req: NextRequest) {
                 heatId = fresh.id;
               }
             } else if (heatId) {
-              // 매칭된 기존 판 — status 만 SHIPPED 전환
-              await tx.steelPlanHeat.update({
-                where: { id: heatId },
+              // 매칭된 기존 판 — WAITING 일 때만 원자적 SHIPPED 전환.
+              // 조회~제출 사이 동시 절단(CUT)/타 출고로 상태가 바뀌면 count=0 → 트랜잭션 롤백.
+              // (절단 소진된 판을 통째로 출고하거나, 같은 판번호가 두 출고에 중복 기록되는 것을 차단)
+              const moved = await tx.steelPlanHeat.updateMany({
+                where: { id: heatId, status: SteelPlanHeatStatus.WAITING },
                 data:  { status: SteelPlanHeatStatus.SHIPPED, shippedAt },
               });
+              if (moved.count !== 1) {
+                throw new Error(`판번호(${heatNoText ?? heatId})가 이미 절단/출고 처리되어 출고할 수 없습니다. 새로고침 후 다시 시도하세요.`);
+              }
             }
           }
 
@@ -380,8 +385,10 @@ export async function POST(req: NextRequest) {
             },
           });
 
-          await tx.steelPlan.update({
-            where: { id: item.steelPlanId! },
+          // 원자적 전환 — 사전검증과 동일 상태(RECEIVED·미확정)일 때만 SHIPPED_OUT.
+          // 사전검증은 트랜잭션 밖(prisma)이라, 동시 출고/블록확정이 끼면 count=0 → 롤백(이중 출고 차단).
+          const flipped = await tx.steelPlan.updateMany({
+            where: { id: item.steelPlanId!, status: SteelPlanStatus.RECEIVED, reservedFor: null },
             data:  {
               status:          SteelPlanStatus.SHIPPED_OUT,
               issuedAt:        shippedAt,
@@ -392,6 +399,9 @@ export async function POST(req: NextRequest) {
               shipoutLabel:    null,
             },
           });
+          if (flipped.count !== 1) {
+            throw new Error(`원판(${item.steelPlanId})이 이미 출고되었거나 상태가 변경되었습니다. 새로고침 후 다시 시도하세요.`);
+          }
         }
       }
 
