@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Send, Star, Trash2, AtSign, Users, NotebookPen } from "lucide-react";
+import { Star, Trash2, Send, Users, NotebookPen } from "lucide-react";
 import { useWorkUser, MentionText } from "@/components/work-user-context";
 import LandingCalendar from "@/components/landing-calendar";
+import { parseMentions } from "@/lib/work-mentions";
 
 const todayKst = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
-const kstDateOf = (iso: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date(iso));
 const fmtTime = (iso: string) => new Date(iso).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 const fmtDate = (ymd: string) => {
   const [y, m, d] = ymd.split("-");
@@ -22,20 +22,14 @@ export default function WorkDashboardPage() {
   const { currentUserId, currentUser, users } = useWorkUser();
 
   const [selectedDate, setSelectedDate] = useState(todayKst());
-  const [posts, setPosts] = useState<Post[]>([]);
   const [importantPosts, setImportantPosts] = useState<Post[]>([]);
   const [teamLogs, setTeamLogs] = useState<TeamLog[]>([]);
-  const [content, setContent] = useState("");
-  const [important, setImportant] = useState(false);
+  const [memo, setMemo] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const loadPosts = useCallback(async () => {
-    const [all, imp] = await Promise.all([
-      fetch(`/api/work/posts`).then(r => r.json()).catch(() => ({})),
-      fetch(`/api/work/posts?important=true`).then(r => r.json()).catch(() => ({})),
-    ]);
-    if (all.success) setPosts(all.data);
-    if (imp.success) setImportantPosts(imp.data);
+  const loadImportant = useCallback(async () => {
+    const r = await fetch(`/api/work/posts?important=true`).then(r => r.json()).catch(() => ({}));
+    if (r.success) setImportantPosts(r.data);
   }, []);
 
   const loadTeamLogs = useCallback(async () => {
@@ -43,10 +37,8 @@ export default function WorkDashboardPage() {
     if (r.success) setTeamLogs(r.data);
   }, [selectedDate]);
 
-  useEffect(() => { loadPosts(); }, [loadPosts]);
+  useEffect(() => { loadImportant(); }, [loadImportant]);
   useEffect(() => { loadTeamLogs(); }, [loadTeamLogs]);
-
-  const dayPosts = useMemo(() => posts.filter(p => kstDateOf(p.createdAt) === selectedDate), [posts, selectedDate]);
 
   const logByUser = useMemo(() => {
     const m = new Map<string, TeamLog>();
@@ -59,33 +51,47 @@ export default function WorkDashboardPage() {
     return [...active.filter(hasLog), ...active.filter(u => !hasLog(u))];
   }, [users, logByUser]);
 
-  const submitPost = async () => {
+  // 이 날 공유 내용 — 팀원 일지에서 @멘션이 들어간 줄 (작성자 → 소환 대상)
+  const shared = useMemo(() => {
+    const nameById = new Map(users.map(u => [u.id, u.name]));
+    const out: { author: PUser; line: string; to: string[]; key: string }[] = [];
+    for (const lg of teamLogs) {
+      const text = `${lg.todayWork ?? ""}\n${lg.tomorrowPlan ?? ""}`;
+      text.split("\n").map(s => s.trim()).filter(Boolean).forEach((line, i) => {
+        if (!line.includes("@")) return;
+        const ids = parseMentions(line, users);
+        if (ids.length) out.push({ author: lg.user, line, to: ids.map(id => nameById.get(id)!).filter(Boolean), key: `${lg.id}-${i}` });
+      });
+    }
+    return out;
+  }, [teamLogs, users]);
+
+  const addMemo = async () => {
     if (!currentUserId) { alert("상단에서 현재 사용자를 선택하세요."); return; }
-    if (!content.trim()) return;
+    if (!memo.trim()) return;
     setBusy(true);
     try {
       const r = await fetch("/api/work/posts", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ authorId: currentUserId, content: content.trim(), important }),
+        body: JSON.stringify({ authorId: currentUserId, content: memo.trim(), important: true }),
       });
       const d = await r.json();
       if (!d.success) { alert(d.error ?? "등록 실패"); return; }
-      setContent(""); setImportant(false);
-      loadPosts();
+      setMemo("");
+      loadImportant();
     } finally { setBusy(false); }
   };
-  const delPost = async (id: string) => {
+  const removePost = async (id: string) => {
     if (!confirm("삭제하시겠습니까?")) return;
     await fetch(`/api/work/posts/${id}`, { method: "DELETE" });
-    loadPosts();
+    loadImportant();
   };
-  const insertMention = (name: string) => setContent(c => `${c}${c && !c.endsWith(" ") ? " " : ""}@${name} `);
 
   return (
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-bold text-gray-800">업무 대시보드</h2>
-        <p className="text-sm text-gray-500 mt-0.5">팀원들의 업무일지·일정·공유 메모를 한곳에서 확인합니다. 달력 일정은 랜딩 페이지와 함께 공유됩니다.</p>
+        <p className="text-sm text-gray-500 mt-0.5">팀원들의 업무일지·일정·공유 내용을 한곳에서 확인합니다. 공유는 각자 업무일지에 <b>@이름</b> 으로 남깁니다.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_460px] gap-4 items-start">
@@ -115,18 +121,8 @@ export default function WorkDashboardPage() {
                     <p className="text-xs text-gray-400 pl-4">작성된 업무일지가 없습니다.</p>
                   ) : (
                     <div className="pl-4 space-y-1.5">
-                      {today && (
-                        <div>
-                          <span className="text-[11px] font-semibold text-indigo-600">오늘</span>
-                          <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">{today}</p>
-                        </div>
-                      )}
-                      {tomorrow && (
-                        <div>
-                          <span className="text-[11px] font-semibold text-gray-400">내일</span>
-                          <p className="text-sm text-gray-600 whitespace-pre-wrap break-words">{tomorrow}</p>
-                        </div>
-                      )}
+                      {today && <div><span className="text-[11px] font-semibold text-indigo-600">오늘</span><p className="text-sm text-gray-700 whitespace-pre-wrap break-words"><MentionText content={today} /></p></div>}
+                      {tomorrow && <div><span className="text-[11px] font-semibold text-gray-400">내일</span><p className="text-sm text-gray-600 whitespace-pre-wrap break-words"><MentionText content={tomorrow} /></p></div>}
                     </div>
                   )}
                 </div>
@@ -135,21 +131,28 @@ export default function WorkDashboardPage() {
           </div>
         </div>
 
-        {/* 오른쪽: 공유 달력(랜딩 동일) + 선택일 공유메모 + 중요메모 + 작성 */}
+        {/* 오른쪽: 공유 달력(랜딩 동일) + 이 날 공유 내용 + 중요메모 */}
         <div className="space-y-4">
-          {/* 공유 달력 — 일정은 랜딩 페이지와 공유. 날짜 클릭 시 좌측 일지도 그 날짜로 */}
           <LandingCalendar defaultRegistrar={currentUser?.name} onDaySelect={setSelectedDate} />
 
-          {/* 선택일 공유 메모 */}
+          {/* 이 날 공유 내용 — 일지 @멘션 줄 */}
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
             <div className="px-4 py-2.5 border-b border-gray-200 bg-gray-50 flex items-center gap-1.5">
               <NotebookPen size={14} className="text-indigo-500" />
-              <span className="text-sm font-bold text-gray-700">{fmtDate(selectedDate)} 공유 메모</span>
+              <span className="text-sm font-bold text-gray-700">{fmtDate(selectedDate)} 공유 내용</span>
             </div>
             <div className="p-3 space-y-1.5">
-              {dayPosts.length === 0 ? (
-                <p className="text-xs text-gray-400 py-1 text-center">이 날 공유된 메모가 없습니다.</p>
-              ) : dayPosts.map(p => <PostRow key={p.id} p={p} onDelete={delPost} />)}
+              {shared.length === 0 ? (
+                <p className="text-xs text-gray-400 py-1 text-center">이 날 일지에서 @로 공유된 내용이 없습니다.</p>
+              ) : shared.map(s => (
+                <div key={s.key} className="text-xs border border-gray-100 rounded-lg px-2.5 py-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold" style={{ color: s.author.color || "#374151" }}>{s.author.name}</span>
+                    {s.to.length > 0 && <span className="text-[10px] text-indigo-500">→ {s.to.map(n => `@${n}`).join(" ")}</span>}
+                  </div>
+                  <div className="text-gray-700 mt-0.5 whitespace-pre-wrap break-words"><MentionText content={s.line} /></div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -159,63 +162,31 @@ export default function WorkDashboardPage() {
               <Star size={14} className="text-amber-500" fill="currentColor" />
               <span className="text-sm font-bold text-amber-800">중요 메모</span>
             </div>
-            <div className="p-3 space-y-1.5">
+            <div className="p-3 space-y-2">
+              <div className="flex gap-1.5">
+                <input value={memo} onChange={e => setMemo(e.target.value)} placeholder={currentUserId ? "중요 메모 추가 (전체 고정)" : "현재 사용자를 먼저 선택하세요"}
+                  disabled={!currentUserId} onKeyDown={e => { if (e.key === "Enter") addMemo(); }}
+                  className="flex-1 px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:bg-gray-100" />
+                <button onClick={addMemo} disabled={busy || !currentUserId} className="px-2.5 py-1.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50"><Send size={14} /></button>
+              </div>
               {importantPosts.length === 0 ? (
                 <p className="text-xs text-gray-400 py-1 text-center">중요 메모가 없습니다.</p>
-              ) : importantPosts.map(p => <PostRow key={p.id} p={p} onDelete={delPost} amber />)}
-            </div>
-          </div>
-
-          {/* 공유 메모 남기기 (보조) */}
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
-            <div className="text-[11px] font-semibold text-gray-400">공유 메모 남기기</div>
-            <textarea value={content} onChange={e => setContent(e.target.value)}
-              placeholder={currentUserId ? "팀에 공유할 내용. @이름 으로 소환" : "상단에서 현재 사용자를 먼저 선택하세요."}
-              disabled={!currentUserId} rows={2}
-              className="w-full p-2 text-sm border border-gray-200 rounded-lg resize-y focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-100" />
-            <div className="flex items-center gap-1 flex-wrap">
-              <AtSign size={12} className="text-gray-400" />
-              {users.filter(u => u.active && u.id !== currentUserId).map(u => (
-                <button key={u.id} onClick={() => insertMention(u.name)}
-                  className="px-1.5 py-0.5 text-[10px] rounded-full border border-gray-200 text-gray-600 hover:bg-indigo-50 hover:border-indigo-300">@{u.name}</button>
+              ) : importantPosts.map(p => (
+                <div key={p.id} className="text-xs border border-amber-100 bg-amber-50/40 rounded-lg px-2.5 py-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold flex items-center gap-1" style={{ color: p.author.color || "#374151" }}>{p.author.name}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-gray-400">{fmtTime(p.createdAt)}</span>
+                      <button onClick={() => removePost(p.id)} className="text-gray-300 hover:text-red-500"><Trash2 size={11} /></button>
+                    </div>
+                  </div>
+                  <div className="text-gray-700 mt-0.5 whitespace-pre-wrap break-words"><MentionText content={p.content} /></div>
+                </div>
               ))}
             </div>
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-1.5 text-xs text-amber-700 cursor-pointer select-none">
-                <input type="checkbox" checked={important} onChange={e => setImportant(e.target.checked)} className="accent-amber-500" />
-                <Star size={12} fill={important ? "currentColor" : "none"} /> 중요
-              </label>
-              <button onClick={submitPost} disabled={busy || !currentUserId || !content.trim()}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40">
-                <Send size={14} /> 공유
-              </button>
-            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function PostRow({ p, onDelete, amber = false }: { p: Post; onDelete: (id: string) => void; amber?: boolean }) {
-  return (
-    <div className={`text-xs border rounded-lg px-2.5 py-1.5 ${amber ? "border-amber-100 bg-amber-50/40" : "border-gray-100"}`}>
-      <div className="flex items-center justify-between">
-        <span className="font-semibold flex items-center gap-1" style={{ color: p.author.color || "#374151" }}>
-          {p.author.name}
-          {p.important && <Star size={10} className="text-amber-500" fill="currentColor" />}
-        </span>
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] text-gray-400">{fmtTime(p.createdAt)}</span>
-          <button onClick={() => onDelete(p.id)} className="text-gray-300 hover:text-red-500"><Trash2 size={11} /></button>
-        </div>
-      </div>
-      <div className="text-gray-700 mt-0.5 whitespace-pre-wrap break-words"><MentionText content={p.content} /></div>
-      {p.mentions.length > 0 && (
-        <div className="mt-1 flex items-center gap-1 flex-wrap">
-          {p.mentions.map(m => <span key={m.user.id} className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600">@{m.user.name}</span>)}
-        </div>
-      )}
     </div>
   );
 }
