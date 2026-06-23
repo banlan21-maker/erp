@@ -68,7 +68,11 @@ function buildCells(year: number, month0: number): CellInfo[] {
   return cells;
 }
 
-export default function LandingCalendar() {
+/**
+ * @param defaultRegistrar 있으면 신규 일정 등록 시 등록자 자동입력(입력칸 숨김). (업무 대시보드용)
+ * @param onDaySelect 날짜 클릭 시 호출 (모달 열기와 함께 외부 선택 상태 동기화용)
+ */
+export default function LandingCalendar({ defaultRegistrar, onDaySelect }: { defaultRegistrar?: string; onDaySelect?: (ymd: string) => void } = {}) {
   const now = new Date();
   const [year,   setYear]   = useState(now.getFullYear());
   const [month0, setMonth0] = useState(now.getMonth()); // 0-based
@@ -124,7 +128,7 @@ export default function LandingCalendar() {
   const openDayEvents = openDate ? (eventsByDate.get(openDate) ?? []) : [];
 
   // 신규 입력
-  const [newRegistrar, setNewRegistrar] = useState("");
+  const [newRegistrar, setNewRegistrar] = useState(defaultRegistrar ?? "");
   const [newContent,   setNewContent]   = useState("");
   const [saving,       setSaving]       = useState(false);
   const [err,          setErr]          = useState("");
@@ -136,26 +140,27 @@ export default function LandingCalendar() {
 
   const closeModal = () => {
     setOpenDate(null);
-    setNewRegistrar(""); setNewContent(""); setErr("");
+    setNewRegistrar(defaultRegistrar ?? ""); setNewContent(""); setErr("");
     setEditId(null);
   };
 
   const handleCreate = async () => {
     if (!openDate) return;
     setErr("");
-    if (!newRegistrar.trim()) { setErr("등록자를 입력하세요."); return; }
+    const reg = (defaultRegistrar ?? newRegistrar).trim();
+    if (!reg)                 { setErr("등록자를 입력하세요."); return; }
     if (!newContent.trim())   { setErr("일정 내용을 입력하세요."); return; }
     setSaving(true);
     try {
       const res = await fetch("/api/calendar-events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: openDate, registrar: newRegistrar, content: newContent }),
+        body: JSON.stringify({ date: openDate, registrar: reg, content: newContent }),
       });
       const json = await res.json();
       if (!json.success) { setErr(json.error || "등록 실패"); return; }
       setEvents(prev => [...prev, json.data]);
-      setNewRegistrar(""); setNewContent("");
+      setNewRegistrar(defaultRegistrar ?? ""); setNewContent("");
     } catch (e) { setErr(e instanceof Error ? e.message : "네트워크 오류"); }
     finally { setSaving(false); }
   };
@@ -247,7 +252,7 @@ export default function LandingCalendar() {
                 return (
                   <button
                     key={colIdx}
-                    onClick={() => setOpenDate(c.yyyymmdd)}
+                    onClick={() => { setOpenDate(c.yyyymmdd); setNewRegistrar(defaultRegistrar ?? ""); onDaySelect?.(c.yyyymmdd); }}
                     className={`relative min-h-[68px] sm:min-h-[78px] px-1.5 sm:px-2 py-1 text-left border-l border-gray-100 first:border-l-0 hover:bg-blue-50/40 transition-colors ${c.inMonth ? "" : "bg-gray-50/50"}`}
                   >
                     <div className="flex items-center justify-between">
@@ -335,10 +340,15 @@ export default function LandingCalendar() {
 
               {/* 새 일정 등록 */}
               <div className="bg-blue-50/50 border border-blue-200 rounded-lg p-3 space-y-2">
-                <div className="text-xs font-semibold text-blue-700 uppercase">새 일정 등록</div>
-                <input value={newRegistrar} onChange={e => setNewRegistrar(e.target.value)}
-                  placeholder="등록자 이름"
-                  className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <div className="text-xs font-semibold text-blue-700 uppercase flex items-center justify-between">
+                  <span>새 일정 등록</span>
+                  {defaultRegistrar && <span className="font-normal normal-case text-gray-500">등록자: <b className="text-gray-700">{defaultRegistrar}</b></span>}
+                </div>
+                {!defaultRegistrar && (
+                  <input value={newRegistrar} onChange={e => setNewRegistrar(e.target.value)}
+                    placeholder="등록자 이름"
+                    className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                )}
                 <textarea value={newContent} onChange={e => setNewContent(e.target.value)}
                   placeholder="일정 내용 (예: 거래처 미팅, 장비점검 등)"
                   rows={3}
