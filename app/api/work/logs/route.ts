@@ -15,6 +15,19 @@ import { ymdToDate, shiftYmd, monthRange, isYmd, isYearMonth } from "@/lib/work-
 export async function GET(req: NextRequest) {
   try {
     const sp = new URL(req.url).searchParams;
+
+    // 팀 전체 — 특정 날짜의 모든 사용자 일지 (업무 대시보드 좌측 리스트)
+    if (sp.get("all") === "true") {
+      const date = sp.get("date");
+      if (!isYmd(date)) return NextResponse.json({ success: false, error: "date(YYYY-MM-DD) 가 필요합니다." }, { status: 400 });
+      const logs = await prisma.workLog.findMany({
+        where: { date: ymdToDate(date) },
+        include: { user: { select: { id: true, name: true, color: true, dept: true, active: true } } },
+        orderBy: { updatedAt: "desc" },
+      });
+      return NextResponse.json({ success: true, data: logs });
+    }
+
     const userId = sp.get("userId") ?? "";
     if (!userId) return NextResponse.json({ success: false, error: "userId 가 필요합니다." }, { status: 400 });
 
