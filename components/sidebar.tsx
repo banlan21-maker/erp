@@ -162,11 +162,11 @@ export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
               title={isMini ? "현장 출고관리 (새창)" : undefined}
               className={`
                 flex items-center gap-3 rounded-lg text-sm font-medium transition-colors
-                text-amber-400 hover:bg-gray-800 hover:text-amber-300
+                text-emerald-400 hover:bg-gray-800 hover:text-emerald-300
                 ${isMini ? "justify-center px-0 py-2.5" : "px-3 py-2"}
               `}
             >
-              <Truck size={18} className="flex-shrink-0" />
+              <Smartphone size={18} className="flex-shrink-0" />
               {!isMini && (
                 <span className="flex-1 flex items-center justify-between">
                   현장 출고관리
