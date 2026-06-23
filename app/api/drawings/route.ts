@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseExcelBuffer, parseExcelBufferWithPreset } from "@/lib/excel-parser";
 import { syncDrawingListBySpecs } from "@/lib/sync-drawing-spec";
+import { syncProjectStatus } from "@/lib/sync-project-status";
 
 // syncSpecsAfterUpload 함수는 통합 syncDrawingListBySpecs 로 대체됨 (lib/sync-drawing-spec.ts)
 
@@ -189,6 +190,10 @@ export async function POST(request: NextRequest) {
         await syncDrawingListBySpecs(specsToSync);
       }
 
+      // 새 강재(미절단)가 추가되면 완료(COMPLETED)였던 블록도 다시 ACTIVE 로 복귀
+      // — 안 하면 현장작업일보(ACTIVE 블록만 노출)에서 그 블록이 안 보여 작업 불가
+      await syncProjectStatus(projectId);
+
       return NextResponse.json({ success: true, data: { count: created.count } }, { status: 201 });
     }
 
@@ -328,6 +333,10 @@ export async function POST(request: NextRequest) {
     if (specsToSync.length > 0) {
       await syncDrawingListBySpecs(specsToSync);
     }
+
+    // 새 강재(미절단)가 추가되면 완료(COMPLETED)였던 블록도 다시 ACTIVE 로 복귀
+    // — 안 하면 현장작업일보(ACTIVE 블록만 노출)에서 그 블록이 안 보여 작업 불가
+    await syncProjectStatus(projectId);
 
     // 잔재 레코드 생성
     for (const rem of remnantsData) {

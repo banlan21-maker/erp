@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncDrawingListBySpecs } from "@/lib/sync-drawing-spec";
+import { syncProjectStatus } from "@/lib/sync-project-status";
 
 export const dynamic = "force-dynamic";
 
@@ -129,6 +130,10 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // 블록 완료상태 재동기화 — 미절단 행이 있으면 COMPLETED 블록도 ACTIVE 로 복귀
+    // (현장작업일보가 ACTIVE 블록만 노출하므로, 완료블록에 강재 추가 후 작업 가능하게)
+    await syncProjectStatus(projectId);
+
     return NextResponse.json({ success: true, data: { confirmed, skipped } });
   } catch (error) {
     console.error("[POST /api/drawings/reserve-bulk]", error);
@@ -247,6 +252,9 @@ export async function DELETE(request: NextRequest) {
       }
     }
     await syncDrawingListBySpecs([...uniqueSpecs.values()]);
+
+    // 블록 완료상태 재동기화 (확정취소로 행 상태가 바뀐 후)
+    await syncProjectStatus(projectId);
 
     return NextResponse.json({ success: true, data: { cancelled } });
   } catch (error) {
