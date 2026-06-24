@@ -36,9 +36,9 @@ const fmtYMD = (iso: string | null) => {
 };
 const fmtDateTime = (iso: string) => new Date(iso).toLocaleString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 
-interface Job     { id: string; name: string; author: string | null; statuses: string; reservedFilter: string; specCount: number; selectedCount: number; createdAt: string }
+interface Job     { id: string; name: string; author: string | null; statuses: string; reservedFilter: string; specCount: number; selectedCount: number; shippedCount: number; createdAt: string }
 interface Spec    { vesselCode: string; material: string; thickness: number; width: number; length: number }
-interface SpecRow extends Spec { selected?: boolean }   // 왼쪽 원본 리스트 (선별 여부 포함)
+interface SpecRow extends Spec { selected?: boolean; shipped?: boolean }   // 왼쪽 원본 리스트 (선별/출고 여부 포함)
 interface PlanRow { id: string; vesselCode: string; material: string; thickness: number; width: number; length: number; status: string; uploadBatchNo: string | null; receivedAt: string | null; storageLocation: string | null; reservedFor: string | null; shipoutMarkedAt: string | null; shipoutLabel: string | null }
 interface MatchRow { matched: boolean; spec: Spec; plan: PlanRow | null }
 
@@ -424,6 +424,7 @@ export default function SteelMatchTab() {
                   <span className="text-gray-600">{j.specCount}</span>
                   <span className="text-gray-300"> / </span>
                   <span className={`font-semibold ${j.selectedCount >= j.specCount && j.specCount > 0 ? "text-green-600" : "text-amber-600"}`}>{j.selectedCount}</span>
+                  {j.shippedCount > 0 && <span className="ml-1 text-[10px] text-purple-600">(출고 {j.shippedCount})</span>}
                 </td>
                 <td className="px-3 py-2 text-gray-500 truncate" title={`${statusesLabel(j.statuses)}${j.reservedFilter === "NONE" ? " · 미확정만" : ""}`}>
                   {statusesLabel(j.statuses)}
@@ -454,12 +455,18 @@ export default function SteelMatchTab() {
               <span className="text-sm font-semibold text-gray-800">원본 리스트</span>
               <span className="ml-2 text-xs text-gray-400">{selJobSpecs.length}건</span>
               {(() => {
-                const unsel = selJobSpecs.filter(s => !s.selected).length;
-                return unsel > 0
-                  ? <span className="ml-2 text-xs font-semibold text-blue-600">미선별 {unsel}</span>
-                  : selJobSpecs.length > 0
-                    ? <span className="ml-2 text-xs font-semibold text-red-600">전체 선별</span>
-                    : null;
+                const unsel    = selJobSpecs.filter(s => !s.selected).length;
+                const shipped  = selJobSpecs.filter(s => s.shipped).length;
+                return (
+                  <>
+                    {unsel > 0
+                      ? <span className="ml-2 text-xs font-semibold text-blue-600">미선별 {unsel}</span>
+                      : selJobSpecs.length > 0
+                        ? <span className="ml-2 text-xs font-semibold text-red-600">전체 처리</span>
+                        : null}
+                    {shipped > 0 && <span className="ml-2 text-xs font-semibold text-purple-600">출고 {shipped}</span>}
+                  </>
+                );
               })()}
             </div>
             <div className="overflow-auto max-h-[70vh]">
@@ -478,11 +485,13 @@ export default function SteelMatchTab() {
                   {selJobSpecs.length === 0 ? (
                     <tr><td colSpan={6} className="py-8 text-center text-gray-400">사양 없음</td></tr>
                   ) : selJobSpecs.map((s, i) => (
-                    <tr key={i} className={`hover:bg-gray-50 ${s.selected ? "" : "bg-blue-50/40"}`}>
+                    <tr key={i} className={`hover:bg-gray-50 ${s.shipped ? "bg-purple-50/40" : s.selected ? "" : "bg-blue-50/40"}`}>
                       <td className="px-3 py-1.5 text-center">
-                        {s.selected
-                          ? <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700">선별</span>
-                          : <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">미선별</span>}
+                        {s.shipped
+                          ? <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700">출고</span>
+                          : s.selected
+                            ? <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700">선별</span>
+                            : <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">미선별</span>}
                       </td>
                       <td className="px-3 py-1.5 font-medium">{s.vesselCode || <span className="text-gray-400">(전체)</span>}</td>
                       <td className="px-3 py-1.5">{s.material}</td>

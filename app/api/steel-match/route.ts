@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { computeSelectedFlags, type MarkedPlate } from "@/lib/steel-match-select";
+import { computeSelectionStates, type MarkedPlate } from "@/lib/steel-match-select";
 
 type Spec = { vesselCode: string; material: string; thickness: number; width: number; length: number };
 
@@ -12,25 +12,33 @@ export async function GET() {
   try {
     const jobs = await prisma.steelMatchJob.findMany({ orderBy: { createdAt: "desc" } });
 
-    // 선별된 강재 전체(라벨 있는 것만)를 라벨별로 묶어 작업별 선별수 계산.
-    // 라벨 = 선별 당시 매칭이름(job.name) 이므로 같은 이름끼리 매핑된다.
-    const markedAll = await prisma.steelPlan.findMany({
-      where: { shipoutMarkedAt: { not: null }, shipoutLabel: { not: null } },
-      select: { vesselCode: true, material: true, thickness: true, width: true, length: true, shipoutLabel: true },
-    });
-    const byLabel = new Map<string, MarkedPlate[]>();
-    for (const p of markedAll) {
-      const k = p.shipoutLabel!;
-      let arr = byLabel.get(k);
-      if (!arr) { arr = []; byLabel.set(k, arr); }
-      arr.push(p);
-    }
+    // 라벨(=매칭이름)으로 작업별 출고/선별 강재를 묶어 처리수 계산.
+    //  · 출고(SHIPPED_OUT) 강재도 포함 — 선별 후 출고돼도 선별수에서 빠지지 않게.
+    const sel = { vesselCode: true, material: true, thickness: true, width: true, length: true, shipoutLabel: true } as const;
+    const [markedAll, shippedAll] = await Promise.all([
+      prisma.steelPlan.findMany({ where: { shipoutMarkedAt: { not: null }, shipoutLabel: { not: null } }, select: sel }),
+      prisma.steelPlan.findMany({ where: { status: "SHIPPED_OUT", shipoutLabel: { not: null } }, select: sel }),
+    ]);
+    const groupByLabel = (rows: (MarkedPlate & { shipoutLabel: string | null })[]) => {
+      const m = new Map<string, MarkedPlate[]>();
+      for (const p of rows) {
+        const k = p.shipoutLabel!;
+        let arr = m.get(k);
+        if (!arr) { arr = []; m.set(k, arr); }
+        arr.push(p);
+      }
+      return m;
+    };
+    const markedByLabel  = groupByLabel(markedAll);
+    const shippedByLabel = groupByLabel(shippedAll);
 
     return NextResponse.json({
       success: true,
       data: jobs.map(j => {
         const specs = (Array.isArray(j.specs) ? j.specs : []) as unknown as Spec[];
-        const selectedCount = computeSelectedFlags(specs, byLabel.get(j.name) ?? []).filter(Boolean).length;
+        const states = computeSelectionStates(specs, shippedByLabel.get(j.name) ?? [], markedByLabel.get(j.name) ?? []);
+        const selectedCount = states.filter(s => s !== null).length;     // 처리(선별+출고)
+        const shippedCount  = states.filter(s => s === "shipped").length; // 그중 출고
         return {
           id: j.id,
           name: j.name,
@@ -39,6 +47,7 @@ export async function GET() {
           reservedFilter: j.reservedFilter,
           specCount: specs.length,
           selectedCount,
+          shippedCount,
           createdAt: j.createdAt.toISOString(),
         };
       }),

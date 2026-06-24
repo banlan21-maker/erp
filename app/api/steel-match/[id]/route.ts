@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { computeSelectedFlags } from "@/lib/steel-match-select";
+import { computeSelectionStates } from "@/lib/steel-match-select";
 
 type PlanStatus = "REGISTERED" | "RECEIVED" | "ISSUED" | "COMPLETED" | "SHIPPED_OUT";
 const ALL_STATUSES: PlanStatus[] = ["REGISTERED", "RECEIVED", "ISSUED", "COMPLETED", "SHIPPED_OUT"];
@@ -84,13 +84,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       }
     }
 
-    // 사양별 선별 여부 — 확정정보 필터와 무관하게 '이 작업으로 선별된 강재(라벨=매칭이름)' 기준
-    const markedPlates = await prisma.steelPlan.findMany({
-      where: { shipoutMarkedAt: { not: null }, shipoutLabel: job.name },
-      select: { vesselCode: true, material: true, thickness: true, width: true, length: true },
-    });
-    const selectedFlags = computeSelectedFlags(specs, markedPlates);
-    const specsOut = specs.map((s, i) => ({ ...s, selected: selectedFlags[i] }));
+    // 사양별 상태 — 라벨(=매칭이름)으로 이 작업에 귀속된 강재 기준 (확정정보 필터와 무관).
+    //  · 출고(SHIPPED_OUT) 강재: '출고'  · 선별(shipoutMarkedAt) 강재: '선별'
+    //  → 선별 후 일부 출고돼도 미선별로 되돌아가지 않음
+    const specSel = { vesselCode: true, material: true, thickness: true, width: true, length: true };
+    const [shippedPlates, markedPlates] = await Promise.all([
+      prisma.steelPlan.findMany({ where: { status: "SHIPPED_OUT", shipoutLabel: job.name }, select: specSel }),
+      prisma.steelPlan.findMany({ where: { shipoutMarkedAt: { not: null }, shipoutLabel: job.name }, select: specSel }),
+    ]);
+    const states = computeSelectionStates(specs, shippedPlates, markedPlates);
+    const specsOut = specs.map((s, i) => ({ ...s, selected: states[i] !== null, shipped: states[i] === "shipped" }));
 
     return NextResponse.json({
       success: true,

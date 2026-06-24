@@ -66,7 +66,8 @@ export async function POST(
           if (sp && sp.status === SteelPlanStatus.SHIPPED_OUT) {
             await tx.steelPlan.update({
               where: { id: sp.id },
-              data:  { status: SteelPlanStatus.RECEIVED, issuedAt: null },
+              // 라벨/마킹 정리 — 복원된 강재가 강재매칭에서 '출고'로 잔류 귀속되지 않게
+              data:  { status: SteelPlanStatus.RECEIVED, issuedAt: null, shipoutLabel: null, shipoutHeatNo: null, shipoutMarkedAt: null },
             });
           } else if (sp) {
             warnings.push(`${item.steelPlanId} 자재 상태가 SHIPPED_OUT 가 아니라 복원 건너뜀 (현재: ${sp?.status})`);

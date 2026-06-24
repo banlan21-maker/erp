@@ -22,17 +22,26 @@ const specMatchesPlate = (s: MatchSpec, p: MarkedPlate) =>
   fmtL(p.width)     === fmtL(s.width) &&
   fmtL(p.length)    === fmtL(s.length);
 
+export type SelectionState = "shipped" | "selected" | null;
+
 /**
- * 각 사양이 '선별됨'인지 boolean[] 반환 (인덱스는 specs 와 동일 순서).
+ * 사양별 상태(출고/선별/미선별) 계산. 인덱스는 specs 와 동일.
  *
- * 선별된 강재 1장이 사양 1행을 greedy 소비 — 같은 사양이 여러 행이면 선별 장수만큼만 채워진다.
- * (예: 동일 사양 3행 + 선별 2장 → 2행만 true, 1행 false)
+ * 출고(SHIPPED_OUT) 강재를 먼저 greedy 소비(→"shipped"), 남은 사양에 선별(shipoutMarkedAt)
+ * 강재를 소비(→"selected"). 둘 다 라벨=매칭이름으로 이 작업에 귀속된 것만.
+ * → 선별 후 일부가 출고되어도 미선별로 되돌아가지 않고 '출고'로 인식된다.
  */
-export function computeSelectedFlags(specs: MatchSpec[], markedPlates: MarkedPlate[]): boolean[] {
-  const consumed: boolean[] = new Array(specs.length).fill(false);
-  for (const p of markedPlates) {
-    const idx = specs.findIndex((s, i) => !consumed[i] && specMatchesPlate(s, p));
-    if (idx >= 0) consumed[idx] = true;
-  }
-  return consumed;
+export function computeSelectionStates(
+  specs: MatchSpec[], shippedPlates: MarkedPlate[], markedPlates: MarkedPlate[],
+): SelectionState[] {
+  const states: SelectionState[] = new Array(specs.length).fill(null);
+  const consume = (plates: MarkedPlate[], state: "shipped" | "selected") => {
+    for (const p of plates) {
+      const idx = specs.findIndex((s, i) => states[i] === null && specMatchesPlate(s, p));
+      if (idx >= 0) states[idx] = state;
+    }
+  };
+  consume(shippedPlates, "shipped");
+  consume(markedPlates, "selected");
+  return states;
 }
