@@ -1,17 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Star, Trash2, Send, Users, NotebookPen } from "lucide-react";
+import { Star, Trash2, Send, Users, NotebookPen, ChevronLeft, ChevronRight } from "lucide-react";
 import { useWorkUser, MentionText } from "@/components/work-user-context";
 import LandingCalendar from "@/components/landing-calendar";
 import { parseMentions } from "@/lib/work-mentions";
+import { shiftYmd } from "@/lib/work-date";
 
 const todayKst = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
 const fmtTime = (iso: string) => new Date(iso).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+const WD = ["일", "월", "화", "수", "목", "금", "토"];
 const fmtDate = (ymd: string) => {
   const [y, m, d] = ymd.split("-");
-  const wd = ["일", "월", "화", "수", "목", "금", "토"][new Date(`${ymd}T00:00:00.000Z`).getUTCDay()];
-  return `${y}.${m}.${d} (${wd})`;
+  return `${y}.${m}.${d} (${WD[new Date(`${ymd}T00:00:00.000Z`).getUTCDay()]})`;
+};
+const fmtShort = (ymd: string) => {
+  const [, m, d] = ymd.split("-");
+  return `${Number(m)}/${Number(d)}(${WD[new Date(`${ymd}T00:00:00.000Z`).getUTCDay()]})`;
 };
 
 interface PUser { id: string; name: string; color: string | null; dept?: string | null }
@@ -23,18 +28,28 @@ export default function WorkDashboardPage() {
 
   const [selectedDate, setSelectedDate] = useState(todayKst());
   const [importantPosts, setImportantPosts] = useState<Post[]>([]);
-  const [teamLogs, setTeamLogs] = useState<TeamLog[]>([]);
+  const [teamLogs, setTeamLogs] = useState<TeamLog[]>([]);   // 당일
+  const [prevLogs, setPrevLogs] = useState<TeamLog[]>([]);   // 전날
   const [memo, setMemo] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const prevYmd     = shiftYmd(selectedDate, -1);
+  const tomorrowYmd = shiftYmd(selectedDate, 1);
 
   const loadImportant = useCallback(async () => {
     const r = await fetch(`/api/work/posts?important=true`).then(r => r.json()).catch(() => ({}));
     if (r.success) setImportantPosts(r.data);
   }, []);
 
+  // 당일 + 전날 팀 전체 일지 (전날 = 전날 한 일 표시용)
   const loadTeamLogs = useCallback(async () => {
-    const r = await fetch(`/api/work/logs?all=true&date=${selectedDate}`).then(r => r.json()).catch(() => ({}));
-    if (r.success) setTeamLogs(r.data);
+    const prev = shiftYmd(selectedDate, -1);
+    const [r, rp] = await Promise.all([
+      fetch(`/api/work/logs?all=true&date=${selectedDate}`).then(r => r.json()).catch(() => ({})),
+      fetch(`/api/work/logs?all=true&date=${prev}`).then(r => r.json()).catch(() => ({})),
+    ]);
+    if (r.success)  setTeamLogs(r.data);
+    if (rp.success) setPrevLogs(rp.data);
   }, [selectedDate]);
 
   useEffect(() => { loadImportant(); }, [loadImportant]);
@@ -45,11 +60,19 @@ export default function WorkDashboardPage() {
     for (const l of teamLogs) m.set(l.user.id, l);
     return m;
   }, [teamLogs]);
+  const prevLogByUser = useMemo(() => {
+    const m = new Map<string, TeamLog>();
+    for (const l of prevLogs) m.set(l.user.id, l);
+    return m;
+  }, [prevLogs]);
   const teamRows = useMemo(() => {
     const active = users.filter(u => u.active);
-    const hasLog = (u: { id: string }) => { const l = logByUser.get(u.id); return !!(l && ((l.todayWork ?? "").trim() || (l.tomorrowPlan ?? "").trim())); };
-    return [...active.filter(hasLog), ...active.filter(u => !hasLog(u))];
-  }, [users, logByUser]);
+    const hasAny = (u: { id: string }) => {
+      const t = logByUser.get(u.id), p = prevLogByUser.get(u.id);
+      return !!((t?.todayWork ?? "").trim() || (t?.tomorrowPlan ?? "").trim() || (p?.todayWork ?? "").trim());
+    };
+    return [...active.filter(hasAny), ...active.filter(u => !hasAny(u))];
+  }, [users, logByUser, prevLogByUser]);
 
   // 이 날 공유 내용 — 팀원 일지에서 @멘션이 들어간 줄 (작성자 → 소환 대상)
   const shared = useMemo(() => {
@@ -97,18 +120,24 @@ export default function WorkDashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_460px] gap-4 items-start">
         {/* 왼쪽: 팀원 업무일지 리스트 */}
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+          <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between gap-2">
             <span className="text-sm font-bold text-gray-700 flex items-center gap-1.5"><Users size={15} className="text-indigo-500" /> 팀원 업무일지</span>
-            <span className="text-xs text-gray-400">{fmtDate(selectedDate)}</span>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setSelectedDate(prevYmd)} className="p-1 hover:bg-gray-200 rounded" title="이전 날"><ChevronLeft size={15} /></button>
+              <span className="text-xs font-semibold text-gray-600 min-w-[100px] text-center">{fmtDate(selectedDate)}</span>
+              <button onClick={() => setSelectedDate(tomorrowYmd)} className="p-1 hover:bg-gray-200 rounded" title="다음 날"><ChevronRight size={15} /></button>
+              {selectedDate !== todayKst() && <button onClick={() => setSelectedDate(todayKst())} className="ml-1 px-2 py-0.5 text-[11px] border border-gray-300 rounded hover:bg-white">오늘</button>}
+            </div>
           </div>
           <div className="divide-y divide-gray-100 max-h-[78vh] overflow-auto">
             {teamRows.length === 0 ? (
               <p className="py-12 text-center text-sm text-gray-400">등록된 사용자가 없습니다. [사용자 등록]에서 추가하세요.</p>
             ) : teamRows.map(u => {
               const log = logByUser.get(u.id);
-              const today = (log?.todayWork ?? "").trim();
-              const tomorrow = (log?.tomorrowPlan ?? "").trim();
-              const empty = !today && !tomorrow;
+              const prev = (prevLogByUser.get(u.id)?.todayWork ?? "").trim(); // 전날 한 일
+              const today = (log?.todayWork ?? "").trim();                    // 당일 한 일
+              const tomorrow = (log?.tomorrowPlan ?? "").trim();              // 내일 계획
+              const empty = !prev && !today && !tomorrow;
               return (
                 <div key={u.id} className={`px-4 py-3 ${empty ? "opacity-60" : ""}`}>
                   <div className="flex items-center gap-2 mb-1.5">
@@ -121,8 +150,9 @@ export default function WorkDashboardPage() {
                     <p className="text-xs text-gray-400 pl-4">작성된 업무일지가 없습니다.</p>
                   ) : (
                     <div className="pl-4 space-y-1.5">
-                      {today && <div><span className="text-[11px] font-semibold text-indigo-600">오늘</span><p className="text-sm text-gray-700 whitespace-pre-wrap break-words"><MentionText content={today} /></p></div>}
-                      {tomorrow && <div><span className="text-[11px] font-semibold text-gray-400">내일</span><p className="text-sm text-gray-600 whitespace-pre-wrap break-words"><MentionText content={tomorrow} /></p></div>}
+                      {prev && <div><span className="text-[11px] font-semibold text-gray-400">전날 {fmtShort(prevYmd)}</span><p className="text-sm text-gray-600 whitespace-pre-wrap break-words"><MentionText content={prev} /></p></div>}
+                      {today && <div><span className="text-[11px] font-semibold text-indigo-600">당일 {fmtShort(selectedDate)}</span><p className="text-sm text-gray-700 whitespace-pre-wrap break-words"><MentionText content={today} /></p></div>}
+                      {tomorrow && <div><span className="text-[11px] font-semibold text-emerald-600">내일 {fmtShort(tomorrowYmd)}</span><p className="text-sm text-gray-600 whitespace-pre-wrap break-words"><MentionText content={tomorrow} /></p></div>}
                     </div>
                   )}
                 </div>
