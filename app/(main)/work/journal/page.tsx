@@ -5,13 +5,19 @@ import { Save, Star, Send, Trash2, AtSign, Inbox } from "lucide-react";
 import { useWorkUser, MentionText } from "@/components/work-user-context";
 import WorkCalendar, { type CalMarker } from "@/components/work-calendar";
 import { parseMentions } from "@/lib/work-mentions";
+import { shiftYmd } from "@/lib/work-date";
 
 const todayKst = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
 const monthOf = (ymd: string) => ymd.slice(0, 7);
+const WD = ["일", "월", "화", "수", "목", "금", "토"];
 const fmtDate = (ymd: string) => {
   const [y, m, d] = ymd.split("-");
-  const wd = ["일", "월", "화", "수", "목", "금", "토"][new Date(`${ymd}T00:00:00.000Z`).getUTCDay()];
-  return `${y}.${m}.${d} (${wd})`;
+  return `${y}.${m}.${d} (${WD[new Date(`${ymd}T00:00:00.000Z`).getUTCDay()]})`;
+};
+// 제목용 — 공백 없는 형식 (예: 2026.06.24(수))
+const fmtDateTitle = (ymd: string) => {
+  const [y, m, d] = ymd.split("-");
+  return `${y}.${m}.${d}(${WD[new Date(`${ymd}T00:00:00.000Z`).getUTCDay()]})`;
 };
 const fmtTime = (iso: string) => new Date(iso).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 
@@ -164,6 +170,8 @@ export default function WorkJournalPage() {
   }
 
   const isToday = selectedDate === todayKst();
+  const yesterdayYmd = shiftYmd(selectedDate, -1);
+  const tomorrowYmd  = shiftYmd(selectedDate, 1);
   const others = users.filter(u => u.active && u.id !== currentUserId);
 
   const renderChips = (field: "today" | "tomorrow") =>
@@ -236,13 +244,13 @@ export default function WorkJournalPage() {
 
           {/* 어제 (읽기 전용) */}
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-            <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 text-xs font-bold text-gray-500">어제 업무내용 (전일 자동)</div>
+            <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 text-xs font-bold text-gray-500">어제 업무내용 <span className="ml-1 font-normal text-gray-400">{fmtDateTitle(yesterdayYmd)} · 전일 자동</span></div>
             <div className="p-3 text-sm text-gray-600 whitespace-pre-wrap min-h-[56px]">{yesterdayWork || <span className="text-gray-300">전일 작성 내용이 없습니다.</span>}</div>
           </div>
 
           {/* 오늘 (편집) */}
           <div className="bg-white border-2 border-indigo-200 rounded-lg overflow-hidden">
-            <div className="px-4 py-2 border-b border-indigo-100 bg-indigo-50 text-xs font-bold text-indigo-700">오늘 업무내용</div>
+            <div className="px-4 py-2 border-b border-indigo-100 bg-indigo-50 text-xs font-bold text-indigo-700">오늘 업무내용 <span className="ml-1 font-normal text-indigo-400">{fmtDateTitle(selectedDate)}</span></div>
             <textarea value={todayWork} onChange={e => { setTodayWork(e.target.value); setDirty(true); }}
               placeholder="오늘 진행한 업무를 입력하세요. @이름 을 넣으면 그 줄이 상대방 일지에도 공유됩니다." rows={7}
               className="w-full p-3 text-sm resize-y focus:outline-none" />
@@ -251,7 +259,7 @@ export default function WorkJournalPage() {
 
           {/* 내일 (편집) */}
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-            <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 text-xs font-bold text-gray-500">내일 계획</div>
+            <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 text-xs font-bold text-gray-500">내일 계획 <span className="ml-1 font-normal text-gray-400">{fmtDateTitle(tomorrowYmd)}</span></div>
             <textarea value={tomorrowPlan} onChange={e => { setTomorrowPlan(e.target.value); setDirty(true); }}
               placeholder="내일 할 일을 입력하세요." rows={5}
               className="w-full p-3 text-sm resize-y focus:outline-none" />
