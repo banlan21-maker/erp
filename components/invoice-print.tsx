@@ -312,7 +312,7 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
                       onChange={e => setItem(i, { cutScheduledDate: e.target.value ? new Date(e.target.value + "T00:00:00").toISOString() : null })} />
                   </td>
                   <td>{it.vesselCode}</td>
-                  <td>{it.block ?? ""}</td>
+                  <td><input className="cell text-center" value={it.block ?? ""} onChange={e => setItem(i, { block: e.target.value })} /></td>
                   <td className="font-mono">{it.heatNo ?? ""}</td>
                   <td><input className="cell text-center" value={it.classSociety ?? ""} onChange={e => setItem(i, { classSociety: e.target.value })} /></td>
                   <td><input className="cell text-center font-mono text-[10px]" value={it.drawingNo ?? ""} onChange={e => setItem(i, { drawingNo: e.target.value })} /></td>

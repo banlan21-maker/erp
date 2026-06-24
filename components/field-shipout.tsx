@@ -239,6 +239,7 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }
   const [deliveryId, setDeliveryId] = useState("");
   const [vehicleNo, setVehicleNo]   = useState("");
   const [driverName, setDriverName] = useState("");
+  const [blocks, setBlocks]         = useState<Record<string, string>>({}); // 자재별 블록 (steelPlanId → 블록)
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [vendorLoading, setVendorLoading] = useState(false);
@@ -279,7 +280,7 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }
     if (!writerName.trim())  { setError("작성(출고)자를 입력하세요."); return; }
     if (!supplierId)         { setError("공급처를 선택하세요."); return; }
     if (!deliveryId)         { setError("납품처를 선택하세요."); return; }
-    if (!vehicleNo.trim())   { setError("차량번호를 입력하세요."); return; }
+    // 차량번호·운전자는 선택 입력 (거래명세표에서 출력 전 입력 가능)
     // 판번호 중복 방지 (한 물리 철판 중복 출고 차단)
     const heats = cart.items.map(i => (i.prefilledHeatNo ?? "").trim()).filter(Boolean);
     const dup = heats.find((h, i) => heats.indexOf(h) !== i);
@@ -309,7 +310,7 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }
             steelPlanHeatId: it.steelPlanHeatId,
             vesselCode: it.vesselCode, material: it.material,
             thickness: it.thickness, width: it.width, length: it.length, weight: it.weight,
-            block: null,
+            block: blocks[it.steelPlanId]?.trim() || null,
             heatNo: it.prefilledHeatNo?.trim() || null,
             // heatId 있으면 그 heat 를 정확히 SHIPPED 전환(manual 아님). 없으면 사양+판번호로 find/create
             manualHeatNo: it.kind !== "remnant" && !it.steelPlanHeatId,
@@ -345,13 +346,20 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }
           <div className="text-xs font-semibold text-gray-400 mb-2 px-1">출고 자재 {cart.items.length}건 · {fmtKg(cart.totalWeight)}</div>
           <div className="space-y-2">
             {cart.items.map(it => (
-              <div key={it.steelPlanId} className="bg-gray-900 border border-gray-800 rounded-xl p-3 flex items-center justify-between">
-                <div className="text-sm">
-                  <div className="font-bold text-white">{it.vesselCode} · {it.material} {it.kind === "remnant" && <span className="ml-1 text-[10px] px-1 rounded bg-amber-900/50 text-amber-300">잔재</span>}</div>
-                  <div className="font-mono text-xs text-gray-400 mt-0.5">{fmtT(it.thickness)}×{fmtL(it.width)}×{fmtL(it.length)} · {fmtKg(it.weight)}</div>
-                  {it.prefilledHeatNo && <div className="font-mono text-xs text-amber-300 mt-0.5">판번호 {it.prefilledHeatNo}</div>}
+              <div key={it.steelPlanId} className="bg-gray-900 border border-gray-800 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm">
+                    <div className="font-bold text-white">{it.vesselCode} · {it.material} {it.kind === "remnant" && <span className="ml-1 text-[10px] px-1 rounded bg-amber-900/50 text-amber-300">잔재</span>}</div>
+                    <div className="font-mono text-xs text-gray-400 mt-0.5">{fmtT(it.thickness)}×{fmtL(it.width)}×{fmtL(it.length)} · {fmtKg(it.weight)}</div>
+                    {it.prefilledHeatNo && <div className="font-mono text-xs text-amber-300 mt-0.5">판번호 {it.prefilledHeatNo}</div>}
+                  </div>
+                  <button onClick={() => cart.remove(it.steelPlanId)} className="p-2 text-gray-500 hover:text-red-400"><Trash2 size={16} /></button>
                 </div>
-                <button onClick={() => cart.remove(it.steelPlanId)} className="p-2 text-gray-500 hover:text-red-400"><Trash2 size={16} /></button>
+                <div className="flex items-center gap-2">
+                  <label className="text-[11px] font-semibold text-gray-400 whitespace-nowrap">블록</label>
+                  <input value={blocks[it.steelPlanId] ?? ""} onChange={e => setBlocks(b => ({ ...b, [it.steelPlanId]: e.target.value }))}
+                    placeholder="블록 (예: F52P) — 선택" className="flex-1 px-2.5 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+                </div>
               </div>
             ))}
           </div>
@@ -387,8 +395,8 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }
               {deliveries.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
           </Field>
-          <Field label="차량번호 *">
-            <input value={vehicleNo} onChange={e => setVehicleNo(e.target.value)} placeholder="예: 12가3456" className={inputCls} />
+          <Field label="차량번호 (선택)">
+            <input value={vehicleNo} onChange={e => setVehicleNo(e.target.value)} placeholder="예: 12가3456 — 선택" className={inputCls} />
           </Field>
           <Field label="운전자 (선택)">
             <input value={driverName} onChange={e => setDriverName(e.target.value)} placeholder="운전자 이름" className={inputCls} />
