@@ -5,6 +5,15 @@ import * as XLSX from "xlsx";
 import { Upload, Download, Trash2, RefreshCw, X, FileSpreadsheet, Search, Eye, Filter, Printer } from "lucide-react";
 import ColumnFilterDropdown from "@/components/column-filter-dropdown";
 import { getAllCascadedOptions, getCascadedFilteredRowsWithPredicates, type ColumnAccessorMap, type TextPredicate } from "@/lib/cascading-filters";
+import SteelMatchRemnantPanel from "@/components/steel-match-remnant-panel";
+
+type MatchSource = "plan" | "SURPLUS" | "REGISTERED" | "REMNANT";
+const SOURCE_TABS: { key: MatchSource; label: string }[] = [
+  { key: "plan",       label: "강재전체목록" },
+  { key: "SURPLUS",    label: "여유원재" },
+  { key: "REGISTERED", label: "등록잔재" },
+  { key: "REMNANT",    label: "현장잔재" },
+];
 
 /* ── 상태 정의 ─────────────────────────────────────────────────────────────── */
 const STATUS_LIST = [
@@ -127,6 +136,7 @@ export default function SteelMatchTab() {
   const [rowsLoading, setRowsLoading] = useState(false);
   const [selJobStatuses, setSelJobStatuses] = useState<string>("ALL");   // 열린 작업의 저장된 대상상태
   const [selJobReservedFilter, setSelJobReservedFilter] = useState<string>("ANY"); // 확정정보 필터
+  const [activeSource, setActiveSource] = useState<MatchSource>("plan");   // 오른쪽 패널 탭
   const [search, setSearch]       = useState("");
   const [editJob, setEditJob]     = useState<Job | null>(null);
 
@@ -162,7 +172,7 @@ export default function SteelMatchTab() {
 
   const openJobFresh = useCallback((jobId: string) => {
     setSelJobId(jobId);
-    setSearch("");
+    setSearch(""); setActiveSource("plan");
     setColFilters({}); setPredicates({}); setSortKey(null); setOpenCol(null); setAnchorEl(null);
     loadMatches(jobId);
   }, [loadMatches]);
@@ -504,8 +514,20 @@ export default function SteelMatchTab() {
               </table>
             </div>
           </div>
-          {/* 오른쪽: 매칭 현황 */}
+          {/* 오른쪽: 매칭 현황 (강재전체목록 + 잔재 탭) */}
           <div className="flex-1 min-w-0 bg-white border border-gray-200 rounded-lg overflow-hidden">
+            {/* 소스 탭 */}
+            <div className="flex border-b border-gray-200 bg-white overflow-x-auto">
+              {SOURCE_TABS.map(t => (
+                <button key={t.key} onClick={() => { setActiveSource(t.key); setOpenCol(null); setAnchorEl(null); }}
+                  className={`px-4 py-2.5 text-sm font-semibold whitespace-nowrap transition-colors ${activeSource === t.key ? "text-gray-900 border-b-2 border-gray-800" : "text-gray-500 hover:text-gray-700"}`}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            {activeSource !== "plan" ? (
+              <SteelMatchRemnantPanel key={activeSource} jobId={selJobId} jobName={selJobName} type={activeSource} onChanged={loadJobs} />
+            ) : (<>
             <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2 flex-1 min-w-[200px]">
               <FileSpreadsheet size={15} className="text-blue-600" />
@@ -613,6 +635,7 @@ export default function SteelMatchTab() {
               </tbody>
             </table>
           </div>
+            </>)}
           </div>
         </div>
       )}
