@@ -154,8 +154,10 @@ export async function POST(request: NextRequest) {
     }
 
     // ── 해당 장비에 미종료 작업 확인 ─────────────────────────────────────────
+    // STARTED 만 차단. PAUSED(중단)된 옛 작업이 남아 있어도 새 작업 시작은 허용
+    // (PAUSED 까지 막으면, 종료/재개 안 한 중단 기록 때문에 정상 도면 시작이 막히는 문제)
     const ongoing = await prisma.cuttingLog.findFirst({
-      where: { equipmentId, status: { in: ["STARTED", "PAUSED"] } },
+      where: { equipmentId, status: "STARTED" },
       include: { project: { select: { projectCode: true } } },
     });
     if (ongoing) {
