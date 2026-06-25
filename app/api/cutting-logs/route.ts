@@ -155,7 +155,7 @@ export async function POST(request: NextRequest) {
 
     // ── 해당 장비에 미종료 작업 확인 ─────────────────────────────────────────
     const ongoing = await prisma.cuttingLog.findFirst({
-      where: { equipmentId, status: "STARTED" },
+      where: { equipmentId, status: { in: ["STARTED", "PAUSED"] } },
       include: { project: { select: { projectCode: true } } },
     });
     if (ongoing) {
@@ -174,6 +174,27 @@ export async function POST(request: NextRequest) {
         },
         { status: 409 }
       );
+    }
+
+    // ── 같은 도면이 다른 장비에서 절단 진행중인지 확인 (중복 작업 방지) ───────────
+    // 정규작업(drawingListId) 한정. 도면 status 는 완료 시에만 CUT 이라 진행중엔 막을 수 없으므로
+    // 활성 작업일보(STARTED/PAUSED)로 검사.
+    if (drawingListId && isUrgent !== true) {
+      const dNo = drawingNo?.trim();
+      const dupDraw = await prisma.cuttingLog.findFirst({
+        where: {
+          status: { in: ["STARTED", "PAUSED"] }, isUrgent: false,
+          // 행 id 또는 같은 도면번호(projectId+drawingNo) — 동일 도면의 별개 행 중복도 차단
+          OR: [{ drawingListId }, ...(dNo && projectId ? [{ projectId, drawingNo: dNo }] : [])],
+        },
+        include: { equipment: { select: { name: true } } },
+      });
+      if (dupDraw) {
+        return NextResponse.json(
+          { success: false, error: `이 도면은 이미 다른 장비(${dupDraw.equipment?.name ?? "?"})에서 절단 진행중입니다. 중복 작업할 수 없습니다.` },
+          { status: 409 },
+        );
+      }
     }
 
     // ── 작업 시작 생성 ───────────────────────────────────────────────────────

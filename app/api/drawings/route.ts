@@ -54,8 +54,25 @@ export async function GET(request: NextRequest) {
         orderBy: { createdAt: "asc" },
       });
 
+      // 절단 진행중(STARTED/PAUSED)인 도면은 목록에서 제외 — 다른 장비에서 같은 도면 중복 작업 방지.
+      // (도면 status 는 완료 시에만 WAITING→CUT 이라, 진행중에는 WAITING 으로 남아 목록에 노출되던 문제)
+      // 행 id 뿐 아니라 도면번호(projectId+drawingNo)로도 매칭 — 같은 도면번호의 별개 행 중복도 차단
+      // (완료 흐름이 projectId+drawingNo 키로 동작하므로 동일 키 사용). 돌발작업(isUrgent) 로그는 제외.
+      const wIds = waitingRows.map(r => r.id);
+      const wNos = waitingRows.map(r => r.drawingNo).filter((x): x is string => !!x);
+      const activeLogs = await prisma.cuttingLog.findMany({
+        where: {
+          projectId, isUrgent: false, status: { in: ["STARTED", "PAUSED"] },
+          OR: [{ drawingListId: { in: wIds } }, ...(wNos.length ? [{ drawingNo: { in: wNos } }] : [])],
+        },
+        select: { drawingListId: true, drawingNo: true },
+      });
+      const activeDrawIds = new Set(activeLogs.map(l => l.drawingListId).filter((x): x is string => !!x));
+      const activeDrawNos = new Set(activeLogs.map(l => l.drawingNo).filter((x): x is string => !!x));
+
       const result = [];
       for (const row of waitingRows) {
+        if (activeDrawIds.has(row.id) || (row.drawingNo && activeDrawNos.has(row.drawingNo))) continue;   // 절단 진행중 → 목록 제외
         // 등록잔재/현장잔재 사용 행 — assignedRemnantId가 있고 status=WAITING이면 이미 확정 상태
         const rowExt = row as typeof row & { assignedRemnantId?: string | null; alternateVesselCode?: string | null };
         if (rowExt.assignedRemnantId) {
