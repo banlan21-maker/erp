@@ -146,14 +146,16 @@ function AddTab() {
     <div className="p-4 space-y-4">
       {/* 판번호 입력 */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-        <label className="block text-xs font-semibold text-gray-400 mb-2">판번호 입력</label>
+        <label className="block text-xs font-semibold text-gray-400 mb-2">판번호 입력 <span className="font-normal text-gray-500">(대문자·숫자만 — 키보드·바코드 모두 자동 정리)</span></label>
         <div className="flex gap-2">
           <input
             value={heatNo}
-            onChange={e => setHeatNo(e.target.value)}
+            // 대문자 영문 + 숫자만 허용. 소문자→대문자, 특수문자·기타 문자는 자동 제거.
+            // 바코드(PDA) 스캔 입력도 onChange 를 거치므로 동일하게 정리됨.
+            onChange={e => setHeatNo(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
             onKeyDown={e => { if (e.key === "Enter") lookup(); }}
             placeholder="예: HT240001"
-            inputMode="text" autoCapitalize="characters"
+            inputMode="text" autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false}
             className="flex-1 px-4 py-3 text-lg font-mono bg-gray-800 border border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 text-white placeholder-gray-600"
           />
           <button onClick={lookup} disabled={busy || !heatNo.trim()}
