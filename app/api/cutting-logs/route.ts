@@ -23,8 +23,8 @@
  *       syncDrawingListBySpec() 호출로 DrawingList 전체 재계산
  *
  * ── stuck 레코드 처리 ─────────────────────────────────────────────────────────
- * 이전 날짜 미종료(STARTED) 레코드가 있을 경우 새 작업 시작 불가.
- * GET에 includeStuck=true 또는 equipmentId 파라미터 포함 시 날짜 무관 STARTED 레코드 포함.
+ * 이전 날짜 미종료(STARTED) 또는 중단(PAUSED) 레코드는 날짜 무관 포함되어야 함.
+ * GET에 includeStuck=true 또는 equipmentId 파라미터 포함 시 STARTED/PAUSED 레코드 포함.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -37,7 +37,7 @@ import { prisma } from "@/lib/prisma";
 //   date          : YYYY-MM-DD. 단일 날짜 (하위 호환용, 현장 뷰).
 //   dateFrom      : YYYY-MM-DD. 범위 시작일 (관리자 뷰).
 //   dateTo        : YYYY-MM-DD. 범위 종료일 (관리자 뷰).
-//   includeStuck  : "true" → 날짜 필터와 관계없이 STARTED 레코드 포함.
+//   includeStuck  : "true" → 날짜 필터와 관계없이 STARTED/PAUSED 레코드 포함.
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);

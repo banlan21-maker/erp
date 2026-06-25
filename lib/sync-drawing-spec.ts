@@ -39,6 +39,10 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
+
+// 트랜잭션 안/밖 모두에서 동작하도록 DB 클라이언트 주입 (기본: 전역 prisma)
+type Db = Prisma.TransactionClient | typeof prisma;
 
 interface Spec {
   vesselCode: string;
@@ -58,11 +62,12 @@ export async function syncDrawingListBySpec(
   thickness:       number,
   width:           number,
   length:          number,
+  db: Db = prisma,
 ) {
   const norm = material.trim().toUpperCase();
 
   // 1. 후보 DrawingList 행 — alt vessel reverse-lookup 포함
-  const candidates = await prisma.drawingList.findMany({
+  const candidates = await db.drawingList.findMany({
     where: {
       material:          { equals: norm, mode: "insensitive" },
       thickness, width, length,
@@ -88,7 +93,7 @@ export async function syncDrawingListBySpec(
 
   // 2. 매칭 SteelPlan 풀 — COMPLETED 는 이미 절단된 강재라 매칭 대상 아님
   //    출고 선별/예정(shipoutMarkedAt)된 강재도 절단 매칭 풀에서 제외 (절단↔출고 상호배제)
-  const plans = await prisma.steelPlan.findMany({
+  const plans = await db.steelPlan.findMany({
     where: {
       vesselCode: effectiveVessel,
       material:   { equals: norm, mode: "insensitive" },
@@ -103,7 +108,7 @@ export async function syncDrawingListBySpec(
   if (plans.length === 0) {
     const ids = candidates.filter(r => r.status !== "CAUTION").map(r => r.id);
     if (ids.length > 0) {
-      await prisma.drawingList.updateMany({ where: { id: { in: ids } }, data: { status: "CAUTION" } });
+      await db.drawingList.updateMany({ where: { id: { in: ids } }, data: { status: "CAUTION" } });
     }
     return;
   }
@@ -147,23 +152,23 @@ export async function syncDrawingListBySpec(
   }
 
   if (toWaiting.length > 0) {
-    await prisma.drawingList.updateMany({ where: { id: { in: toWaiting } }, data: { status: "WAITING" } });
+    await db.drawingList.updateMany({ where: { id: { in: toWaiting } }, data: { status: "WAITING" } });
   }
   if (toRegistered.length > 0) {
-    await prisma.drawingList.updateMany({ where: { id: { in: toRegistered } }, data: { status: "REGISTERED" } });
+    await db.drawingList.updateMany({ where: { id: { in: toRegistered } }, data: { status: "REGISTERED" } });
   }
 }
 
 /**
  * 여러 spec 일괄 동기화 — 중복 제거 후 순차 호출.
  */
-export async function syncDrawingListBySpecs(specs: Spec[]) {
+export async function syncDrawingListBySpecs(specs: Spec[], db: Db = prisma) {
   const seen = new Map<string, Spec>();
   for (const s of specs) {
     const key = `${s.vesselCode}|${s.material.trim().toUpperCase()}|${s.thickness}|${s.width}|${s.length}`;
     if (!seen.has(key)) seen.set(key, s);
   }
   for (const s of seen.values()) {
-    await syncDrawingListBySpec(s.vesselCode, s.material, s.thickness, s.width, s.length);
+    await syncDrawingListBySpec(s.vesselCode, s.material, s.thickness, s.width, s.length, db);
   }
 }

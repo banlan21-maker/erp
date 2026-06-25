@@ -12,9 +12,13 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 
-export async function syncProjectStatus(projectId: string): Promise<void> {
-  const rows = await prisma.drawingList.findMany({
+// 트랜잭션 안/밖 모두에서 동작하도록 DB 클라이언트 주입 (기본: 전역 prisma)
+type Db = Prisma.TransactionClient | typeof prisma;
+
+export async function syncProjectStatus(projectId: string, db: Db = prisma): Promise<void> {
+  const rows = await db.drawingList.findMany({
     where:  { projectId },
     select: { status: true },
   });
@@ -24,7 +28,7 @@ export async function syncProjectStatus(projectId: string): Promise<void> {
 
   const allCut = rows.every((r) => r.status === "CUT");
 
-  await prisma.project.update({
+  await db.project.update({
     where: { id: projectId },
     data:  { status: allCut ? "COMPLETED" : "ACTIVE" },
   });

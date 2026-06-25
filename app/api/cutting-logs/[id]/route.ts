@@ -95,17 +95,16 @@ export async function PATCH(
     }
 
     if (action === "complete") {
-      // ── 멱등성 가드 (R4 + R9 CAS) ─────────────────────────────────────
+      // ── 멱등성 가드 (CAS) ─────────────────────────────────────────────
       // 더블탭 / 빠른 재호출 / 동시 더블탭 모두 SteelPlan 추가 소비 (재고 영구
       // 손실) 방지. findUnique+update 비원자(TOCTOU) 대신 updateMany 의
       // where-기반 compare-and-swap 으로 atomic 보호.
-      //
-      // ⚠️ Phase 3 노트: cuttingLog 외 DrawingList/SteelPlanHeat/SteelPlan
-      //    여러 update 가 트랜잭션 없이 순차 실행됨. 중간 실패 시 cuttingLog 만
-      //    COMPLETED 인 half-synced 상태 가능 + R4 가드로 인해 재시도 차단.
-      //    근본 해결은 prisma.$transaction 으로 전체 묶기.
+      // (CAS + 후속 동기화 전체를 아래 $transaction 으로 묶어 부분실패 시 전부 롤백)
       const { endAt: completeEndAt, startAt: completeStartAt } = body;
-      const casResult = await prisma.cuttingLog.updateMany({
+      // 완료 부작용 전체(CAS + DrawingList/SteelPlan/Heat/Remnant + sync)를 한 트랜잭션으로 —
+      // 중간 실패 시 CAS 포함 전부 롤백되어 half-synced + 재시도 차단 상태를 방지.
+      const outcome = await prisma.$transaction(async (tx) => {
+      const casResult = await tx.cuttingLog.updateMany({
         where: { id, status: { not: "COMPLETED" } },
         data: {
           status: "COMPLETED",
@@ -115,28 +114,23 @@ export async function PATCH(
         },
       });
       if (casResult.count === 0) {
-        // 이미 COMPLETED 거나 ID 없음 — 부작용 모두 스킵
-        const found = await prisma.cuttingLog.findUnique({ where: { id }, select: { status: true } });
-        if (!found) {
-          return NextResponse.json({ success: false, error: "기록을 찾을 수 없습니다." }, { status: 404 });
-        }
-        return NextResponse.json({ success: true, data: { id, status: "COMPLETED", alreadyCompleted: true } });
+        // 이미 COMPLETED 거나 ID 없음 — 부작용 모두 스킵 (롤백 불필요, 변경 없음)
+        const found = await tx.cuttingLog.findUnique({ where: { id }, select: { status: true } });
+        return found ? { kind: "already" as const } : { kind: "notfound" as const };
       }
 
       // 혹시 PAUSED 상태에서 완료 누른 경우 열린 pause 자동 닫기
-      await prisma.cuttingPause.updateMany({
+      await tx.cuttingPause.updateMany({
         where: { cuttingLogId: id, resumedAt: null },
         data:  { resumedAt: new Date() },
       });
 
       // CAS 로 status 가 이미 COMPLETED 됐으므로 후속 조회로 데이터 확보
-      const log = await prisma.cuttingLog.findUnique({
+      const log = await tx.cuttingLog.findUnique({
         where: { id },
         include: { equipment: { select: { name: true } } },
       });
-      if (!log) {
-        return NextResponse.json({ success: false, error: "기록 조회 실패" }, { status: 500 });
-      }
+      if (!log) throw new Error("기록 조회 실패");   // throw → 트랜잭션 롤백
 
       // ── DrawingList 상태 CUT으로 변경 + 사용 정보 추출 ────────────────────
       // 같은 프로젝트+도면번호의 WAITING 상태 첫 항목을 CUT으로
@@ -156,10 +150,10 @@ export async function PATCH(
         // 작업자가 실제 선택한 행(drawingListId) 우선 — drawingNo 가 없거나 동일 drawingNo 다수행이어도 정확.
         // 그 행이 없거나 이미 CUT 이면 projectId+drawingNo 첫 WAITING 행으로 폴백(레거시 호환).
         let target = log.drawingListId
-          ? await prisma.drawingList.findFirst({ where: { id: log.drawingListId, status: "WAITING" }, select: drawSelect })
+          ? await tx.drawingList.findFirst({ where: { id: log.drawingListId, status: "WAITING" }, select: drawSelect })
           : null;
         if (!target && log.drawingNo && log.projectId) {
-          target = await prisma.drawingList.findFirst({
+          target = await tx.drawingList.findFirst({
             where: { projectId: log.projectId, drawingNo: log.drawingNo, status: "WAITING" },
             orderBy: { createdAt: "asc" },
             select: drawSelect,
@@ -167,20 +161,20 @@ export async function PATCH(
         }
         if (target) {
           targetDrawing = target;
-          await prisma.drawingList.update({
+          await tx.drawingList.update({
             where: { id: target.id },
             data: {
               status: "CUT",
               ...(log.heatNo?.trim() ? { heatNo: log.heatNo.trim() } : {}),
             },
           });
-          await prisma.cuttingLog.update({
+          await tx.cuttingLog.update({
             where: { id },
             data: { drawingListId: target.id },
           });
           // 등록잔재 사용 절단이면 잔재 상태 → EXHAUSTED
           if (target.assignedRemnantId) {
-            await prisma.remnant.update({
+            await tx.remnant.update({
               where: { id: target.assignedRemnantId },
               data:  { status: "EXHAUSTED" },
             });
@@ -188,7 +182,7 @@ export async function PATCH(
           // 이 도면에서 발생한 등록잔재에 원판 판번호 전파 (원재 → 등록잔재 판번호 연속)
           // 등록잔재는 블록강재등록 시 drawingListId 로 도면에 연결되어 생성됨 → 절단완료 시 실사용 판번호 기입
           if (log.heatNo?.trim()) {
-            await prisma.remnant.updateMany({
+            await tx.remnant.updateMany({
               where: { drawingListId: target.id, type: "REGISTERED" },
               data:  { heatNo: log.heatNo.trim() },
             });
@@ -199,7 +193,7 @@ export async function PATCH(
       // ── 프로젝트 조회 (SteelPlan + SteelPlanHeat 양쪽에서 사용) ────────────
       let project: { projectCode: string } | null = null;
       if (log.projectId) {
-        project = await prisma.project.findUnique({
+        project = await tx.project.findUnique({
           where: { id: log.projectId },
           select: { projectCode: true },
         });
@@ -213,7 +207,7 @@ export async function PATCH(
       const effectiveVessel = targetDrawing?.alternateVesselCode?.trim() || project?.projectCode;
       // 잔재(등록/현장/여유) 사용 절단은 정규원재(SteelPlan/SteelPlanHeat)를 건드리지 않음 — 여유원재는 아래 전용 블록에서 처리
       if (!targetDrawing?.assignedRemnantId && log.drawingNo && log.heatNo?.trim() && effectiveVessel && log.material && log.thickness && log.width && log.length) {
-        await prisma.steelPlanHeat.updateMany({
+        await tx.steelPlanHeat.updateMany({
           where: {
             heatNo: log.heatNo.trim(),
             status: "WAITING",
@@ -237,11 +231,11 @@ export async function PATCH(
       ) {
         const hn  = log.heatNo.trim();
         const mat = log.material.trim().toUpperCase();
-        await prisma.remnant.update({
+        await tx.remnant.update({
           where: { id: targetDrawing.assignedRemnantId },
           data:  { heatNo: hn },
         });
-        const existingHeat = await prisma.steelPlanHeat.findFirst({
+        const existingHeat = await tx.steelPlanHeat.findFirst({
           where: {
             heatNo: hn, vesselCode: effectiveVessel,
             material: { equals: mat, mode: "insensitive" },
@@ -250,12 +244,12 @@ export async function PATCH(
           select: { id: true },
         });
         if (existingHeat) {
-          await prisma.steelPlanHeat.update({
+          await tx.steelPlanHeat.update({
             where: { id: existingHeat.id },
             data:  { status: "CUT", cutAt: log.endAt ?? new Date() },
           });
         } else {
-          await prisma.steelPlanHeat.create({
+          await tx.steelPlanHeat.create({
             data: {
               heatNo: hn, vesselCode: effectiveVessel, material: mat,
               thickness: log.thickness, width: log.width, length: log.length,
@@ -293,19 +287,19 @@ export async function PATCH(
           shipoutMarkedAt: null,
         };
         // 1차: 이 블록 예약 매칭
-        let targetPlan = await prisma.steelPlan.findFirst({
+        let targetPlan = await tx.steelPlan.findFirst({
           where: { ...matchBase, reservedFor: { in: allowedReservedFor } },
           orderBy: { createdAt: "asc" },
         });
         // 2차: 미예약 폴백
         if (!targetPlan) {
-          targetPlan = await prisma.steelPlan.findFirst({
+          targetPlan = await tx.steelPlan.findFirst({
             where: { ...matchBase, reservedFor: null },
             orderBy: { createdAt: "asc" },
           });
         }
         if (targetPlan) {
-          await prisma.steelPlan.update({
+          await tx.steelPlan.update({
             where: { id: targetPlan.id },
             data: {
               status:           "COMPLETED",
@@ -316,16 +310,26 @@ export async function PATCH(
           });
           // 동일 spec DrawingList 재계산 (alt vessel 기준)
           await syncDrawingListBySpec(
-            effectiveVessel, log.material, log.thickness, log.width, log.length,
+            effectiveVessel, log.material, log.thickness, log.width, log.length, tx,
           );
         }
         // 매칭 실패 시: SteelPlan 갱신 스킵 (관리자 수동 매칭 필요)
       }
 
       // ── 블록(Project) 완료 상태 자동 동기화 ──────────────────────────────
-      if (log.projectId) await syncProjectStatus(log.projectId);
+      if (log.projectId) await syncProjectStatus(log.projectId, tx);
 
-      return NextResponse.json({ success: true, data: log });
+      return { kind: "done" as const, log };
+      // 원격 NAS DB 라운드트립 + 락 경합 대비 기본 5s timeout 상향 (P2028 회귀 방지)
+      }, { maxWait: 5000, timeout: 20000 }); // ── 트랜잭션 끝 ─────────────────
+
+      if (outcome.kind === "notfound") {
+        return NextResponse.json({ success: false, error: "기록을 찾을 수 없습니다." }, { status: 404 });
+      }
+      if (outcome.kind === "already") {
+        return NextResponse.json({ success: true, data: { id, status: "COMPLETED", alreadyCompleted: true } });
+      }
+      return NextResponse.json({ success: true, data: outcome.log });
     }
 
     // 일반 수정 (관리자 전체 필드 수정 포함)
@@ -377,6 +381,9 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: "기록을 찾을 수 없습니다." }, { status: 404 });
     }
 
+    // 복원 부작용 전체(DrawingList/Remnant/SteelPlanHeat/SteelPlan + delete + sync)를 한
+    // 트랜잭션으로 — 중간 실패 시 전부 롤백되어 비대칭 복원(half-restored) 상태를 방지.
+    await prisma.$transaction(async (tx) => {
     // drawingListId가 있으면 해당 강재를 CUT → WAITING으로 복원 (heatNo도 초기화)
     // drawing.alternateVesselCode 까지 select 해서 effectiveVessel 계산에 사용
     let drawingSyncSpec: {
@@ -384,7 +391,7 @@ export async function DELETE(
     } | null = null;
     let drawingAltVessel: string | null = null; // drawingList 살아있을 때 alt 정보
     if (log.drawingListId) {
-      const drawing = await prisma.drawingList.findUnique({
+      const drawing = await tx.drawingList.findUnique({
         where: { id: log.drawingListId },
         include: { project: { select: { projectCode: true } } },
       });
@@ -392,13 +399,13 @@ export async function DELETE(
         drawingAltVessel = drawing.alternateVesselCode?.trim() || null;
       }
       if (drawing && drawing.status === "CUT") {
-        await prisma.drawingList.update({
+        await tx.drawingList.update({
           where: { id: log.drawingListId },
           data: { status: "WAITING", heatNo: null },
         });
         // 등록잔재 사용 절단이면 잔재 상태 복원 → IN_STOCK
         if (drawing.assignedRemnantId) {
-          await prisma.remnant.update({
+          await tx.remnant.update({
             where: { id: drawing.assignedRemnantId },
             data:  { status: "IN_STOCK" },
           });
@@ -422,7 +429,7 @@ export async function DELETE(
       if (drawingAltVessel) {
         effectiveVesselForLog = drawingAltVessel;
       } else if (log.projectId) {
-        const project = await prisma.project.findUnique({
+        const project = await tx.project.findUnique({
           where: { id: log.projectId },
           select: { projectCode: true },
         });
@@ -433,7 +440,7 @@ export async function DELETE(
     // SteelPlanHeat 상태 복원 CUT → WAITING — effectiveVessel + spec 매칭 필수
     // 무차별 폴백 제거: heatNo 만으로 매칭하면 다른 호선/스펙 CUT 까지 복원 위험
     if (log.heatNo?.trim() && effectiveVesselForLog && log.material && log.thickness && log.width && log.length) {
-      await prisma.steelPlanHeat.updateMany({
+      await tx.steelPlanHeat.updateMany({
         where: {
           heatNo: log.heatNo.trim(),
           status: "CUT",
@@ -469,13 +476,13 @@ export async function DELETE(
       let target = null;
       if (effectiveVesselForLog) {
         // 1차: actualVesselCode 정확 매칭
-        target = await prisma.steelPlan.findFirst({
+        target = await tx.steelPlan.findFirst({
           where: { ...specBase, actualVesselCode: effectiveVesselForLog },
           orderBy: { createdAt: "desc" },
         });
         // 2차: vesselCode 폴백 (구형 데이터)
         if (!target) {
-          target = await prisma.steelPlan.findFirst({
+          target = await tx.steelPlan.findFirst({
             where: { ...specBase, vesselCode: effectiveVesselForLog },
             orderBy: { createdAt: "desc" },
           });
@@ -485,7 +492,7 @@ export async function DELETE(
       // 3차: vessel 제약 없이 — alt vessel + 도면 삭제 케이스 보호
       // (단, heatNo 가 있어야 식별력 충분. 후보 정확히 1건일 때만 복원)
       if (!target && log.heatNo?.trim()) {
-        const candidates = await prisma.steelPlan.findMany({
+        const candidates = await tx.steelPlan.findMany({
           where: specBase,
           orderBy: { createdAt: "desc" },
           take: 2, // 모호성 검사용
@@ -496,7 +503,7 @@ export async function DELETE(
       }
 
       if (target) {
-        await prisma.steelPlan.update({
+        await tx.steelPlan.update({
           where: { id: target.id },
           data: {
             status:           "RECEIVED",
@@ -514,7 +521,7 @@ export async function DELETE(
       }
     }
 
-    await prisma.cuttingLog.delete({ where: { id } });
+    await tx.cuttingLog.delete({ where: { id } });
 
     // ── 통합 sync — DrawingList 복원 spec + SteelPlan 복원 spec ───────────
     // SteelPlan 복원 실패해도 DrawingList sync 는 무조건 수행 (가드 완화)
@@ -523,11 +530,13 @@ export async function DELETE(
       ...(restoredSpec ? [restoredSpec] : []),
     ];
     if (syncSpecs.length > 0) {
-      await syncDrawingListBySpecs(syncSpecs);
+      await syncDrawingListBySpecs(syncSpecs, tx);
     }
 
     // ── 블록(Project) 완료 상태 자동 동기화 (복원 시 ACTIVE로 되돌림) ──────
-    if (log.projectId) await syncProjectStatus(log.projectId);
+    if (log.projectId) await syncProjectStatus(log.projectId, tx);
+    // 원격 NAS DB 라운드트립 + 락 경합 대비 기본 5s timeout 상향 (P2028 회귀 방지)
+    }, { maxWait: 5000, timeout: 20000 }); // ── 트랜잭션 끝 ─────────────────
 
     return NextResponse.json({ success: true });
   } catch (error) {
