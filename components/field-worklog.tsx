@@ -11,6 +11,7 @@ interface Worker    { id: string; name: string; nationality: string | null }
 interface DrawingRow {
   id: string; drawingNo: string | null; heatNo: string | null;
   material: string; thickness: number; width: number; length: number; qty: number; block: string | null;
+  alternateVesselCode?: string | null;
   assignedRemnantId?: string | null;
   assignedRemnant?: { type: string; heatNo: string | null } | null;
 }
@@ -333,6 +334,8 @@ export default function FieldWorklog({
     setHeatLoading(true);
     try {
       const params = new URLSearchParams({
+        // 호선 격리 — 대체호선 우선, 없으면 현재 호선. 다른 호선 동일스펙 판번호 노출 방지
+        vesselCode: row.alternateVesselCode?.trim() || s1.vesselCode,
         material:   row.material,
         thickness:  String(row.thickness),
         width:      String(row.width),

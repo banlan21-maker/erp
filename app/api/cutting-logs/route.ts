@@ -90,7 +90,8 @@ export async function GET(request: NextRequest) {
 
     if (Object.keys(dateFilter).length > 0) {
       if (needStuck) {
-        whereCondition.OR = [{ ...dateFilter }, { status: "STARTED" }];
+        // STARTED + 중단(PAUSED) 모두 stuck 으로 포함 — 야간이월 중단 작업이 다음날 사라지지 않게
+        whereCondition.OR = [{ ...dateFilter }, { status: { in: ["STARTED", "PAUSED"] } }];
       } else {
         Object.assign(whereCondition, dateFilter);
       }

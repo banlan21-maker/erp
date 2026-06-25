@@ -37,7 +37,8 @@ export default async function FieldWorklogPage() {
     where: {
       OR: [
         { startAt: { gte: dayStart, lte: dayEnd } },
-        { status: "STARTED" },
+        // 미종료 STARTED + 중단(PAUSED) 야간이월 모두 포함 — 다음날에도 재개/종료 가능하게
+        { status: { in: ["STARTED", "PAUSED"] } },
       ],
     },
     include: {

@@ -65,6 +65,20 @@ export async function PATCH(
 
     // ── 절단 재개 ────────────────────────────────────────────────────────────
     if (action === "resume") {
+      // PAUSED 일 때만 재개 (COMPLETED 를 STARTED 로 되살리는 것 방지)
+      const cur = await prisma.cuttingLog.findUnique({ where: { id }, select: { status: true, equipmentId: true } });
+      if (!cur) return NextResponse.json({ success: false, error: "기록을 찾을 수 없습니다." }, { status: 404 });
+      if (cur.status !== "PAUSED") {
+        return NextResponse.json({ success: false, error: "중단 상태가 아니어서 재개할 수 없습니다. 새로고침 후 확인하세요." }, { status: 409 });
+      }
+      // 같은 장비에 이미 진행중(STARTED) 작업이 있으면 재개 불가 (한 장비 2건 STARTED 방지)
+      const otherStarted = await prisma.cuttingLog.findFirst({
+        where: { equipmentId: cur.equipmentId, status: "STARTED", NOT: { id } },
+        select: { id: true },
+      });
+      if (otherStarted) {
+        return NextResponse.json({ success: false, error: "이 장비에 이미 진행중인 절단이 있습니다. 먼저 종료 처리하세요." }, { status: 409 });
+      }
       // 열려있는(resumedAt=null) 가장 최근 중단 기록에 재개 시각 기록
       const openPause = await prisma.cuttingPause.findFirst({
         where:   { cuttingLogId: id, resumedAt: null },
@@ -134,19 +148,23 @@ export async function PATCH(
         assignedRemnantId: string | null;
         assignedRemnant: { type: string } | null;
       } | null = null;
-      if (log.drawingNo && log.projectId) {
-        const target = await prisma.drawingList.findFirst({
-          where: {
-            projectId: log.projectId,
-            drawingNo:  log.drawingNo,
-            status:     "WAITING",
-          },
-          orderBy: { createdAt: "asc" },
-          select: {
-            id: true, block: true, alternateVesselCode: true, assignedRemnantId: true,
-            assignedRemnant: { select: { type: true } },
-          },
-        });
+      {
+        const drawSelect = {
+          id: true, block: true, alternateVesselCode: true, assignedRemnantId: true,
+          assignedRemnant: { select: { type: true } },
+        } as const;
+        // 작업자가 실제 선택한 행(drawingListId) 우선 — drawingNo 가 없거나 동일 drawingNo 다수행이어도 정확.
+        // 그 행이 없거나 이미 CUT 이면 projectId+drawingNo 첫 WAITING 행으로 폴백(레거시 호환).
+        let target = log.drawingListId
+          ? await prisma.drawingList.findFirst({ where: { id: log.drawingListId, status: "WAITING" }, select: drawSelect })
+          : null;
+        if (!target && log.drawingNo && log.projectId) {
+          target = await prisma.drawingList.findFirst({
+            where: { projectId: log.projectId, drawingNo: log.drawingNo, status: "WAITING" },
+            orderBy: { createdAt: "asc" },
+            select: drawSelect,
+          });
+        }
         if (target) {
           targetDrawing = target;
           await prisma.drawingList.update({
