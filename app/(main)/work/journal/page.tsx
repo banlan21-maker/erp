@@ -7,6 +7,7 @@ import { JournalText } from "@/components/journal-text";
 import WorkJournalLineEditor from "@/components/work-journal-line-editor";
 import WorkCalendar, { type CalMarker } from "@/components/work-calendar";
 import { parseMentions } from "@/lib/work-mentions";
+import { parseLine } from "@/lib/work-line-status";
 import { shiftYmd } from "@/lib/work-date";
 
 const todayKst = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
@@ -57,13 +58,20 @@ export default function WorkJournalPage() {
         .then(res => res.json()).catch(() => ({}));
       if (reqUser !== currentUserId || reqDate !== selectedDate) return; // stale 폐기
       if (r.success) {
-        setYesterdayWork(r.data.yesterdayWork ?? "");
+        const prevToday: string = r.data.yesterdayWork ?? "";      // 전일 오늘업무
+        const prevPlan: string  = r.data.prevTomorrowPlan ?? "";   // 전일 내일계획
+        setYesterdayWork(prevToday);
         const savedToday = r.data.log?.todayWork ?? "";
-        const prevPlan   = r.data.prevTomorrowPlan ?? "";
-        // 오늘 업무가 비어있고 전일 내일계획이 있으면 자동 이어받기(미저장) — 저장하면 오늘 업무로 확정
-        if (!savedToday.trim() && prevPlan.trim()) {
-          setTodayWork(prevPlan);
-          setSeeded(true);
+        // 오늘 업무가 비어있으면 자동 이어받기(미저장): 전일 '진행중' 줄(완료/다른상태로 바꾸기 전까지
+        // 매일 이어짐) + 전일 내일계획. 저장하면 그날 오늘 업무로 확정 → 다음날 또 이어짐.
+        if (!savedToday.trim()) {
+          const doing = prevToday.split("\n").filter(l => l.trim() && parseLine(l).status === "doing");
+          const plan  = prevPlan.split("\n").filter(l => l.trim());
+          const seen = new Set<string>();
+          const seedLines: string[] = [];
+          for (const l of [...doing, ...plan]) { if (!seen.has(l)) { seen.add(l); seedLines.push(l); } }
+          if (seedLines.length > 0) { setTodayWork(seedLines.join("\n")); setSeeded(true); }
+          else { setTodayWork(""); setSeeded(false); }
         } else {
           setTodayWork(savedToday);
           setSeeded(false);
@@ -264,7 +272,7 @@ export default function WorkJournalPage() {
           <div className="bg-white border-2 border-indigo-200 rounded-lg overflow-hidden">
             <div className="px-4 py-2 border-b border-indigo-100 bg-indigo-50 text-xs font-bold text-indigo-700">오늘 업무내용 <span className="ml-1 font-normal text-indigo-400">{fmtDateTitle(selectedDate)}</span> <span className="ml-1 font-normal text-gray-400">· 줄 앞 ● 클릭해 완료/진행중/중요</span></div>
             {seeded && (
-              <div className="px-3 py-1.5 bg-amber-50 border-b border-amber-100 text-[11px] text-amber-700">전일 내일계획에서 자동으로 가져왔습니다. 확인·수정 후 <b>저장</b>하면 오늘 업무로 확정됩니다.</div>
+              <div className="px-3 py-1.5 bg-amber-50 border-b border-amber-100 text-[11px] text-amber-700">전일 <b>진행중</b> 업무 + 내일계획을 자동으로 가져왔습니다. 확인·수정 후 <b>저장</b>하면 오늘 업무로 확정됩니다. (진행중은 완료/다른 상태로 바꾸기 전까지 매일 이어집니다)</div>
             )}
             <WorkJournalLineEditor value={todayWork} onChange={v => { setTodayWork(v); setDirty(true); setSeeded(false); }}
               placeholder="오늘 진행한 업무를 입력하세요. Enter로 줄 추가, 줄 앞 ● 로 상태 표시, @이름으로 공유."
