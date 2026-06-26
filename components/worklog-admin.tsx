@@ -27,6 +27,7 @@ interface Drawing {
   project: { id: string; projectCode: string; projectName: string } | null;
   block: string | null;
   drawingNo: string | null;
+  alternateVesselCode: string | null;
   heatNo: string | null;
   material: string;
   thickness: number;
@@ -570,6 +571,8 @@ function LogModal({
   useEffect(() => {
     if (!drawing) return;
     const p = new URLSearchParams({
+      // 호선 격리 — 대체호선 우선, 없으면 본 호선. 다른 호선 동일스펙 판번호 오노출 방지
+      vesselCode: drawing.alternateVesselCode?.trim() || drawing.project?.projectCode || "",
       material:   drawing.material,
       thickness:  String(drawing.thickness),
       width:      String(drawing.width),
@@ -580,22 +583,6 @@ function LogModal({
       .then(setHeatOptions)
       .catch(() => {});
   }, [drawing]);
-  const [forceClosing, setForceClosing] = useState(false);
-
-  const handleForceClose = async () => {
-    if (!stuckLog) return;
-    setForceClosing(true);
-    try {
-      await fetch(`/api/cutting-logs/${stuckLog.id}`, { method: "DELETE" });
-      setStuckLog(null);
-      setError(null);
-    } catch {
-      setError("강제 종료 중 오류가 발생했습니다.");
-    } finally {
-      setForceClosing(false);
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -607,6 +594,9 @@ function LogModal({
     setSaving(true);
     try {
       if (mode === "add") {
+        // 종료일시까지 입력하면 곧장 완료(백필)로 생성 — 서버가 STARTED 안 거치고
+        // COMPLETED 생성 + 동기화를 한 트랜잭션으로 처리(장비 가드 우회, 고아 로그 방지).
+        const isCompleted = !!form.endAt;
         const res = await fetch("/api/cutting-logs", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -624,6 +614,7 @@ function LogModal({
             operator:      form.operator,
             memo:          form.memo || null,
             startAt:       form.startAt ? new Date(form.startAt).toISOString() : undefined,
+            ...(isCompleted ? { status: "COMPLETED", endAt: new Date(form.endAt).toISOString() } : {}),
           }),
         });
         const data = await res.json();
@@ -632,29 +623,19 @@ function LogModal({
           if (data.stuckLog) setStuckLog(data.stuckLog);
           return;
         }
-        if (form.endAt && data.data?.id) {
-          await fetch(`/api/cutting-logs/${data.data.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action:  "complete",
-              memo:    form.memo || null,
-              startAt: form.startAt ? new Date(form.startAt).toISOString() : undefined,
-              endAt:   new Date(form.endAt).toISOString(),
-            }),
-          });
-        }
       } else if (log) {
+        // 수정은 작업자·시간·비고·장비만 — status 는 보내지 않음(서버가 현재 상태 유지).
+        // 판번호·치수·완료/진행 전환은 서버에서 차단(재고 desync 방지) → '삭제 후 재등록' 유도.
         const res = await fetch(`/api/cutting-logs/${log.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             equipmentId: form.equipmentId,
             operator:    form.operator,
-            heatNo:      form.heatNo || null,
+            // heatNo 는 보내지 않음 — 식별값(판번호)은 수정 대상 아님(서버가 기존값 유지).
+            //   빈 heatNo 로그(돌발/잔재)에 null 기록 시 비널 컬럼 위반(500), 완료로그엔 A-2 가드 409 회피.
             startAt:     form.startAt ? new Date(form.startAt).toISOString() : undefined,
             endAt:       form.endAt   ? new Date(form.endAt).toISOString()   : null,
-            status:      form.endAt ? "COMPLETED" : "STARTED",
             memo:        form.memo || null,
           }),
         });
@@ -702,14 +683,10 @@ function LogModal({
                   <span className="mr-2">작업자: {stuckLog.operator}</span>
                   <span>시작: {new Date(stuckLog.startAt).toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleForceClose}
-                  disabled={forceClosing}
-                  className="mt-1 px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-semibold disabled:opacity-50"
-                >
-                  {forceClosing ? "처리중..." : "미종료 작업 강제 삭제 후 재시도"}
-                </button>
+                <p className="mt-1 text-[11px] text-red-700 leading-relaxed">
+                  현장에서 이 작업을 종료한 뒤 다시 시도하세요.<br />
+                  <span className="text-red-600">완료된 과거 작업을 추가하려면 종료 일시까지 입력하면 장비 점유와 무관하게 바로 등록됩니다.</span>
+                </p>
               </div>
             )}
           </div>
@@ -753,7 +730,13 @@ function LogModal({
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Heat NO (판번호)</label>
-            {heatOptions.length > 0 ? (
+            {mode === "edit" ? (
+              // 수정에서는 판번호(식별값)를 변경하지 않음 — 잠금. 바꾸려면 삭제 후 재등록.
+              <div>
+                <Input value={form.heatNo || "—"} disabled className="font-mono bg-gray-100 text-gray-500" />
+                <p className="mt-1 text-[11px] text-gray-400">판번호는 수정 화면에서 변경할 수 없습니다. 변경하려면 삭제 후 다시 등록하세요.</p>
+              </div>
+            ) : heatOptions.length > 0 ? (
               <select
                 value={form.heatNo}
                 onChange={e => setForm(f => ({ ...f, heatNo: e.target.value }))}
@@ -787,8 +770,12 @@ function LogModal({
                 type="datetime-local"
                 value={form.endAt}
                 onChange={e => setForm(f => ({ ...f, endAt: e.target.value }))}
-                className="text-sm"
+                disabled={mode === "edit" && log?.status !== "COMPLETED"}
+                className="text-sm disabled:bg-gray-100 disabled:text-gray-400"
               />
+              {mode === "edit" && log?.status !== "COMPLETED" && (
+                <p className="mt-1 text-[11px] text-gray-400">진행중 작업은 여기서 완료할 수 없습니다. 완료는 현장 절단종료를 이용하세요.</p>
+              )}
             </div>
           </div>
 
@@ -877,7 +864,16 @@ export default function WorklogAdmin({
 
   const logByDrawingId = useMemo(() => {
     const map = new Map<string, CuttingLog>();
-    logs.forEach(l => { if (l.drawingListId) map.set(l.drawingListId, l); });
+    // 한 도면에 로그가 여러 개면 COMPLETED 우선, 동급이면 최신 startAt 채택 (옛 로그에 가려지지 않게)
+    const rank = (s: string) => (s === "COMPLETED" ? 2 : s === "STARTED" || s === "PAUSED" ? 1 : 0);
+    logs.forEach(l => {
+      if (!l.drawingListId) return;
+      const prev = map.get(l.drawingListId);
+      if (!prev) { map.set(l.drawingListId, l); return; }
+      const better = rank(l.status) > rank(prev.status)
+        || (rank(l.status) === rank(prev.status) && new Date(l.startAt).getTime() > new Date(prev.startAt).getTime());
+      if (better) map.set(l.drawingListId, l);
+    });
     return map;
   }, [logs]);
 
@@ -888,7 +884,7 @@ export default function WorklogAdmin({
 
   const getVal = (d: Drawing, log: CuttingLog | null, col: FCKey): string => {
     switch (col) {
-      case "status":     return log ? "완료" : "대기";
+      case "status":     return !log ? "대기" : log.status === "COMPLETED" ? "완료" : log.status === "PAUSED" ? "중단중" : "진행중";
       case "hosin":      return d.project?.projectCode ?? "";
       case "block":      return d.block ?? "";
       case "drawingNo":  return d.drawingNo ?? "";
@@ -906,12 +902,12 @@ export default function WorklogAdmin({
       case "workDate":   return log?.startAt ? fmtDate(log.startAt) : "";
       case "totalTime": {
         if (!log?.endAt) return log ? "진행중" : "";
-        return fmtHM(new Date(log.endAt).getTime() - new Date(log.startAt).getTime());
+        return fmtHM(libCalcTotalMs(log.startAt, log.endAt, log.pauses));
       }
       case "pauseTime":  return log ? fmtPauseMin(calcPauseMs(log.pauses)) : "";
       case "activeTime": {
         if (!log?.endAt) return log ? "진행중" : "";
-        const totMs  = new Date(log.endAt).getTime() - new Date(log.startAt).getTime();
+        const totMs  = libCalcTotalMs(log.startAt, log.endAt, log.pauses);
         const pauMs  = calcPauseMs(log.pauses);
         return fmtHM(Math.max(0, totMs - pauMs));
       }
@@ -1017,7 +1013,10 @@ export default function WorklogAdmin({
   const filterCount =
     Object.values(filters).filter(v => v && v.length > 0).length +
     Object.values(normalPredicates).filter(p => p && (p.op === "empty" || p.op === "notEmpty" || (p.val ?? "").length > 0)).length;
-  const cutCount    = filteredDrawings.filter(d => logByDrawingId.has(d.id)).length;
+  // 상태별 집계 — 완료(COMPLETED) / 진행중(STARTED+PAUSED) / 미등록(로그 없음). status 기준으로 정확히 분리
+  const cutCount     = filteredDrawings.filter(d => logByDrawingId.get(d.id)?.status === "COMPLETED").length;
+  const ongoingCount = filteredDrawings.filter(d => { const s = logByDrawingId.get(d.id)?.status; return s === "STARTED" || s === "PAUSED"; }).length;
+  const noLogCount   = filteredDrawings.filter(d => !logByDrawingId.has(d.id)).length;
 
   const handleDelete = async (logId: string) => {
     if (!confirm("이 작업일보를 삭제할까요? (강재 상태가 복원됩니다)")) return;
@@ -1100,8 +1099,8 @@ export default function WorklogAdmin({
           <div className="flex items-center gap-4 text-sm flex-wrap bg-white border border-gray-200 rounded-xl px-5 py-3 shadow-sm">
             <span className="text-gray-500">전체 <strong className="text-gray-900">{filteredDrawings.length}</strong>건</span>
             <span className="text-green-600">완료 <strong>{cutCount}</strong>건</span>
-            <span className="text-yellow-600">진행중 <strong>{filteredDrawings.filter(d => logByDrawingId.get(d.id)?.status === "STARTED").length}</strong>건</span>
-            <span className="text-gray-400">미등록 <strong>{filteredDrawings.length - cutCount}</strong>건</span>
+            <span className="text-yellow-600">진행중 <strong>{ongoingCount}</strong>건</span>
+            <span className="text-gray-400">미등록 <strong>{noLogCount}</strong>건</span>
             {filterCount > 0 && (
               <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md">
                 <FilterIcon size={11} fill="currentColor" />
@@ -1180,11 +1179,15 @@ export default function WorklogAdmin({
                     return (
                       <tr key={d.id} className={`transition-colors ${hasCut ? "hover:bg-green-50/30" : "hover:bg-gray-50/60"}`}>
                         <td className="px-2 py-1 text-center text-gray-400">{rowNo}</td>
-                        {/* 상태 */}
+                        {/* 상태 — log.status 기준 (완료/중단중/진행중/대기) */}
                         <td className="px-3 py-1 text-center">
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${hasCut ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
-                            {hasCut ? "완료" : "대기"}
-                          </span>
+                          {(() => {
+                            const st = !log ? { l: "대기", c: "bg-gray-100 text-gray-600" }
+                              : log.status === "COMPLETED" ? { l: "완료",   c: "bg-green-100 text-green-700" }
+                              : log.status === "PAUSED"    ? { l: "중단중", c: "bg-yellow-100 text-yellow-700" }
+                              :                              { l: "진행중", c: "bg-blue-100 text-blue-700" };
+                            return <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${st.c}`}>{st.l}</span>;
+                          })()}
                         </td>
                         {/* 호선 */}
                         <td className="px-3 py-1 text-gray-600 font-mono text-[11px]">{d.project?.projectCode ?? "-"}</td>
@@ -1220,9 +1223,9 @@ export default function WorklogAdmin({
                         <td className="px-3 py-1 text-gray-600 whitespace-nowrap font-mono text-[11px]">
                           {log ? fmtDate(log.startAt) : "-"}
                         </td>
-                        {/* 총가동시간 */}
+                        {/* 총가동시간 — 야간이월(퇴근) 시간 차감 (실가동 셀과 동일 기준) */}
                         <td className="px-3 py-1 text-gray-500 whitespace-nowrap">
-                          {log?.endAt ? fmtHM(new Date(log.endAt).getTime() - new Date(log.startAt).getTime()) : (log ? "진행중" : "-")}
+                          {log?.endAt ? fmtHM(libCalcTotalMs(log.startAt, log.endAt, log.pauses)) : (log ? "진행중" : "-")}
                         </td>
                         {/* 중단시간 */}
                         <td className="px-3 py-1 text-orange-500 whitespace-nowrap">

@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
         cuttingLogs: {
           select: {
             id: true, status: true, startAt: true, endAt: true, operator: true, memo: true, equipmentId: true,
-            material: true, thickness: true, width: true, length: true, qty: true, drawingNo: true,
+            heatNo: true, material: true, thickness: true, width: true, length: true, qty: true, drawingNo: true,
             equipment: { select: { id: true, name: true, type: true } },
             pauses:    { select: { reason: true, reasonText: true, pausedAt: true, resumedAt: true }, orderBy: { pausedAt: "asc" } },
           },

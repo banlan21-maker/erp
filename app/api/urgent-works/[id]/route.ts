@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { applyCuttingRestore } from "@/lib/cutting-complete";
 
 // PATCH /api/urgent-works/[id]
 export async function PATCH(
@@ -78,18 +79,30 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    // 삭제 전 선점 잔재의 확정정보(돌발번호) 해제 — 이 돌발이 선점한 잔재만
     const work = await prisma.urgentWork.findUnique({
       where: { id },
       select: { urgentNo: true, remnantId: true },
     });
-    await prisma.urgentWork.delete({ where: { id } });
-    if (work?.remnantId) {
-      await prisma.remnant.updateMany({
-        where: { id: work.remnantId, reservedFor: work.urgentNo },
-        data:  { reservedFor: null },
-      });
+    if (!work) {
+      return NextResponse.json({ success: false, error: "기록을 찾을 수 없습니다." }, { status: 404 });
     }
+    // 연결된 작업로그 — onDelete:SetNull 이라 그냥 두면 고아(STARTED)로 남아 장비를 영구 점유한다.
+    // 강재/잔재 상태를 복원한 뒤 함께 삭제 (UI 안내문 "연결 작업로그도 함께 삭제"와 일치).
+    const logs = await prisma.cuttingLog.findMany({ where: { urgentWorkId: id } });
+    await prisma.$transaction(async (tx) => {
+      for (const log of logs) {
+        await applyCuttingRestore(tx, log);
+        await tx.cuttingLog.delete({ where: { id: log.id } });
+      }
+      // 선점 잔재의 확정정보(돌발번호) 해제 — 이 돌발이 선점한 잔재만
+      if (work.remnantId) {
+        await tx.remnant.updateMany({
+          where: { id: work.remnantId, reservedFor: work.urgentNo },
+          data:  { reservedFor: null },
+        });
+      }
+      await tx.urgentWork.delete({ where: { id } });
+    }, { maxWait: 5000, timeout: 20000 });
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : String(error) }, { status: 500 });

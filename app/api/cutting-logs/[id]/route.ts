@@ -35,8 +35,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { syncDrawingListBySpec, syncDrawingListBySpecs } from "@/lib/sync-drawing-spec";
-import { syncProjectStatus } from "@/lib/sync-project-status";
+import { applyCuttingComplete, applyCuttingRestore } from "@/lib/cutting-complete";
 
 // ─── PATCH ─────────────────────────────────────────────────────────────────────
 // action="complete" → 절단 종료 (강재 상태 자동 동기화)
@@ -132,192 +131,8 @@ export async function PATCH(
       });
       if (!log) throw new Error("기록 조회 실패");   // throw → 트랜잭션 롤백
 
-      // ── DrawingList 상태 CUT으로 변경 + 사용 정보 추출 ────────────────────
-      // 같은 프로젝트+도면번호의 WAITING 상태 첫 항목을 CUT으로
-      // alt vessel 도면도 정상 매칭되도록 alternateVesselCode 까지 select
-      let targetDrawing: {
-        id: string;
-        block: string | null;
-        alternateVesselCode: string | null;
-        assignedRemnantId: string | null;
-        assignedRemnant: { type: string } | null;
-      } | null = null;
-      {
-        const drawSelect = {
-          id: true, block: true, alternateVesselCode: true, assignedRemnantId: true,
-          assignedRemnant: { select: { type: true } },
-        } as const;
-        // 작업자가 실제 선택한 행(drawingListId) 우선 — drawingNo 가 없거나 동일 drawingNo 다수행이어도 정확.
-        // 그 행이 없거나 이미 CUT 이면 projectId+drawingNo 첫 WAITING 행으로 폴백(레거시 호환).
-        let target = log.drawingListId
-          ? await tx.drawingList.findFirst({ where: { id: log.drawingListId, status: "WAITING" }, select: drawSelect })
-          : null;
-        if (!target && log.drawingNo && log.projectId) {
-          target = await tx.drawingList.findFirst({
-            where: { projectId: log.projectId, drawingNo: log.drawingNo, status: "WAITING" },
-            orderBy: { createdAt: "asc" },
-            select: drawSelect,
-          });
-        }
-        if (target) {
-          targetDrawing = target;
-          await tx.drawingList.update({
-            where: { id: target.id },
-            data: {
-              status: "CUT",
-              ...(log.heatNo?.trim() ? { heatNo: log.heatNo.trim() } : {}),
-            },
-          });
-          await tx.cuttingLog.update({
-            where: { id },
-            data: { drawingListId: target.id },
-          });
-          // 등록잔재 사용 절단이면 잔재 상태 → EXHAUSTED
-          if (target.assignedRemnantId) {
-            await tx.remnant.update({
-              where: { id: target.assignedRemnantId },
-              data:  { status: "EXHAUSTED" },
-            });
-          }
-          // 이 도면에서 발생한 등록잔재에 원판 판번호 전파 (원재 → 등록잔재 판번호 연속)
-          // 등록잔재는 블록강재등록 시 drawingListId 로 도면에 연결되어 생성됨 → 절단완료 시 실사용 판번호 기입
-          if (log.heatNo?.trim()) {
-            await tx.remnant.updateMany({
-              where: { drawingListId: target.id, type: "REGISTERED" },
-              data:  { heatNo: log.heatNo.trim() },
-            });
-          }
-        }
-      }
-
-      // ── 프로젝트 조회 (SteelPlan + SteelPlanHeat 양쪽에서 사용) ────────────
-      let project: { projectCode: string } | null = null;
-      if (log.projectId) {
-        project = await tx.project.findUnique({
-          where: { id: log.projectId },
-          select: { projectCode: true },
-        });
-      }
-
-      // ── SteelPlanHeat 상태 → CUT ───────────────────────────────────────
-      // 동일 heatNo 가 여러 호선에 있을 수 있으므로 effectiveVessel + spec 필터 필수
-      // 정보 부족 시 무차별 매칭 안 함 (다른 호선/스펙 CUT 처리 방지)
-      // R8: SteelPlan 측 갱신 조건과 대칭 — drawingNo 도 필수
-      //     (drawingNo 없으면 SteelPlan/SteelPlanHeat 둘 다 갱신 스킵 → 모순 상태 방지)
-      const effectiveVessel = targetDrawing?.alternateVesselCode?.trim() || project?.projectCode;
-      // 잔재(등록/현장/여유) 사용 절단은 정규원재(SteelPlan/SteelPlanHeat)를 건드리지 않음 — 여유원재는 아래 전용 블록에서 처리
-      if (!targetDrawing?.assignedRemnantId && log.drawingNo && log.heatNo?.trim() && effectiveVessel && log.material && log.thickness && log.width && log.length) {
-        await tx.steelPlanHeat.updateMany({
-          where: {
-            heatNo: log.heatNo.trim(),
-            status: "WAITING",
-            vesselCode: effectiveVessel,
-            material: { equals: log.material.trim().toUpperCase(), mode: "insensitive" },
-            thickness: log.thickness, width: log.width, length: log.length,
-          },
-          data:  { status: "CUT", cutAt: log.endAt ?? new Date() },
-        });
-      }
-
-      // ── 여유원재(SURPLUS) 사용 절단 — 실물 판번호 추적 ─────────────────────
-      // 여유원재는 미절단 원판이므로 현장에서 입력한 실물 판번호를
-      //   ① 잔재 레코드에 기록  ② 판번호리스트(SteelPlanHeat)에 CUT 으로 등록 (정규원재처럼 추적)
-      // 발생 등록잔재로의 판번호 연결은 위 drawingListId 전파(절단완료)에서 처리됨
-      if (
-        targetDrawing?.assignedRemnantId &&
-        targetDrawing.assignedRemnant?.type === "SURPLUS" &&
-        log.heatNo?.trim() && effectiveVessel &&
-        log.material && log.thickness && log.width && log.length
-      ) {
-        const hn  = log.heatNo.trim();
-        const mat = log.material.trim().toUpperCase();
-        await tx.remnant.update({
-          where: { id: targetDrawing.assignedRemnantId },
-          data:  { heatNo: hn },
-        });
-        const existingHeat = await tx.steelPlanHeat.findFirst({
-          where: {
-            heatNo: hn, vesselCode: effectiveVessel,
-            material: { equals: mat, mode: "insensitive" },
-            thickness: log.thickness, width: log.width, length: log.length,
-          },
-          select: { id: true },
-        });
-        if (existingHeat) {
-          await tx.steelPlanHeat.update({
-            where: { id: existingHeat.id },
-            data:  { status: "CUT", cutAt: log.endAt ?? new Date() },
-          });
-        } else {
-          await tx.steelPlanHeat.create({
-            data: {
-              heatNo: hn, vesselCode: effectiveVessel, material: mat,
-              thickness: log.thickness, width: log.width, length: log.length,
-              status: "CUT", cutAt: log.endAt ?? new Date(),
-            },
-          });
-        }
-      }
-
-      // ── SteelPlan: 사용된 강재 1장 RECEIVED/ISSUED → COMPLETED ────────────
-      // 우선순위 매칭:
-      //   1차) 이 블록 reservedFor 매칭 (신규 "호선/블록" + 구형 "블록")
-      //   2차) 미예약 (reservedFor=null)
-      //   다른 블록 예약된 강재는 절대 선택 안 함 (데이터 손상 방지)
-      // alt vessel: targetDrawing.alternateVesselCode 우선
-      // R5: log.drawingNo 필수 — DELETE 의 복원 가드(line 353)가 drawingNo 기반이라
-      //     비대칭 방지 위해 complete 측도 drawingNo 없으면 SteelPlan 갱신 스킵
-      if (!targetDrawing?.assignedRemnantId && log.drawingNo && log.material && log.thickness && log.width && log.length && effectiveVessel) {
-        const blockCode = targetDrawing?.block ?? "UNKNOWN";
-        const newFmt    = project ? `${project.projectCode}/${blockCode}` : null;
-        const allowedReservedFor = [
-          ...(newFmt ? [newFmt] : []),
-          blockCode,
-          // null 도 허용 — Prisma OR 절로 표현
-        ];
-        const matchBase = {
-          vesselCode: effectiveVessel,
-          material:   { equals: log.material.trim().toUpperCase(), mode: "insensitive" } as const,
-          thickness:  log.thickness,
-          width:      log.width,
-          length:     log.length,
-          status:     { in: ["RECEIVED", "ISSUED"] as ("RECEIVED" | "ISSUED")[] },
-          actualHeatNo: null,
-          // 출고 선별/예정(shipoutMarkedAt)된 강재는 절단완료 소진 대상에서 제외 (절단↔출고 상호배제)
-          shipoutMarkedAt: null,
-        };
-        // 1차: 이 블록 예약 매칭
-        let targetPlan = await tx.steelPlan.findFirst({
-          where: { ...matchBase, reservedFor: { in: allowedReservedFor } },
-          orderBy: { createdAt: "asc" },
-        });
-        // 2차: 미예약 폴백
-        if (!targetPlan) {
-          targetPlan = await tx.steelPlan.findFirst({
-            where: { ...matchBase, reservedFor: null },
-            orderBy: { createdAt: "asc" },
-          });
-        }
-        if (targetPlan) {
-          await tx.steelPlan.update({
-            where: { id: targetPlan.id },
-            data: {
-              status:           "COMPLETED",
-              actualHeatNo:     log.heatNo?.trim() || null,
-              actualVesselCode: effectiveVessel,
-              actualDrawingNo:  log.drawingNo,
-            },
-          });
-          // 동일 spec DrawingList 재계산 (alt vessel 기준)
-          await syncDrawingListBySpec(
-            effectiveVessel, log.material, log.thickness, log.width, log.length, tx,
-          );
-        }
-        // 매칭 실패 시: SteelPlan 갱신 스킵 (관리자 수동 매칭 필요)
-      }
-
-      // ── 블록(Project) 완료 상태 자동 동기화 ──────────────────────────────
-      if (log.projectId) await syncProjectStatus(log.projectId, tx);
+      // 완료 부작용(도면 CUT / 강재 소진 / 판번호 / 잔재 EXHAUSTED / sync) — 공용 헬퍼로 위임
+      await applyCuttingComplete(tx, log);
 
       return { kind: "done" as const, log };
       // 원격 NAS DB 라운드트립 + 락 경합 대비 기본 5s timeout 상향 (P2028 회귀 방지)
@@ -332,9 +147,98 @@ export async function PATCH(
       return NextResponse.json({ success: true, data: outcome.log });
     }
 
-    // 일반 수정 (관리자 전체 필드 수정 포함)
+    // 일반 수정 (관리자 직접 필드 수정) — 재고 정합성 안전 가드
     const { startAt, endAt, status, equipmentId,
             width, length, qty, drawingNo } = body;
+
+    // 현재 로그 조회 (상태 전환·재고키 변경 차단 판단용)
+    const cur = await prisma.cuttingLog.findUnique({
+      where: { id },
+      select: {
+        status: true, equipmentId: true, heatNo: true, material: true,
+        thickness: true, width: true, length: true, drawingNo: true,
+        startAt: true, endAt: true,
+      },
+    });
+    if (!cur) {
+      return NextResponse.json({ success: false, error: "기록을 찾을 수 없습니다." }, { status: 404 });
+    }
+
+    // (A-1) 진행↔완료 상태 전환 차단 — 일반 수정은 완료 side-effect(도면 CUT/강재 소진)나
+    //   복원을 수행하지 않으므로 status 만 바뀌면 재고와 어긋난다.
+    //   완료: 현장 '절단 종료' 또는 미등록 행 '추가'. 완료취소: '삭제 후 재등록'.
+    if (status !== undefined && status !== cur.status) {
+      return NextResponse.json({
+        success: false,
+        error: "이 화면에서는 진행/완료 상태를 바꿀 수 없습니다. 완료는 현장 절단종료나 '추가' 등록을, 완료 취소는 삭제 후 재등록을 이용하세요.",
+      }, { status: 409 });
+    }
+
+    // (A-1b) 미완료 로그에 종료일시만 채워 '완료처럼' 만드는 것 차단 — status=STARTED+endAt 모순 +
+    //   완료 side-effect(도면 CUT/강재 소진) 누락 방지. 완료는 현장 절단종료 또는 '추가' 등록으로.
+    if (cur.status !== "COMPLETED" && endAt) {
+      return NextResponse.json({
+        success: false,
+        error: "진행중 작업은 이 화면에서 완료할 수 없습니다. 완료는 현장 절단종료나 미등록 행 '추가' 등록을 이용하세요.",
+      }, { status: 409 });
+    }
+
+    // (A-2) 완료 로그의 재고 식별값(판번호·재질·치수·도면번호) 변경 차단 — 강재/판번호 desync 방지.
+    if (cur.status === "COMPLETED") {
+      const sEq = (a: unknown, b: unknown) =>
+        (a == null ? "" : String(a).trim().toUpperCase()) === (b == null ? "" : String(b).trim().toUpperCase());
+      const nEq = (a: unknown, b: number | null) => {
+        const n = (a === undefined || a === null || a === "" ? null : Number(a));
+        return n === b;
+      };
+      const changed: string[] = [];
+      if (heatNo    !== undefined && !sEq(heatNo,    cur.heatNo))    changed.push("판번호");
+      if (material  !== undefined && !sEq(material,  cur.material))  changed.push("재질");
+      if (thickness !== undefined && !nEq(thickness, cur.thickness)) changed.push("두께");
+      if (width     !== undefined && !nEq(width,     cur.width))     changed.push("폭");
+      if (length    !== undefined && !nEq(length,    cur.length))    changed.push("길이");
+      if (drawingNo !== undefined && !sEq(drawingNo, cur.drawingNo)) changed.push("도면번호");
+      if (changed.length > 0) {
+        return NextResponse.json({
+          success: false,
+          error: `완료된 작업의 ${changed.join("·")}은(는) 수정할 수 없습니다(강재 재고와 어긋남). 변경하려면 삭제 후 다시 등록하세요. (작업자·시간·비고는 수정 가능)`,
+        }, { status: 409 });
+      }
+      // (A-3) 완료 로그의 종료일시 비우기 차단 — endAt 만 지워 '진행중'처럼 만들면 재고는 소진된 채 모순.
+      if (endAt !== undefined && !endAt) {
+        return NextResponse.json({
+          success: false,
+          error: "완료된 작업의 종료일시는 비울 수 없습니다. 진행중으로 되돌리려면 삭제 후 재등록하세요.",
+        }, { status: 409 });
+      }
+    }
+
+    // (B-1) 진행중(STARTED) 로그를 다른 장비로 옮길 때, 대상 장비에 이미 STARTED 가 있으면 차단(한 장비 2건 방지).
+    if (cur.status === "STARTED" && equipmentId !== undefined && equipmentId !== cur.equipmentId) {
+      const other = await prisma.cuttingLog.findFirst({
+        where: { equipmentId, status: "STARTED", NOT: { id } },
+        select: { id: true },
+      });
+      if (other) {
+        return NextResponse.json({
+          success: false,
+          error: "대상 장비에 이미 진행중인 절단이 있어 옮길 수 없습니다. 먼저 종료 처리하세요.",
+        }, { status: 409 });
+      }
+    }
+
+    // (B-2) 시간 정합 — 종료 < 시작 거부.
+    {
+      const effStart = startAt !== undefined ? (startAt ? new Date(startAt) : null) : cur.startAt;
+      const effEnd   = endAt   !== undefined ? (endAt   ? new Date(endAt)   : null) : cur.endAt;
+      if (effStart && effEnd && effEnd.getTime() < effStart.getTime()) {
+        return NextResponse.json({
+          success: false,
+          error: "종료 일시가 시작 일시보다 빠를 수 없습니다.",
+        }, { status: 400 });
+      }
+    }
+
     const log = await prisma.cuttingLog.update({
       where: { id },
       data: {
@@ -384,157 +288,10 @@ export async function DELETE(
     // 복원 부작용 전체(DrawingList/Remnant/SteelPlanHeat/SteelPlan + delete + sync)를 한
     // 트랜잭션으로 — 중간 실패 시 전부 롤백되어 비대칭 복원(half-restored) 상태를 방지.
     await prisma.$transaction(async (tx) => {
-    // drawingListId가 있으면 해당 강재를 CUT → WAITING으로 복원 (heatNo도 초기화)
-    // drawing.alternateVesselCode 까지 select 해서 effectiveVessel 계산에 사용
-    let drawingSyncSpec: {
-      vesselCode: string; material: string; thickness: number; width: number; length: number;
-    } | null = null;
-    let drawingAltVessel: string | null = null; // drawingList 살아있을 때 alt 정보
-    if (log.drawingListId) {
-      const drawing = await tx.drawingList.findUnique({
-        where: { id: log.drawingListId },
-        include: { project: { select: { projectCode: true } } },
-      });
-      if (drawing) {
-        drawingAltVessel = drawing.alternateVesselCode?.trim() || null;
-      }
-      if (drawing && drawing.status === "CUT") {
-        await tx.drawingList.update({
-          where: { id: log.drawingListId },
-          data: { status: "WAITING", heatNo: null },
-        });
-        // 등록잔재 사용 절단이면 잔재 상태 복원 → IN_STOCK
-        if (drawing.assignedRemnantId) {
-          await tx.remnant.update({
-            where: { id: drawing.assignedRemnantId },
-            data:  { status: "IN_STOCK" },
-          });
-        }
-        // sync 대상 spec 기록 (SteelPlan 복원 실패 여부와 무관하게 sync 필요)
-        const effectiveVessel = drawing.alternateVesselCode?.trim() || drawing.project.projectCode;
-        drawingSyncSpec = {
-          vesselCode: effectiveVessel,
-          material:   drawing.material,
-          thickness:  drawing.thickness, width: drawing.width, length: drawing.length,
-        };
-      }
-    }
-
-    // ── effectiveVessel 폴백 추론 ──────────────────────────────────────────
-    // drawingSyncSpec 가 null 이어도 (drawing.status!='CUT' 또는 drawing 삭제됨) 호선 추론:
-    //   1) drawingAltVessel (도면 살아있음)
-    //   2) log.projectId → project.projectCode
-    let effectiveVesselForLog: string | null = drawingSyncSpec?.vesselCode ?? null;
-    if (!effectiveVesselForLog) {
-      if (drawingAltVessel) {
-        effectiveVesselForLog = drawingAltVessel;
-      } else if (log.projectId) {
-        const project = await tx.project.findUnique({
-          where: { id: log.projectId },
-          select: { projectCode: true },
-        });
-        effectiveVesselForLog = project?.projectCode ?? null;
-      }
-    }
-
-    // SteelPlanHeat 상태 복원 CUT → WAITING — effectiveVessel + spec 매칭 필수
-    // 무차별 폴백 제거: heatNo 만으로 매칭하면 다른 호선/스펙 CUT 까지 복원 위험
-    if (log.heatNo?.trim() && effectiveVesselForLog && log.material && log.thickness && log.width && log.length) {
-      await tx.steelPlanHeat.updateMany({
-        where: {
-          heatNo: log.heatNo.trim(),
-          status: "CUT",
-          vesselCode: effectiveVesselForLog,
-          material: { equals: log.material.trim().toUpperCase(), mode: "insensitive" },
-          thickness: log.thickness, width: log.width, length: log.length,
-        },
-        data:  { status: "WAITING", cutAt: null },
-      });
-    }
-    // effectiveVessel/spec 없으면 스킵 — 무차별 복원하지 않음
-
-    // ── SteelPlan 복원: 이 작업으로 COMPLETED 됐던 강재 → RECEIVED ──────────
-    // 복원 식별 단서 3단계 폴백:
-    //   1차) actualVesselCode = effectiveVesselForLog (가장 정확)
-    //   2차) vesselCode = effectiveVesselForLog (구형 데이터 호환)
-    //   3차) vessel 제약 없이 actualHeatNo + actualDrawingNo + spec (alt vessel 도면이 삭제된 케이스 보호)
-    //        — 후보 정확히 1건일 때만 복원 (모호하면 안전하게 스킵)
-    // R5 와 동기화: complete 측이 drawingNo 필수 → DELETE 도 drawingNo 필수 유지 (대칭)
-    let restoredSpec: typeof drawingSyncSpec = null;
-    if (log.drawingNo && log.material && log.thickness && log.width && log.length) {
-      const matMatch = { equals: log.material.trim().toUpperCase(), mode: "insensitive" as const };
-      const specBase = {
-        material:        matMatch,
-        thickness:       log.thickness,
-        width:           log.width,
-        length:          log.length,
-        status:          "COMPLETED" as const,
-        actualDrawingNo: log.drawingNo,
-        ...(log.heatNo?.trim() ? { actualHeatNo: log.heatNo.trim() } : {}),
-      };
-
-      let target = null;
-      if (effectiveVesselForLog) {
-        // 1차: actualVesselCode 정확 매칭
-        target = await tx.steelPlan.findFirst({
-          where: { ...specBase, actualVesselCode: effectiveVesselForLog },
-          orderBy: { createdAt: "desc" },
-        });
-        // 2차: vesselCode 폴백 (구형 데이터)
-        if (!target) {
-          target = await tx.steelPlan.findFirst({
-            where: { ...specBase, vesselCode: effectiveVesselForLog },
-            orderBy: { createdAt: "desc" },
-          });
-        }
-      }
-
-      // 3차: vessel 제약 없이 — alt vessel + 도면 삭제 케이스 보호
-      // (단, heatNo 가 있어야 식별력 충분. 후보 정확히 1건일 때만 복원)
-      if (!target && log.heatNo?.trim()) {
-        const candidates = await tx.steelPlan.findMany({
-          where: specBase,
-          orderBy: { createdAt: "desc" },
-          take: 2, // 모호성 검사용
-        });
-        if (candidates.length === 1) {
-          target = candidates[0];
-        }
-      }
-
-      if (target) {
-        await tx.steelPlan.update({
-          where: { id: target.id },
-          data: {
-            status:           "RECEIVED",
-            actualHeatNo:     null,
-            actualVesselCode: null,
-            actualDrawingNo:  null,
-          },
-        });
-        // 복원된 SteelPlan 의 vesselCode 기준 sync (alt 호선이면 그쪽 도면 영향)
-        restoredSpec = {
-          vesselCode: target.vesselCode,
-          material:   log.material,
-          thickness:  log.thickness, width: log.width, length: log.length,
-        };
-      }
-    }
-
+    // 복원 부작용(도면 CUT→WAITING / 강재 COMPLETED→RECEIVED / 판번호 / 잔재 IN_STOCK / sync)
+    // — 공용 헬퍼로 위임. 헬퍼는 로그를 지우지 않으므로 복원 후 명시 삭제.
+    await applyCuttingRestore(tx, log);
     await tx.cuttingLog.delete({ where: { id } });
-
-    // ── 통합 sync — DrawingList 복원 spec + SteelPlan 복원 spec ───────────
-    // SteelPlan 복원 실패해도 DrawingList sync 는 무조건 수행 (가드 완화)
-    const syncSpecs = [
-      ...(drawingSyncSpec ? [drawingSyncSpec] : []),
-      ...(restoredSpec ? [restoredSpec] : []),
-    ];
-    if (syncSpecs.length > 0) {
-      await syncDrawingListBySpecs(syncSpecs, tx);
-    }
-
-    // ── 블록(Project) 완료 상태 자동 동기화 (복원 시 ACTIVE로 되돌림) ──────
-    if (log.projectId) await syncProjectStatus(log.projectId, tx);
     // 원격 NAS DB 라운드트립 + 락 경합 대비 기본 5s timeout 상향 (P2028 회귀 방지)
     }, { maxWait: 5000, timeout: 20000 }); // ── 트랜잭션 끝 ─────────────────
 

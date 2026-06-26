@@ -29,6 +29,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { applyCuttingComplete } from "@/lib/cutting-complete";
 
 // ─── GET ───────────────────────────────────────────────────────────────────────
 // 쿼리 파라미터:
@@ -136,8 +137,13 @@ export async function POST(request: NextRequest) {
     const {
       equipmentId, projectId, drawingListId,
       heatNo, material, thickness, width, length, qty, drawingNo,
-      operator, memo, isUrgent, urgentWorkId, startAt,
+      operator, memo, isUrgent, urgentWorkId, startAt, endAt, status,
     } = body;
+
+    // 백필 완료: 사무실에서 종료일시까지 채운 과거 누락분 — STARTED 를 거치지 않고 곧장
+    // COMPLETED 로 생성 + 완료 side-effect 를 한 트랜잭션으로 처리(아래). 과거기록이므로
+    // '같은 장비 진행중' 가드는 건너뛴다(현장 라이브 작업과 무관).
+    const isBackfillCompleted = status === "COMPLETED" && !!endAt;
 
     // ── 필수값 검증 ─────────────────────────────────────────────────────────
     if (!equipmentId) {
@@ -157,26 +163,29 @@ export async function POST(request: NextRequest) {
     // ── 해당 장비에 미종료 작업 확인 ─────────────────────────────────────────
     // STARTED 만 차단. PAUSED(중단)된 옛 작업이 남아 있어도 새 작업 시작은 허용
     // (PAUSED 까지 막으면, 종료/재개 안 한 중단 기록 때문에 정상 도면 시작이 막히는 문제)
-    const ongoing = await prisma.cuttingLog.findFirst({
-      where: { equipmentId, status: "STARTED" },
-      include: { project: { select: { projectCode: true } } },
-    });
-    if (ongoing) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:   "이미 진행중인 절단 작업이 있습니다. 먼저 종료 처리하세요.",
-          stuckLog: {
-            id:        ongoing.id,
-            heatNo:    ongoing.heatNo,
-            drawingNo: ongoing.drawingNo,
-            operator:  ongoing.operator,
-            startAt:   ongoing.startAt,
-            project:   ongoing.project?.projectCode ?? null,
+    // 백필 완료(과거기록)는 라이브 시작이 아니므로 이 가드를 건너뛴다.
+    if (!isBackfillCompleted) {
+      const ongoing = await prisma.cuttingLog.findFirst({
+        where: { equipmentId, status: "STARTED" },
+        include: { project: { select: { projectCode: true } } },
+      });
+      if (ongoing) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:   "이미 진행중인 절단 작업이 있습니다. 먼저 종료 처리하세요.",
+            stuckLog: {
+              id:        ongoing.id,
+              heatNo:    ongoing.heatNo,
+              drawingNo: ongoing.drawingNo,
+              operator:  ongoing.operator,
+              startAt:   ongoing.startAt,
+              project:   ongoing.project?.projectCode ?? null,
+            },
           },
-        },
-        { status: 409 }
-      );
+          { status: 409 }
+        );
+      }
     }
 
     // ── 같은 도면이 다른 장비에서 절단 진행중인지 확인 (중복 작업 방지) ───────────
@@ -200,25 +209,45 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ── 작업 시작 생성 ───────────────────────────────────────────────────────
+    // ── 작업 생성 ─────────────────────────────────────────────────────────────
+    const baseData = {
+      equipmentId,
+      projectId:     projectId     || null,
+      drawingListId: drawingListId || null,
+      urgentWorkId:  urgentWorkId  || null,
+      heatNo:    heatNo?.trim()    || "",
+      material:  material?.trim()  || null,
+      thickness: thickness != null ? Number(thickness) : null,
+      width:     width     != null ? Number(width)     : null,
+      length:    length    != null ? Number(length)    : null,
+      qty:       qty       != null ? Number(qty)       : null,
+      drawingNo: drawingNo?.trim() || null,
+      operator:  operator.trim(),
+      memo:      memo?.trim()      || null,
+      isUrgent:  isUrgent === true,
+      startAt:   startAt ? new Date(startAt) : new Date(),
+    };
+
+    // 백필 완료: COMPLETED 생성 + 완료 side-effect 를 한 트랜잭션으로 (2단계 비원자 고아 방지)
+    if (isBackfillCompleted) {
+      // 시간 정합 — 종료 < 시작 거부 (PATCH 일반 수정의 B-2 와 대칭)
+      const effStart = startAt ? new Date(startAt) : new Date();
+      if (new Date(endAt).getTime() < effStart.getTime()) {
+        return NextResponse.json({ success: false, error: "종료 일시가 시작 일시보다 빠를 수 없습니다." }, { status: 400 });
+      }
+      const created = await prisma.$transaction(async (tx) => {
+        const newLog = await tx.cuttingLog.create({
+          data: { ...baseData, status: "COMPLETED", endAt: new Date(endAt) },
+        });
+        await applyCuttingComplete(tx, newLog);
+        return newLog;
+      }, { maxWait: 5000, timeout: 20000 });
+      return NextResponse.json({ success: true, data: created }, { status: 201 });
+    }
+
+    // ── 일반 작업 시작 생성 (status: STARTED 기본값) ──────────────────────────
     const log = await prisma.cuttingLog.create({
-      data: {
-        equipmentId,
-        projectId:     projectId     || null,
-        drawingListId: drawingListId || null,
-        urgentWorkId:  urgentWorkId  || null,
-        heatNo:    heatNo?.trim()    || "",
-        material:  material?.trim()  || null,
-        thickness: thickness != null ? Number(thickness) : null,
-        width:     width     != null ? Number(width)     : null,
-        length:    length    != null ? Number(length)    : null,
-        qty:       qty       != null ? Number(qty)       : null,
-        drawingNo: drawingNo?.trim() || null,
-        operator:  operator.trim(),
-        memo:      memo?.trim()      || null,
-        isUrgent:  isUrgent === true,
-        startAt:   startAt ? new Date(startAt) : new Date(),
-      },
+      data: baseData,
       include: {
         equipment: { select: { name: true } },
         project:   { select: { projectCode: true, projectName: true } },
