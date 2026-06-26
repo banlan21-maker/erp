@@ -22,26 +22,45 @@ const specMatchesPlate = (s: MatchSpec, p: MarkedPlate) =>
   fmtL(p.width)     === fmtL(s.width) &&
   fmtL(p.length)    === fmtL(s.length);
 
-export type SelectionState = "shipped" | "selected" | null;
+// ── 강재 + 잔재(여유원재/등록잔재/현장잔재) 통합 커버리지 ─────────────────────────
+// (강재전용 computeSelectionStates 는 computeCoverage 로 일원화되어 제거됨 — 매칭 규칙 단일 소스)
+// 잔재 매칭은 호선 무관 + width1/length1 기준(아래 width/length 로 정규화해 전달).
+export type MatchRemnant = { material: string; thickness: number; width: number; length: number };
+export type SelSource = "plate" | "remnant";
+export type Coverage = { state: "shipped" | "selected"; source: SelSource } | null;
+
+// 잔재 매칭: 재질·두께·폭·길이만 (호선 무관)
+const specMatchesRemnant = (s: MatchSpec, r: MatchRemnant) =>
+  r.material.trim().toUpperCase() === s.material.trim().toUpperCase() &&
+  fmtT(r.thickness) === fmtT(s.thickness) &&
+  fmtL(r.width)  === fmtL(s.width) &&
+  fmtL(r.length) === fmtL(s.length);
 
 /**
- * 사양별 상태(출고/선별/미선별) 계산. 인덱스는 specs 와 동일.
- *
- * 출고(SHIPPED_OUT) 강재를 먼저 greedy 소비(→"shipped"), 남은 사양에 선별(shipoutMarkedAt)
- * 강재를 소비(→"selected"). 둘 다 라벨=매칭이름으로 이 작업에 귀속된 것만.
- * → 선별 후 일부가 출고되어도 미선별로 되돌아가지 않고 '출고'로 인식된다.
+ * 사양별 커버리지(출고/선별 + 출처: 강재/잔재) 계산.
+ * 우선순위: 출고(강재→잔재) → 선별(강재→잔재). 선별은 강재 먼저 소비(빨강), 없으면 잔재(노랑).
+ * 강재는 라벨(=매칭이름) 귀속분, 잔재는 호선·작업 무관 전역 풀(잔재 모델 자체가 전역).
  */
-export function computeSelectionStates(
-  specs: MatchSpec[], shippedPlates: MarkedPlate[], markedPlates: MarkedPlate[],
-): SelectionState[] {
-  const states: SelectionState[] = new Array(specs.length).fill(null);
-  const consume = (plates: MarkedPlate[], state: "shipped" | "selected") => {
+export function computeCoverage(
+  specs: MatchSpec[],
+  src: { shippedPlates: MarkedPlate[]; markedPlates: MarkedPlate[]; shippedRemnants: MatchRemnant[]; markedRemnants: MatchRemnant[] },
+): Coverage[] {
+  const cov: Coverage[] = new Array(specs.length).fill(null);
+  const consumePlates = (plates: MarkedPlate[], state: "shipped" | "selected") => {
     for (const p of plates) {
-      const idx = specs.findIndex((s, i) => states[i] === null && specMatchesPlate(s, p));
-      if (idx >= 0) states[idx] = state;
+      const idx = specs.findIndex((s, i) => cov[i] === null && specMatchesPlate(s, p));
+      if (idx >= 0) cov[idx] = { state, source: "plate" };
     }
   };
-  consume(shippedPlates, "shipped");
-  consume(markedPlates, "selected");
-  return states;
+  const consumeRemnants = (rems: MatchRemnant[], state: "shipped" | "selected") => {
+    for (const r of rems) {
+      const idx = specs.findIndex((s, i) => cov[i] === null && specMatchesRemnant(s, r));
+      if (idx >= 0) cov[idx] = { state, source: "remnant" };
+    }
+  };
+  consumePlates(src.shippedPlates, "shipped");
+  consumeRemnants(src.shippedRemnants, "shipped");
+  consumePlates(src.markedPlates, "selected");
+  consumeRemnants(src.markedRemnants, "selected");
+  return cov;
 }

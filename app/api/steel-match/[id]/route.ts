@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { computeSelectionStates } from "@/lib/steel-match-select";
+import { computeCoverage, type MatchRemnant } from "@/lib/steel-match-select";
 
 type PlanStatus = "REGISTERED" | "RECEIVED" | "ISSUED" | "COMPLETED" | "SHIPPED_OUT";
 const ALL_STATUSES: PlanStatus[] = ["REGISTERED", "RECEIVED", "ISSUED", "COMPLETED", "SHIPPED_OUT"];
@@ -84,16 +84,37 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       }
     }
 
-    // 사양별 상태 — 라벨(=매칭이름)으로 이 작업에 귀속된 강재 기준 (확정정보 필터와 무관).
-    //  · 출고(SHIPPED_OUT) 강재: '출고'  · 선별(shipoutMarkedAt) 강재: '선별'
-    //  → 선별 후 일부 출고돼도 미선별로 되돌아가지 않음
+    // 사양별 상태 — 강재(라벨=매칭이름 귀속) + 잔재(호선·작업 무관 전역) 통합.
+    //  · 출고 강재(SHIPPED_OUT) / 외부출고 잔재(ACTIVE 출고장) → '출고'
+    //  · 선별 강재(shipoutMarkedAt) / 선별 잔재(shipoutMarkedAt·미소진) → '선별'(잔재는 노란색)
+    //  → 선별 후 일부 출고돼도 미선별로 되돌아가지 않음. 잔재 절단소진은 출고로 안 잡힘(ShipmentItem 기준).
     const specSel = { vesselCode: true, material: true, thickness: true, width: true, length: true };
-    const [shippedPlates, markedPlates] = await Promise.all([
+    const remSel  = { material: true, thickness: true, width1: true, length1: true };
+    const [shippedPlates, markedPlates, markedRemRows, shippedRemItems] = await Promise.all([
       prisma.steelPlan.findMany({ where: { status: "SHIPPED_OUT", shipoutLabel: job.name }, select: specSel }),
       prisma.steelPlan.findMany({ where: { shipoutMarkedAt: { not: null }, shipoutLabel: job.name }, select: specSel }),
+      // 선별 잔재(선별목록 멤버) — shipoutMarkedAt 마킹 + 미소진 + 절단 미확정(reservedFor null).
+      //   절단용으로 블록확정(reservedFor)된 잔재는 출고 선별이 아니므로 제외 (강재 markedPlates 와 대칭).
+      prisma.remnant.findMany({ where: { shipoutMarkedAt: { not: null }, status: { not: "EXHAUSTED" }, reservedFor: null }, select: remSel }),
+      // 외부출고 잔재 — ACTIVE 출고장의 ShipmentItem(remnantId). 절단소진(ShipmentItem 없음)은 제외.
+      prisma.shipmentItem.findMany({
+        where: { remnantId: { not: null }, vehicle: { shipment: { status: "ACTIVE" } } },
+        select: { remnant: { select: remSel } },
+      }),
     ]);
-    const states = computeSelectionStates(specs, shippedPlates, markedPlates);
-    const specsOut = specs.map((s, i) => ({ ...s, selected: states[i] !== null, shipped: states[i] === "shipped" }));
+    // 잔재 → 사양 비교형 정규화 (width=width1, length=length1)
+    const toRem = (r: { material: string; thickness: number; width1: number | null; length1: number | null }): MatchRemnant =>
+      ({ material: r.material, thickness: r.thickness, width: r.width1 ?? -1, length: r.length1 ?? -1 });
+    const markedRemnants  = markedRemRows.map(toRem);
+    const shippedRemnants = shippedRemItems.map(it => it.remnant).filter((r): r is NonNullable<typeof r> => !!r).map(toRem);
+
+    const cov = computeCoverage(specs, { shippedPlates, markedPlates, shippedRemnants, markedRemnants });
+    const specsOut = specs.map((s, i) => ({
+      ...s,
+      selected: cov[i] !== null,
+      shipped:  cov[i]?.state === "shipped",
+      selectedSource: cov[i]?.source ?? null,   // "plate"(빨강) | "remnant"(노랑) | null
+    }));
 
     return NextResponse.json({
       success: true,

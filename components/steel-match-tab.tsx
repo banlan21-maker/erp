@@ -47,7 +47,7 @@ const fmtDateTime = (iso: string) => new Date(iso).toLocaleString("ko-KR", { yea
 
 interface Job     { id: string; name: string; author: string | null; statuses: string; reservedFilter: string; specCount: number; selectedCount: number; shippedCount: number; createdAt: string }
 interface Spec    { vesselCode: string; material: string; thickness: number; width: number; length: number }
-interface SpecRow extends Spec { selected?: boolean; shipped?: boolean }   // 왼쪽 원본 리스트 (선별/출고 여부 포함)
+interface SpecRow extends Spec { selected?: boolean; shipped?: boolean; selectedSource?: "plate" | "remnant" | null }   // 왼쪽 원본 리스트 (선별/출고 여부 + 출처)
 interface PlanRow { id: string; vesselCode: string; material: string; thickness: number; width: number; length: number; status: string; uploadBatchNo: string | null; receivedAt: string | null; storageLocation: string | null; reservedFor: string | null; shipoutMarkedAt: string | null; shipoutLabel: string | null }
 interface MatchRow { matched: boolean; spec: Spec; plan: PlanRow | null }
 
@@ -495,12 +495,16 @@ export default function SteelMatchTab() {
                   {selJobSpecs.length === 0 ? (
                     <tr><td colSpan={6} className="py-8 text-center text-gray-400">사양 없음</td></tr>
                   ) : selJobSpecs.map((s, i) => (
-                    <tr key={i} className={`hover:bg-gray-50 ${s.shipped ? "bg-purple-50/40" : s.selected ? "" : "bg-blue-50/40"}`}>
+                    <tr key={i} className={`hover:bg-gray-50 ${s.shipped ? "bg-purple-50/40" : s.selected ? (s.selectedSource === "remnant" ? "bg-amber-50/40" : "") : "bg-blue-50/40"}`}>
                       <td className="px-3 py-1.5 text-center">
                         {s.shipped
                           ? <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700">출고</span>
                           : s.selected
-                            ? <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700">선별</span>
+                            ? (s.selectedSource === "remnant"
+                                // 잔재(여유원재/등록잔재/현장잔재) 선별 — 밝은 노란 배경 + 빨간 글자 (강재와 구분)
+                                ? <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-red-600">선별</span>
+                                // 강재전체목록 선별 — 빨간 배경 + 빨간 글자
+                                : <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700">선별</span>)
                             : <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">미선별</span>}
                       </td>
                       <td className="px-3 py-1.5 font-medium">{s.vesselCode || <span className="text-gray-400">(전체)</span>}</td>
