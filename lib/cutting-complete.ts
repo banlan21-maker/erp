@@ -168,18 +168,13 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
       // 출고 선별/예정(shipoutMarkedAt)된 강재는 절단완료 소진 대상에서 제외 (절단↔출고 상호배제)
       shipoutMarkedAt: null,
     };
-    // 1차: 이 블록 예약 매칭
-    let targetPlan = await tx.steelPlan.findFirst({
+    // 이 블록에 확정(reservedFor)된 강재만 소진 — 미예약 폴백 없음(정확한 재고 파악, 확정한 강재만 절단).
+    //   확정된 강재가 없으면 SteelPlan 소진을 건너뛴다(관리자 수동 매칭). 현장 목록은 확정(WAITING)
+    //   도면만 노출하므로 정상 흐름에선 항상 이 매칭이 성공한다.
+    const targetPlan = await tx.steelPlan.findFirst({
       where: { ...matchBase, reservedFor: { in: allowedReservedFor } },
       orderBy: { createdAt: "asc" },
     });
-    // 2차: 미예약 폴백
-    if (!targetPlan) {
-      targetPlan = await tx.steelPlan.findFirst({
-        where: { ...matchBase, reservedFor: null },
-        orderBy: { createdAt: "asc" },
-      });
-    }
     if (targetPlan) {
       await tx.steelPlan.update({
         where: { id: targetPlan.id },
