@@ -219,6 +219,12 @@ export default async function LandingPage() {
               >
                 관리 파트
               </Link>
+              <Link
+                href="/work/dashboard"
+                className="flex-1 md:flex-initial px-2 md:px-4 py-2 md:h-full flex items-center justify-center text-[13px] sm:text-sm font-semibold text-gray-600 hover:text-indigo-700 hover:bg-indigo-50 active:bg-indigo-100 transition-colors"
+              >
+                업무관리
+              </Link>
             </nav>
 
             {/* 날짜 (lg↑만) */}
