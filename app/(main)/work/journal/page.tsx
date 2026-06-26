@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Save, Star, Send, Trash2, AtSign, Inbox } from "lucide-react";
+import { Save, Star, Send, Trash2, Inbox } from "lucide-react";
 import { useWorkUser, MentionText } from "@/components/work-user-context";
+import { JournalText } from "@/components/journal-text";
+import WorkJournalLineEditor from "@/components/work-journal-line-editor";
 import WorkCalendar, { type CalMarker } from "@/components/work-calendar";
 import { parseMentions } from "@/lib/work-mentions";
 import { shiftYmd } from "@/lib/work-date";
@@ -153,13 +155,6 @@ export default function WorkJournalPage() {
     loadImportant();
   };
 
-  // @멘션 칩 — 해당 칸 끝에 "@이름 " 추가 (그 줄이 상대방 그날 일지에 공유됨)
-  const appendMention = (field: "today" | "tomorrow", name: string) => {
-    const add = (c: string) => `${c}${c && !c.endsWith("\n") && !c.endsWith(" ") ? " " : ""}@${name} `;
-    if (field === "today") setTodayWork(add); else setTomorrowPlan(add);
-    setDirty(true);
-  };
-
   if (!currentUserId) {
     return (
       <div className="py-20 text-center text-gray-500">
@@ -173,18 +168,6 @@ export default function WorkJournalPage() {
   const yesterdayYmd = shiftYmd(selectedDate, -1);
   const tomorrowYmd  = shiftYmd(selectedDate, 1);
   const others = users.filter(u => u.active && u.id !== currentUserId);
-
-  const renderChips = (field: "today" | "tomorrow") =>
-    others.length === 0 ? null : (
-      <div className="flex items-center gap-1 flex-wrap px-3 py-1.5 border-t border-gray-100 bg-gray-50/60">
-        <AtSign size={12} className="text-gray-400" />
-        <span className="text-[10px] text-gray-400 mr-0.5">소환:</span>
-        {others.map(u => (
-          <button key={u.id} onClick={() => appendMention(field, u.name)}
-            className="px-1.5 py-0.5 text-[10px] rounded-full border border-gray-200 text-gray-600 hover:bg-indigo-50 hover:border-indigo-300">@{u.name}</button>
-        ))}
-      </div>
-    );
 
   return (
     <div className="space-y-4">
@@ -245,25 +228,23 @@ export default function WorkJournalPage() {
           {/* 어제 (읽기 전용) */}
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
             <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 text-xs font-bold text-gray-500">어제 업무내용 <span className="ml-1 font-normal text-gray-400">{fmtDateTitle(yesterdayYmd)} · 전일 자동</span></div>
-            <div className="p-3 text-sm text-gray-600 whitespace-pre-wrap min-h-[56px]">{yesterdayWork || <span className="text-gray-300">전일 작성 내용이 없습니다.</span>}</div>
+            <div className="p-3 text-sm text-gray-600 min-h-[56px]">{yesterdayWork ? <JournalText content={yesterdayWork} /> : <span className="text-gray-300">전일 작성 내용이 없습니다.</span>}</div>
           </div>
 
           {/* 오늘 (편집) */}
           <div className="bg-white border-2 border-indigo-200 rounded-lg overflow-hidden">
-            <div className="px-4 py-2 border-b border-indigo-100 bg-indigo-50 text-xs font-bold text-indigo-700">오늘 업무내용 <span className="ml-1 font-normal text-indigo-400">{fmtDateTitle(selectedDate)}</span></div>
-            <textarea value={todayWork} onChange={e => { setTodayWork(e.target.value); setDirty(true); }}
-              placeholder="오늘 진행한 업무를 입력하세요. @이름 을 넣으면 그 줄이 상대방 일지에도 공유됩니다." rows={7}
-              className="w-full p-3 text-sm resize-y focus:outline-none" />
-            {renderChips("today")}
+            <div className="px-4 py-2 border-b border-indigo-100 bg-indigo-50 text-xs font-bold text-indigo-700">오늘 업무내용 <span className="ml-1 font-normal text-indigo-400">{fmtDateTitle(selectedDate)}</span> <span className="ml-1 font-normal text-gray-400">· 줄 앞 ● 클릭해 완료/진행중/중요</span></div>
+            <WorkJournalLineEditor value={todayWork} onChange={v => { setTodayWork(v); setDirty(true); }}
+              placeholder="오늘 진행한 업무를 입력하세요. Enter로 줄 추가, 줄 앞 ● 로 상태 표시, @이름으로 공유."
+              mentionUsers={others} />
           </div>
 
           {/* 내일 (편집) */}
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
             <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 text-xs font-bold text-gray-500">내일 계획 <span className="ml-1 font-normal text-gray-400">{fmtDateTitle(tomorrowYmd)}</span></div>
-            <textarea value={tomorrowPlan} onChange={e => { setTomorrowPlan(e.target.value); setDirty(true); }}
-              placeholder="내일 할 일을 입력하세요." rows={5}
-              className="w-full p-3 text-sm resize-y focus:outline-none" />
-            {renderChips("tomorrow")}
+            <WorkJournalLineEditor value={tomorrowPlan} onChange={v => { setTomorrowPlan(v); setDirty(true); }}
+              placeholder="내일 할 일을 입력하세요. Enter로 줄 추가, 줄 앞 ● 로 상태 표시."
+              mentionUsers={others} />
           </div>
 
           {/* 공유받은 내용 — 다른 팀원이 그날 일지에서 나를 @멘션한 줄 */}
@@ -277,7 +258,7 @@ export default function WorkJournalPage() {
               ) : received.map(r => (
                 <div key={r.key} className="text-xs border border-indigo-100 bg-indigo-50/30 rounded-lg px-2.5 py-1.5">
                   <div className="font-semibold mb-0.5" style={{ color: r.author.color || "#374151" }}>{r.author.name}</div>
-                  <div className="text-gray-700 whitespace-pre-wrap break-words"><MentionText content={r.line} /></div>
+                  <div className="text-gray-700"><JournalText content={r.line} /></div>
                 </div>
               ))}
             </div>

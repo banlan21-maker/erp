@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Star, Trash2, Send, Users, NotebookPen, ChevronLeft, ChevronRight } from "lucide-react";
 import { useWorkUser, MentionText } from "@/components/work-user-context";
+import { JournalText } from "@/components/journal-text";
 import LandingCalendar from "@/components/landing-calendar";
 import { parseMentions } from "@/lib/work-mentions";
 import { shiftYmd } from "@/lib/work-date";
@@ -150,9 +151,9 @@ export default function WorkDashboardPage() {
                     <p className="text-xs text-gray-400 pl-4">작성된 업무일지가 없습니다.</p>
                   ) : (
                     <div className="pl-4 space-y-1.5">
-                      {prev && <div><span className="text-[11px] font-semibold text-gray-400">전날 {fmtShort(prevYmd)}</span><p className="text-sm text-gray-600 whitespace-pre-wrap break-words"><MentionText content={prev} /></p></div>}
-                      {today && <div><span className="text-[11px] font-semibold text-indigo-600">당일 {fmtShort(selectedDate)}</span><p className="text-sm text-gray-700 whitespace-pre-wrap break-words"><MentionText content={today} /></p></div>}
-                      {tomorrow && <div><span className="text-[11px] font-semibold text-emerald-600">내일 {fmtShort(tomorrowYmd)}</span><p className="text-sm text-gray-600 whitespace-pre-wrap break-words"><MentionText content={tomorrow} /></p></div>}
+                      {prev && <div><span className="text-[11px] font-semibold text-gray-400">전날 {fmtShort(prevYmd)}</span><div className="text-sm text-gray-600"><JournalText content={prev} /></div></div>}
+                      {today && <div><span className="text-[11px] font-semibold text-indigo-600">당일 {fmtShort(selectedDate)}</span><div className="text-sm text-gray-700"><JournalText content={today} /></div></div>}
+                      {tomorrow && <div><span className="text-[11px] font-semibold text-emerald-600">내일 {fmtShort(tomorrowYmd)}</span><div className="text-sm text-gray-600"><JournalText content={tomorrow} /></div></div>}
                     </div>
                   )}
                 </div>
@@ -180,7 +181,7 @@ export default function WorkDashboardPage() {
                     <span className="font-semibold" style={{ color: s.author.color || "#374151" }}>{s.author.name}</span>
                     {s.to.length > 0 && <span className="text-[10px] text-indigo-500">→ {s.to.map(n => `@${n}`).join(" ")}</span>}
                   </div>
-                  <div className="text-gray-700 mt-0.5 whitespace-pre-wrap break-words"><MentionText content={s.line} /></div>
+                  <div className="text-gray-700 mt-0.5"><JournalText content={s.line} /></div>
                 </div>
               ))}
             </div>
