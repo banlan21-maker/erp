@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Search, PackageOpen, Truck, Trash2, X, Loader2, CheckCircle2, AlertTriangle,
-  ChevronLeft, ListChecks, ClipboardList, MapPin, RefreshCw,
+  ChevronLeft, ListChecks, ClipboardList, MapPin, RefreshCw, History,
 } from "lucide-react";
 import { ShipoutCartProvider, useShipoutCart, type ShipoutCartItem } from "@/components/shipout-cart";
 
@@ -23,6 +23,15 @@ const fmtL = (v: number) => Math.round(v);
 const fmtKg = (n: number) => `${n.toLocaleString("ko-KR", { maximumFractionDigits: 1 })} kg`;
 const todayKst = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
 const firstOfMonthKst = () => { const t = todayKst(); return `${t.slice(0, 7)}-01`; };
+
+// ── 최근 담은 내역(이 기기 localStorage, 최대 20) — "어디까지 했는지" 추적용 ──
+const RECENT_KEY = "field-shipout-recent-v1";
+interface RecentEntry { heatNo: string; label: string; at: number }
+const fmtRecent = (ms: number) => {
+  const p = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date(ms));
+  const g = (t: string) => p.find(x => x.type === t)?.value ?? "";
+  return `${g("month")}/${g("day")} ${g("hour")}:${g("minute")}`;
+};
 
 interface Candidate {
   id: string; vesselCode: string; material: string; thickness: number; width: number; length: number;
@@ -104,6 +113,17 @@ function AddTab() {
   const [heatNo, setHeatNo] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<LookResult | null>(null);
+  const [recent, setRecent] = useState<RecentEntry[]>([]);
+
+  useEffect(() => {
+    try { const raw = localStorage.getItem(RECENT_KEY); if (raw) setRecent(JSON.parse(raw)); } catch {}
+  }, []);
+  const pushRecent = (e: RecentEntry) => setRecent(prev => {
+    const next = [e, ...prev].slice(0, 20);
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(next)); } catch {}
+    return next;
+  });
+  const clearRecent = () => { setRecent([]); try { localStorage.removeItem(RECENT_KEY); } catch {} };
 
   const lookup = async () => {
     const h = heatNo.trim();
@@ -133,6 +153,8 @@ function AddTab() {
     const { added, duplicates } = cart.add([item]);
     if (duplicates) { alert("이미 카트에 담긴 강재입니다."); return; }
     if (added) {
+      // 최근 담은 내역 기록 (어디까지 했는지 추적용)
+      pushRecent({ heatNo: h, label: `${c.vesselCode} · ${c.material} ${fmtT(c.thickness)}×${fmtL(c.width)}×${fmtL(c.length)}`, at: Date.now() });
       // 다음 판번호 스캔을 위해 입력/결과 초기화
       setHeatNo(""); setResult(null);
     }
@@ -223,8 +245,29 @@ function AddTab() {
         </>
       )}
 
-      {!result && (
+      {!result && recent.length === 0 && (
         <p className="text-center text-sm text-gray-600 pt-6">판번호를 입력하면 선별목록에서 일치하는 강재를 찾아줍니다.</p>
+      )}
+
+      {/* 최근 담은 내역 — 일시와 함께(이 기기 기준). 어디까지 했는지 추적 */}
+      {recent.length > 0 && (
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-gray-400 flex items-center gap-1">
+              <History size={13} /> 최근 담은 내역 <span className="text-gray-600">({recent.length})</span>
+            </span>
+            <button onClick={() => { if (confirm("최근 내역을 지우시겠습니까?")) clearRecent(); }} className="text-[11px] text-gray-500 underline">지우기</button>
+          </div>
+          <ul className="divide-y divide-gray-800">
+            {recent.map((e, i) => (
+              <li key={i} className="flex items-center justify-between gap-2 py-1.5 text-xs">
+                <span className="font-mono font-bold text-amber-300 shrink-0">{e.heatNo}</span>
+                <span className="text-gray-500 truncate flex-1 text-right">{e.label}</span>
+                <span className="text-gray-600 tabular-nums shrink-0 w-[78px] text-right">{fmtRecent(e.at)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );
