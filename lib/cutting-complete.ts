@@ -69,7 +69,7 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
         where: { id: log.id },
         data: { drawingListId: target.id },
       });
-      // 등록잔재 사용 절단이면 잔재 상태 → EXHAUSTED
+      // 잔재(등록/여유/현장) 사용 절단이면 잔재 상태 → EXHAUSTED (타입 무관, 여유원재 포함)
       if (target.assignedRemnantId) {
         await tx.remnant.update({
           where: { id: target.assignedRemnantId },
