@@ -52,8 +52,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        log,                                       // 그 날짜 일지 (없으면 null)
-        yesterdayWork: prev?.todayWork ?? "",      // 어제 칸 = 전일 오늘업무 (읽기전용)
+        log,                                          // 그 날짜 일지 (없으면 null)
+        yesterdayWork: prev?.todayWork ?? "",         // 어제 칸 = 전일 오늘업무 (읽기전용)
+        prevTomorrowPlan: prev?.tomorrowPlan ?? "",   // 전일 내일계획 → 오늘 비어있으면 자동 이어받기용
       },
     });
   } catch (e) {

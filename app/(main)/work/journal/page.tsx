@@ -38,6 +38,7 @@ export default function WorkJournalPage() {
   const [todayWork, setTodayWork] = useState("");
   const [tomorrowPlan, setTomorrowPlan] = useState("");
   const [dirty, setDirty] = useState(false);
+  const [seeded, setSeeded] = useState(false);   // 오늘 칸이 전일 내일계획에서 자동 이어받기됨(미저장)
   const [saving, setSaving] = useState(false);
 
   const [monthLogs, setMonthLogs] = useState<LogRow[]>([]);
@@ -56,7 +57,16 @@ export default function WorkJournalPage() {
       if (reqUser !== currentUserId || reqDate !== selectedDate) return; // stale 폐기
       if (r.success) {
         setYesterdayWork(r.data.yesterdayWork ?? "");
-        setTodayWork(r.data.log?.todayWork ?? "");
+        const savedToday = r.data.log?.todayWork ?? "";
+        const prevPlan   = r.data.prevTomorrowPlan ?? "";
+        // 오늘 업무가 비어있고 전일 내일계획이 있으면 자동 이어받기(미저장) — 저장하면 오늘 업무로 확정
+        if (!savedToday.trim() && prevPlan.trim()) {
+          setTodayWork(prevPlan);
+          setSeeded(true);
+        } else {
+          setTodayWork(savedToday);
+          setSeeded(false);
+        }
         setTomorrowPlan(r.data.log?.tomorrowPlan ?? "");
         setDirty(false);
       }
@@ -133,6 +143,7 @@ export default function WorkJournalPage() {
       const d = await r.json();
       if (!d.success) { alert(d.error ?? "저장 실패"); return; }
       setDirty(false);
+      setSeeded(false);
       loadMonth(); loadAllDay();
     } finally { setSaving(false); }
   };
@@ -219,9 +230,9 @@ export default function WorkJournalPage() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-gray-700">{fmtDate(selectedDate)} {isToday && <span className="ml-1 text-[11px] text-indigo-600 font-bold">오늘</span>}</span>
-            <button onClick={save} disabled={saving || !dirty}
+            <button onClick={save} disabled={saving || (!dirty && !seeded)}
               className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40">
-              <Save size={14} /> {saving ? "저장 중…" : dirty ? "저장" : "저장됨"}
+              <Save size={14} /> {saving ? "저장 중…" : (dirty || seeded) ? "저장" : "저장됨"}
             </button>
           </div>
 
@@ -234,7 +245,10 @@ export default function WorkJournalPage() {
           {/* 오늘 (편집) */}
           <div className="bg-white border-2 border-indigo-200 rounded-lg overflow-hidden">
             <div className="px-4 py-2 border-b border-indigo-100 bg-indigo-50 text-xs font-bold text-indigo-700">오늘 업무내용 <span className="ml-1 font-normal text-indigo-400">{fmtDateTitle(selectedDate)}</span> <span className="ml-1 font-normal text-gray-400">· 줄 앞 ● 클릭해 완료/진행중/중요</span></div>
-            <WorkJournalLineEditor value={todayWork} onChange={v => { setTodayWork(v); setDirty(true); }}
+            {seeded && (
+              <div className="px-3 py-1.5 bg-amber-50 border-b border-amber-100 text-[11px] text-amber-700">전일 내일계획에서 자동으로 가져왔습니다. 확인·수정 후 <b>저장</b>하면 오늘 업무로 확정됩니다.</div>
+            )}
+            <WorkJournalLineEditor value={todayWork} onChange={v => { setTodayWork(v); setDirty(true); setSeeded(false); }}
               placeholder="오늘 진행한 업무를 입력하세요. Enter로 줄 추가, 줄 앞 ● 로 상태 표시, @이름으로 공유."
               mentionUsers={others} />
           </div>
