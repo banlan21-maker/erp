@@ -39,6 +39,7 @@ export default function WorkJournalPage() {
   const [tomorrowPlan, setTomorrowPlan] = useState("");
   const [dirty, setDirty] = useState(false);
   const [seeded, setSeeded] = useState(false);   // 오늘 칸이 전일 내일계획에서 자동 이어받기됨(미저장)
+  const [yesterdayDirty, setYesterdayDirty] = useState(false);  // 어제 칸 편집(전일 날짜에 저장)
   const [saving, setSaving] = useState(false);
 
   const [monthLogs, setMonthLogs] = useState<LogRow[]>([]);
@@ -69,6 +70,7 @@ export default function WorkJournalPage() {
         }
         setTomorrowPlan(r.data.log?.tomorrowPlan ?? "");
         setDirty(false);
+        setYesterdayDirty(false);
       }
     })();
     return () => ctrl.abort();
@@ -97,13 +99,13 @@ export default function WorkJournalPage() {
 
   // 미저장 변경 보호
   useEffect(() => {
-    const h = (e: BeforeUnloadEvent) => { if (dirty) { e.preventDefault(); e.returnValue = ""; } };
+    const h = (e: BeforeUnloadEvent) => { if (dirty || yesterdayDirty) { e.preventDefault(); e.returnValue = ""; } };
     window.addEventListener("beforeunload", h);
     return () => window.removeEventListener("beforeunload", h);
-  }, [dirty]);
+  }, [dirty, yesterdayDirty]);
 
   const guardedSelectDate = (d: string) => {
-    if (dirty && !confirm("저장되지 않은 변경이 있습니다. 이동하면 입력 내용이 사라집니다. 계속할까요?")) return;
+    if ((dirty || yesterdayDirty) && !confirm("저장되지 않은 변경이 있습니다. 이동하면 입력 내용이 사라집니다. 계속할까요?")) return;
     setSelectedDate(d);
   };
 
@@ -136,14 +138,28 @@ export default function WorkJournalPage() {
     if (!currentUserId) { alert("상단에서 현재 사용자를 선택하세요."); return; }
     setSaving(true);
     try {
-      const r = await fetch("/api/work/logs", {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: currentUserId, date: selectedDate, todayWork, tomorrowPlan }),
-      });
-      const d = await r.json();
-      if (!d.success) { alert(d.error ?? "저장 실패"); return; }
+      const reqs: Promise<Response>[] = [];
+      // 선택 날짜(오늘/내일) — 편집했거나 자동 이어받기(seeded) 확정
+      if (dirty || seeded) {
+        reqs.push(fetch("/api/work/logs", {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: currentUserId, date: selectedDate, todayWork, tomorrowPlan }),
+        }));
+      }
+      // 어제 칸 — 전일 날짜에 todayWork 만 부분 저장(그날 내일계획 보존)
+      if (yesterdayDirty) {
+        reqs.push(fetch("/api/work/logs", {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: currentUserId, date: shiftYmd(selectedDate, -1), todayWork: yesterdayWork }),
+        }));
+      }
+      if (reqs.length === 0) return;
+      const results = await Promise.all(reqs.map(p => p.then(res => res.json()).catch(() => ({ success: false }))));
+      const failed = results.find(d => !d.success);
+      if (failed) { alert(failed.error ?? "저장 실패"); return; }
       setDirty(false);
       setSeeded(false);
+      setYesterdayDirty(false);
       loadMonth(); loadAllDay();
     } finally { setSaving(false); }
   };
@@ -230,16 +246,18 @@ export default function WorkJournalPage() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-gray-700">{fmtDate(selectedDate)} {isToday && <span className="ml-1 text-[11px] text-indigo-600 font-bold">오늘</span>}</span>
-            <button onClick={save} disabled={saving || (!dirty && !seeded)}
+            <button onClick={save} disabled={saving || (!dirty && !seeded && !yesterdayDirty)}
               className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40">
-              <Save size={14} /> {saving ? "저장 중…" : (dirty || seeded) ? "저장" : "저장됨"}
+              <Save size={14} /> {saving ? "저장 중…" : (dirty || seeded || yesterdayDirty) ? "저장" : "저장됨"}
             </button>
           </div>
 
-          {/* 어제 (읽기 전용) */}
+          {/* 어제 (편집 가능 — 전일 날짜에 저장) */}
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-            <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 text-xs font-bold text-gray-500">어제 업무내용 <span className="ml-1 font-normal text-gray-400">{fmtDateTitle(yesterdayYmd)} · 전일 자동</span></div>
-            <div className="p-3 text-sm text-gray-600 min-h-[56px]">{yesterdayWork ? <JournalText content={yesterdayWork} /> : <span className="text-gray-300">전일 작성 내용이 없습니다.</span>}</div>
+            <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 text-xs font-bold text-gray-500">어제 업무내용 <span className="ml-1 font-normal text-gray-400">{fmtDateTitle(yesterdayYmd)} · 여기서 수정하면 전일자에 저장</span></div>
+            <WorkJournalLineEditor value={yesterdayWork} onChange={v => { setYesterdayWork(v); setYesterdayDirty(true); }}
+              placeholder="전일 업무내용. Enter로 줄 추가, 줄 앞 ● 로 상태 표시."
+              mentionUsers={others} />
           </div>
 
           {/* 오늘 (편집) */}

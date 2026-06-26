@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AtSign } from "lucide-react";
 import { parseLine, serializeLine, STATUS_META, STATUS_ORDER, type LineStatus } from "@/lib/work-line-status";
 
@@ -32,6 +33,12 @@ export default function WorkJournalLineEditor({
   const focusNext = useRef<number | null>(null);
   const focusedId = useRef<number | null>(null);
   const [menuFor, setMenuFor] = useState<number | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const openMenu = (id: number, btn: HTMLElement) => {
+    const r = btn.getBoundingClientRect();
+    setMenuPos({ top: r.bottom + 4, left: r.left });
+    setMenuFor(id);
+  };
 
   // 외부 value 변경(날짜 전환 등)이면 rows 재생성. 내가 올린 값(echo)은 무시.
   useEffect(() => {
@@ -93,33 +100,14 @@ export default function WorkJournalLineEditor({
         {rows.map((r, idx) => {
           const meta = STATUS_META[r.status];
           return (
-            <div key={r.id} className="group flex items-center gap-1.5 relative">
-              {/* 상태 아이콘 버튼 */}
+            <div key={r.id} className="group flex items-center gap-1.5">
+              {/* 상태 아이콘 버튼 — 팝업은 아래 portal 로 최상단 렌더(프레임 잘림 방지) */}
               <button
                 type="button"
-                onClick={() => setMenuFor(menuFor === r.id ? null : r.id)}
+                onClick={(e) => (menuFor === r.id ? setMenuFor(null) : openMenu(r.id, e.currentTarget))}
                 title={`상태: ${meta.label} (클릭해 변경)`}
                 className={`shrink-0 w-3.5 h-3.5 rounded-full ${meta.dot} ${r.status === "none" ? "opacity-50 group-hover:opacity-100" : ""} transition-opacity`}
               />
-              {/* 상태 미니 팝업 */}
-              {menuFor === r.id && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setMenuFor(null)} />
-                  <div className="absolute z-20 top-5 left-0 bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-28">
-                    {STATUS_ORDER.map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => setStatus(r.id, s)}
-                        className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-xs hover:bg-gray-50 ${s === r.status ? "bg-gray-50 font-semibold" : ""}`}
-                      >
-                        <span className={`w-2.5 h-2.5 rounded-full ${STATUS_META[s].dot}`} />
-                        {STATUS_META[s].label}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
               {/* 텍스트 입력 */}
               <input
                 ref={(el) => { inputRefs.current[r.id] = el; }}
@@ -145,6 +133,26 @@ export default function WorkJournalLineEditor({
               className="px-1.5 py-0.5 text-[10px] rounded-full border border-gray-200 text-gray-600 hover:bg-indigo-50 hover:border-indigo-300">@{u.name}</button>
           ))}
         </div>
+      )}
+
+      {/* 상태 미니 팝업 — portal+fixed 로 최상단(카드 overflow-hidden 에 잘리지 않음) */}
+      {menuFor !== null && typeof document !== "undefined" && createPortal(
+        <>
+          <div className="fixed inset-0 z-[200]" onClick={() => setMenuFor(null)} />
+          <div className="fixed z-[201] bg-white border border-gray-200 rounded-lg shadow-xl py-1 w-28" style={{ top: menuPos.top, left: menuPos.left }}>
+            {STATUS_ORDER.map((s) => {
+              const cur = rows.find((r) => r.id === menuFor)?.status;
+              return (
+                <button key={s} type="button" onClick={() => setStatus(menuFor, s)}
+                  className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-xs hover:bg-gray-50 ${s === cur ? "bg-gray-50 font-semibold" : ""}`}>
+                  <span className={`w-2.5 h-2.5 rounded-full ${STATUS_META[s].dot}`} />
+                  {STATUS_META[s].label}
+                </button>
+              );
+            })}
+          </div>
+        </>,
+        document.body
       )}
     </div>
   );

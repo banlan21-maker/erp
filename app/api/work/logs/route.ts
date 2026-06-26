@@ -69,9 +69,16 @@ export async function PUT(req: NextRequest) {
     const date = body?.date;
     if (!userId) return NextResponse.json({ success: false, error: "사용자를 선택하세요." }, { status: 400 });
     if (!isYmd(date)) return NextResponse.json({ success: false, error: "날짜 형식 오류" }, { status: 400 });
-    const todayWork    = typeof body?.todayWork    === "string" ? body.todayWork    : "";
-    const tomorrowPlan = typeof body?.tomorrowPlan === "string" ? body.tomorrowPlan : "";
+    // 부분 업데이트 — 제공된 필드만 갱신(어제 칸 저장 시 todayWork만 보내 그날 tomorrowPlan 보존)
+    const todayWork    = typeof body?.todayWork    === "string" ? body.todayWork    : undefined;
+    const tomorrowPlan = typeof body?.tomorrowPlan === "string" ? body.tomorrowPlan : undefined;
+    if (todayWork === undefined && tomorrowPlan === undefined) {
+      return NextResponse.json({ success: false, error: "저장할 내용이 없습니다." }, { status: 400 });
+    }
     const d = ymdToDate(date);
+    const updateData: { todayWork?: string; tomorrowPlan?: string } = {};
+    if (todayWork    !== undefined) updateData.todayWork    = todayWork;
+    if (tomorrowPlan !== undefined) updateData.tomorrowPlan = tomorrowPlan;
 
     const exists = await prisma.workUser.findUnique({ where: { id: userId }, select: { id: true } });
     if (!exists) return NextResponse.json({ success: false, error: "선택한 사용자를 찾을 수 없습니다." }, { status: 400 });
@@ -80,13 +87,13 @@ export async function PUT(req: NextRequest) {
     try {
       log = await prisma.workLog.upsert({
         where:  { userId_date: { userId, date: d } },
-        update: { todayWork, tomorrowPlan },
-        create: { userId, date: d, todayWork, tomorrowPlan },
+        update: updateData,
+        create: { userId, date: d, todayWork: todayWork ?? "", tomorrowPlan: tomorrowPlan ?? "" },
       });
     } catch (e) {
       // 동시 호출 race — upsert 가 INSERT 충돌(P2002) 나면 이미 행이 생겼으므로 UPDATE 폴백
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-        log = await prisma.workLog.update({ where: { userId_date: { userId, date: d } }, data: { todayWork, tomorrowPlan } });
+        log = await prisma.workLog.update({ where: { userId_date: { userId, date: d } }, data: updateData });
       } else throw e;
     }
     return NextResponse.json({ success: true, data: log });
