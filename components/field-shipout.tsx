@@ -26,7 +26,8 @@ const firstOfMonthKst = () => { const t = todayKst(); return `${t.slice(0, 7)}-0
 
 // ── 최근 담은 내역(이 기기 localStorage, 최대 20) — "어디까지 했는지" 추적용 ──
 const RECENT_KEY = "field-shipout-recent-v1";
-interface RecentEntry { heatNo: string; label: string; at: number }
+interface RecentEntry { heatNo: string; label: string; at: number; kind?: "plate" | "remnant" }
+const REM_TYPE_LABEL: Record<string, string> = { SURPLUS: "여유원재", REGISTERED: "등록잔재", REMNANT: "현장잔재" };
 const fmtRecent = (ms: number) => {
   const p = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date(ms));
   const g = (t: string) => p.find(x => x.type === t)?.value ?? "";
@@ -42,6 +43,11 @@ interface LookResult {
   spec?: { vesselCode: string; material: string; thickness: number; width: number; length: number };
   candidates?: Candidate[];
 }
+interface RemnantInfo {
+  id: string; remnantNo: string; type: string; vesselCode: string; material: string;
+  thickness: number; width1: number | null; length1: number | null; weight: number; heatNo: string | null; location: string | null;
+}
+interface RemLookResult { matched: boolean; reason?: string; remnantNo: string; remnant?: RemnantInfo }
 interface Vendor {
   id: string; bizNo: string | null; name: string; ceo: string | null; address: string | null;
   bizType: string | null; bizItem: string | null; phone: string | null; fax: string | null;
@@ -110,9 +116,11 @@ function Inner() {
 /* ── 출고 담기 ─────────────────────────────────────────────────────────── */
 function AddTab() {
   const cart = useShipoutCart();
+  const [remMode, setRemMode] = useState(false);   // true=잔재출고(잔재번호) / false=원판(판번호)
   const [heatNo, setHeatNo] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<LookResult | null>(null);
+  const [remResult, setRemResult] = useState<RemLookResult | null>(null);
   const [recent, setRecent] = useState<RecentEntry[]>([]);
 
   useEffect(() => {
@@ -128,11 +136,14 @@ function AddTab() {
   const lookup = async () => {
     const h = heatNo.trim();
     if (!h) return;
-    setBusy(true); setResult(null);
+    setBusy(true); setResult(null); setRemResult(null);
     try {
-      const r = await fetch(`/api/steel-plan/shipout-field?heatNo=${encodeURIComponent(h)}`).then(r => r.json());
+      const url = remMode
+        ? `/api/remnants/shipout-field?remnantNo=${encodeURIComponent(h)}`
+        : `/api/steel-plan/shipout-field?heatNo=${encodeURIComponent(h)}`;
+      const r = await fetch(url).then(r => r.json());
       if (!r.success) { alert(r.error ?? "조회 실패"); return; }
-      setResult(r as LookResult);
+      if (remMode) setRemResult(r as RemLookResult); else setResult(r as LookResult);
     } catch (e) { alert(e instanceof Error ? e.message : "네트워크 오류"); }
     finally { setBusy(false); }
   };
@@ -154,29 +165,61 @@ function AddTab() {
     if (duplicates) { alert("이미 카트에 담긴 강재입니다."); return; }
     if (added) {
       // 최근 담은 내역 기록 (어디까지 했는지 추적용)
-      pushRecent({ heatNo: h, label: `${c.vesselCode} · ${c.material} ${fmtT(c.thickness)}×${fmtL(c.width)}×${fmtL(c.length)}`, at: Date.now() });
+      pushRecent({ heatNo: h, kind: "plate", label: `${c.vesselCode} · ${c.material} ${fmtT(c.thickness)}×${fmtL(c.width)}×${fmtL(c.length)}`, at: Date.now() });
       // 다음 판번호 스캔을 위해 입력/결과 초기화
       setHeatNo(""); setResult(null);
     }
   };
 
+  const addRemnant = (r: RemnantInfo) => {
+    if (cart.has(r.id)) { alert(`잔재 ${r.remnantNo} 는 이미 카트에 담겨 있습니다.`); return; }
+    const item: ShipoutCartItem = {
+      steelPlanId: r.id, kind: "remnant", remnantId: r.id,
+      vesselCode: r.vesselCode, material: r.material,
+      thickness: r.thickness, width: r.width1 ?? 0, length: r.length1 ?? 0,
+      weight: r.weight, prefilledHeatNo: r.heatNo ?? undefined, remnantNo: r.remnantNo,
+    };
+    const { added, duplicates } = cart.add([item]);
+    if (duplicates) { alert("이미 카트에 담긴 잔재입니다."); return; }
+    if (added) {
+      pushRecent({ heatNo: r.remnantNo, kind: "remnant", label: `${REM_TYPE_LABEL[r.type] ?? r.type} · ${r.material} ${fmtT(r.thickness)}×${r.width1 ? fmtL(r.width1) : "-"}×${r.length1 ? fmtL(r.length1) : "-"}`, at: Date.now() });
+      setHeatNo(""); setRemResult(null);
+    }
+  };
+
   const reasonMsg = (reason?: string) =>
-    reason === "NOT_FOUND" ? "등록되지 않은 판번호입니다. 입력을 다시 확인하세요." :
-    reason === "ALREADY_USED" ? "이미 절단/출고로 소진된 판번호입니다." : "매칭 실패";
+    reason === "NOT_FOUND" ? (remMode ? "등록되지 않은 잔재번호입니다. 입력을 다시 확인하세요." : "등록되지 않은 판번호입니다. 입력을 다시 확인하세요.") :
+    reason === "ALREADY_USED" ? "이미 절단/출고로 소진된 판번호입니다." :
+    reason === "EXHAUSTED" ? "이미 소진(출고/절단)된 잔재입니다." :
+    reason === "RESERVED" ? "절단용으로 블록확정된 잔재입니다. 확정취소 후 출고하세요." :
+    reason === "PENDING" ? "아직 출고 가능(재고) 상태가 아닙니다." :
+    reason === "ALREADY_SHIPPED" ? "이미 출고장에 포함된 잔재입니다." :
+    "매칭 실패";
 
   return (
     <div className="p-4 space-y-4">
-      {/* 판번호 입력 */}
+      {/* 판번호/잔재번호 입력 */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-        <label className="block text-xs font-semibold text-gray-400 mb-2">판번호 입력 <span className="font-normal text-gray-500">(대문자·숫자만 — 키보드·바코드 모두 자동 정리)</span></label>
+        {/* 잔재출고 토글 — 체크 시 잔재번호, 해제 시 판번호 */}
+        <label className="flex items-center gap-2 mb-3 cursor-pointer select-none">
+          <input type="checkbox" checked={remMode}
+            onChange={e => { setRemMode(e.target.checked); setHeatNo(""); setResult(null); setRemResult(null); }}
+            className="w-4 h-4 accent-amber-500" />
+          <span className={`text-sm font-bold ${remMode ? "text-amber-300" : "text-gray-300"}`}>잔재 출고</span>
+          <span className="text-[11px] text-gray-500">체크 시 잔재번호로 출고 (여유원재·등록잔재·현장잔재)</span>
+        </label>
+        <label className="block text-xs font-semibold text-gray-400 mb-2">
+          {remMode ? "잔재번호 입력" : "판번호 입력"}{" "}
+          <span className="font-normal text-gray-500">{remMode ? "(대문자·숫자·특수문자)" : "(대문자·숫자만 — 키보드·바코드 모두 자동 정리)"}</span>
+        </label>
         <div className="flex gap-2">
           <input
             value={heatNo}
-            // 대문자 영문 + 숫자만 허용. 소문자→대문자, 특수문자·기타 문자는 자동 제거.
+            // 판번호: 대문자영문+숫자만. 잔재번호: 대문자영문+숫자+특수문자 허용(소문자만 대문자화).
             // 바코드(PDA) 스캔 입력도 onChange 를 거치므로 동일하게 정리됨.
-            onChange={e => setHeatNo(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+            onChange={e => setHeatNo(remMode ? e.target.value.toUpperCase() : e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
             onKeyDown={e => { if (e.key === "Enter") lookup(); }}
-            placeholder="예: HT240001"
+            placeholder={remMode ? "예: REM-2026-031" : "예: HT240001"}
             inputMode="text" autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false}
             className="flex-1 px-4 py-3 text-lg font-mono bg-gray-800 border border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 text-white placeholder-gray-600"
           />
@@ -245,8 +288,41 @@ function AddTab() {
         </>
       )}
 
-      {!result && recent.length === 0 && (
-        <p className="text-center text-sm text-gray-600 pt-6">판번호를 입력하면 선별목록에서 일치하는 강재를 찾아줍니다.</p>
+      {/* 잔재 결과 */}
+      {remResult && !remResult.matched && (
+        <div className="bg-red-950/60 border border-red-800 rounded-2xl p-4 flex items-start gap-2 text-sm text-red-300">
+          <AlertTriangle size={18} className="flex-shrink-0 mt-0.5" />
+          <div><div className="font-bold text-red-200">{remResult.remnantNo}</div>{reasonMsg(remResult.reason)}</div>
+        </div>
+      )}
+      {remResult && remResult.matched && remResult.remnant && (() => {
+        const r = remResult.remnant!;
+        const inCart = cart.has(r.id);
+        return (
+          <div className={`bg-gray-900 border rounded-2xl p-3.5 ${inCart ? "border-purple-700 opacity-60" : "border-amber-700/40"}`}>
+            <div className="flex items-center justify-between">
+              <div className="text-sm">
+                <div className="font-bold flex items-center gap-1.5">
+                  <span className="font-mono text-amber-300">{r.remnantNo}</span>
+                  <span className="text-[10px] px-1 rounded bg-amber-900/50 text-amber-300">{REM_TYPE_LABEL[r.type] ?? r.type}</span>
+                </div>
+                <div className="text-gray-400 text-xs mt-0.5">{r.vesselCode || "-"} · {r.material}</div>
+                <div className="font-mono text-gray-400 text-xs mt-0.5">{fmtT(r.thickness)}×{r.width1 ? fmtL(r.width1) : "-"}×{r.length1 ? fmtL(r.length1) : "-"} · {fmtKg(r.weight)}</div>
+                {r.location && <div className="flex items-center gap-0.5 mt-1 text-[11px] text-gray-500"><MapPin size={11} />{r.location}</div>}
+              </div>
+              {inCart ? (
+                <span className="text-purple-300 text-xs font-semibold flex items-center gap-1"><CheckCircle2 size={15} /> 담김</span>
+              ) : (
+                <button onClick={() => addRemnant(r)}
+                  className="px-3.5 py-2 bg-purple-600 text-white text-sm font-bold rounded-xl flex-shrink-0">담기</button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {!result && !remResult && recent.length === 0 && (
+        <p className="text-center text-sm text-gray-600 pt-6">{remMode ? "잔재번호를 입력하면 출고 가능한 잔재를 찾아줍니다." : "판번호를 입력하면 선별목록에서 일치하는 강재를 찾아줍니다."}</p>
       )}
 
       {/* 최근 담은 내역 — 일시와 함께(이 기기 기준). 어디까지 했는지 추적 */}
@@ -261,7 +337,10 @@ function AddTab() {
           <ul className="divide-y divide-gray-800">
             {recent.map((e, i) => (
               <li key={i} className="flex items-center justify-between gap-2 py-1.5 text-xs">
-                <span className="font-mono font-bold text-amber-300 shrink-0">{e.heatNo}</span>
+                <span className="font-mono font-bold text-amber-300 shrink-0 flex items-center gap-1">
+                  {e.kind === "remnant" && <span className="text-[9px] px-1 rounded bg-amber-900/50 text-amber-300 font-sans">잔재</span>}
+                  {e.heatNo}
+                </span>
                 <span className="text-gray-500 truncate flex-1 text-right">{e.label}</span>
                 <span className="text-gray-600 tabular-nums shrink-0 w-[78px] text-right">{fmtRecent(e.at)}</span>
               </li>
