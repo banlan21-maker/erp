@@ -14,61 +14,66 @@ const STATUS_COLOR: Record<string, string> = {
 const STATUS_LABEL: Record<string, string> = { ACTIVE: "진행중", COMPLETED: "완료", ON_HOLD: "보류" };
 
 export default async function DashboardPage() {
-  // "최근 완료"는 어제까지 기준 — 오늘 KST 자정(=어제 끝)
-  const kstTodayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-  const yesterdayEnd = new Date(`${kstTodayStr}T00:00:00+09:00`);
-
   const [
-    totalProjects,
-    activeProjects,
     totalDrawings,
     recentProjects,
-    activeProjs,
-    completedProjs,
+    allProjects,
     totalByProj,
     cutByProj,
+    activeLogProjs,
     lastCutByProj,
     allCodes,
   ] = await Promise.all([
-    prisma.project.count(),
-    prisma.project.count({ where: { status: "ACTIVE" } }),
     prisma.drawingList.count(),
     prisma.project.findMany({
       take: 6,
       orderBy: { createdAt: "desc" },
       include: { _count: { select: { drawingLists: true } } },
     }),
-    prisma.project.findMany({ where: { status: "ACTIVE" },    select: { id: true, projectCode: true, projectName: true } }),
-    prisma.project.findMany({ where: { status: "COMPLETED" }, select: { id: true, projectCode: true, projectName: true } }),
+    prisma.project.findMany({ select: { id: true, projectCode: true, projectName: true } }),
     prisma.drawingList.groupBy({ by: ["projectId"], _count: { _all: true } }),
     prisma.drawingList.groupBy({ by: ["projectId"], where: { status: "CUT" }, _count: { _all: true } }),
-    // 정규작업(돌발 제외) 절단완료 로그의 프로젝트별 마지막 절단일 = 블록 완료일
+    // 절단 진행중(STARTED/PAUSED) 활성 작업이 있는 프로젝트 — 정규작업만(돌발 제외)
+    prisma.cuttingLog.groupBy({ by: ["projectId"], where: { isUrgent: false, status: { in: ["STARTED", "PAUSED"] } }, _count: { _all: true } }),
+    // 프로젝트별 마지막 절단완료일(= 블록 완료일) — 정규작업만
     prisma.cuttingLog.groupBy({ by: ["projectId"], where: { isUrgent: false, status: "COMPLETED", endAt: { not: null } }, _max: { endAt: true } }),
     prisma.project.findMany({ select: { projectCode: true }, distinct: ["projectCode"] }),
   ]);
   const totalVessels = allCodes.length;
+  const totalProjects = allProjects.length;
 
-  const totalMap = new Map(totalByProj.map(r => [r.projectId, r._count._all]));
-  const cutMap   = new Map(cutByProj.map(r => [r.projectId, r._count._all]));
-  const lastCutMap = new Map(
-    lastCutByProj.filter(r => r.projectId && r._max.endAt).map(r => [r.projectId as string, r._max.endAt as Date]),
-  );
+  const totalMap   = new Map(totalByProj.map(r => [r.projectId, r._count._all]));
+  const cutMap     = new Map(cutByProj.map(r => [r.projectId, r._count._all]));
+  const activeSet  = new Set(activeLogProjs.filter(r => r.projectId).map(r => r.projectId as string));
+  const lastCutMap = new Map(lastCutByProj.filter(r => r.projectId && r._max.endAt).map(r => [r.projectId as string, r._max.endAt as Date]));
 
-  // 진행 중 블록 — ACTIVE + 절단 시작(cut>0). 진행률 = CUT/전체 도면행. 진행률 높은 순.
-  const inProgress = activeProjs
-    .map(p => {
-      const total = totalMap.get(p.id) ?? 0;
-      const cut = cutMap.get(p.id) ?? 0;
-      return { ...p, total, cut, pct: total > 0 ? Math.round((cut / total) * 100) : 0 };
-    })
-    .filter(p => p.cut > 0 && p.total > 0)
-    .sort((a, b) => b.pct - a.pct)
+  // 블록 절단 상태 분류 — Project.status 가 아니라 "실제 절단(CUT) 도면 수" 기준.
+  //  · 완료   = 등록된 모든 도면이 절단완료 (total>0 && cut===total)
+  //  · 진행중 = 1장 이상 절단됨(cut>0) 또는 절단작업 진행중(STARTED/PAUSED), 단 완료 아님
+  //  · 대기   = 절단 0장 (등록·확정만) → 표시 안 함
+  type BlockStat = { id: string; projectCode: string; projectName: string; total: number; cut: number; pct: number; doneAt: Date | null };
+  const blocks: BlockStat[] = [];
+  for (const p of allProjects) {
+    const total = totalMap.get(p.id) ?? 0;
+    if (total === 0) continue;
+    const cut = cutMap.get(p.id) ?? 0;
+    blocks.push({
+      id: p.id, projectCode: p.projectCode, projectName: p.projectName,
+      total, cut, pct: Math.round((cut / total) * 100), doneAt: lastCutMap.get(p.id) ?? null,
+    });
+  }
+  const completeBlocks   = blocks.filter(b => b.cut === b.total);                                   // 100%
+  const inProgressBlocks = blocks.filter(b => b.cut < b.total && (b.cut > 0 || activeSet.has(b.id))); // 1장+ 절단/진행중
+  const completeCount   = completeBlocks.length;
+  const inProgressCount = inProgressBlocks.length;
+
+  // 진행 중 — 최근 절단순(없으면 진행률순), 상위 6
+  const inProgress = [...inProgressBlocks]
+    .sort((a, b) => (b.doneAt?.getTime() ?? 0) - (a.doneAt?.getTime() ?? 0) || b.pct - a.pct)
     .slice(0, 6);
-
-  // 최근 완료 블록 — 어제까지 완료. 마지막 절단일 최신순.
-  const recentDone = completedProjs
-    .map(p => ({ ...p, doneAt: lastCutMap.get(p.id) ?? null }))
-    .filter(p => p.doneAt && p.doneAt.getTime() < yesterdayEnd.getTime())
+  // 최근 완료 — 완료일 최신순, 상위 6
+  const recentDone = completeBlocks
+    .filter(b => b.doneAt)
     .sort((a, b) => (b.doneAt as Date).getTime() - (a.doneAt as Date).getTime())
     .slice(0, 6);
 
@@ -102,8 +107,8 @@ export default async function DashboardPage() {
         />
         <SummaryCard
           title="진행중 블록"
-          value={activeProjects}
-          sub={`완료 ${totalProjects - activeProjects}건`}
+          value={inProgressCount}
+          sub={`완료 ${completeCount}건`}
           icon={<CheckCircle2 size={20} className="text-green-500" />}
           bg="bg-green-50"
         />
