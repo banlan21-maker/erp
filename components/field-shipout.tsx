@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Search, PackageOpen, Truck, Trash2, X, Loader2, CheckCircle2, AlertTriangle,
-  ChevronLeft, ListChecks, ClipboardList, MapPin, RefreshCw, History,
+  ChevronLeft, ChevronUp, ChevronDown, ListChecks, ClipboardList, MapPin, RefreshCw, History,
 } from "lucide-react";
 import { ShipoutCartProvider, useShipoutCart, type ShipoutCartItem } from "@/components/shipout-cart";
 
@@ -65,6 +65,7 @@ function Inner() {
   const cart = useShipoutCart();
   const [tab, setTab] = useState<"add" | "list">("add");
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [cartOpen, setCartOpen] = useState(false);   // 하단 카트바 "담은 목록" 펼침
 
   return (
     <div className="min-h-screen bg-gray-950 text-white pb-28">
@@ -94,17 +95,46 @@ function Inner() {
 
       {tab === "add" ? <AddTab /> : <ShipmentListTab />}
 
-      {/* 하단 카트바 */}
+      {/* 하단 카트바 (+ 펼친 담은 목록 — 개별 🗑️ 취소) */}
       {cart.items.length > 0 && tab === "add" && (
-        <div className="fixed bottom-0 left-0 right-0 z-20 bg-purple-900/95 backdrop-blur border-t-2 border-purple-700 px-4 py-3 flex items-center justify-between">
-          <div className="text-sm">
-            <span className="font-bold text-white">{cart.items.length}</span>건 · {fmtKg(cart.totalWeight)}
-            <button onClick={() => { if (confirm("카트를 비우시겠습니까?")) cart.clear(); }} className="ml-2 text-purple-300 underline text-xs">비우기</button>
+        <div className="fixed bottom-0 left-0 right-0 z-20">
+          {/* 펼친 담은 목록 — 잘못 담은 자재를 1건씩 취소 */}
+          {cartOpen && (
+            <div className="max-h-[55vh] overflow-y-auto bg-gray-900/98 backdrop-blur border-t border-purple-800 px-3 py-2.5 space-y-1.5">
+              {cart.items.map(it => (
+                <div key={it.steelPlanId} className="flex items-center justify-between gap-2 bg-gray-800/70 border border-gray-700 rounded-lg px-3 py-2">
+                  <div className="min-w-0 text-sm">
+                    <div className="font-bold text-white truncate">
+                      {it.vesselCode} · {it.material}
+                      {it.kind === "remnant" && <span className="ml-1 text-[10px] px-1 rounded bg-amber-900/50 text-amber-300">잔재</span>}
+                    </div>
+                    <div className="font-mono text-xs text-gray-400 mt-0.5 truncate">
+                      {fmtT(it.thickness)}×{fmtL(it.width)}×{fmtL(it.length)} · {fmtKg(it.weight)}
+                      {it.kind === "remnant"
+                        ? (it.remnantNo ? ` · 잔재번호 ${it.remnantNo}` : "")
+                        : (it.prefilledHeatNo ? ` · 판번호 ${it.prefilledHeatNo}` : "")}
+                    </div>
+                  </div>
+                  <button onClick={() => cart.remove(it.steelPlanId)} aria-label="카트에서 제거"
+                    className="p-2 text-gray-400 hover:text-red-400 shrink-0"><Trash2 size={18} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="bg-purple-900/95 backdrop-blur border-t-2 border-purple-700 px-4 py-3 flex items-center justify-between">
+            <div className="text-sm flex items-center gap-2">
+              <button onClick={() => setCartOpen(o => !o)} className="flex items-center gap-1">
+                <span className="font-bold text-white">{cart.items.length}</span>건 · {fmtKg(cart.totalWeight)}
+                {cartOpen ? <ChevronDown size={15} className="text-purple-300" /> : <ChevronUp size={15} className="text-purple-300" />}
+              </button>
+              <button onClick={() => { if (confirm("카트를 비우시겠습니까?")) { cart.clear(); setCartOpen(false); } }} className="text-purple-300 underline text-xs">비우기</button>
+            </div>
+            <button onClick={() => setWizardOpen(true)}
+              className="px-5 py-2.5 bg-amber-500 text-black font-bold rounded-xl text-sm flex items-center gap-1.5">
+              <Truck size={16} /> 출고장 만들기
+            </button>
           </div>
-          <button onClick={() => setWizardOpen(true)}
-            className="px-5 py-2.5 bg-amber-500 text-black font-bold rounded-xl text-sm flex items-center gap-1.5">
-            <Truck size={16} /> 출고장 만들기
-          </button>
         </div>
       )}
 
