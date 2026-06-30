@@ -204,6 +204,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 잔재(Remnant) 검증 ──────────────────────────────────────────────────
+    const remNoMap = new Map<string, string>(); // remnantId → 잔재번호 (거래명세표 스냅샷용)
     if (allRemnantIds.length > 0) {
       const rems = await prisma.remnant.findMany({
         where: { id: { in: allRemnantIds } },
@@ -212,6 +213,7 @@ export async function POST(req: NextRequest) {
       if (rems.length !== allRemnantIds.length) {
         return NextResponse.json({ success: false, error: "존재하지 않는 잔재가 포함되어 있습니다." }, { status: 400 });
       }
+      for (const r of rems) remNoMap.set(r.id, r.remnantNo);
       // 출고 가능 상태(IN_STOCK)만 — PENDING(미절단)/EXHAUSTED(이미 소진) 차단.
       // (출고원천을 IN_STOCK 으로 고정해야 출고취소 시 IN_STOCK 복원이 정합)
       const notInStock = rems.filter(r => r.status !== "IN_STOCK");
@@ -302,6 +304,7 @@ export async function POST(req: NextRequest) {
                 block:      item.block ?? null,
                 heatNo:     remHeatNo,
                 manualHeatNo: false,
+                remnantNo:  remNoMap.get(item.remnantId!) ?? null,
               },
             });
             // 원자적 소진 — IN_STOCK 일 때만 EXHAUSTED 전환. 동시 출고 race 시 한쪽만 성공.

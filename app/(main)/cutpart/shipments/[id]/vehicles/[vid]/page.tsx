@@ -40,6 +40,7 @@ export default async function ShipmentVehicleInvoicePage({ params }: PageProps) 
       weight:           it.weight,
       block:            it.block,
       heatNo:           it.heatNo,
+      remnantNo:        it.remnantNo,
       cutScheduledDate: it.cutScheduledDate?.toISOString() ?? null,
       classSociety:     it.classSociety,
       drawingNo:        it.drawingNo,

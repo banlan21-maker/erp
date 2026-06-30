@@ -35,6 +35,7 @@ export interface InvoiceItem {
   weight:            number;
   block?:            string | null;
   heatNo?:           string | null;
+  remnantNo?:        string | null;
   cutScheduledDate?: string | null;
   classSociety?:     string | null;
   drawingNo?:        string | null;
@@ -271,7 +272,7 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
           <thead>
             <tr className="bg-gray-100 text-center font-bold">
               <td rowSpan={2} style={{ width: "26px" }}>NO</td>
-              <td rowSpan={2} style={{ width: "60px" }}>절단<br/>예정일</td>
+              <td rowSpan={2} style={{ width: "60px" }}>잔재<br/>번호</td>
               <td rowSpan={2} style={{ width: "55px" }}>호 선</td>
               <td rowSpan={2} style={{ width: "55px" }}>블 록</td>
               <td rowSpan={2} style={{ width: "70px" }}>제품번호</td>
@@ -305,12 +306,7 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
               return (
                 <tr key={it.id} className="text-center">
                   <td>{i + 1}</td>
-                  <td>
-                    <input type="date"
-                      className={`cell ${!toYMD(it.cutScheduledDate) ? "print:invisible" : ""}`}
-                      value={toYMD(it.cutScheduledDate)}
-                      onChange={e => setItem(i, { cutScheduledDate: e.target.value ? new Date(e.target.value + "T00:00:00").toISOString() : null })} />
-                  </td>
+                  <td className="font-mono text-[10px]">{it.remnantNo ?? ""}</td>
                   <td>{it.vesselCode}</td>
                   <td><input className="cell text-center" value={it.block ?? ""} onChange={e => setItem(i, { block: e.target.value })} /></td>
                   <td className="font-mono">{it.heatNo ?? ""}</td>

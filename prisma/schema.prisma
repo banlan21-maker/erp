@@ -1415,6 +1415,7 @@ model ShipmentItem {
   block        String?  // 블록 (SteelPlan.reservedFor 스냅샷, 사용자 수정 가능)
   heatNo       String?  // 매칭/직접입력 판번호 텍스트 (양식의 "제품번호")
   manualHeatNo Boolean  @default(false)
+  remnantNo    String?  // 잔재 출고 시 잔재번호 스냅샷 (거래명세표 "잔재번호" 컬럼). 원판 출고면 null
 
   // 거래명세서 양식 — 사용자 수동 입력 (PDF 화면에서 인라인 편집)
   cutScheduledDate  DateTime? // 절단예정일
