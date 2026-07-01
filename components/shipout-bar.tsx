@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   PackageOpen, FileSpreadsheet, Trash2, X, Plus, Truck,
-  ChevronRight, ChevronLeft, AlertTriangle, Save, Loader2, Upload, Download,
+  ChevronRight, ChevronLeft, ChevronUp, ChevronDown, AlertTriangle, Save, Loader2, Upload, Download,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { useShipoutCart, type ShipoutCartItem } from "./shipout-cart";
@@ -78,6 +78,7 @@ export default function ShipoutBar() {
   const [open, setOpen]               = useState(false);              // 마법사 모달
   const [step, setStep]               = useState<1 | 2>(1);
   const [excelOpen, setExcelOpen]     = useState(false);
+  const [cartOpen, setCartOpen]       = useState(false);              // 하단 카트바 "담은 목록" 펼침
 
   // 모달 ① 상태
   const [rowsM, setRowsM] = useState<ModalRow[]>([]);
@@ -215,6 +216,14 @@ export default function ShipoutBar() {
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
+
+  // 카트에서 1건 개별 취소 — 카트바 펼침 목록 + 모달 미배차 테이블 공용.
+  // (모달이 닫혀 rowsM 가 비어 있어도 cart.remove 만 유효 · 나머지는 무해)
+  const removeCartItem = (id: string) => {
+    cart.remove(id);
+    setRowsM(prev => prev.filter(r => r.steelPlanId !== id));
+    setChecked(prev => { const n = new Set(prev); n.delete(id); return n; });
+  };
 
   const unassignedRows = rowsM.filter(r => r.vehicleIdx === null);
   const checkedWeight  = useMemo(
@@ -394,17 +403,47 @@ export default function ShipoutBar() {
 
   return (
     <>
-      {/* 하단 고정 바 */}
+      {/* 하단 고정 바 (+ 펼친 담은 목록 — 개별 🗑️ 취소) */}
       {cart.items.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-30 bg-purple-900/95 text-white border-t-2 border-purple-700 shadow-2xl backdrop-blur-sm">
+        <div className="fixed bottom-0 left-0 right-0 z-30">
+          {/* 펼친 담은 목록 — 잘못 담은 자재를 1건씩 취소 */}
+          {cartOpen && (
+            <div className="bg-gray-900/97 text-white border-t border-purple-800 backdrop-blur-sm">
+              <div className="max-w-screen-2xl mx-auto px-4 py-2 max-h-[45vh] overflow-y-auto">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1.5">
+                  {cart.items.map(it => (
+                    <div key={it.steelPlanId} className="flex items-center justify-between gap-2 bg-gray-800/70 border border-gray-700 rounded-lg px-3 py-1.5">
+                      <div className="min-w-0 text-sm">
+                        <div className="font-semibold truncate">
+                          {it.vesselCode} · {it.material}
+                          {it.kind === "remnant" && <span className="ml-1 text-[10px] px-1 rounded bg-amber-900/50 text-amber-300">잔재</span>}
+                        </div>
+                        <div className="font-mono text-[11px] text-gray-400 truncate">
+                          {it.thickness}×{it.width}×{it.length} · {fmtKg(it.weight)}
+                          {it.kind === "remnant"
+                            ? (it.remnantNo ? ` · 잔재번호 ${it.remnantNo}` : "")
+                            : (it.prefilledHeatNo ? ` · 판번호 ${it.prefilledHeatNo}` : "")}
+                        </div>
+                      </div>
+                      <button onClick={() => removeCartItem(it.steelPlanId)} aria-label="카트에서 제거"
+                        className="p-1.5 text-gray-400 hover:text-red-400 shrink-0"><Trash2 size={15} /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-purple-900/95 text-white border-t-2 border-purple-700 shadow-2xl backdrop-blur-sm">
           <div className="max-w-screen-2xl mx-auto px-4 py-2 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
+            <button onClick={() => setCartOpen(o => !o)} className="flex items-center gap-3" title="담은 목록 펼치기/접기">
               <PackageOpen size={18} className="text-purple-300" />
               <span className="font-bold text-sm">출고 카트</span>
               <span className="text-sm">
                 <strong>{cart.items.length}</strong> 건 / 합계 <strong>{fmtKg(cart.totalWeight)}</strong>
               </span>
-            </div>
+              {cartOpen ? <ChevronDown size={16} className="text-purple-300" /> : <ChevronUp size={16} className="text-purple-300" />}
+            </button>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setExcelOpen(true)}
@@ -413,7 +452,7 @@ export default function ShipoutBar() {
                 <FileSpreadsheet size={12} /> 엑셀로 일괄 추가
               </button>
               <button
-                onClick={() => { if (confirm("카트를 모두 비우시겠습니까?")) cart.clear(); }}
+                onClick={() => { if (confirm("카트를 모두 비우시겠습니까?")) { cart.clear(); setCartOpen(false); } }}
                 className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold border border-white/30 hover:bg-white/10 rounded-lg"
               >
                 <Trash2 size={12} /> 비우기
@@ -425,6 +464,7 @@ export default function ShipoutBar() {
                 <Truck size={13} /> 출고장 만들기
               </button>
             </div>
+          </div>
           </div>
         </div>
       )}
@@ -507,6 +547,7 @@ export default function ShipoutBar() {
                   setCheckedAll={setChecked}
                   unassignedRows={unassignedRows}
                   checkedWeight={checkedWeight}
+                  onRemove={removeCartItem}
                 />
               ) : (
                 <Step2
@@ -555,7 +596,7 @@ export default function ShipoutBar() {
 /* ════════════════════════════════════════════════════════════ */
 function Step1({
   rowsM, setRow, vehicles, addVehicle, removeVehicle,
-  checked, toggleCheck, setCheckedAll, unassignedRows, checkedWeight,
+  checked, toggleCheck, setCheckedAll, unassignedRows, checkedWeight, onRemove,
 }: {
   rowsM:  ModalRow[];
   setRow: (id: string, patch: Partial<ModalRow>) => void;
@@ -569,6 +610,7 @@ function Step1({
   setCheckedAll: (s: Set<string>) => void;
   unassignedRows: ModalRow[];
   checkedWeight: number;
+  onRemove: (id: string) => void;
 }) {
   return (
     <div className="space-y-4">
@@ -610,11 +652,12 @@ function Step1({
                 <th className="px-2 py-2 text-right">중량(kg)</th>
                 <th className="px-2 py-2 text-left">블록</th>
                 <th className="px-2 py-2 text-left">판번호</th>
+                <th className="px-2 py-2 text-center w-10">삭제</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {unassignedRows.length === 0 ? (
-                <tr><td colSpan={9} className="py-6 text-center text-gray-400">모든 자재가 배차되었습니다.</td></tr>
+                <tr><td colSpan={10} className="py-6 text-center text-gray-400">모든 자재가 배차되었습니다.</td></tr>
               ) : unassignedRows.map(r => {
                 const isChecked = checked.has(r.steelPlanId);
                 return (
@@ -637,6 +680,10 @@ function Step1({
                     </td>
                     <td className="px-2 py-1">
                       <HeatPicker row={r} onChange={patch => setRow(r.steelPlanId, patch)} />
+                    </td>
+                    <td className="px-2 py-1 text-center">
+                      <button onClick={() => onRemove(r.steelPlanId)} aria-label="카트에서 제거"
+                        className="p-1 text-gray-400 hover:text-red-600"><Trash2 size={13} /></button>
                     </td>
                   </tr>
                 );
