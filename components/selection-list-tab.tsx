@@ -10,7 +10,7 @@
  * 컬럼 필터·정렬: 표준 cascading 패턴 (lib/cascading-filters + ColumnFilterDropdown).
  */
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { RefreshCw, Truck, Undo2, Search, Filter, Plus, X, Layers } from "lucide-react";
 import { useShipoutCart, type ShipoutCartItem } from "@/components/shipout-cart";
 import ColumnFilterDropdown from "@/components/column-filter-dropdown";
@@ -53,6 +53,44 @@ const fmtYMD = (iso: string | null) => {
   if (isNaN(d.getTime())) return "";
   return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
 };
+
+const kindLabelOf = (r: Row) => r.kind === "plate" ? "원판" : (REMNANT_TYPE_LABEL[r.remnantType ?? ""] ?? "잔재");
+const shipoutLabelOf = (r: Row) => r.kind === "plate"
+  ? `${r.shipoutLabel ?? r.vesselCode} 선별`
+  : `${REMNANT_TYPE_LABEL[r.remnantType ?? ""] ?? "잔재"} 선별`;
+
+// 행 단위 memo — 카트 변경 시 inCart/checked 가 바뀐 행만 리렌더(대형 선별목록 전체 리렌더 방지).
+const SelectionRow = memo(function SelectionRow({ row, inCart, checked, onToggle }: {
+  row: Row; inCart: boolean; checked: boolean; onToggle: (id: string) => void;
+}) {
+  const isRemnant = row.kind === "remnant";
+  return (
+    <tr className={`hover:bg-gray-50 ${inCart ? "bg-purple-50/60" : ""}`}>
+      <td className="px-2 py-1.5 text-center">
+        {inCart
+          ? <span className="text-[10px] font-semibold text-purple-600" title="출고 카트에 담김">담김</span>
+          : <input type="checkbox" checked={checked} onChange={() => onToggle(row.id)} className="align-middle accent-purple-600" />}
+      </td>
+      <td className="px-3 py-1.5">
+        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${isRemnant ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"}`}>
+          {kindLabelOf(row)}
+        </span>
+      </td>
+      <td className="px-3 py-1.5">
+        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${isRemnant ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>{shipoutLabelOf(row)}</span>
+      </td>
+      <td className="px-3 py-1.5 font-medium">{row.vesselCode || "-"}{isRemnant && row.remnantNo && <span className="ml-1 text-[10px] text-gray-400 font-mono">{row.remnantNo}</span>}</td>
+      <td className="px-3 py-1.5">{row.material}</td>
+      <td className="px-3 py-1.5 text-right font-mono">{fmtT(row.thickness)}</td>
+      <td className="px-3 py-1.5 text-right font-mono">{row.width ? fmtL(row.width) : "-"}</td>
+      <td className="px-3 py-1.5 text-right font-mono">{row.length ? fmtL(row.length) : "-"}</td>
+      <td className="px-3 py-1.5 text-right font-mono">{row.weight.toLocaleString()}</td>
+      <td className="px-3 py-1.5 text-gray-600">{row.storageLocation ?? "-"}</td>
+      <td className="px-3 py-1.5 font-mono">{row.heatNo ?? "-"}</td>
+      <td className="px-3 py-1.5 text-gray-500 font-mono">{fmtYMD(row.shipoutMarkedAt) || "-"}</td>
+    </tr>
+  );
+});
 
 // 필터·정렬 대상 컬럼
 const COLUMNS: { key: string; label: string; align: "left" | "right" }[] = [
@@ -129,15 +167,10 @@ export default function SelectionListTab() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  const kindLabel = useCallback((r: Row) => r.kind === "plate" ? "원판" : (REMNANT_TYPE_LABEL[r.remnantType ?? ""] ?? "잔재"), []);
-  const shipoutLabel = useCallback((r: Row) => r.kind === "plate"
-    ? `${r.shipoutLabel ?? r.vesselCode} 선별`
-    : `${REMNANT_TYPE_LABEL[r.remnantType ?? ""] ?? "잔재"} 선별`, []);
-
   // 컬럼별 값 추출 (필터·정렬·드롭다운 옵션 공통)
   const accessors = useMemo<ColumnAccessorMap<Row>>(() => ({
-    kind:      r => kindLabel(r),
-    shipout:   r => shipoutLabel(r),
+    kind:      r => kindLabelOf(r),
+    shipout:   r => shipoutLabelOf(r),
     vessel:    r => r.vesselCode,
     material:  r => r.material,
     thickness: r => fmtT(r.thickness),
@@ -147,7 +180,7 @@ export default function SelectionListTab() {
     location:  r => r.storageLocation ?? "",
     heatNo:    r => r.heatNo ?? "",
     markedAt:  r => fmtYMD(r.shipoutMarkedAt),
-  }), [kindLabel, shipoutLabel]);
+  }), []);
 
   const distinctValues = useMemo(
     () => getAllCascadedOptions(rows, colFilters, accessors),
@@ -176,11 +209,13 @@ export default function SelectionListTab() {
     else { setOpenCol(key); setAnchorEl(el); }
   };
 
+  // 카트 담긴 id 집합 — items 바뀔 때만 갱신. has() O(1) + 행 memo 판정용.
+  const cartIdSet = useMemo(() => new Set(cart.items.map(i => i.steelPlanId)), [cart.items]);
   // 카트에 없는 행만 선택 대상. 전체선택은 현재 화면(displayRows) 기준.
-  const selectableVisibleIds = useMemo(() => displayRows.filter(r => !cart.has(r.id)).map(r => r.id), [displayRows, cart]);
+  const selectableVisibleIds = useMemo(() => displayRows.filter(r => !cartIdSet.has(r.id)).map(r => r.id), [displayRows, cartIdSet]);
   const validSelected = useMemo(
-    () => [...selectedIds].filter(id => rows.some(r => r.id === id) && !cart.has(id)),
-    [selectedIds, rows, cart],
+    () => [...selectedIds].filter(id => rows.some(r => r.id === id) && !cartIdSet.has(id)),
+    [selectedIds, rows, cartIdSet],
   );
   const allSelected = selectableVisibleIds.length > 0 && selectableVisibleIds.every(id => selectedIds.has(id));
   const selWeight = useMemo(
@@ -196,7 +231,7 @@ export default function SelectionListTab() {
     else selectableVisibleIds.forEach(id => n.add(id));
     return n;
   });
-  const toggleOne = (id: string) => setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const toggleOne = useCallback((id: string) => setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; }), []);
 
   const addToCart = () => {
     if (validSelected.length === 0) { alert("출고 카트에 담을 자재를 선택하세요."); return; }
@@ -315,36 +350,9 @@ export default function SelectionListTab() {
                 <tr><td colSpan={12} className="py-8 text-center text-gray-400">불러오는 중...</td></tr>
               ) : displayRows.length === 0 ? (
                 <tr><td colSpan={12} className="py-8 text-center text-gray-400">{rows.length === 0 ? "선별된 자재가 없습니다. 강재매칭/출고등록에서 선별지시서를 출력하거나 [잔재 추가]로 잔재를 담으세요." : "필터 조건에 맞는 자재가 없습니다."}</td></tr>
-              ) : displayRows.map((r) => {
-                const inCart = cart.has(r.id);
-                const isRemnant = r.kind === "remnant";
-                return (
-                  <tr key={r.id} className={`hover:bg-gray-50 ${inCart ? "bg-purple-50/60" : ""}`}>
-                    <td className="px-2 py-1.5 text-center">
-                      {inCart
-                        ? <span className="text-[10px] font-semibold text-purple-600" title="출고 카트에 담김">담김</span>
-                        : <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleOne(r.id)} className="align-middle accent-purple-600" />}
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${isRemnant ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"}`}>
-                        {kindLabel(r)}
-                      </span>
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${isRemnant ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>{shipoutLabel(r)}</span>
-                    </td>
-                    <td className="px-3 py-1.5 font-medium">{r.vesselCode || "-"}{isRemnant && r.remnantNo && <span className="ml-1 text-[10px] text-gray-400 font-mono">{r.remnantNo}</span>}</td>
-                    <td className="px-3 py-1.5">{r.material}</td>
-                    <td className="px-3 py-1.5 text-right font-mono">{fmtT(r.thickness)}</td>
-                    <td className="px-3 py-1.5 text-right font-mono">{r.width ? fmtL(r.width) : "-"}</td>
-                    <td className="px-3 py-1.5 text-right font-mono">{r.length ? fmtL(r.length) : "-"}</td>
-                    <td className="px-3 py-1.5 text-right font-mono">{r.weight.toLocaleString()}</td>
-                    <td className="px-3 py-1.5 text-gray-600">{r.storageLocation ?? "-"}</td>
-                    <td className="px-3 py-1.5 font-mono">{r.heatNo ?? "-"}</td>
-                    <td className="px-3 py-1.5 text-gray-500 font-mono">{fmtYMD(r.shipoutMarkedAt) || "-"}</td>
-                  </tr>
-                );
-              })}
+              ) : displayRows.map((r) => (
+                <SelectionRow key={r.id} row={r} inCart={cartIdSet.has(r.id)} checked={selectedIds.has(r.id)} onToggle={toggleOne} />
+              ))}
             </tbody>
           </table>
         </div>
