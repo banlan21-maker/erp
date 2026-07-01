@@ -501,10 +501,16 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }
             {cart.items.map(it => (
               <div key={it.steelPlanId} className="bg-gray-900 border border-gray-800 rounded-xl p-3 space-y-2">
                 <div className="flex items-center justify-between">
-                  <div className="text-sm">
-                    <div className="font-bold text-white">{it.vesselCode} · {it.material} {it.kind === "remnant" && <span className="ml-1 text-[10px] px-1 rounded bg-amber-900/50 text-amber-300">잔재</span>}</div>
-                    <div className="font-mono text-xs text-gray-400 mt-0.5">{fmtT(it.thickness)}×{fmtL(it.width)}×{fmtL(it.length)} · {fmtKg(it.weight)}</div>
-                    {it.prefilledHeatNo && <div className="font-mono text-xs text-amber-300 mt-0.5">판번호 {it.prefilledHeatNo}</div>}
+                  <div className="min-w-0">
+                    <div className="text-xs text-gray-200">
+                      {it.vesselCode} · {it.material} · {fmtT(it.thickness)}×{fmtL(it.width)}×{fmtL(it.length)} · {fmtKg(it.weight)}
+                      {it.kind === "remnant" && <span className="ml-1 text-[10px] px-1 rounded bg-amber-900/50 text-amber-300">잔재</span>}
+                    </div>
+                    {(it.kind === "remnant" ? it.remnantNo : it.prefilledHeatNo) && (
+                      <div className="font-mono text-xs text-amber-300 mt-0.5">
+                        {it.kind === "remnant" ? `잔재번호 ${it.remnantNo}` : `판번호 ${it.prefilledHeatNo}`}
+                      </div>
+                    )}
                   </div>
                   <button onClick={() => cart.remove(it.steelPlanId)} className="p-2 text-gray-500 hover:text-red-400"><Trash2 size={16} /></button>
                 </div>
