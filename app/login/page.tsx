@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { LogIn, Loader2, Lock } from "lucide-react";
 
 export default function LoginPage() {
@@ -13,9 +13,8 @@ export default function LoginPage() {
 }
 
 function LoginInner() {
-  const router = useRouter();
   const sp = useSearchParams();
-  const next = sp.get("next") || "/";
+  const next = sp.get("next");
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -34,8 +33,9 @@ function LoginInner() {
       });
       const d = await r.json();
       if (!d.success) { setError(d.error ?? "로그인 실패"); return; }
-      // 로그인 후 원래 가려던 페이지(next)로. 새로고침 경로로 이동해 미들웨어 통과.
-      window.location.href = next.startsWith("/") ? next : "/";
+      // 원래 가려던 페이지(next)가 있으면 그곳, 없으면 관리자는 관리자 페이지로.
+      const dest = next && next.startsWith("/") ? next : (d.user?.isAdmin ? "/admin" : "/");
+      window.location.href = dest;
     } catch (e) {
       setError(e instanceof Error ? e.message : "네트워크 오류");
     } finally { setBusy(false); }
