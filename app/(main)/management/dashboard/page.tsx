@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { LayoutDashboard, AlertTriangle, Clock, CheckCircle, Wrench, XCircle, MinusCircle, Truck, ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
+import { LayoutDashboard, AlertTriangle, Wrench, XCircle, MinusCircle, Truck, ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
 import Link from "next/link";
 
 const STORAGE_KEY = "mgmt_dashboard_collapse";
@@ -92,7 +92,6 @@ export default function ManagementDashboardPage() {
   const in90days = new Date(data.in90days);
 
   const expiring = foreignWorkers.filter((w: any) => new Date(w.visaExpiry) <= in90days);
-  const safe     = foreignWorkers.filter((w: any) => new Date(w.visaExpiry) > in90days);
 
   const overdueInsp       = alertInspections.filter((i: any) => new Date(i.nextInspectAt) < today);
   const upcomingInsp      = alertInspections.filter((i: any) => new Date(i.nextInspectAt) >= today);
@@ -137,62 +136,32 @@ export default function ManagementDashboardPage() {
         </SectionHeader>
 
         {visaOpen && (
-          foreignWorkers.length === 0 ? (
-            <div className="py-12 text-center text-gray-400 text-sm">비자 만기일이 등록된 외국인 인원이 없습니다.</div>
+          expiring.length === 0 ? (
+            <div className="py-12 text-center text-gray-400 text-sm">3개월 이내 만료 예정인 외국인 인원이 없습니다.</div>
           ) : (
-            <div className="divide-y divide-gray-50">
-              {expiring.length > 0 && (
-                <div className="p-5">
-                  <p className="text-xs font-bold text-red-600 mb-3 flex items-center gap-1">
-                    <AlertTriangle size={13} /> 3개월 이내 만료 — 즉시 연장 필요
-                  </p>
-                  <div className="space-y-2">
-                    {expiring.map((w: any) => {
-                      const { label, color } = dDayLabel(w.visaExpiry);
-                      return (
-                        <div key={w.id} className="flex items-center justify-between bg-red-50 rounded-lg px-4 py-3">
-                          <div>
-                            <p className="text-sm font-bold text-gray-900">
-                              {w.name}{w.nickname && <span className="ml-1 text-xs text-gray-500 font-normal">({w.nickname})</span>}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-0.5">{w.nationality} · {w.visaType || "비자타입 미입력"}</p>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <span className="text-xs text-gray-500 font-mono">{w.visaExpiry.slice(0, 10)}</span>
-                            <span className={`text-xs font-bold px-2 py-1 rounded-full ${color}`}>{label}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              {safe.length > 0 && (
-                <div className="p-5">
-                  <p className="text-xs font-bold text-green-600 mb-3 flex items-center gap-1">
-                    <CheckCircle size={13} /> 3개월 이후 만료
-                  </p>
-                  <div className="space-y-2">
-                    {safe.map((w: any) => {
-                      const diff = Math.floor((new Date(w.visaExpiry).getTime() - today.getTime()) / 86400000);
-                      return (
-                        <div key={w.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-2.5">
-                          <div>
-                            <p className="text-sm font-semibold text-gray-800">
-                              {w.name}{w.nickname && <span className="ml-1 text-xs text-gray-400 font-normal">({w.nickname})</span>}
-                            </p>
-                            <p className="text-xs text-gray-400">{w.nationality} · {w.visaType || "-"}</p>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <span className="text-xs text-gray-400 font-mono">{w.visaExpiry.slice(0, 10)}</span>
-                            <span className="text-xs text-green-600 font-semibold flex items-center gap-1"><Clock size={11} /> D-{diff}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+            <div className="p-5">
+              <p className="text-xs font-bold text-red-600 mb-3 flex items-center gap-1">
+                <AlertTriangle size={13} /> 3개월 이내 만료 — 즉시 연장 필요
+              </p>
+              <div className="space-y-2">
+                {expiring.map((w: any) => {
+                  const { label, color } = dDayLabel(w.visaExpiry);
+                  return (
+                    <div key={w.id} className="flex items-center justify-between bg-red-50 rounded-lg px-4 py-3">
+                      <div>
+                        <p className="text-sm font-bold text-gray-900">
+                          {w.name}{w.nickname && <span className="ml-1 text-xs text-gray-500 font-normal">({w.nickname})</span>}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">{w.nationality} · {w.visaType || "비자타입 미입력"}</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-gray-500 font-mono">{w.visaExpiry.slice(0, 10)}</span>
+                        <span className={`text-xs font-bold px-2 py-1 rounded-full ${color}`}>{label}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )
         )}
