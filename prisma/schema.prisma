@@ -1519,6 +1519,8 @@ model WorkUser {
   posts     WorkPost[]        @relation("WorkPostAuthor")
   mentions  WorkPostMention[]
   schedules WorkSchedule[]
+  logComments         WorkLogComment[] @relation("WorkLogCommentTarget")
+  authoredLogComments WorkLogComment[] @relation("WorkLogCommentAuthor")
 }
 
 // 일일 업무일지 — (사용자 + 날짜) 1건. 어제 칸은 전일 todayWork 를 자동 표시(저장 안 함).
@@ -1562,6 +1564,22 @@ model WorkPostMention {
 
   @@unique([postId, userId])
   @@index([userId])
+}
+
+// 업무일지 댓글 — (대상 팀원 + 날짜) 일지에 대한 댓글. 로그인 없이 authorId(WorkUser) 기록.
+// 대시보드 팀원 카드별 스레드(선택 날짜 기준). 본인(author) 댓글만 삭제 가능.
+model WorkLogComment {
+  id           String   @id @default(cuid())
+  targetUserId String   // 댓글 대상(그 팀원의 일지)
+  targetUser   WorkUser @relation("WorkLogCommentTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  date         DateTime // 어느 날짜 일지에 대한 댓글 (달력일을 UTC 자정으로 정규화)
+  authorId     String
+  author       WorkUser @relation("WorkLogCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  content      String
+  createdAt    DateTime @default(now())
+
+  @@index([targetUserId, date])
+  @@index([date])
 }
 
 // 일정 — 업무 대시보드 달력 표시

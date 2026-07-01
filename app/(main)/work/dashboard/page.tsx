@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Star, Trash2, Send, Users, NotebookPen, ChevronLeft, ChevronRight } from "lucide-react";
+import { Star, Trash2, Send, Users, NotebookPen, ChevronLeft, ChevronRight, MessageSquare } from "lucide-react";
 import { useWorkUser, MentionText } from "@/components/work-user-context";
 import { JournalText } from "@/components/journal-text";
 import LandingCalendar from "@/components/landing-calendar";
@@ -23,6 +23,7 @@ const fmtShort = (ymd: string) => {
 interface PUser { id: string; name: string; color: string | null; dept?: string | null }
 interface Post { id: string; content: string; important: boolean; createdAt: string; author: PUser; mentions: { user: PUser }[] }
 interface TeamLog { id: string; todayWork: string; tomorrowPlan: string; user: PUser }
+interface LogComment { id: string; targetUserId: string; authorId: string; content: string; createdAt: string; author: PUser }
 
 export default function WorkDashboardPage() {
   const { currentUserId, currentUser, users } = useWorkUser();
@@ -33,6 +34,9 @@ export default function WorkDashboardPage() {
   const [prevLogs, setPrevLogs] = useState<TeamLog[]>([]);   // 전날
   const [memo, setMemo] = useState("");
   const [busy, setBusy] = useState(false);
+  const [comments, setComments] = useState<LogComment[]>([]); // 선택 날짜의 팀원 댓글 전체
+  const [draft, setDraft] = useState<Record<string, string>>({}); // 팀원별 댓글 입력창
+  const [cBusy, setCBusy] = useState(false);
 
   const prevYmd     = shiftYmd(selectedDate, -1);
   const tomorrowYmd = shiftYmd(selectedDate, 1);
@@ -53,8 +57,15 @@ export default function WorkDashboardPage() {
     if (rp.success) setPrevLogs(rp.data);
   }, [selectedDate]);
 
+  // 선택 날짜의 팀원 일지 댓글 (팀원 카드별 스레드)
+  const loadComments = useCallback(async () => {
+    const r = await fetch(`/api/work/log-comments?date=${selectedDate}`).then(r => r.json()).catch(() => ({}));
+    if (r.success) setComments(r.data);
+  }, [selectedDate]);
+
   useEffect(() => { loadImportant(); }, [loadImportant]);
   useEffect(() => { loadTeamLogs(); }, [loadTeamLogs]);
+  useEffect(() => { loadComments(); }, [loadComments]);
 
   const logByUser = useMemo(() => {
     const m = new Map<string, TeamLog>();
@@ -66,6 +77,11 @@ export default function WorkDashboardPage() {
     for (const l of prevLogs) m.set(l.user.id, l);
     return m;
   }, [prevLogs]);
+  const commentsByUser = useMemo(() => {
+    const m = new Map<string, LogComment[]>();
+    for (const c of comments) { const arr = m.get(c.targetUserId) ?? []; arr.push(c); m.set(c.targetUserId, arr); }
+    return m;
+  }, [comments]);
   const teamRows = useMemo(() => {
     const active = users.filter(u => u.active);
     const hasAny = (u: { id: string }) => {
@@ -111,6 +127,30 @@ export default function WorkDashboardPage() {
     loadImportant();
   };
 
+  const addComment = async (targetUserId: string) => {
+    if (!currentUserId) { alert("상단에서 현재 사용자를 선택하세요."); return; }
+    const text = (draft[targetUserId] ?? "").trim();
+    if (!text || cBusy) return;
+    setCBusy(true);
+    try {
+      const r = await fetch("/api/work/log-comments", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId, authorId: currentUserId, date: selectedDate, content: text }),
+      });
+      const d = await r.json();
+      if (!d.success) { alert(d.error ?? "댓글 등록 실패"); return; }
+      setDraft(prev => ({ ...prev, [targetUserId]: "" }));
+      loadComments();
+    } finally { setCBusy(false); }
+  };
+  const removeComment = async (id: string) => {
+    if (!currentUserId) return;
+    if (!confirm("댓글을 삭제하시겠습니까?")) return;
+    const r = await fetch(`/api/work/log-comments/${id}?authorId=${currentUserId}`, { method: "DELETE" }).then(r => r.json()).catch(() => ({}));
+    if (!r.success) { alert(r.error ?? "삭제 실패"); return; }
+    loadComments();
+  };
+
   return (
     <div className="space-y-4">
       <div>
@@ -140,7 +180,8 @@ export default function WorkDashboardPage() {
               const tomorrow = (log?.tomorrowPlan ?? "").trim();              // 내일 계획
               const empty = !prev && !today && !tomorrow;
               return (
-                <div key={u.id} className={`px-4 py-3 ${empty ? "opacity-60" : ""}`}>
+                <div key={u.id} className="px-4 py-3">
+                  <div className={empty ? "opacity-60" : ""}>
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: u.color || "#6366f1" }} />
                     <span className="text-sm font-bold text-gray-800">{u.name}</span>
@@ -156,6 +197,46 @@ export default function WorkDashboardPage() {
                       {tomorrow && <div><span className="text-[11px] font-semibold text-emerald-600">내일 {fmtShort(tomorrowYmd)}</span><div className="text-[11px] text-gray-600"><JournalText content={tomorrow} /></div></div>}
                     </div>
                   )}
+                  </div>
+
+                  {/* 일별 댓글 — 팀원 카드별 스레드 (선택 날짜 기준) */}
+                  {(() => {
+                    const cs = commentsByUser.get(u.id) ?? [];
+                    return (
+                      <div className="mt-2 pt-2 border-t border-gray-100 pl-4 space-y-1">
+                        {cs.length > 0 && (
+                          <div className="flex items-center gap-1 text-[10px] font-semibold text-gray-400">
+                            <MessageSquare size={11} className="text-indigo-400" /> 댓글 {cs.length}
+                          </div>
+                        )}
+                        {cs.map(c => (
+                          <div key={c.id} className="flex items-start justify-between gap-1.5 text-[11px]">
+                            <div className="min-w-0">
+                              <span className="font-semibold" style={{ color: c.author.color || "#374151" }}>{c.author.name}</span>
+                              <span className="text-gray-700 ml-1 break-words whitespace-pre-wrap">{c.content}</span>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <span className="text-[10px] text-gray-300">{fmtTime(c.createdAt)}</span>
+                              {c.authorId === currentUserId && (
+                                <button onClick={() => removeComment(c.id)} className="text-gray-300 hover:text-red-500" title="댓글 삭제"><Trash2 size={10} /></button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                        <div className="flex gap-1 pt-0.5">
+                          <input
+                            value={draft[u.id] ?? ""}
+                            onChange={e => setDraft(prev => ({ ...prev, [u.id]: e.target.value }))}
+                            onKeyDown={e => { if (e.key === "Enter") addComment(u.id); }}
+                            placeholder={currentUserId ? "댓글 달기..." : "현재 사용자 선택 필요"}
+                            disabled={!currentUserId}
+                            className="flex-1 px-2 py-1 text-[11px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:bg-gray-50" />
+                          <button onClick={() => addComment(u.id)} disabled={!currentUserId || cBusy}
+                            className="px-2 py-1 bg-indigo-500 text-white rounded hover:bg-indigo-600 disabled:opacity-50"><Send size={11} /></button>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
