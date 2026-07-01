@@ -209,21 +209,24 @@ export default function SelectionListTab() {
     else { setOpenCol(key); setAnchorEl(el); }
   };
 
+  // id → row Map (rows 바뀔 때만). find/some 의 O(k×n) 제곱 연산을 O(k)로 낮춰
+  // 선택 개수가 많아질수록 심해지던 간헐 버벅임 제거.
+  const rowById = useMemo(() => new Map(rows.map(r => [r.id, r])), [rows]);
   // 카트 담긴 id 집합 — items 바뀔 때만 갱신. has() O(1) + 행 memo 판정용.
   const cartIdSet = useMemo(() => new Set(cart.items.map(i => i.steelPlanId)), [cart.items]);
   // 카트에 없는 행만 선택 대상. 전체선택은 현재 화면(displayRows) 기준.
   const selectableVisibleIds = useMemo(() => displayRows.filter(r => !cartIdSet.has(r.id)).map(r => r.id), [displayRows, cartIdSet]);
   const validSelected = useMemo(
-    () => [...selectedIds].filter(id => rows.some(r => r.id === id) && !cartIdSet.has(id)),
-    [selectedIds, rows, cartIdSet],
+    () => [...selectedIds].filter(id => rowById.has(id) && !cartIdSet.has(id)),
+    [selectedIds, rowById, cartIdSet],
   );
   const allSelected = selectableVisibleIds.length > 0 && selectableVisibleIds.every(id => selectedIds.has(id));
   const selWeight = useMemo(
-    () => validSelected.reduce((s, id) => { const r = rows.find(x => x.id === id); return s + (r ? r.weight : 0); }, 0),
-    [validSelected, rows],
+    () => validSelected.reduce((s, id) => s + (rowById.get(id)?.weight ?? 0), 0),
+    [validSelected, rowById],
   );
-  const plateCount   = rows.filter(r => r.kind === "plate").length;
-  const remnantCount = rows.filter(r => r.kind === "remnant").length;
+  const plateCount   = useMemo(() => rows.filter(r => r.kind === "plate").length, [rows]);
+  const remnantCount = useMemo(() => rows.filter(r => r.kind === "remnant").length, [rows]);
 
   const toggleAll = () => setSelectedIds(prev => {
     const n = new Set(prev);
@@ -236,7 +239,7 @@ export default function SelectionListTab() {
   const addToCart = () => {
     if (validSelected.length === 0) { alert("출고 카트에 담을 자재를 선택하세요."); return; }
     const items: ShipoutCartItem[] = validSelected.map(id => {
-      const r = rows.find(x => x.id === id)!;
+      const r = rowById.get(id)!;
       return {
         steelPlanId: r.id,                                   // 카트 고유키
         kind:        r.kind,
@@ -263,8 +266,8 @@ export default function SelectionListTab() {
     if (validSelected.length === 0) { alert("선별 취소할 자재를 선택하세요."); return; }
     if (!confirm(`선택한 ${validSelected.length}건의 출고 선별을 취소하시겠습니까?\n(선별 목록에서 빠집니다. 원판은 다시 절단/출고 대상, 잔재는 잔재관리 재고로 복귀)`)) return;
     const ids = validSelected;
-    const plateIds   = ids.filter(id => rows.find(r => r.id === id)?.kind === "plate");
-    const remnantIds = ids.filter(id => rows.find(r => r.id === id)?.kind === "remnant");
+    const plateIds   = ids.filter(id => rowById.get(id)?.kind === "plate");
+    const remnantIds = ids.filter(id => rowById.get(id)?.kind === "remnant");
     setBusy(true);
     try {
       setRows(prev => prev.filter(r => !ids.includes(r.id)));   // 낙관적 제거
