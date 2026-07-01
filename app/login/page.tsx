@@ -1,8 +1,10 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { LogIn, Loader2, Lock } from "lucide-react";
+
+const REMEMBER_KEY = "erp-login-remember";
 
 export default function LoginPage() {
   return (
@@ -18,8 +20,22 @@ function LoginInner() {
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  // 저장된 아이디·비밀번호 복원
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(REMEMBER_KEY);
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (s?.username) setUsername(s.username);
+        if (s?.password) setPassword(s.password);
+        setRemember(true);
+      }
+    } catch { /* 무시 */ }
+  }, []);
 
   const submit = async () => {
     if (busy) return;
@@ -33,6 +49,11 @@ function LoginInner() {
       });
       const d = await r.json();
       if (!d.success) { setError(d.error ?? "로그인 실패"); return; }
+      // 아이디/비밀번호 기억 (체크 시 브라우저에 저장, 해제 시 삭제)
+      try {
+        if (remember) localStorage.setItem(REMEMBER_KEY, JSON.stringify({ username: username.trim(), password }));
+        else localStorage.removeItem(REMEMBER_KEY);
+      } catch { /* 무시 */ }
       // 원래 가려던 페이지(next)가 있으면 그곳, 없으면 관리자는 관리자 페이지로.
       const dest = next && next.startsWith("/") ? next : (d.user?.isAdmin ? "/admin" : "/");
       window.location.href = dest;
@@ -64,6 +85,10 @@ function LoginInner() {
               onKeyDown={e => { if (e.key === "Enter") submit(); }}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" />
           </div>
+          <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none">
+            <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} className="accent-blue-600" />
+            아이디 및 비밀번호 기억
+          </label>
           {error && <p className="text-xs text-red-600">{error}</p>}
           <button onClick={submit} disabled={busy}
             className="w-full py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-1.5">
