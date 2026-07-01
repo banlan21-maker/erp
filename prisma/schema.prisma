@@ -1595,3 +1595,20 @@ model WorkSchedule {
 
   @@index([date])
 }
+
+// ==========================================
+// 로그인/계정 (관리자 페이지) — 로그인 없이 운영하던 시스템에 도입하는 계정.
+// 최초 admin/admin 자동 시드(lib/admin-auth). 비밀번호는 scrypt(salt:hash) 해싱.
+// permissions = 접근 가능 파트 키(cutpart/supply/management/work). 실제 접근차단은 차후 적용.
+// ==========================================
+model AppUser {
+  id           String   @id @default(cuid())
+  username     String   @unique            // 로그인 아이디
+  passwordHash String                       // scrypt "salt:hash"
+  name         String?                      // 표시 이름
+  isAdmin      Boolean  @default(false)     // 관리자(관리자 페이지 접근/계정관리)
+  permissions  String[] @default([])        // 접근 파트 키 목록
+  sessionToken String?  @unique             // 로그인 세션(쿠키) — 최소 세션
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
