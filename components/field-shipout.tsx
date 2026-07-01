@@ -103,17 +103,16 @@ function Inner() {
             <div className="max-h-[55vh] overflow-y-auto bg-gray-900/98 backdrop-blur border-t border-purple-800 px-3 py-2.5 space-y-1.5">
               {cart.items.map(it => (
                 <div key={it.steelPlanId} className="flex items-center justify-between gap-2 bg-gray-800/70 border border-gray-700 rounded-lg px-3 py-2">
-                  <div className="min-w-0 text-sm">
-                    <div className="font-bold text-white truncate">
-                      {it.vesselCode} · {it.material}
+                  <div className="min-w-0">
+                    <div className="text-xs text-gray-200 truncate">
+                      {it.vesselCode} · {it.material} · {fmtT(it.thickness)}×{fmtL(it.width)}×{fmtL(it.length)} · {fmtKg(it.weight)}
                       {it.kind === "remnant" && <span className="ml-1 text-[10px] px-1 rounded bg-amber-900/50 text-amber-300">잔재</span>}
                     </div>
-                    <div className="font-mono text-xs text-gray-400 mt-0.5 truncate">
-                      {fmtT(it.thickness)}×{fmtL(it.width)}×{fmtL(it.length)} · {fmtKg(it.weight)}
-                      {it.kind === "remnant"
-                        ? (it.remnantNo ? ` · 잔재번호 ${it.remnantNo}` : "")
-                        : (it.prefilledHeatNo ? ` · 판번호 ${it.prefilledHeatNo}` : "")}
-                    </div>
+                    {(it.kind === "remnant" ? it.remnantNo : it.prefilledHeatNo) && (
+                      <div className="font-mono text-xs text-gray-400 mt-0.5 truncate">
+                        {it.kind === "remnant" ? `잔재번호 ${it.remnantNo}` : `판번호 ${it.prefilledHeatNo}`}
+                      </div>
+                    )}
                   </div>
                   <button onClick={() => cart.remove(it.steelPlanId)} aria-label="카트에서 제거"
                     className="p-2 text-gray-400 hover:text-red-400 shrink-0"><Trash2 size={18} /></button>
