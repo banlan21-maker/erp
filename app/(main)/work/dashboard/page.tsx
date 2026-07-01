@@ -151,9 +151,9 @@ export default function WorkDashboardPage() {
                     <p className="text-xs text-gray-400 pl-4">작성된 업무일지가 없습니다.</p>
                   ) : (
                     <div className="pl-4 space-y-1.5">
-                      {prev && <div><span className="text-[11px] font-semibold text-gray-400">전날 {fmtShort(prevYmd)}</span><div className="text-sm text-gray-600"><JournalText content={prev} /></div></div>}
-                      {today && <div><span className="text-[11px] font-semibold text-indigo-600">당일 {fmtShort(selectedDate)}</span><div className="text-sm text-gray-700"><JournalText content={today} /></div></div>}
-                      {tomorrow && <div><span className="text-[11px] font-semibold text-emerald-600">내일 {fmtShort(tomorrowYmd)}</span><div className="text-sm text-gray-600"><JournalText content={tomorrow} /></div></div>}
+                      {prev && <div><span className="text-[11px] font-semibold text-gray-400">전날 {fmtShort(prevYmd)}</span><div className="text-[11px] text-gray-600"><JournalText content={prev} /></div></div>}
+                      {today && <div><span className="text-[11px] font-semibold text-indigo-600">당일 {fmtShort(selectedDate)}</span><div className="text-[11px] text-gray-700"><JournalText content={today} /></div></div>}
+                      {tomorrow && <div><span className="text-[11px] font-semibold text-emerald-600">내일 {fmtShort(tomorrowYmd)}</span><div className="text-[11px] text-gray-600"><JournalText content={tomorrow} /></div></div>}
                     </div>
                   )}
                 </div>
