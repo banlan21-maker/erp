@@ -408,7 +408,7 @@ export default function ShipoutBar() {
         <div className="fixed bottom-0 left-0 right-0 z-30">
           {/* 펼친 담은 목록 — 잘못 담은 자재를 1건씩 취소 */}
           {cartOpen && (
-            <div className="bg-gray-900/97 text-white border-t border-purple-800 backdrop-blur-sm">
+            <div className="bg-gray-900 text-white border-t border-purple-800">
               <div className="max-w-screen-2xl mx-auto px-4 py-2 max-h-[45vh] overflow-y-auto">
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1.5">
                   {cart.items.map(it => (
@@ -433,7 +433,7 @@ export default function ShipoutBar() {
             </div>
           )}
 
-          <div className="bg-purple-900/95 text-white border-t-2 border-purple-700 shadow-2xl backdrop-blur-sm">
+          <div className="bg-purple-900 text-white border-t-2 border-purple-700 shadow-2xl">
           <div className="max-w-screen-2xl mx-auto px-4 py-2 flex items-center justify-between gap-3">
             <button onClick={() => setCartOpen(o => !o)} className="flex items-center gap-3" title="담은 목록 펼치기/접기">
               <PackageOpen size={18} className="text-purple-300" />

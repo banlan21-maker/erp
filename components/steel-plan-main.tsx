@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import ColumnFilterDropdown, { type FilterValue } from "./column-filter-dropdown";
 import { serializeColFilters } from "@/lib/client-cascading";
-import { useShipoutCart } from "./shipout-cart";
+import { useShipoutCart, useShipoutCartActions } from "./shipout-cart";
 import ShipoutBar, { ExcelUploadModal as ShipoutExcelUploadModal } from "./shipout-bar";
 import SteelMatchTab from "./steel-match-tab";
 import SelectionListTab from "./selection-list-tab";
@@ -134,7 +134,7 @@ function downloadRegisterTemplate() {
 
 /* ══════════════════════════════════════════════════════════════════════════ */
 export default function SteelPlanMain() {
-  const shipoutCart = useShipoutCart();
+  const shipoutCart = useShipoutCartActions(); // add 만 사용 → 카트 변경 시 이 대형 테이블 리렌더 방지
   const [registerExcelOpen, setRegisterExcelOpen] = useState(false);
   const [tab, setTab] = useState<"plan" | "heatno" | "match" | "selection">("plan");
 

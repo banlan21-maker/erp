@@ -100,7 +100,7 @@ function Inner() {
         <div className="fixed bottom-0 left-0 right-0 z-20">
           {/* 펼친 담은 목록 — 잘못 담은 자재를 1건씩 취소 */}
           {cartOpen && (
-            <div className="max-h-[55vh] overflow-y-auto bg-gray-900/98 backdrop-blur border-t border-purple-800 px-3 py-2.5 space-y-1.5">
+            <div className="max-h-[55vh] overflow-y-auto bg-gray-900 border-t border-purple-800 px-3 py-2.5 space-y-1.5">
               {cart.items.map(it => (
                 <div key={it.steelPlanId} className="flex items-center justify-between gap-2 bg-gray-800/70 border border-gray-700 rounded-lg px-3 py-2">
                   <div className="min-w-0">
@@ -121,7 +121,7 @@ function Inner() {
             </div>
           )}
 
-          <div className="bg-purple-900/95 backdrop-blur border-t-2 border-purple-700 px-4 py-3 flex items-center justify-between">
+          <div className="bg-purple-900 border-t-2 border-purple-700 px-4 py-3 flex items-center justify-between">
             <div className="text-sm flex items-center gap-2">
               <button onClick={() => setCartOpen(o => !o)} className="flex items-center gap-1">
                 <span className="font-bold text-white">{cart.items.length}</span>건 · {fmtKg(cart.totalWeight)}
