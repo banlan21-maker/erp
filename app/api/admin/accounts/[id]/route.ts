@@ -2,7 +2,8 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser, hashPassword, PERMISSION_KEYS } from "@/lib/admin-auth";
+import { getSessionUser, hashPassword } from "@/lib/admin-auth";
+import { isValidPermToken } from "@/lib/permissions";
 
 // PATCH /api/admin/accounts/[id]  { name?, password?, permissions? } — 계정 수정 (관리자만)
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -23,7 +24,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data.passwordHash = hashPassword(String(body.password));
     }
     if (Array.isArray(body?.permissions)) {
-      data.permissions = PERMISSION_KEYS.filter(k => body.permissions.includes(k));
+      data.permissions = [...new Set((body.permissions as string[]).filter(isValidPermToken))];
     }
     const updated = await prisma.appUser.update({
       where: { id }, data,

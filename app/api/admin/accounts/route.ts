@@ -2,7 +2,8 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser, hashPassword, PERMISSION_KEYS } from "@/lib/admin-auth";
+import { getSessionUser, hashPassword } from "@/lib/admin-auth";
+import { isValidPermToken } from "@/lib/permissions";
 
 // GET /api/admin/accounts — 계정 목록 (관리자만)
 export async function GET(req: NextRequest) {
@@ -28,8 +29,8 @@ export async function POST(req: NextRequest) {
     const username = String(body?.username ?? "").trim();
     const password = String(body?.password ?? "");
     const name = String(body?.name ?? "").trim() || null;
-    const perms = Array.isArray(body?.permissions) ? body.permissions : [];
-    const permissions = PERMISSION_KEYS.filter(k => perms.includes(k)); // 화이트리스트
+    const perms: string[] = Array.isArray(body?.permissions) ? body.permissions : [];
+    const permissions = [...new Set(perms.filter(isValidPermToken))]; // 화이트리스트 + 중복제거
 
     if (!/^[A-Za-z0-9_.-]{3,20}$/.test(username)) {
       return NextResponse.json({ success: false, error: "아이디는 영문/숫자 3~20자로 입력하세요." }, { status: 400 });

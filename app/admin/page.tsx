@@ -2,17 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ShieldCheck, KeyRound, UserPlus, Trash2, LogOut, Loader2, Users } from "lucide-react";
-
-const MODULES = [
-  { key: "cutpart",    label: "절단파트" },
-  { key: "supply",     label: "구매/자재파트" },
-  { key: "management", label: "관리파트" },
-  { key: "work",       label: "업무관리" },
-] as const;
+import { ShieldCheck, KeyRound, UserPlus, Trash2, LogOut, Loader2, Users, SlidersHorizontal, X } from "lucide-react";
+import PermissionMatrix from "@/components/permission-matrix";
 
 interface Me { id: string; username: string; name: string | null; isAdmin: boolean; permissions: string[] }
 interface Account { id: string; username: string; name: string | null; isAdmin: boolean; permissions: string[]; createdAt: string }
+
+// 토큰 배열 → "메뉴 N개" 요약 (액션 무관, 접근 가능한 서브메뉴 수)
+const resourceCount = (perms: string[]) => new Set(perms.map(p => p.split(":")[0])).size;
 
 export default function AdminPage() {
   const router = useRouter();
@@ -54,6 +51,9 @@ export default function AdminPage() {
       </header>
 
       <main className="max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 text-xs text-amber-800">
+          ⚠ 현재 권한은 <b>저장·표시만</b> 됩니다. 실제 접근 차단(로그인 필수화 + 페이지/API 강제)은 아직 꺼져 있으며, 준비되면 활성화합니다.
+        </div>
         <PasswordCard />
         <AccountsCard />
       </main>
@@ -108,15 +108,16 @@ function PasswordCard() {
   );
 }
 
-/* ── 계정 생성 + 목록 ──────────────────────────────────────── */
+/* ── 계정 생성 + 목록 + 권한 편집 ──────────────────────────── */
 function AccountsCard() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [perms, setPerms] = useState<Set<string>>(new Set());
+  const [perms, setPerms] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [editing, setEditing] = useState<Account | null>(null);
 
   const load = useCallback(async () => {
     const r = await fetch("/api/admin/accounts").then(r => r.json()).catch(() => ({ success: false }));
@@ -124,19 +125,17 @@ function AccountsCard() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  const togglePerm = (k: string) => setPerms(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
-
   const create = async () => {
     setMsg(null);
     setBusy(true);
     try {
       const r = await fetch("/api/admin/accounts", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, name, permissions: [...perms] }),
+        body: JSON.stringify({ username, password, name, permissions: perms }),
       }).then(r => r.json());
       if (!r.success) { setMsg({ ok: false, text: r.error ?? "생성 실패" }); return; }
       setMsg({ ok: true, text: `계정 '${r.data.username}' 생성됨.` });
-      setUsername(""); setPassword(""); setName(""); setPerms(new Set());
+      setUsername(""); setPassword(""); setName(""); setPerms([]);
       load();
     } finally { setBusy(false); }
   };
@@ -147,8 +146,6 @@ function AccountsCard() {
     if (!r.success) { alert(r.error ?? "삭제 실패"); return; }
     load();
   };
-
-  const labelOf = (k: string) => MODULES.find(m => m.key === k)?.label ?? k;
 
   return (
     <section className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -165,14 +162,9 @@ function AccountsCard() {
           <input value={name} onChange={e => setName(e.target.value)} placeholder="이름 (선택)"
             className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" />
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-xs font-semibold text-gray-500">접근 권한:</span>
-          {MODULES.map(m => (
-            <label key={m.key} className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
-              <input type="checkbox" checked={perms.has(m.key)} onChange={() => togglePerm(m.key)} className="accent-blue-600" />
-              {m.label}
-            </label>
-          ))}
+        <div>
+          <p className="text-xs font-semibold text-gray-500 mb-1.5">접근 권한 (메뉴·서브메뉴별 읽기/쓰기/수정)</p>
+          <PermissionMatrix value={perms} onChange={setPerms} />
         </div>
         {msg && <p className={`text-xs ${msg.ok ? "text-green-600" : "text-red-600"}`}>{msg.text}</p>}
         <button onClick={create} disabled={busy} className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5">
@@ -204,23 +196,68 @@ function AccountsCard() {
                   {a.isAdmin && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold">관리자</span>}
                 </td>
                 <td className="px-4 py-2 text-gray-600">{a.name || "-"}</td>
-                <td className="px-4 py-2">
-                  {a.isAdmin ? <span className="text-xs text-gray-500">전체</span> : (
-                    a.permissions.length === 0
-                      ? <span className="text-xs text-gray-400">없음</span>
-                      : <span className="flex flex-wrap gap-1">{a.permissions.map(p => <span key={p} className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{labelOf(p)}</span>)}</span>
-                  )}
+                <td className="px-4 py-2 text-gray-600">
+                  {a.isAdmin ? <span className="text-xs text-gray-500">전체</span>
+                    : resourceCount(a.permissions) === 0 ? <span className="text-xs text-gray-400">없음</span>
+                    : <span className="text-xs">메뉴 {resourceCount(a.permissions)}개 · 토큰 {a.permissions.length}</span>}
                 </td>
-                <td className="px-4 py-2 text-right">
-                  {a.username === "admin"
-                    ? <span className="text-[11px] text-gray-300">기본계정</span>
-                    : <button onClick={() => remove(a)} className="text-gray-400 hover:text-red-500"><Trash2 size={15} /></button>}
+                <td className="px-4 py-2 text-right whitespace-nowrap">
+                  {a.isAdmin ? <span className="text-[11px] text-gray-300">기본계정</span> : (
+                    <span className="inline-flex items-center gap-2">
+                      <button onClick={() => setEditing(a)} className="inline-flex items-center gap-1 text-blue-600 hover:underline text-xs">
+                        <SlidersHorizontal size={13} /> 권한 편집
+                      </button>
+                      <button onClick={() => remove(a)} className="text-gray-400 hover:text-red-500"><Trash2 size={15} /></button>
+                    </span>
+                  )}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {editing && <PermissionEditModal account={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
     </section>
+  );
+}
+
+/* ── 계정별 권한 편집 모달 ─────────────────────────────────── */
+function PermissionEditModal({ account, onClose, onSaved }: { account: Account; onClose: () => void; onSaved: () => void }) {
+  const [perms, setPerms] = useState<string[]>(account.permissions);
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/admin/accounts/${account.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ permissions: perms }),
+      }).then(r => r.json());
+      if (!r.success) { alert(r.error ?? "저장 실패"); return; }
+      onSaved();
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+          <h3 className="font-bold text-gray-900 flex items-center gap-2">
+            <SlidersHorizontal size={18} className="text-blue-600" /> 권한 편집 — {account.name || account.username}
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full text-gray-400"><X size={18} /></button>
+        </div>
+        <div className="p-4 overflow-y-auto">
+          <PermissionMatrix value={perms} onChange={setPerms} />
+        </div>
+        <div className="px-5 py-3 border-t border-gray-200 flex items-center justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">취소</button>
+          <button onClick={save} disabled={busy} className="px-4 py-2 text-sm bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            {busy ? "저장 중..." : "저장"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

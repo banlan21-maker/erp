@@ -8,12 +8,9 @@
 import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { ALL_PERMISSION_TOKENS } from "@/lib/permissions";
 
 export const ADMIN_COOKIE = "erp_session";
-
-/** 접근 파트 권한 키 (랜딩 상단메뉴와 동일) */
-export const PERMISSION_KEYS = ["cutpart", "supply", "management", "work"] as const;
-export type PermissionKey = (typeof PERMISSION_KEYS)[number];
 
 export function hashPassword(pw: string): string {
   const salt = randomBytes(16).toString("hex");
@@ -44,7 +41,7 @@ export async function ensureAdminSeed() {
         passwordHash: hashPassword("admin"),
         name: "관리자",
         isAdmin: true,
-        permissions: [...PERMISSION_KEYS],
+        permissions: ALL_PERMISSION_TOKENS,
       },
     });
   } catch { /* 동시 시드 충돌 무시 */ }
