@@ -7,7 +7,7 @@ import {
 import NoticeSection from "@/components/notice-section";
 import WeatherBar from "@/components/weather-bar";
 import LandingCalendar from "@/components/landing-calendar";
-import LoginButton from "@/components/login-button";
+import UserMenu from "@/components/user-menu";
 
 export const dynamic = "force-dynamic";
 
@@ -473,9 +473,9 @@ export default async function LandingPage() {
       <footer className="border-t border-gray-200 bg-white">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-0 text-center sm:text-left">
           <p className="text-[11px] sm:text-xs text-gray-400">한국테크 ERP 시스템 · CNC 절단 파트</p>
-          <div className="flex items-center justify-center sm:justify-end gap-2">
+          <div className="flex items-center justify-center sm:justify-end gap-3">
             <p className="text-[11px] sm:text-xs text-gray-400">관리자 : 김남훈</p>
-            <LoginButton />
+            <UserMenu />
           </div>
         </div>
       </footer>

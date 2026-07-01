@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import Sidebar, { ModuleType } from "@/components/sidebar";
-import LoginButton from "@/components/login-button";
+import UserMenu from "@/components/user-menu";
 
 type SidebarMode = "full" | "mini" | "hidden";
 
@@ -123,8 +123,8 @@ export default function MainLayoutClient({ children }: { children: React.ReactNo
         </div>
 
         <div className="flex items-center gap-3">
-          <p className="text-xs font-medium text-gray-600 tracking-tight hidden sm:block">관리자 : <span className="font-bold text-gray-900">김남훈</span></p>
-          <LoginButton />
+          <p className="text-xs font-medium text-gray-600 tracking-tight hidden md:block">관리자 : <span className="font-bold text-gray-900">김남훈</span></p>
+          <UserMenu />
         </div>
       </header>
 
