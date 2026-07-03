@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
       WHERE "projectId" = ${projectId} AND status != 'CUT' AND "assignedRemnantId" IS NOT NULL
     `;
     const assignedRowIds = assignedRaw.map(r => r.id);
+    const promotedRemnantRowIds: string[] = []; // 실제로 확정(WAITING 승격)한 잔재사용 도면 (출고선별 잔재는 제외)
 
     // 원재 사용 행 (assignedRemnantId IS NULL)
     // ORDER BY createdAt, id — 강재 부족 시 블록별 분배가 결정적이도록 보장
@@ -42,24 +43,21 @@ export async function POST(request: NextRequest) {
     `;
 
     if (assignedRowIds.length > 0) {
-      await prisma.drawingList.updateMany({
-        where: { id: { in: assignedRowIds } },
-        data: { status: "WAITING" },
-      });
-
-      // 잔재(Remnant)에도 "호선/블록" 확정 표식 — reservedFor 채움
-      // 이미 다른 블록에 reservedFor 있는 잔재는 덮어쓰지 않음(선점 보호)
+      // 잔재(Remnant) 확정 — 도면 WAITING 승격 + reservedFor 표식.
+      // 단, 출고선별(shipoutMarkedAt)된 잔재를 쓰는 도면은 확정하지 않음(REGISTERED 유지) —
+      // 절단↔출고 상호배제(원판과 대칭). 이미 다른 블록에 reservedFor 있는 잔재는 덮어쓰지 않음(선점 보호).
       const assignedRows = await prisma.drawingList.findMany({
         where: { id: { in: assignedRowIds } },
-        select: { block: true, assignedRemnantId: true },
+        select: { id: true, block: true, assignedRemnantId: true, assignedRemnant: { select: { shipoutMarkedAt: true } } },
       });
       for (const row of assignedRows) {
+        if (row.assignedRemnant?.shipoutMarkedAt) continue; // 출고선별 잔재 → 확정 스킵
+        await prisma.drawingList.update({ where: { id: row.id }, data: { status: "WAITING" } });
+        promotedRemnantRowIds.push(row.id);
         if (!row.assignedRemnantId) continue;
-        const blockCode = row.block ?? "UNKNOWN";
-        const reservedFor = `${vesselCode}/${blockCode}`;
         await prisma.remnant.updateMany({
-          where: { id: row.assignedRemnantId, reservedFor: null },
-          data: { reservedFor },
+          where: { id: row.assignedRemnantId, reservedFor: null, shipoutMarkedAt: null },
+          data:  { reservedFor: `${vesselCode}/${row.block ?? "UNKNOWN"}` },
         });
       }
     }
@@ -122,10 +120,11 @@ export async function POST(request: NextRequest) {
     // 모든 예약 완료 후 스펙별 DrawingList 상태 동기화 (steelVessel 기준)
     await syncDrawingListBySpecs([...specsToSync.values()]);
 
-    // sync가 assigned 행을 덮어쓸 수 있으므로 다시 WAITING으로 복원
-    if (assignedRowIds.length > 0) {
+    // sync가 assigned 행을 덮어쓸 수 있으므로 다시 WAITING으로 복원 —
+    // 단 실제 확정한 행만(출고선별 잔재로 스킵한 도면은 REGISTERED 유지, 상호배제).
+    if (promotedRemnantRowIds.length > 0) {
       await prisma.drawingList.updateMany({
-        where: { id: { in: assignedRowIds } },
+        where: { id: { in: promotedRemnantRowIds } },
         data: { status: "WAITING" },
       });
     }

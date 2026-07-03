@@ -22,6 +22,7 @@ export async function POST(
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
     const reason = typeof body?.reason === "string" ? body.reason.trim() : null;
+    const force  = body?.force === true; // 복원 불가 항목이 있어도 강행 취소
 
     const ship = await prisma.shipment.findUnique({
       where: { id },
@@ -33,6 +34,7 @@ export async function POST(
     }
 
     const warnings: string[] = [];
+    const restoreFailures: string[] = []; // 복원 실패(자재 상태가 예상과 다름) — 있으면 취소 롤백
 
     const updated = await prisma.$transaction(async (tx) => {
       // 1. 헤더
@@ -54,7 +56,7 @@ export async function POST(
             if (rem && rem.status === "EXHAUSTED") {
               await tx.remnant.update({ where: { id: rem.id }, data: { status: "IN_STOCK" } });
             } else if (rem) {
-              warnings.push(`잔재 ${rem.remnantNo} 상태가 소진이 아니라 복원 건너뜀 (현재: ${rem.status})`);
+              restoreFailures.push(`잔재 ${rem.remnantNo} 상태가 소진이 아니라 복원 불가 (현재: ${rem.status})`);
             }
             continue; // 잔재는 SteelPlan/Heat 처리 없음
           }
@@ -70,7 +72,7 @@ export async function POST(
               data:  { status: SteelPlanStatus.RECEIVED, issuedAt: null, shipoutLabel: null, shipoutHeatNo: null, shipoutMarkedAt: null },
             });
           } else if (sp) {
-            warnings.push(`${item.steelPlanId} 자재 상태가 SHIPPED_OUT 가 아니라 복원 건너뜀 (현재: ${sp?.status})`);
+            restoreFailures.push(`원판(${item.steelPlanId}) 상태가 SHIPPED_OUT 가 아니라 복원 불가 (현재: ${sp?.status})`);
           }
 
           // SteelPlanHeat 처리
@@ -80,7 +82,12 @@ export async function POST(
               if (h.autoCreatedFromShipment) {
                 // 다른 ShipmentItem 이 이 heat 를 참조하는지 확인 — 있으면 보존
                 const refs = await tx.shipmentItem.count({
-                  where: { steelPlanHeatId: h.id, NOT: { vehicle: { shipmentId: id } } },
+                  where: {
+                    steelPlanHeatId: h.id,
+                    NOT: { vehicle: { shipmentId: id } },
+                    // 활성 출고장만 참조로 인정 — 취소된(CANCELLED) 이력 item 이 삭제를 영구 차단(고아)하지 않게.
+                    vehicle: { shipment: { status: ShipmentStatus.ACTIVE } },
+                  },
                 });
                 if (refs === 0) {
                   await tx.steelPlanHeat.delete({ where: { id: h.id } });
@@ -106,6 +113,11 @@ export async function POST(
             }
           }
         }
+      }
+
+      // 복원 실패가 하나라도 있으면 취소 전체를 롤백 — 부분취소 확정(자재 고아) 방지. force=true 면 강행.
+      if (restoreFailures.length > 0 && !force) {
+        throw new Error(`취소 불가 — 복원할 수 없는 항목 ${restoreFailures.length}건이 있습니다.\n${restoreFailures.join("\n")}\n자재 상태를 바로잡은 뒤 다시 시도하세요.`);
       }
 
       return tx.shipment.findUnique({

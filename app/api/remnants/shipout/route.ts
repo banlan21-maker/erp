@@ -18,7 +18,8 @@ import { prisma } from "@/lib/prisma";
 export async function GET() {
   try {
     const remnants = await prisma.remnant.findMany({
-      where: { shipoutMarkedAt: { not: null }, status: { not: "EXHAUSTED" } },
+      // 절단확정(reservedFor)된 잔재는 선별목록에서 제외 — steel-match 커버리지·출고검증과 대칭(절단↔출고 상호배제).
+      where: { shipoutMarkedAt: { not: null }, status: { not: "EXHAUSTED" }, reservedFor: null },
       include: {
         sourceProject: { select: { projectCode: true, projectName: true } },
       },

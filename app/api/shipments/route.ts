@@ -164,6 +164,15 @@ export async function POST(req: NextRequest) {
     if (dupeRem) {
       return NextResponse.json({ success: false, error: `잔재가 중복 배차되었습니다: ${dupeRem}` }, { status: 400 });
     }
+    // 원판끼리 같은 판번호(heatNo) 중복 입력 차단 — 물리 1장이 여러 원판에 이중 기록되는 것을 방지.
+    // (잔재는 원판 판번호를 공유할 수 있어 원판 항목끼리만 검사)
+    const plateHeatNos = allItems
+      .filter(i => !isRemnantItem(i) && i.heatNo?.trim())
+      .map(i => i.heatNo!.trim().toUpperCase());
+    const dupeHeat = plateHeatNos.find((h, i) => plateHeatNos.indexOf(h) !== i);
+    if (dupeHeat) {
+      return NextResponse.json({ success: false, error: `같은 판번호(${dupeHeat})가 여러 원판에 중복 입력되었습니다.` }, { status: 400 });
+    }
 
     // ── 원판(SteelPlan) 검증 ────────────────────────────────────────────────
     if (allSteelPlanIds.length > 0) {
@@ -325,23 +334,32 @@ export async function POST(req: NextRequest) {
           if (heatNoText) {
             // 직접입력(manualHeatNo=true) — 같은 사양 + 판번호 일치하는 행이 이미 있는가
             if (item.manualHeatNo) {
-              const existing = await tx.steelPlanHeat.findFirst({
-                where: {
-                  vesselCode: item.vesselCode,
-                  material:   item.material,
-                  thickness:  item.thickness,
-                  width:      item.width,
-                  length:     item.length,
-                  heatNo:     heatNoText,
-                },
+              const specWhere = {
+                vesselCode: item.vesselCode, material: item.material,
+                thickness:  item.thickness, width: item.width, length: item.length,
+                heatNo:     heatNoText,
+              };
+              // 재고(WAITING) 판번호가 있으면 그걸 출고 — 같은 사양+판번호 행이 여러 개(SHIPPED+WAITING)여도 WAITING 우선.
+              const waiting = await tx.steelPlanHeat.findFirst({
+                where: { ...specWhere, status: SteelPlanHeatStatus.WAITING },
+                orderBy: { createdAt: "asc" },
               });
-              if (existing) {
-                heatId = existing.id;
-                await tx.steelPlanHeat.update({
-                  where: { id: existing.id },
+              if (waiting) {
+                // 원자적 SHIPPED 전환 — 조회~제출 사이 상태변경 시 count=0 → 롤백(이중출고/절단오염 차단).
+                const moved = await tx.steelPlanHeat.updateMany({
+                  where: { id: waiting.id, status: SteelPlanHeatStatus.WAITING },
                   data:  { status: SteelPlanHeatStatus.SHIPPED, shippedAt },
                 });
+                if (moved.count !== 1) {
+                  throw new Error(`판번호(${heatNoText})가 이미 절단/출고 처리되어 출고할 수 없습니다. 새로고침 후 다시 시도하세요.`);
+                }
+                heatId = waiting.id;
               } else {
+                // 재고 판번호 없음 — 이미 사용(절단 CUT/출고 SHIPPED)된 동일 판번호가 있으면 차단, 없으면 신규 SHIPPED 생성.
+                const used = await tx.steelPlanHeat.findFirst({ where: specWhere, select: { id: true } });
+                if (used) {
+                  throw new Error(`판번호(${heatNoText})가 이미 절단/출고 처리되어 출고할 수 없습니다. 새로고침 후 다시 시도하세요.`);
+                }
                 const fresh = await tx.steelPlanHeat.create({
                   data: {
                     vesselCode: item.vesselCode,
@@ -368,6 +386,24 @@ export async function POST(req: NextRequest) {
               if (moved.count !== 1) {
                 throw new Error(`판번호(${heatNoText ?? heatId})가 이미 절단/출고 처리되어 출고할 수 없습니다. 새로고침 후 다시 시도하세요.`);
               }
+            }
+          } else if (!heatId) {
+            // 판번호 미입력 원판 출고 — 강재↔판번호 개수 정합을 위해 같은 사양의 재고(WAITING) 판번호 1장을
+            // FIFO 로 함께 소진(SHIPPED). 없으면 그냥 통과(진짜 판번호 미상). 잔류 WAITING heat 가 절단에 재소진되는 유령 방지.
+            const fifo = await tx.steelPlanHeat.findFirst({
+              where: {
+                vesselCode: item.vesselCode, material: item.material,
+                thickness: item.thickness, width: item.width, length: item.length,
+                status: SteelPlanHeatStatus.WAITING,
+              },
+              orderBy: { createdAt: "asc" },
+            });
+            if (fifo) {
+              const moved = await tx.steelPlanHeat.updateMany({
+                where: { id: fifo.id, status: SteelPlanHeatStatus.WAITING },
+                data:  { status: SteelPlanHeatStatus.SHIPPED, shippedAt },
+              });
+              if (moved.count === 1) heatId = fifo.id;
             }
           }
 
@@ -418,6 +454,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, data: created }, { status: 201 });
   } catch (err) {
+    // 발번 동시성 충돌(P2002 unique) — 원시 500 대신 재시도 안내 409
+    if (err && typeof err === "object" && (err as { code?: string }).code === "P2002") {
+      return NextResponse.json({ success: false, error: "출고장/거래명세서 번호가 동시 생성으로 충돌했습니다. 잠시 후 다시 시도하세요." }, { status: 409 });
+    }
     const msg = err instanceof Error ? err.message : "출고장 생성 실패";
     console.error("[POST /api/shipments]", err);
     return NextResponse.json({ success: false, error: msg }, { status: 500 });

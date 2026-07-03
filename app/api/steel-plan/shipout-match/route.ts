@@ -39,7 +39,14 @@ export async function GET(req: NextRequest) {
 
     // 같은 판번호로 이미 출고확정된 강재가 있으면 중복 소진 방지 (모달 재오픈/다른 세션 대비)
     const dup = await prisma.steelPlan.findFirst({
-      where: { shipoutHeatNo: heatNo, shipoutMarkedAt: { not: null } },
+      where: {
+        shipoutHeatNo: heatNo, shipoutMarkedAt: { not: null },
+        // 같은 사양·호선으로 한정 — 동명 판번호(수입재 등)가 다른 사양/호선에서 정당 선별을 오차단하지 않게
+        vesselCode: heat.vesselCode, material: heat.material,
+        thickness: { gte: heat.thickness - FLOAT_TOL, lte: heat.thickness + FLOAT_TOL },
+        width:     { gte: heat.width - FLOAT_TOL, lte: heat.width + FLOAT_TOL },
+        length:    { gte: heat.length - FLOAT_TOL, lte: heat.length + FLOAT_TOL },
+      },
       select: { id: true },
     });
     if (dup) {

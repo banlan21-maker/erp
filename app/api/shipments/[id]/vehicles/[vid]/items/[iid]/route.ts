@@ -24,10 +24,15 @@ export async function PATCH(
 
     const item = await prisma.shipmentItem.findUnique({
       where: { id: iid },
-      select: { vehicleId: true, vehicle: { select: { shipmentId: true } } },
+      select: { vehicleId: true, steelPlanId: true, vehicle: { select: { shipmentId: true } } },
     });
     if (!item || item.vehicleId !== vid || item.vehicle.shipmentId !== id) {
       return NextResponse.json({ success: false, error: "자재를 찾을 수 없습니다." }, { status: 404 });
+    }
+    // 원판(steelPlanId) 항목의 판번호는 판번호 마스터(SteelPlanHeat)와 결합돼 있어 스냅샷 단독 편집 금지.
+    // (편집하면 마스터·취소복원이 옛 판번호를 따라가 정합이 깨짐. 변경은 출고 취소 후 재등록으로.)
+    if (body.heatNo !== undefined && item.steelPlanId) {
+      return NextResponse.json({ success: false, error: "원판 출고의 판번호는 여기서 변경할 수 없습니다. 출고 취소 후 다시 등록하세요." }, { status: 400 });
     }
 
     const data: Record<string, unknown> = {};

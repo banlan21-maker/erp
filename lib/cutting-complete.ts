@@ -69,10 +69,11 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
         where: { id: log.id },
         data: { drawingListId: target.id },
       });
-      // 잔재(등록/여유/현장) 사용 절단이면 잔재 상태 → EXHAUSTED (타입 무관, 여유원재 포함)
+      // 잔재(등록/여유/현장) 사용 절단이면 잔재 상태 → EXHAUSTED (타입 무관, 여유원재 포함).
+      // 단 출고선별(shipoutMarkedAt)된 잔재는 소진하지 않음 — 절단↔출고 상호배제(원판과 대칭, 이중사용 방지).
       if (target.assignedRemnantId) {
-        await tx.remnant.update({
-          where: { id: target.assignedRemnantId },
+        await tx.remnant.updateMany({
+          where: { id: target.assignedRemnantId, shipoutMarkedAt: null },
           data:  { status: "EXHAUSTED" },
         });
       }
