@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { syncDrawingListBySpecs } from "@/lib/sync-drawing-spec";
+import { validateName } from "@/lib/validate-name";
 
 const PAGE_SIZE = 50;
 
@@ -171,6 +172,12 @@ export async function POST(req: NextRequest) {
     memo?: string | null; sourceFile?: string | null;
   }[] = Array.isArray(body) ? body : [body];
 
+  // 입력 검증 — 호선코드에 필터(콤마 구분)·경로를 깨뜨리는 문자가 들어오면 기록 차단 + 안내
+  for (const item of items) {
+    const err = validateName(item.vesselCode, "호선");
+    if (err) return NextResponse.json({ error: err }, { status: 400 });
+  }
+
   // 발번 + 적재를 한 트랜잭션으로 — 부분 실패/중복번호 방지
   const { uploadBatchNo, count } = await prisma.$transaction(async (tx) => {
     const uploadBatchNo = await genBatchNo(tx);
@@ -213,62 +220,62 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const body = await req.json();
 
-  // 역순 취소 가드 헬퍼 — COMPLETED 강재 포함 시 차단
-  async function blockIfCompleted(filter: { id?: { in: string[] }; uploadBatchNo?: string; vesselCode?: string }) {
-    const completedCount = await prisma.steelPlan.count({
-      where: { ...filter, status: "COMPLETED" },
-    });
-    if (completedCount > 0) {
-      return NextResponse.json(
-        { error: `절단완료된 강재 ${completedCount}건이 포함되어 있습니다. 작업일보에서 절단취소 후 다시 시도하세요.` },
-        { status: 409 }
-      );
-    }
-    return null;
-  }
-
+  // ── 삭제 대상 결정 (ids | uploadBatchNo | vesselCode) ──────────────────────
+  let where: Prisma.SteelPlanWhereInput;
+  let deleteHeatWhere: Prisma.SteelPlanHeatWhereInput | null = null; // ids 삭제는 판번호 미삭제(기존 동작 유지)
   if (Array.isArray(body.ids) && body.ids.length > 0) {
-    const blocked = await blockIfCompleted({ id: { in: body.ids } });
-    if (blocked) return blocked;
-    // 삭제 전 spec 수집 → 삭제 후 sync
-    const affected = await prisma.steelPlan.findMany({
-      where: { id: { in: body.ids } },
-      select: { vesselCode: true, material: true, thickness: true, width: true, length: true },
-    });
-    const { count } = await prisma.steelPlan.deleteMany({ where: { id: { in: body.ids } } });
-    await syncDrawingListBySpecs(affected);
-    return NextResponse.json({ planCount: count });
+    where = { id: { in: body.ids } };
+  } else if (body.uploadBatchNo) {
+    where = { uploadBatchNo: body.uploadBatchNo };
+    deleteHeatWhere = { uploadBatchNo: body.uploadBatchNo };
+  } else if (body.vesselCode) {
+    where = { vesselCode: body.vesselCode };
+    deleteHeatWhere = { vesselCode: body.vesselCode };
+  } else {
+    return NextResponse.json({ error: "ids 또는 uploadBatchNo 또는 vesselCode 필요" }, { status: 400 });
   }
 
-  if (body.uploadBatchNo) {
-    const blocked = await blockIfCompleted({ uploadBatchNo: body.uploadBatchNo });
-    if (blocked) return blocked;
-    const affected = await prisma.steelPlan.findMany({
-      where: { uploadBatchNo: body.uploadBatchNo },
-      select: { vesselCode: true, material: true, thickness: true, width: true, length: true },
-    });
-    const [plan, heat] = await Promise.all([
-      prisma.steelPlan.deleteMany({ where: { uploadBatchNo: body.uploadBatchNo } }),
-      prisma.steelPlanHeat.deleteMany({ where: { uploadBatchNo: body.uploadBatchNo } }),
-    ]);
-    await syncDrawingListBySpecs(affected);
-    return NextResponse.json({ planCount: plan.count, heatCount: heat.count });
+  const targets = await prisma.steelPlan.findMany({
+    where,
+    select: { id: true, status: true, vesselCode: true, material: true, thickness: true, width: true, length: true },
+  });
+  if (targets.length === 0) return NextResponse.json({ planCount: 0, heatCount: 0 });
+  const ids = targets.map((t) => t.id);
+
+  // ① 절단완료 강재 포함 시 차단 — 작업일보에서 절단취소 먼저
+  const completed = targets.filter((t) => t.status === "COMPLETED").length;
+  if (completed > 0) {
+    return NextResponse.json(
+      { error: `절단완료된 강재 ${completed}건이 포함되어 있습니다. 작업일보에서 절단취소 후 다시 시도하세요.` },
+      { status: 409 }
+    );
   }
 
-  if (body.vesselCode) {
-    const blocked = await blockIfCompleted({ vesselCode: body.vesselCode });
-    if (blocked) return blocked;
-    const affected = await prisma.steelPlan.findMany({
-      where: { vesselCode: body.vesselCode },
-      select: { vesselCode: true, material: true, thickness: true, width: true, length: true },
-    });
-    const [plan, heat] = await Promise.all([
-      prisma.steelPlan.deleteMany({ where: { vesselCode: body.vesselCode } }),
-      prisma.steelPlanHeat.deleteMany({ where: { vesselCode: body.vesselCode } }),
-    ]);
-    await syncDrawingListBySpecs(affected);
-    return NextResponse.json({ planCount: plan.count, heatCount: heat.count });
+  // ② 외부출고 참조 처리 — 활성(ACTIVE) 출고장이 참조 중이면 차단, 취소(CANCELLED) 출고장 참조는 정리 후 삭제 허용.
+  //    (출고장을 취소해도 ShipmentItem 이력이 강재를 Restrict FK 로 붙들어 삭제가 영영 막히던 문제 해결)
+  const refItems = await prisma.shipmentItem.findMany({
+    where: { steelPlanId: { in: ids } },
+    select: { id: true, vehicle: { select: { shipment: { select: { status: true, shipmentNo: true } } } } },
+  });
+  const activeRefs = refItems.filter((it) => it.vehicle?.shipment?.status === "ACTIVE");
+  if (activeRefs.length > 0) {
+    const nos = [...new Set(activeRefs.map((a) => a.vehicle?.shipment?.shipmentNo).filter(Boolean))];
+    return NextResponse.json(
+      { error: `외부출고된 강재 ${activeRefs.length}건이 포함되어 있습니다(출고장 ${nos.join(", ")}). 출고 취소 후 다시 시도하세요.` },
+      { status: 409 }
+    );
   }
+  const staleRefIds = refItems.map((it) => it.id); // 활성 없음 확인됨 → 나머지는 취소 출고 참조
 
-  return NextResponse.json({ error: "ids 또는 uploadBatchNo 또는 vesselCode 필요" }, { status: 400 });
+  const affected = targets.map(({ vesselCode, material, thickness, width, length }) => ({ vesselCode, material, thickness, width, length }));
+
+  const result = await prisma.$transaction(async (tx) => {
+    if (staleRefIds.length) await tx.shipmentItem.updateMany({ where: { id: { in: staleRefIds } }, data: { steelPlanId: null } });
+    const plan = await tx.steelPlan.deleteMany({ where: { id: { in: ids } } });
+    let heatCount = 0;
+    if (deleteHeatWhere) heatCount = (await tx.steelPlanHeat.deleteMany({ where: deleteHeatWhere })).count;
+    return { planCount: plan.count, heatCount };
+  });
+  await syncDrawingListBySpecs(affected);
+  return NextResponse.json(result);
 }
