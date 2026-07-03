@@ -160,6 +160,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "작업자명은 필수입니다." }, { status: 400 });
     }
 
+    // ── 판번호 재사용 가드 (B) ──────────────────────────────────────────────
+    // 같은 판번호를 실제 남은 재고(판번호리스트 WAITING)보다 많이 자르는 것을 서버에서 차단.
+    // 수입재 등 같은 heatNo 가 여러 철판에 올 수 있어 "번호 존재"가 아니라 "남은 재고 수량"으로만 판단(오탐 방지).
+    //   남은재고 = WAITING 판번호 수 − 진행중(STARTED) 절단 수. 0 이하면 차단.
+    //   방치된 PAUSED(야간이월 등)는 제외 — 장비 미종료 가드와 동일 정책. 스테일 PAUSED 로 정상절단이 막히는 오탐 방지.
+    //   판번호가 풀에 없으면(미등록) 판단 불가 → 통과. 순차 중복(picker 재선택 등) 안전망이며, 진성 동시선택은 DB락 필요(미보장).
+    if (!isUrgent && !isRemnantDraw && heatNo?.trim() && material && thickness != null && width != null && length != null) {
+      const hn = heatNo.trim();
+      const specWhere = {
+        material:  { equals: String(material).trim(), mode: "insensitive" as const },
+        thickness: Number(thickness), width: Number(width), length: Number(length),
+      };
+      const heatWhere = { ...specWhere, heatNo: { equals: hn, mode: "insensitive" as const } };
+      const [totalHeats, waitingHeats, activeCuts] = await Promise.all([
+        prisma.steelPlanHeat.count({ where: heatWhere }),
+        prisma.steelPlanHeat.count({ where: { ...heatWhere, status: "WAITING" } }),
+        prisma.cuttingLog.count({ where: { ...heatWhere, isUrgent: false, status: "STARTED" } }),
+      ]);
+      if (totalHeats > 0 && waitingHeats - activeCuts <= 0) {
+        return NextResponse.json(
+          { success: false, error: `판번호 ${hn} 는 남은 재고가 없습니다(이미 절단됐거나 진행 중). 재고 있는 판번호를 확인하세요.` },
+          { status: 409 }
+        );
+      }
+    }
+
     // ── 해당 장비에 미종료 작업 확인 ─────────────────────────────────────────
     // STARTED 만 차단. PAUSED(중단)된 옛 작업이 남아 있어도 새 작업 시작은 허용
     // (PAUSED 까지 막으면, 종료/재개 안 한 중단 기록 때문에 정상 도면 시작이 막히는 문제)
