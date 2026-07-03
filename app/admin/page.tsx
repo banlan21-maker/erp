@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ShieldCheck, KeyRound, UserPlus, Trash2, LogOut, Loader2, Users, SlidersHorizontal, X } from "lucide-react";
+import { ShieldCheck, KeyRound, UserPlus, Trash2, LogOut, Loader2, Users, SlidersHorizontal, X, Activity } from "lucide-react";
 import PermissionMatrix from "@/components/permission-matrix";
 
 interface Me { id: string; username: string; name: string | null; isAdmin: boolean; permissions: string[] }
@@ -54,10 +54,75 @@ export default function AdminPage() {
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 text-xs text-amber-800">
           ⚠ 현재 권한은 <b>저장·표시만</b> 됩니다. 실제 접근 차단(로그인 필수화 + 페이지/API 강제)은 아직 꺼져 있으며, 준비되면 활성화합니다.
         </div>
+        <IntegrityCard />
         <PasswordCard />
         <AccountsCard />
       </main>
     </div>
+  );
+}
+
+/* ── 강재↔판번호 정합성 진단 ─────────────────────────────── */
+interface IntegrityReport {
+  totals: { steelPlans: number; steelPlanHeats: number; completedCutLogs: number; activeShipItems: number };
+  summary: { dupCutLogs: number; heatMissedFlip: number; heatStaleCut: number; specStatusMismatch: number; dupWaitingHeat: number };
+}
+function IntegrityCard() {
+  const [data, setData] = useState<IntegrityReport | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const run = async () => {
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch("/api/steel-plan/integrity", { cache: "no-store" }).then(r => r.json());
+      if (r.error) { setErr(r.error); return; }
+      setData(r as IntegrityReport);
+    } catch { setErr("서버 오류"); } finally { setBusy(false); }
+  };
+
+  const tiles: { key: keyof IntegrityReport["summary"]; label: string }[] = [
+    { key: "heatMissedFlip",     label: "전환누락" },
+    { key: "specStatusMismatch", label: "사양 수량 불일치" },
+    { key: "dupCutLogs",         label: "판번호 중복절단" },
+    { key: "heatStaleCut",       label: "유령 절단/외부" },
+    { key: "dupWaitingHeat",     label: "재고 판번호 중복행" },
+  ];
+
+  return (
+    <section className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center gap-2">
+        <Activity size={16} className="text-emerald-500" />
+        <h2 className="text-sm font-bold text-gray-700">강재↔판번호 정합성 진단</h2>
+        <span className="text-xs text-gray-400 ml-1 hidden sm:inline">강재전체목록·판번호리스트·작업일보·출고 대조 (읽기전용)</span>
+      </div>
+      <div className="p-4 space-y-3">
+        <div className="flex items-center gap-3">
+          <button onClick={run} disabled={busy}
+            className="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+            {busy ? <Loader2 size={15} className="animate-spin" /> : <Activity size={15} />} {busy ? "진단 중..." : "진단 실행"}
+          </button>
+          <a href="/cutpart/steel-plan/integrity" className="text-xs text-blue-600 hover:underline">상세 페이지 열기 →</a>
+        </div>
+        {err && <p className="text-xs text-red-600">{err}</p>}
+        {data && (
+          <>
+            <p className="text-xs text-gray-400">
+              강재 {data.totals.steelPlans} · 판번호 {data.totals.steelPlanHeats} · 절단완료 작업일보 {data.totals.completedCutLogs} · 활성출고 {data.totals.activeShipItems}
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              {tiles.map(t => (
+                <div key={t.key} className="border border-gray-200 rounded-lg p-2.5 text-center">
+                  <div className={`text-xl font-bold ${data.summary[t.key] > 0 ? "text-red-600" : "text-gray-300"}`}>{data.summary[t.key]}</div>
+                  <div className="text-[10px] text-gray-500 mt-0.5 leading-tight">{t.label}</div>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-gray-400">건수가 0이 아니면 상세 페이지에서 어느 사양·판번호인지 확인할 수 있습니다.</p>
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 
