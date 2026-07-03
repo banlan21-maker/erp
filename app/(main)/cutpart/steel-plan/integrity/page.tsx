@@ -10,6 +10,7 @@ interface Report {
   summary: {
     dupCutLogs: number; heatMissedFlip: number; heatStaleCut: number;
     specStatusMismatch: number; dupWaitingHeat: number;
+    orphanHeats: number; ghostReserved: number;
   };
   dupCutLogs: {
     heatNo: string; vesselCode: string; material: string; thickness: number | null; width: number | null; length: number | null;
@@ -31,6 +32,12 @@ interface Report {
   dupWaitingHeat: {
     heatNo: string; vesselCode: string; material: string; thickness: number | null; width: number | null; length: number | null; count: number;
   }[];
+  orphanHeats: {
+    heatNo: string; vesselCode: string; material: string; thickness: number | null; width: number | null; length: number | null; status: string;
+  }[];
+  ghostReserved: {
+    vesselCode: string; material: string; thickness: number | null; width: number | null; length: number | null; reservedFor: string | null; status: string;
+  }[];
 }
 
 const spec = (r: { material: string; thickness: number | null; width: number | null; length: number | null }) =>
@@ -42,6 +49,8 @@ const CARDS: { key: keyof Report["summary"]; label: string; desc: string; tone: 
   { key: "dupCutLogs",         label: "판번호 중복 절단",   desc: "같은 판번호가 2건 이상 절단완료", tone: "text-orange-600" },
   { key: "heatStaleCut",       label: "유령 절단/외부",     desc: "판번호는 절단/외부인데 근거 없음", tone: "text-orange-600" },
   { key: "dupWaitingHeat",     label: "재고 판번호 중복행", desc: "같은 판번호가 재고로 2행 이상", tone: "text-amber-600" },
+  { key: "orphanHeats",        label: "유령 판번호",       desc: "강재목록에 대응 사양 없는 판번호(안전삭제)", tone: "text-amber-600" },
+  { key: "ghostReserved",      label: "유령 확정",         desc: "존재하지 않는 블록에 확정된 강재(안전해제)", tone: "text-amber-600" },
 ];
 
 export default function IntegrityPage() {
@@ -176,6 +185,38 @@ export default function IntegrityPage() {
                 <td className="px-2 py-1">{r.vesselCode}</td>
                 <td className="px-2 py-1">{spec(r)}</td>
                 <td className="px-2 py-1 text-center">{r.count}행</td>
+              </tr>
+            )}
+          />
+
+          {/* F. 유령 판번호 (안전 정리 대상) */}
+          <Section
+            title="🧹 유령 판번호 (강재목록에 대응 사양 없음 · 안전 삭제 대상)"
+            count={data.summary.orphanHeats}
+            rows={data.orphanHeats}
+            head={<tr className="text-gray-500 text-left"><th className="px-2 py-1">판번호</th><th className="px-2 py-1">호선</th><th className="px-2 py-1">사양</th><th className="px-2 py-1">상태</th></tr>}
+            render={(r, i) => (
+              <tr key={i} className="border-t border-gray-100">
+                <td className="px-2 py-1 font-mono text-blue-700">{r.heatNo}</td>
+                <td className="px-2 py-1">{r.vesselCode}</td>
+                <td className="px-2 py-1">{spec(r)}</td>
+                <td className="px-2 py-1 text-center">{r.status === "WAITING" ? "재고" : r.status === "CUT" ? "절단" : r.status === "SHIPPED" ? "외부" : r.status}</td>
+              </tr>
+            )}
+          />
+
+          {/* G. 유령 확정 (안전 정리 대상) */}
+          <Section
+            title="🧹 유령 확정 (존재하지 않는 블록에 확정 · 안전 해제 대상)"
+            count={data.summary.ghostReserved}
+            rows={data.ghostReserved}
+            head={<tr className="text-gray-500 text-left"><th className="px-2 py-1">호선</th><th className="px-2 py-1">사양</th><th className="px-2 py-1">확정값(reservedFor)</th><th className="px-2 py-1">상태</th></tr>}
+            render={(r, i) => (
+              <tr key={i} className="border-t border-gray-100">
+                <td className="px-2 py-1">{r.vesselCode}</td>
+                <td className="px-2 py-1">{spec(r)}</td>
+                <td className="px-2 py-1 font-mono text-gray-600">{r.reservedFor ?? "-"}</td>
+                <td className="px-2 py-1 text-center">{r.status}</td>
               </tr>
             )}
           />

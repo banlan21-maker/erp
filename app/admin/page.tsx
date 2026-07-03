@@ -65,7 +65,10 @@ export default function AdminPage() {
 /* ── 강재↔판번호 정합성 진단 ─────────────────────────────── */
 interface IntegrityReport {
   totals: { steelPlans: number; steelPlanHeats: number; completedCutLogs: number; activeShipItems: number };
-  summary: { dupCutLogs: number; heatMissedFlip: number; heatStaleCut: number; specStatusMismatch: number; dupWaitingHeat: number };
+  summary: {
+    dupCutLogs: number; heatMissedFlip: number; heatStaleCut: number; specStatusMismatch: number; dupWaitingHeat: number;
+    orphanHeats: number; ghostReserved: number;
+  };
 }
 function IntegrityCard() {
   const [data, setData] = useState<IntegrityReport | null>(null);
@@ -119,6 +122,23 @@ function IntegrityCard() {
               ))}
             </div>
             <p className="text-[11px] text-gray-400">건수가 0이 아니면 상세 페이지에서 어느 사양·판번호인지 확인할 수 있습니다.</p>
+
+            <div className="pt-2 border-t border-gray-100">
+              <p className="text-[11px] font-semibold text-gray-600 mb-1.5">🧹 안전 정리 대상 <span className="font-normal text-gray-400">— 어디에도 안 붙은 값 (지워도 문제 없음)</span></p>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { key: "orphanHeats" as const,   label: "유령 판번호", desc: "강재목록에 대응 사양 없는 판번호" },
+                  { key: "ghostReserved" as const, label: "유령 확정",   desc: "존재하지 않는 블록에 확정된 강재" },
+                ]).map(t => (
+                  <div key={t.key} className="border border-gray-200 rounded-lg p-2.5 text-center">
+                    <div className={`text-xl font-bold ${data.summary[t.key] > 0 ? "text-amber-600" : "text-gray-300"}`}>{data.summary[t.key]}</div>
+                    <div className="text-[10px] font-medium text-gray-600 mt-0.5">{t.label}</div>
+                    <div className="text-[9px] text-gray-400 leading-tight">{t.desc}</div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1">0이면 정리할 것 없음. 건수가 있으면 관리자에게 알려주시면 안전하게 정리됩니다(되돌리기 로그 유지).</p>
+            </div>
           </>
         )}
       </div>

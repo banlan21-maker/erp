@@ -40,7 +40,7 @@ const heatKey = (v: string | null, m: string | null, t: number | null, w: number
 export async function GET() {
   try {
     // ── 원천 데이터 로드 ──────────────────────────────────────────────────────
-    const [plans, heats, cutLogs, shipItems] = await Promise.all([
+    const [plans, heats, cutLogs, shipItems, draws] = await Promise.all([
       prisma.steelPlan.findMany({
         select: {
           id: true, vesselCode: true, material: true, thickness: true, width: true, length: true,
@@ -74,6 +74,8 @@ export async function GET() {
           id: true, vesselCode: true, material: true, thickness: true, width: true, length: true, heatNo: true,
         },
       }),
+      // 도면 목록 (유령 확정 판정용) — 실존 블록 집합
+      prisma.drawingList.findMany({ select: { block: true, project: { select: { projectCode: true } } } }),
     ]);
 
     // ── 작업일보 기준 "절단된 판번호" 집합 (진실의 근거) ────────────────────────
@@ -209,6 +211,31 @@ export async function GET() {
       }))
       .sort((a, b) => b.count - a.count);
 
+    // ── F. 유령 판번호 (강재목록에 대응 사양 없는 판번호) — 안전 정리 대상 ──────────
+    const planSpecKeys = new Set(plans.map((p) => specVesselKey(p.vesselCode, p.material, p.thickness, p.width, p.length)));
+    const orphanHeatsAll = heats
+      .filter((h) => !planSpecKeys.has(specVesselKey(h.vesselCode, h.material, h.thickness, h.width, h.length)))
+      .map((h) => ({
+        heatNo: h.heatNo, vesselCode: h.vesselCode, material: up(h.material),
+        thickness: h.thickness, width: h.width, length: h.length, status: h.status,
+      }));
+
+    // ── G. 유령 확정 (reservedFor 인데 그 블록 도면이 존재 안 함) — 안전 정리 대상 ────
+    const validReserved = new Set<string>();
+    for (const d of draws) {
+      const b = (d.block ?? "").trim();
+      if (!b) continue;
+      validReserved.add(b);
+      if (d.project?.projectCode) validReserved.add(`${d.project.projectCode}/${b}`);
+    }
+    const ghostReservedAll = plans
+      .filter((p) => p.reservedFor && !validReserved.has(p.reservedFor.trim()))
+      .map((p) => ({
+        vesselCode: p.vesselCode, material: up(p.material),
+        thickness: p.thickness, width: p.width, length: p.length,
+        reservedFor: p.reservedFor, status: p.status,
+      }));
+
     return NextResponse.json({
       generatedAt: new Date().toISOString(),
       totals: {
@@ -223,12 +250,16 @@ export async function GET() {
         heatStaleCut: heatStaleCutAll.length,
         specStatusMismatch: specStatusMismatchAll.length,
         dupWaitingHeat: dupWaitingHeatAll.length,
+        orphanHeats: orphanHeatsAll.length,
+        ghostReserved: ghostReservedAll.length,
       },
       dupCutLogs: dupCutLogsAll.slice(0, SAMPLE_CAP),
       heatMissedFlip: heatMissedFlipAll.slice(0, SAMPLE_CAP),
       heatStaleCut: heatStaleCutAll.slice(0, SAMPLE_CAP),
       specStatusMismatch: specStatusMismatchAll.slice(0, SAMPLE_CAP),
       dupWaitingHeat: dupWaitingHeatAll.slice(0, SAMPLE_CAP),
+      orphanHeats: orphanHeatsAll.slice(0, SAMPLE_CAP),
+      ghostReserved: ghostReservedAll.slice(0, SAMPLE_CAP),
     });
   } catch (error) {
     console.error("[GET /api/steel-plan/integrity]", error);
