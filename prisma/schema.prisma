@@ -1612,3 +1612,88 @@ model AppUser {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
+
+// ==========================================
+// 기성관리 (원청 대금 청구) — "거래명세표(출고증)"과는 별개 문서.
+// MVP: 원청 마스터 + 월별 수기 기성청구(부가세·추가절단·운송비 구분) + XLSX 출력.
+// 차후: 엑셀 단가표 업로드 자동소환, 블록 단가표, 돌발작업 연동, 원청별 양식 재현.
+// ==========================================
+enum BillingRateMode {
+  BLOCK // 블록별 단가표
+  FLAT  // 단일요율
+}
+enum BillingUnit {
+  TON
+  KG
+}
+enum BillingStatus {
+  DRAFT
+  ISSUED
+}
+enum BillingItemCategory {
+  MAIN      // 메인기성
+  ADDON     // 추가절단
+  TRANSPORT // 운송비
+  ETC       // 기타
+}
+
+model BillingClient {
+  id          String  @id @default(cuid())
+  name        String  // 원청 상호 (공급받는 자)
+  bizNo       String? // 사업자등록번호
+  ceo         String? // 대표자
+  address     String? // 사업장 소재지
+  bizType     String? // 업태
+  bizItem     String? // 종목
+  phone       String?
+  unit        BillingUnit     @default(TON)   // 청구 단위
+  rateMode    BillingRateMode @default(BLOCK) // 단가 방식
+  defaultRate Float?  // 단일요율(FLAT) 기본 요율 (원/단위)
+  addCutRate  Float?  // 추가절단 kg당 단가
+  memo        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  statements  BillingStatement[]
+}
+
+model BillingStatement {
+  id             String @id @default(cuid())
+  clientId       String
+  client         BillingClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  ym             String  // 청구월 YYYY-MM
+  title          String? // 출력 문서 제목 (기본 "기성청구서", 원청별 "거래내역서" 등)
+  status         BillingStatus @default(DRAFT)
+  clientSnapshot Json?   // 발행 시 원청 정보 스냅샷
+  supplyAmount   Float @default(0) // 공급가액 합
+  vat            Float @default(0) // 부가세 합
+  total          Float @default(0) // 합계(공급가+부가세)
+  prevBalance    Float @default(0) // 전잔금
+  deposit        Float @default(0) // 입금
+  balance        Float @default(0) // 잔금
+  memo           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  items          BillingItem[]
+
+  @@index([clientId, ym])
+  @@index([ym])
+}
+
+model BillingItem {
+  id          String @id @default(cuid())
+  statementId String
+  statement   BillingStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  category    BillingItemCategory @default(MAIN)
+  itemDate    String? // 월일 표기 (자유 텍스트, 예 "05 31")
+  description String  // 품목 (예 "4506호선 B309 절단")
+  qty         Float?  // 수량
+  weight      Float?  // 중량
+  unitPrice   Float?  // 단가
+  amount      Float @default(0) // 공급가액
+  vatAmount   Float @default(0) // 세액
+  sortOrder   Int   @default(0)
+
+  @@index([statementId])
+}

@@ -25,6 +25,7 @@ export const RESOURCE_GROUPS: ResourceGroup[] = [
       { key: "cutpart.external-shipout", label: "외부출고관리" },
       { key: "cutpart.worklog",          label: "작업일보관리" },
       { key: "cutpart.reports",          label: "절단보고서" },
+      { key: "cutpart.billing",          label: "기성관리" },
     ],
   },
   {
