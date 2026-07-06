@@ -23,6 +23,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dotenv": "^17.3.1",
+    "exceljs": "^4.4.0",
     "frappe-gantt": "^1.2.2",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
