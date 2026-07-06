@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { X, Plus, Trash2, Save, FileSpreadsheet, Printer, Loader2, Upload } from "lucide-react";
-import { calcLineAmount, calcVat, round0, fmtWon, CATEGORY_LABEL } from "@/lib/billing";
+import { calcLineAmount, calcVat, round0, fmtWon, CATEGORY_LABEL, lastDayOfYm } from "@/lib/billing";
 import { downloadStatementXlsx, printStatement, type Stmt } from "@/lib/billing-xlsx";
 import { parseBomFile } from "@/lib/billing-bom";
 
@@ -35,7 +35,7 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
       setYm(d.ym); setTitle(d.title ?? "기성청구서"); setMemo(d.memo ?? "");
       setPrevBalance(String(d.prevBalance ?? 0)); setDeposit(String(d.deposit ?? 0));
       setItems((d.items ?? []).map((it: Record<string, unknown>) => ({
-        id: it.id as string, category: (it.category as string) ?? "MAIN", itemDate: s2(it.itemDate),
+        id: it.id as string, category: (it.category as string) ?? "MAIN", itemDate: s2(it.itemDate) || lastDayOfYm(d.ym),
         hoNo: s2(it.hoNo), block: s2(it.block),
         description: s2(it.description), qty: s2(it.qty), weight: s2(it.weight), unitPrice: s2(it.unitPrice),
       })));
@@ -51,11 +51,12 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
   const balance = round0((numOrNull(prevBalance) ?? 0) + total - (numOrNull(deposit) ?? 0));
 
   // 호선별 소계 (MAIN 라인 중 호선 있는 것)
-  const hoSubtotals: [string, { weight: number; amount: number; count: number }][] = (() => {
-    const m = new Map<string, { weight: number; amount: number; count: number }>();
+  const hoSubtotals: [string, { qty: number; weight: number; amount: number; count: number }][] = (() => {
+    const m = new Map<string, { qty: number; weight: number; amount: number; count: number }>();
     for (const it of items) {
       if (it.category !== "MAIN" || !it.hoNo) continue;
-      const cur = m.get(it.hoNo) ?? { weight: 0, amount: 0, count: 0 };
+      const cur = m.get(it.hoNo) ?? { qty: 0, weight: 0, amount: 0, count: 0 };
+      cur.qty += numOrNull(it.qty) ?? 0;
       cur.weight = round0((cur.weight + (numOrNull(it.weight) ?? 0)) * 1000) / 1000;
       cur.amount += lineAmount(it); cur.count += 1;
       m.set(it.hoNo, cur);
@@ -64,7 +65,7 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
   })();
 
   const setItem = (i: number, patch: Partial<EditItem>) => setItems(prev => prev.map((it, idx) => idx === i ? { ...it, ...patch } : it));
-  const addRow = (category = "MAIN") => setItems(prev => [...prev, { category, itemDate: "", hoNo: "", block: "", description: "", qty: "", weight: "", unitPrice: category === "ADDON" && client?.addCutRate ? String(client.addCutRate) : "" }]);
+  const addRow = (category = "MAIN") => setItems(prev => [...prev, { category, itemDate: lastDayOfYm(ym), hoNo: "", block: "", description: "", qty: "", weight: "", unitPrice: category === "ADDON" && client?.addCutRate ? String(client.addCutRate) : "" }]);
   const delRow = (i: number) => setItems(prev => prev.filter((_, idx) => idx !== i));
 
   // BOM 업로드 → 호선·블록별 자동 라인 (사용자는 단가만 입력)
@@ -84,7 +85,7 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
         const seen = new Set(prev.filter(p => p.category === "MAIN").map(p => `${p.hoNo}||${p.block}`));
         const add: EditItem[] = lines
           .filter(l => !seen.has(`${l.hoNo}||${l.block}`))
-          .map(l => ({ category: "MAIN", itemDate: "", hoNo: l.hoNo, block: l.block, description: `${l.hoNo}호선 ${l.block} 절단`, qty: String(l.qty), weight: String(l.weight), unitPrice: "" }));
+          .map(l => ({ category: "MAIN", itemDate: lastDayOfYm(ym), hoNo: l.hoNo, block: l.block, description: `${l.hoNo}호선 ${l.block} 절단`, qty: String(l.qty), weight: String(l.weight), unitPrice: "" }));
         return [...prev, ...add];
       });
     } catch (err) { alert(err instanceof Error ? err.message : "BOM 읽기 실패"); }
@@ -132,8 +133,8 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
                 <label className="text-xs text-gray-500">문서 제목
                   <input value={title} onChange={e => setTitle(e.target.value)} className="mt-0.5 w-full px-2 py-1.5 text-sm border border-gray-300 rounded" />
                 </label>
-                <label className="text-xs text-gray-500">청구월
-                  <input type="month" value={ym} onChange={e => setYm(e.target.value)} className="mt-0.5 w-full px-2 py-1.5 text-sm border border-gray-300 rounded" />
+                <label className="text-xs text-gray-500">청구월 <span className="text-gray-400">(월일=말일 자동)</span>
+                  <input type="month" value={ym} onChange={e => { const v = e.target.value; setYm(v); const ld = lastDayOfYm(v); setItems(prev => prev.map(it => ({ ...it, itemDate: ld }))); }} className="mt-0.5 w-full px-2 py-1.5 text-sm border border-gray-300 rounded" />
                 </label>
                 <label className="text-xs text-gray-500">전잔금
                   <input value={prevBalance} onChange={e => setPrevBalance(e.target.value)} inputMode="numeric" className="mt-0.5 w-full px-2 py-1.5 text-sm border border-gray-300 rounded text-right" />
@@ -206,7 +207,7 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
                     {hoSubtotals.map(([ho, v]) => (
                       <div key={ho} className="flex items-center justify-between px-3 py-1.5 text-xs">
                         <span className="font-medium text-gray-700">{ho}호선 <span className="text-gray-400">({v.count}블록)</span></span>
-                        <span className="font-mono text-gray-600">중량 {v.weight.toLocaleString()} · 공급가액 {fmtWon(round0(v.amount))}</span>
+                        <span className="font-mono text-gray-600">수량 {v.qty.toLocaleString()} · 중량 {v.weight.toLocaleString()} · 공급가액 {fmtWon(round0(v.amount))}</span>
                       </div>
                     ))}
                   </div>

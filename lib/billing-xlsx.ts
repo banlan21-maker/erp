@@ -12,25 +12,38 @@ export interface Stmt {
   supplyAmount: number; vat: number; total: number; prevBalance: number; deposit: number; balance: number;
 }
 
-// 호선별 소계 (MAIN + 호선 있는 라인)
-function hoSubtotals(items: StmtItem[]): [string, { w: number; a: number; n: number }][] {
-  const m = new Map<string, { w: number; a: number; n: number }>();
-  for (const it of items) {
-    if (it.category !== "MAIN" || !it.hoNo) continue;
-    const c = m.get(it.hoNo) ?? { w: 0, a: 0, n: 0 };
-    c.w = Math.round((c.w + (it.weight ?? 0)) * 1000) / 1000; c.a += it.amount; c.n += 1;
-    m.set(it.hoNo, c);
-  }
-  return [...m.entries()];
-}
-
+const round3 = (n: number) => Math.round(n * 1000) / 1000;
 const safe = (v: string) => v.replace(/[\\/:*?"<>|]/g, "_").slice(0, 60);
 const MONEY = "#,##0";
 
-/** 테두리·정렬·인쇄영역이 잡힌 XLSX (열면 바로 인쇄 가능). 업체별 1파일. */
+// MAIN + 호선 있는 라인 → 호선별 그룹(첫 등장 순), 그 외(호선없음·추가절단·운송비·기타) → others
+function groupByHo(items: StmtItem[]) {
+  const groups: [string, StmtItem[]][] = [];
+  const idx = new Map<string, StmtItem[]>();
+  const others: StmtItem[] = [];
+  for (const it of items) {
+    if (it.category === "MAIN" && it.hoNo) {
+      let arr = idx.get(it.hoNo);
+      if (!arr) { arr = []; idx.set(it.hoNo, arr); groups.push([it.hoNo, arr]); }
+      arr.push(it);
+    } else others.push(it);
+  }
+  return { groups, others };
+}
+function sumG(arr: StmtItem[]) {
+  return arr.reduce((a, it) => ({
+    qty: round3(a.qty + (it.qty ?? 0)), weight: round3(a.weight + (it.weight ?? 0)),
+    amount: a.amount + it.amount, vat: a.vat + it.vatAmount,
+  }), { qty: 0, weight: 0, amount: 0, vat: 0 });
+}
+
+/** 테두리·정렬·인쇄영역이 잡힌 XLSX. 호선별 묶음 + 호선 소계 + 전체 소계 + 부가세 포함. */
 export async function downloadStatementXlsx(s: Stmt) {
   const ExcelJS = (await import("exceljs")).default;
   const sup = BILLING_SUPPLIER;
+  const { groups, others } = groupByHo(s.items);
+  const grand = sumG(s.items);
+
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("기성청구서", {
     pageSetup: {
@@ -45,8 +58,7 @@ export async function downloadStatementXlsx(s: Stmt) {
   const mergeText = (row: number, text: string, opts: Partial<{ bold: boolean; size: number; align: "left" | "center"; color: string }> = {}) => {
     ws.mergeCells(row, 1, row, 8);
     const c = ws.getCell(row, 1);
-    c.value = text;
-    c.font = { bold: !!opts.bold, size: opts.size ?? 11, color: opts.color ? { argb: opts.color } : undefined };
+    c.value = text; c.font = { bold: !!opts.bold, size: opts.size ?? 11, color: opts.color ? { argb: opts.color } : undefined };
     c.alignment = { horizontal: opts.align ?? "left", vertical: "middle" };
   };
 
@@ -58,8 +70,8 @@ export async function downloadStatementXlsx(s: Stmt) {
   mergeText(r, `공급자   ${sup.name} (${sup.bizNo}) · 대표 ${sup.ceo} · ${sup.address} · ${sup.bizType}/${sup.bizItem}`, { size: 9, color: "FF666666" }); r++;
   r++;
 
-  // 표 시작 (헤더)
   const tableTop = r;
+  // 헤더
   const headers = ["월일", "구분", "품목", "수량", "중량", "단가", "공급가액", "세액"];
   const hr = ws.getRow(r);
   headers.forEach((h, i) => {
@@ -69,8 +81,7 @@ export async function downloadStatementXlsx(s: Stmt) {
   });
   hr.height = 20; r++;
 
-  // 라인
-  for (const it of s.items) {
+  const emitLine = (it: StmtItem) => {
     const row = ws.getRow(r);
     const vals: (string | number)[] = [
       it.itemDate || "", CATEGORY_LABEL[it.category] || it.category, it.description,
@@ -83,41 +94,47 @@ export async function downloadStatementXlsx(s: Stmt) {
       if (i >= 5) c.numFmt = MONEY;
     });
     r++;
-  }
-
-  // 호선별 소계
-  const subs = hoSubtotals(s.items);
-  if (subs.length) {
-    mergeText(r, "호선별 소계", { bold: true });
-    ws.getCell(r, 1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF6F6F6" } };
-    r++;
-    for (const [ho, v] of subs) {
-      const row = ws.getRow(r);
-      row.getCell(1).value = `${ho}호선`;
-      row.getCell(3).value = `${v.n}블록`;
-      row.getCell(5).value = v.w; row.getCell(5).numFmt = MONEY;
-      row.getCell(7).value = Math.round(v.a); row.getCell(7).numFmt = MONEY;
-      for (let c = 4; c <= 8; c++) row.getCell(c).alignment = { horizontal: "right" };
-      r++;
-    }
-  }
-
-  // 합계 블록
-  const totalRow = (label: string, col7: number, col8?: number) => {
+  };
+  const emitSummary = (label: string, sum: { qty: number; weight: number; amount: number; vat: number }, fill: string) => {
     const row = ws.getRow(r);
-    const lc = row.getCell(6); lc.value = label; lc.font = { bold: true }; lc.alignment = { horizontal: "center" };
-    row.getCell(7).value = col7; row.getCell(7).numFmt = MONEY; row.getCell(7).alignment = { horizontal: "right" }; row.getCell(7).font = { bold: true };
-    if (col8 !== undefined) { row.getCell(8).value = col8; row.getCell(8).numFmt = MONEY; row.getCell(8).alignment = { horizontal: "right" }; row.getCell(8).font = { bold: true }; }
+    row.getCell(3).value = label; row.getCell(3).alignment = { horizontal: "left" };
+    row.getCell(4).value = sum.qty; row.getCell(4).alignment = { horizontal: "right" };
+    row.getCell(5).value = sum.weight; row.getCell(5).alignment = { horizontal: "right" };
+    row.getCell(7).value = Math.round(sum.amount); row.getCell(7).numFmt = MONEY; row.getCell(7).alignment = { horizontal: "right" };
+    row.getCell(8).value = Math.round(sum.vat); row.getCell(8).numFmt = MONEY; row.getCell(8).alignment = { horizontal: "right" };
+    for (let c = 1; c <= 8; c++) { row.getCell(c).font = { bold: true }; row.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: fill } }; }
     r++;
   };
-  totalRow("계", s.supplyAmount, s.vat);
-  totalRow("합계금액", s.total);
-  totalRow("전잔금", s.prevBalance);
-  totalRow("입금", s.deposit);
-  totalRow("잔금", s.balance);
+
+  // 호선별 묶음 + 호선 소계
+  for (const [ho, arr] of groups) {
+    for (const it of arr) emitLine(it);
+    emitSummary(`${ho}호선 소계`, sumG(arr), "FFF6F6F6");
+  }
+  // 그 외(추가절단/운송비/기타/호선없음)
+  for (const it of others) emitLine(it);
+
+  // 전체 소계
+  emitSummary("전체 소계", grand, "FFE9EFF7");
+
+  // 부가세 포함 가격
+  {
+    ws.mergeCells(r, 1, r, 6); const lc = ws.getCell(r, 1);
+    lc.value = "부가세 포함 가격 (공급가액 + 부가세)"; lc.font = { bold: true }; lc.alignment = { horizontal: "center" };
+    ws.mergeCells(r, 7, r, 8); const vc = ws.getCell(r, 7);
+    vc.value = s.total; vc.numFmt = MONEY; vc.font = { bold: true, size: 12 }; vc.alignment = { horizontal: "right" };
+    r++;
+  }
+  // 전잔금/입금/잔금
+  const arRow = (label: string, val: number) => {
+    const row = ws.getRow(r);
+    row.getCell(6).value = label; row.getCell(6).alignment = { horizontal: "center" };
+    ws.mergeCells(r, 7, r, 8); const v = ws.getCell(r, 7); v.value = val; v.numFmt = MONEY; v.alignment = { horizontal: "right" };
+    r++;
+  };
+  arRow("전잔금", s.prevBalance); arRow("입금", s.deposit); arRow("잔금", s.balance);
   const tableBottom = r - 1;
 
-  // 표 전체 테두리
   for (let rr = tableTop; rr <= tableBottom; rr++)
     for (let cc = 1; cc <= 8; cc++) ws.getCell(rr, cc).border = box;
 
@@ -129,10 +146,12 @@ export async function downloadStatementXlsx(s: Stmt) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** 브라우저 인쇄 (새 창) */
+/** 브라우저 인쇄 (새 창) — XLSX와 동일 구성 */
 export function printStatement(s: Stmt) {
   const sup = BILLING_SUPPLIER;
-  const rowsHtml = s.items.map(it => `
+  const { groups, others } = groupByHo(s.items);
+  const grand = sumG(s.items);
+  const line = (it: StmtItem) => `
     <tr>
       <td>${it.itemDate || ""}</td>
       <td>${CATEGORY_LABEL[it.category] || it.category}</td>
@@ -142,8 +161,20 @@ export function printStatement(s: Stmt) {
       <td style="text-align:right">${it.unitPrice != null ? fmtWon(it.unitPrice) : ""}</td>
       <td style="text-align:right">${fmtWon(it.amount)}</td>
       <td style="text-align:right">${fmtWon(it.vatAmount)}</td>
-    </tr>`).join("");
-  const subs = hoSubtotals(s.items);
+    </tr>`;
+  const summary = (label: string, sum: { qty: number; weight: number; amount: number; vat: number }, cls: string) => `
+    <tr class="${cls}">
+      <td colspan="3" style="text-align:left">${label}</td>
+      <td style="text-align:right">${sum.qty.toLocaleString()}</td>
+      <td style="text-align:right">${sum.weight.toLocaleString()}</td>
+      <td></td>
+      <td style="text-align:right">${fmtWon(Math.round(sum.amount))}</td>
+      <td style="text-align:right">${fmtWon(Math.round(sum.vat))}</td>
+    </tr>`;
+  let body = "";
+  for (const [ho, arr] of groups) { body += arr.map(line).join(""); body += summary(`${ho}호선 소계`, sumG(arr), "grp"); }
+  body += others.map(line).join("");
+
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${s.title || "기성청구서"}</title>
   <style>
     body{font-family:'Malgun Gothic',sans-serif;font-size:12px;padding:24px;color:#111}
@@ -153,8 +184,9 @@ export function printStatement(s: Stmt) {
     table{width:100%;border-collapse:collapse;margin-top:8px}
     th,td{border:1px solid #333;padding:4px 6px;text-align:center}
     th{background:#eee}
-    tfoot td{text-align:right;font-weight:bold}
-    .grp td{background:#f6f6f6;font-weight:bold;text-align:left}
+    .grp td{background:#f6f6f6;font-weight:bold}
+    .tot td{background:#e9eff7;font-weight:bold}
+    .incl td{font-weight:bold;font-size:13px}
   </style></head><body>
     <h1>${s.title || "기성청구서"}</h1>
     <div class="sub">청구월 ${s.ym}</div>
@@ -164,12 +196,13 @@ export function printStatement(s: Stmt) {
     </div>
     <table>
       <thead><tr><th>월일</th><th>구분</th><th>품목</th><th>수량</th><th>중량</th><th>단가</th><th>공급가액</th><th>세액</th></tr></thead>
-      <tbody>${rowsHtml}</tbody>
-      ${subs.length ? `<tbody><tr class="grp"><td colspan="8">호선별 소계</td></tr>${subs.map(([ho, v]) => `<tr><td colspan="2">${ho}호선</td><td>${v.n}블록</td><td colspan="2"></td><td style="text-align:right">중량 ${v.w.toLocaleString()}</td><td style="text-align:right">${fmtWon(Math.round(v.a))}</td><td></td></tr>`).join("")}</tbody>` : ""}
+      <tbody>${body}</tbody>
       <tfoot>
-        <tr><td colspan="6">계</td><td>${fmtWon(s.supplyAmount)}</td><td>${fmtWon(s.vat)}</td></tr>
-        <tr><td colspan="6">합계금액</td><td colspan="2">${fmtWon(s.total)}</td></tr>
-        <tr><td colspan="6">전잔금 · 입금 · 잔금</td><td colspan="2">${fmtWon(s.prevBalance)} · ${fmtWon(s.deposit)} · ${fmtWon(s.balance)}</td></tr>
+        ${summary("전체 소계", grand, "tot")}
+        <tr class="incl"><td colspan="6">부가세 포함 가격 (공급가액 + 부가세)</td><td colspan="2" style="text-align:right">${fmtWon(s.total)}</td></tr>
+        <tr><td colspan="6">전잔금</td><td colspan="2" style="text-align:right">${fmtWon(s.prevBalance)}</td></tr>
+        <tr><td colspan="6">입금</td><td colspan="2" style="text-align:right">${fmtWon(s.deposit)}</td></tr>
+        <tr><td colspan="6">잔금</td><td colspan="2" style="text-align:right">${fmtWon(s.balance)}</td></tr>
       </tfoot>
     </table>
   </body></html>`;

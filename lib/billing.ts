@@ -41,3 +41,12 @@ export function calcVat(amount: number): number {
 }
 
 export const fmtWon = (n: number) => (n ?? 0).toLocaleString("ko-KR");
+
+/** 청구월(YYYY-MM) → 그 달 마지막 날 "MM DD" (예: 2025-05 → "05 31") */
+export function lastDayOfYm(ym: string): string {
+  const m = /^(\d{4})-(\d{2})$/.exec(ym ?? "");
+  if (!m) return "";
+  const y = Number(m[1]), mo = Number(m[2]);
+  const d = new Date(Date.UTC(y, mo, 0)).getUTCDate(); // 다음달 0일 = 이번달 말일
+  return `${String(mo).padStart(2, "0")} ${String(d).padStart(2, "0")}`;
+}
