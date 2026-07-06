@@ -34,6 +34,11 @@ export async function POST(req: NextRequest) {
         defaultRate: num(b?.defaultRate),
         addCutRate:  num(b?.addCutRate),
         memo:    b?.memo?.trim() || null,
+        ...(b?.bomStartRow  != null ? { bomStartRow: Math.max(1, parseInt(b.bomStartRow) || 3) } : {}),
+        ...(b?.bomColHo     ? { bomColHo:     String(b.bomColHo).trim().toUpperCase() } : {}),
+        ...(b?.bomColBlock  ? { bomColBlock:  String(b.bomColBlock).trim().toUpperCase() } : {}),
+        ...(b?.bomColQty    ? { bomColQty:    String(b.bomColQty).trim().toUpperCase() } : {}),
+        ...(b?.bomColWeight ? { bomColWeight: String(b.bomColWeight).trim().toUpperCase() } : {}),
       },
     });
     return NextResponse.json({ success: true, data: created }, { status: 201 });

@@ -4,8 +4,20 @@ import * as XLSX from "xlsx";
 import { BILLING_SUPPLIER, CATEGORY_LABEL, fmtWon } from "@/lib/billing";
 
 export interface StmtItem {
-  category: string; itemDate?: string | null; description: string;
+  category: string; itemDate?: string | null; hoNo?: string | null; description: string;
   qty?: number | null; weight?: number | null; unitPrice?: number | null; amount: number; vatAmount: number;
+}
+
+// 호선별 소계 (MAIN + 호선 있는 라인)
+function hoSubtotals(items: StmtItem[]): [string, { w: number; a: number; n: number }][] {
+  const m = new Map<string, { w: number; a: number; n: number }>();
+  for (const it of items) {
+    if (it.category !== "MAIN" || !it.hoNo) continue;
+    const c = m.get(it.hoNo) ?? { w: 0, a: 0, n: 0 };
+    c.w = Math.round((c.w + (it.weight ?? 0)) * 1000) / 1000; c.a += it.amount; c.n += 1;
+    m.set(it.hoNo, c);
+  }
+  return [...m.entries()];
 }
 export interface StmtClient { name: string; bizNo?: string | null; ceo?: string | null; address?: string | null; }
 export interface Stmt {
@@ -30,6 +42,12 @@ function toAoa(s: Stmt): (string | number)[][] {
       it.itemDate || "", CATEGORY_LABEL[it.category] || it.category, it.description,
       it.qty ?? "", it.weight ?? "", it.unitPrice ?? "", it.amount, it.vatAmount,
     ]);
+  }
+  const subs = hoSubtotals(s.items);
+  if (subs.length) {
+    rows.push([]);
+    rows.push(["[호선별 소계]"]);
+    for (const [ho, v] of subs) rows.push(["", `${ho}호선`, `${v.n}블록`, "", v.w, "", Math.round(v.a)]);
   }
   rows.push([]);
   rows.push(["", "", "", "", "", "계", s.supplyAmount, s.vat]);
@@ -84,6 +102,7 @@ export function printStatement(s: Stmt) {
     <table>
       <thead><tr><th>월일</th><th>구분</th><th>품목</th><th>수량</th><th>중량</th><th>단가</th><th>공급가액</th><th>세액</th></tr></thead>
       <tbody>${rowsHtml}</tbody>
+      ${hoSubtotals(s.items).length ? `<tbody><tr><td colspan="8" style="text-align:left;background:#f7f7f7;font-weight:bold">호선별 소계</td></tr>${hoSubtotals(s.items).map(([ho, v]) => `<tr><td colspan="2">${ho}호선</td><td>${v.n}블록</td><td colspan="2"></td><td style="text-align:right">중량 ${v.w.toLocaleString()}</td><td style="text-align:right">${fmtWon(Math.round(v.a))}</td><td></td></tr>`).join("")}</tbody>` : ""}
       <tfoot>
         <tr class="tot"><td colspan="6">계</td><td>${fmtWon(s.supplyAmount)}</td><td>${fmtWon(s.vat)}</td></tr>
         <tr class="tot"><td colspan="6">합계금액</td><td colspan="2">${fmtWon(s.total)}</td></tr>

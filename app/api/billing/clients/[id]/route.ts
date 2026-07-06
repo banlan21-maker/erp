@@ -18,6 +18,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (b?.rateMode !== undefined) data.rateMode = b.rateMode === "FLAT" ? "FLAT" : "BLOCK";
     if (b?.defaultRate !== undefined) data.defaultRate = num(b.defaultRate);
     if (b?.addCutRate !== undefined) data.addCutRate = num(b.addCutRate);
+    if (b?.bomStartRow !== undefined) data.bomStartRow = Math.max(1, parseInt(b.bomStartRow) || 3);
+    for (const [k, col] of [["bomColHo", b?.bomColHo], ["bomColBlock", b?.bomColBlock], ["bomColQty", b?.bomColQty], ["bomColWeight", b?.bomColWeight]] as const) {
+      if (col !== undefined && String(col).trim()) data[k] = String(col).trim().toUpperCase();
+    }
 
     const updated = await prisma.billingClient.update({ where: { id }, data });
     return NextResponse.json({ success: true, data: updated });

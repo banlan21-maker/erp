@@ -1,12 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { X, Plus, Trash2, Save, FileSpreadsheet, Printer, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { X, Plus, Trash2, Save, FileSpreadsheet, Printer, Loader2, Upload } from "lucide-react";
 import { calcLineAmount, calcVat, round0, fmtWon, CATEGORY_LABEL } from "@/lib/billing";
 import { downloadStatementXlsx, printStatement, type Stmt } from "@/lib/billing-xlsx";
+import { parseBomFile } from "@/lib/billing-bom";
 
-interface EditItem { id?: string; category: string; itemDate: string; description: string; qty: string; weight: string; unitPrice: string; }
-interface ClientInfo { id: string; name: string; bizNo?: string | null; ceo?: string | null; address?: string | null; unit: string; addCutRate?: number | null; }
+interface EditItem { id?: string; category: string; itemDate: string; hoNo: string; block: string; description: string; qty: string; weight: string; unitPrice: string; }
+interface ClientInfo {
+  id: string; name: string; bizNo?: string | null; ceo?: string | null; address?: string | null; unit: string; addCutRate?: number | null;
+  bomStartRow?: number; bomColHo?: string; bomColBlock?: string; bomColQty?: string; bomColWeight?: string;
+}
 
 const numOrNull = (s: string) => { if (s.trim() === "") return null; const n = Number(s); return Number.isFinite(n) ? n : null; };
 const s2 = (v: unknown) => (v == null ? "" : String(v));
@@ -32,6 +36,7 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
       setPrevBalance(String(d.prevBalance ?? 0)); setDeposit(String(d.deposit ?? 0));
       setItems((d.items ?? []).map((it: Record<string, unknown>) => ({
         id: it.id as string, category: (it.category as string) ?? "MAIN", itemDate: s2(it.itemDate),
+        hoNo: s2(it.hoNo), block: s2(it.block),
         description: s2(it.description), qty: s2(it.qty), weight: s2(it.weight), unitPrice: s2(it.unitPrice),
       })));
     }
@@ -45,14 +50,50 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
   const total = supplyAmount + vat;
   const balance = round0((numOrNull(prevBalance) ?? 0) + total - (numOrNull(deposit) ?? 0));
 
+  // 호선별 소계 (MAIN 라인 중 호선 있는 것)
+  const hoSubtotals: [string, { weight: number; amount: number; count: number }][] = (() => {
+    const m = new Map<string, { weight: number; amount: number; count: number }>();
+    for (const it of items) {
+      if (it.category !== "MAIN" || !it.hoNo) continue;
+      const cur = m.get(it.hoNo) ?? { weight: 0, amount: 0, count: 0 };
+      cur.weight = round0((cur.weight + (numOrNull(it.weight) ?? 0)) * 1000) / 1000;
+      cur.amount += lineAmount(it); cur.count += 1;
+      m.set(it.hoNo, cur);
+    }
+    return [...m.entries()];
+  })();
+
   const setItem = (i: number, patch: Partial<EditItem>) => setItems(prev => prev.map((it, idx) => idx === i ? { ...it, ...patch } : it));
-  const addRow = (category = "MAIN") => setItems(prev => [...prev, { category, itemDate: "", description: "", qty: "", weight: "", unitPrice: category === "ADDON" && client?.addCutRate ? String(client.addCutRate) : "" }]);
+  const addRow = (category = "MAIN") => setItems(prev => [...prev, { category, itemDate: "", hoNo: "", block: "", description: "", qty: "", weight: "", unitPrice: category === "ADDON" && client?.addCutRate ? String(client.addCutRate) : "" }]);
   const delRow = (i: number) => setItems(prev => prev.filter((_, idx) => idx !== i));
+
+  // BOM 업로드 → 호선·블록별 자동 라인 (사용자는 단가만 입력)
+  const fileRef = useRef<HTMLInputElement>(null);
+  const onBom = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !client) return;
+    try {
+      const lines = await parseBomFile(file, {
+        startRow: client.bomStartRow ?? 3,
+        colHo: client.bomColHo ?? "A", colBlock: client.bomColBlock ?? "B",
+        colQty: client.bomColQty ?? "H", colWeight: client.bomColWeight ?? "I",
+      });
+      if (lines.length === 0) { alert("BOM에서 읽을 데이터가 없습니다. 원청의 BOM 열 매핑을 확인하세요."); return; }
+      setItems(prev => {
+        const seen = new Set(prev.filter(p => p.category === "MAIN").map(p => `${p.hoNo}||${p.block}`));
+        const add: EditItem[] = lines
+          .filter(l => !seen.has(`${l.hoNo}||${l.block}`))
+          .map(l => ({ category: "MAIN", itemDate: "", hoNo: l.hoNo, block: l.block, description: `${l.hoNo}호선 ${l.block} 절단`, qty: String(l.qty), weight: String(l.weight), unitPrice: "" }));
+        return [...prev, ...add];
+      });
+    } catch (err) { alert(err instanceof Error ? err.message : "BOM 읽기 실패"); }
+  };
 
   const buildStmt = (): Stmt => ({
     ym, title, client: { name: client?.name ?? "", bizNo: client?.bizNo, ceo: client?.ceo, address: client?.address },
     items: items.map(it => { const a = lineAmount(it); return {
-      category: it.category, itemDate: it.itemDate, description: it.description,
+      category: it.category, itemDate: it.itemDate, hoNo: it.hoNo || null, description: it.description,
       qty: numOrNull(it.qty), weight: numOrNull(it.weight), unitPrice: numOrNull(it.unitPrice), amount: a, vatAmount: calcVat(a),
     }; }),
     supplyAmount, vat, total, prevBalance: numOrNull(prevBalance) ?? 0, deposit: numOrNull(deposit) ?? 0, balance,
@@ -65,7 +106,7 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ym, title, memo, prevBalance: numOrNull(prevBalance) ?? 0, deposit: numOrNull(deposit) ?? 0,
-          items: items.map(it => ({ category: it.category, itemDate: it.itemDate, description: it.description, qty: numOrNull(it.qty), weight: numOrNull(it.weight), unitPrice: numOrNull(it.unitPrice) })),
+          items: items.map(it => ({ category: it.category, itemDate: it.itemDate, hoNo: it.hoNo, block: it.block, description: it.description, qty: numOrNull(it.qty), weight: numOrNull(it.weight), unitPrice: numOrNull(it.unitPrice) })),
         }),
       }).then(r => r.json());
       if (!r.success) { alert(r.error ?? "저장 실패"); return false; }
@@ -144,12 +185,33 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
                   </tbody>
                 </table>
               </div>
+              {/* BOM 업로드 */}
+              <div className="flex flex-wrap items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onBom} className="hidden" />
+                <button onClick={() => fileRef.current?.click()} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700"><Upload size={13} /> BOM 업로드</button>
+                <span className="text-[11px] text-blue-700">엑셀 첨부 → 호선·블록별 부재수량·중량 자동입력 (단가만 입력). 열 매핑: {client?.bomStartRow ?? 3}행부터 · 호선 {client?.bomColHo ?? "A"} · 블록 {client?.bomColBlock ?? "B"} · 수량 {client?.bomColQty ?? "H"} · 중량 {client?.bomColWeight ?? "I"}</span>
+              </div>
               <div className="flex flex-wrap gap-2">
                 <button onClick={() => addRow("MAIN")} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50"><Plus size={13} /> 메인 기성</button>
                 <button onClick={() => addRow("ADDON")} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50"><Plus size={13} /> 추가절단</button>
                 <button onClick={() => addRow("TRANSPORT")} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs border border-sky-300 text-sky-700 rounded-lg hover:bg-sky-50"><Plus size={13} /> 운송비</button>
                 <button onClick={() => addRow("ETC")} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50"><Plus size={13} /> 기타</button>
               </div>
+
+              {/* 호선별 소계 */}
+              {hoSubtotals.length > 0 && (
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="px-3 py-1.5 bg-gray-50 text-xs font-bold text-gray-600">호선별 소계</div>
+                  <div className="divide-y divide-gray-100">
+                    {hoSubtotals.map(([ho, v]) => (
+                      <div key={ho} className="flex items-center justify-between px-3 py-1.5 text-xs">
+                        <span className="font-medium text-gray-700">{ho}호선 <span className="text-gray-400">({v.count}블록)</span></span>
+                        <span className="font-mono text-gray-600">중량 {v.weight.toLocaleString()} · 공급가액 {fmtWon(round0(v.amount))}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* 합계 */}
               <div className="flex justify-end">

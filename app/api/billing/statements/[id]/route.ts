@@ -20,7 +20,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 type ItemIn = {
-  category?: string; itemDate?: string | null; description?: string;
+  category?: string; itemDate?: string | null; hoNo?: string | null; block?: string | null; description?: string;
   qty?: number | null; weight?: number | null; unitPrice?: number | null; amount?: number | null;
 };
 const CATS = ["MAIN", "ADDON", "TRANSPORT", "ETC"];
@@ -50,6 +50,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         return {
           category: CATS.includes(String(it.category)) ? String(it.category) as "MAIN" : "MAIN",
           itemDate: it.itemDate?.toString().trim() || null,
+          hoNo: it.hoNo?.toString().trim() || null,
+          block: it.block?.toString().trim() || null,
           description: String(it.description ?? "").trim(),
           qty: it.qty != null ? num(it.qty) : null,
           weight: it.weight != null ? num(it.weight) : null,

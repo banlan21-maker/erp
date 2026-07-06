@@ -5,7 +5,7 @@ import { CreditCard, Plus, Trash2, FileText, Building2, Pencil, X } from "lucide
 import { fmtWon, UNIT_LABEL, RATE_MODE_LABEL } from "@/lib/billing";
 import StatementEditor from "@/components/billing/statement-editor";
 
-interface Client { id: string; name: string; bizNo?: string | null; ceo?: string | null; address?: string | null; bizType?: string | null; bizItem?: string | null; phone?: string | null; unit: string; rateMode: string; defaultRate?: number | null; addCutRate?: number | null; memo?: string | null; }
+interface Client { id: string; name: string; bizNo?: string | null; ceo?: string | null; address?: string | null; bizType?: string | null; bizItem?: string | null; phone?: string | null; unit: string; rateMode: string; defaultRate?: number | null; addCutRate?: number | null; memo?: string | null; bomStartRow?: number; bomColHo?: string; bomColBlock?: string; bomColQty?: string; bomColWeight?: string; }
 interface Stmt { id: string; ym: string; title?: string | null; status: string; total: number; supplyAmount: number; vat: number; client: { id: string; name: string }; _count: { items: number }; }
 
 const thisYm = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit" }).format(new Date()).slice(0, 7);
@@ -266,6 +266,17 @@ function ClientForm({ value, onClose, onSaved }: { value: Partial<Client>; onClo
           <label className="text-xs text-gray-500">추가절단 단가 (원/kg)
             <input value={(f.addCutRate as number) ?? ""} onChange={e => set("addCutRate", e.target.value)} inputMode="numeric" className="mt-0.5 w-full px-2 py-1.5 text-sm border border-gray-300 rounded text-right" />
           </label>
+          <div className="col-span-2 border-t border-gray-100 pt-3 mt-1">
+            <p className="text-xs font-semibold text-gray-500 mb-2">BOM 업로드 열 매핑 <span className="text-gray-400 font-normal">(엑셀 첨부 시 읽을 위치 — 원청마다 다름)</span></p>
+            <div className="grid grid-cols-5 gap-2">
+              <label className="text-[11px] text-gray-500 text-center">시작 행<input value={(f.bomStartRow as number) ?? 3} onChange={e => set("bomStartRow", e.target.value)} inputMode="numeric" className="mt-0.5 w-full px-2 py-1.5 text-sm border border-gray-300 rounded text-center" /></label>
+              <label className="text-[11px] text-gray-500 text-center">호선 열<input value={(f.bomColHo as string) ?? "A"} onChange={e => set("bomColHo", e.target.value.toUpperCase())} className="mt-0.5 w-full px-2 py-1.5 text-sm border border-gray-300 rounded text-center" /></label>
+              <label className="text-[11px] text-gray-500 text-center">블록 열<input value={(f.bomColBlock as string) ?? "B"} onChange={e => set("bomColBlock", e.target.value.toUpperCase())} className="mt-0.5 w-full px-2 py-1.5 text-sm border border-gray-300 rounded text-center" /></label>
+              <label className="text-[11px] text-gray-500 text-center">수량 열<input value={(f.bomColQty as string) ?? "H"} onChange={e => set("bomColQty", e.target.value.toUpperCase())} className="mt-0.5 w-full px-2 py-1.5 text-sm border border-gray-300 rounded text-center" /></label>
+              <label className="text-[11px] text-gray-500 text-center">중량 열<input value={(f.bomColWeight as string) ?? "I"} onChange={e => set("bomColWeight", e.target.value.toUpperCase())} className="mt-0.5 w-full px-2 py-1.5 text-sm border border-gray-300 rounded text-center" /></label>
+            </div>
+            <p className="text-[10px] text-gray-400 mt-1">마지막 합계 행은 자동으로 제외됩니다. (호선·블록이 빈 행 또는 &apos;합계&apos; 포함 행)</p>
+          </div>
         </div>
         <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">취소</button>

@@ -1651,6 +1651,12 @@ model BillingClient {
   defaultRate Float?  // 단일요율(FLAT) 기본 요율 (원/단위)
   addCutRate  Float?  // 추가절단 kg당 단가
   memo        String?
+  // BOM 업로드 열 매핑 (원청마다 양식 다름). 기본 = 이 업체 양식(3행 시작, A호선·B블록·H수량·I중량)
+  bomStartRow   Int    @default(3)
+  bomColHo      String @default("A")
+  bomColBlock   String @default("B")
+  bomColQty     String @default("H")
+  bomColWeight  String @default("I")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -1687,6 +1693,8 @@ model BillingItem {
   statement   BillingStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
   category    BillingItemCategory @default(MAIN)
   itemDate    String? // 월일 표기 (자유 텍스트, 예 "05 31")
+  hoNo        String? // 호선 (BOM 업로드 시, 호선별 소계용)
+  block       String? // 블록 (BOM 업로드 시)
   description String  // 품목 (예 "4506호선 B309 절단")
   qty         Float?  // 수량
   weight      Float?  // 중량
