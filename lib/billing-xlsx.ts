@@ -13,6 +13,52 @@ export interface Stmt {
   writer?: string | null; senderDate?: string | null; bomCount?: number;
 }
 
+// 표지(기성요청서) 시트를 ExcelJS 로 직접 구성 (docs/표지.xlsx 배치 재현)
+function buildCoverSheet(ws: import("exceljs").Worksheet, s: Stmt) {
+  ws.columns = Array.from({ length: 10 }, () => ({ width: 9 }));
+  const topHo = topHoOf(s.items);
+  const title = topHo ? `${s.client.name} ${topHo}호선 외` : `${s.client.name} 기성`;
+  const thin = { style: "thin" as const, color: { argb: "FF000000" } };
+  const box = { top: thin, left: thin, bottom: thin, right: thin };
+  const M = (range: string, value: string, opts: Partial<{ bold: boolean; size: number; align: "left" | "center" }> = {}) => {
+    ws.mergeCells(range);
+    const c = ws.getCell(range.split(":")[0]);
+    c.value = value;
+    c.font = { bold: !!opts.bold, size: opts.size ?? 11 };
+    c.alignment = { horizontal: opts.align ?? "left", vertical: "middle", wrapText: true };
+  };
+
+  M("A1:J1", "한국테크주식회사", { bold: true, size: 16, align: "center" }); ws.getRow(1).height = 24;
+  M("A2:J2", "경남 하동군진교면 신안길 2-10 / TEL (055) 884-0785 / FAX (055) 884-0786", { size: 9, align: "center" });
+
+  // 결재 박스 (G4:J6)
+  M("G4:G6", "결 재", { align: "center" });
+  ws.getCell("H4").value = "작 성"; ws.getCell("I4").value = "검 토"; ws.getCell("J4").value = "승 인";
+  ["H4", "I4", "J4"].forEach(a => { ws.getCell(a).alignment = { horizontal: "center", vertical: "middle" }; });
+  ws.mergeCells("H5:H6"); ws.mergeCells("I5:I6"); ws.mergeCells("J5:J6");
+  for (let rr = 4; rr <= 6; rr++) for (let cc = 7; cc <= 10; cc++) ws.getCell(rr, cc).border = box;
+
+  // 정보
+  M("A5:B5", "●  문서번호 :"); M("C5:E5", "HT-관-022A");
+  M("A7:B7", "●  발신일자  :"); M("C7:E7", s.senderDate ? fmtSenderDate(s.senderDate) : "");
+  M("A9:B9", "●  작 성 자   :"); M("C9:E9", s.writer || "");
+  M("A11:B11", "●  수     신   :"); M("C11:E11", s.client.name);
+  M("A13:B13", "●  제     목   :"); M("C13:F13", title);
+
+  // 본문
+  M("A18:J18", "1. 귀사의 무궁한 발전을 기원 합니다.");
+  M("A21:J21", `2. 표제의 건과 같이 ${title} 시공분의 정산 관련하여,`);
+  M("A22:J22", "기성을 아래와 같은 내용으로 요청하오니 검토 후 업무 참조 바랍니다.");
+  M("A25:J25", "--   아              래   --", { align: "center" });
+  M("A29:J29", "1) 기성 요청 월   :  한국테크(주)  정기 기성일 기준.");
+  M("A32:J32", `2) 기성 요청내용 : ${title}`);
+  M("A35:J35", "3) 첨             부 :   ( 1 ) 표 지 - 1부");
+  M("A36:J36", "( 2 ) 거래명세서 - 1부");
+  M("A37:J37", "( 3 ) 추가절단내역 - 1부");
+  M("A38:J38", `( 4 ) 상세내역 - ${Math.max(1, s.bomCount ?? 0)}부`);
+  M("A39:J39", "한국테크 주식회사", { align: "center", bold: true });
+}
+
 // 라인이 제일 많은 호선 (표지 제목용)
 function topHoOf(items: StmtItem[]): string {
   const m = new Map<string, number>();
@@ -61,27 +107,13 @@ export async function downloadStatementXlsx(s: Stmt) {
 
   const wb = new ExcelJS.Workbook();
 
-  // 표지(기성요청서) — 공용 템플릿을 첫 시트로 로드 후 동적 셀 채움
-  try {
-    const res = await fetch("/billing-cover.xlsx", { cache: "no-store" });
-    if (res.ok) {
-      await wb.xlsx.load(await res.arrayBuffer());
-      const cover = wb.worksheets[0];
-      if (cover) {
-        const topHo = topHoOf(s.items);
-        const title = topHo ? `${s.client.name} ${topHo}호선 외` : `${s.client.name} 기성`;
-        const set = (addr: string, v: string) => { cover.getCell(addr).value = v; };
-        if (s.senderDate) set("C7", fmtSenderDate(s.senderDate));   // 발신일자
-        if (s.writer) set("C9", s.writer);            // 작성자
-        set("C11", s.client.name);                    // 수신
-        set("C13", title);                            // 제목
-        set("A21", `2. 표제의 건과 같이 ${title} 시공분의 정산 관련하여,`);
-        set("A32", `2) 기성 요청내용 : ${title}`);
-        set("A38", `( 4 ) 상세내역 - ${Math.max(1, s.bomCount ?? 0)}부`);
-        // 문서번호(C5)·요청월(A29)은 템플릿 값 그대로 유지
-      }
-    }
-  } catch { /* 표지 템플릿 없으면 생략 */ }
+  // 표지(기성요청서) — 첫 시트로 ExcelJS 로 직접 생성 (템플릿 load→save 는 파일 손상 유발)
+  buildCoverSheet(
+    wb.addWorksheet("기성요청서", {
+      pageSetup: { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.5, right: 0.5, top: 0.6, bottom: 0.6, header: 0.2, footer: 0.2 } },
+    }),
+    s,
+  );
 
   const ws = wb.addWorksheet("기성청구서", {
     pageSetup: {
