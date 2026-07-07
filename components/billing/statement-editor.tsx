@@ -22,8 +22,6 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
   const [ym, setYm] = useState("");
   const [title, setTitle] = useState("기성청구서");
   const [memo, setMemo] = useState("");
-  const [prevBalance, setPrevBalance] = useState("0");
-  const [deposit, setDeposit] = useState("0");
   const [items, setItems] = useState<EditItem[]>([]);
 
   const load = useCallback(async () => {
@@ -33,7 +31,6 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
       const d = r.data;
       setClient(d.client);
       setYm(d.ym); setTitle(d.title ?? "기성청구서"); setMemo(d.memo ?? "");
-      setPrevBalance(String(d.prevBalance ?? 0)); setDeposit(String(d.deposit ?? 0));
       setItems((d.items ?? []).map((it: Record<string, unknown>) => ({
         id: it.id as string, category: (it.category as string) ?? "MAIN", itemDate: s2(it.itemDate) || lastDayOfYm(d.ym),
         hoNo: s2(it.hoNo), block: s2(it.block),
@@ -48,7 +45,6 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
   const supplyAmount = round0(items.reduce((s, it) => s + lineAmount(it), 0));
   const vat = round0(items.reduce((s, it) => s + calcVat(lineAmount(it)), 0));
   const total = supplyAmount + vat;
-  const balance = round0((numOrNull(prevBalance) ?? 0) + total - (numOrNull(deposit) ?? 0));
 
   // 호선별 소계 (MAIN 라인 중 호선 있는 것)
   const hoSubtotals: [string, { qty: number; weight: number; amount: number; count: number }][] = (() => {
@@ -97,7 +93,7 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
       category: it.category, itemDate: it.itemDate, hoNo: it.hoNo || null, description: it.description,
       qty: numOrNull(it.qty), weight: numOrNull(it.weight), unitPrice: numOrNull(it.unitPrice), amount: a, vatAmount: calcVat(a),
     }; }),
-    supplyAmount, vat, total, prevBalance: numOrNull(prevBalance) ?? 0, deposit: numOrNull(deposit) ?? 0, balance,
+    supplyAmount, vat, total,
   });
 
   const save = async (): Promise<boolean> => {
@@ -106,7 +102,7 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
       const r = await fetch(`/api/billing/statements/${statementId}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ym, title, memo, prevBalance: numOrNull(prevBalance) ?? 0, deposit: numOrNull(deposit) ?? 0,
+          ym, title, memo,
           items: items.map(it => ({ category: it.category, itemDate: it.itemDate, hoNo: it.hoNo, block: it.block, description: it.description, qty: numOrNull(it.qty), weight: numOrNull(it.weight), unitPrice: numOrNull(it.unitPrice) })),
         }),
       }).then(r => r.json());
@@ -129,18 +125,12 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
         ) : (
           <>
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <label className="text-xs text-gray-500">문서 제목
                   <input value={title} onChange={e => setTitle(e.target.value)} className="mt-0.5 w-full px-2 py-1.5 text-sm border border-gray-300 rounded" />
                 </label>
                 <label className="text-xs text-gray-500">청구월 <span className="text-gray-400">(월일=말일 자동)</span>
                   <input type="month" value={ym} onChange={e => { const v = e.target.value; setYm(v); const ld = lastDayOfYm(v); setItems(prev => prev.map(it => ({ ...it, itemDate: ld }))); }} className="mt-0.5 w-full px-2 py-1.5 text-sm border border-gray-300 rounded" />
-                </label>
-                <label className="text-xs text-gray-500">전잔금
-                  <input value={prevBalance} onChange={e => setPrevBalance(e.target.value)} inputMode="numeric" className="mt-0.5 w-full px-2 py-1.5 text-sm border border-gray-300 rounded text-right" />
-                </label>
-                <label className="text-xs text-gray-500">입금
-                  <input value={deposit} onChange={e => setDeposit(e.target.value)} inputMode="numeric" className="mt-0.5 w-full px-2 py-1.5 text-sm border border-gray-300 rounded text-right" />
                 </label>
               </div>
 
@@ -219,10 +209,7 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
                 <div className="w-full sm:w-72 text-sm border border-gray-200 rounded-lg overflow-hidden">
                   <Row label="공급가액" value={fmtWon(supplyAmount)} />
                   <Row label="부가세 (10%)" value={fmtWon(vat)} />
-                  <Row label="합계금액" value={fmtWon(total)} strong />
-                  <Row label="전잔금" value={fmtWon(numOrNull(prevBalance) ?? 0)} muted />
-                  <Row label="입금" value={fmtWon(numOrNull(deposit) ?? 0)} muted />
-                  <Row label="잔금" value={fmtWon(balance)} strong />
+                  <Row label="합계금액 (부가세 포함)" value={fmtWon(total)} strong />
                 </div>
               </div>
 

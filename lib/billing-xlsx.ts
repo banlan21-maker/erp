@@ -9,7 +9,7 @@ export interface StmtItem {
 export interface StmtClient { name: string; bizNo?: string | null; ceo?: string | null; address?: string | null; }
 export interface Stmt {
   ym: string; title?: string | null; client: StmtClient; items: StmtItem[];
-  supplyAmount: number; vat: number; total: number; prevBalance: number; deposit: number; balance: number;
+  supplyAmount: number; vat: number; total: number;
 }
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
@@ -125,14 +125,6 @@ export async function downloadStatementXlsx(s: Stmt) {
     vc.value = s.total; vc.numFmt = MONEY; vc.font = { bold: true, size: 12 }; vc.alignment = { horizontal: "right" };
     r++;
   }
-  // 전잔금/입금/잔금
-  const arRow = (label: string, val: number) => {
-    const row = ws.getRow(r);
-    row.getCell(6).value = label; row.getCell(6).alignment = { horizontal: "center" };
-    ws.mergeCells(r, 7, r, 8); const v = ws.getCell(r, 7); v.value = val; v.numFmt = MONEY; v.alignment = { horizontal: "right" };
-    r++;
-  };
-  arRow("전잔금", s.prevBalance); arRow("입금", s.deposit); arRow("잔금", s.balance);
   const tableBottom = r - 1;
 
   for (let rr = tableTop; rr <= tableBottom; rr++)
@@ -200,9 +192,6 @@ export function printStatement(s: Stmt) {
       <tfoot>
         ${summary("전체 소계", grand, "tot")}
         <tr class="incl"><td colspan="6">부가세 포함 가격 (공급가액 + 부가세)</td><td colspan="2" style="text-align:right">${fmtWon(s.total)}</td></tr>
-        <tr><td colspan="6">전잔금</td><td colspan="2" style="text-align:right">${fmtWon(s.prevBalance)}</td></tr>
-        <tr><td colspan="6">입금</td><td colspan="2" style="text-align:right">${fmtWon(s.deposit)}</td></tr>
-        <tr><td colspan="6">잔금</td><td colspan="2" style="text-align:right">${fmtWon(s.balance)}</td></tr>
       </tfoot>
     </table>
   </body></html>`;
