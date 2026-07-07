@@ -22,6 +22,10 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
   const [ym, setYm] = useState("");
   const [title, setTitle] = useState("기성청구서");
   const [memo, setMemo] = useState("");
+  const [writer, setWriter] = useState("");
+  const [senderDate, setSenderDate] = useState(""); // YYYY-MM-DD
+  const [bomCount, setBomCount] = useState(0);
+  const [authors, setAuthors] = useState<{ id: string; name: string; title: string | null }[]>([]);
   const [items, setItems] = useState<EditItem[]>([]);
 
   const load = useCallback(async () => {
@@ -31,6 +35,8 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
       const d = r.data;
       setClient(d.client);
       setYm(d.ym); setTitle(d.title ?? "기성청구서"); setMemo(d.memo ?? "");
+      setWriter(d.writer ?? ""); setSenderDate(d.senderDate ?? ""); setBomCount(d.bomCount ?? 0);
+      fetch("/api/billing/authors").then(r => r.json()).then(a => { if (a.success) setAuthors(a.data); }).catch(() => {});
       setItems((d.items ?? []).map((it: Record<string, unknown>) => ({
         id: it.id as string, category: (it.category as string) ?? "MAIN", itemDate: s2(it.itemDate) || lastDayOfYm(d.ym),
         hoNo: s2(it.hoNo), block: s2(it.block),
@@ -84,6 +90,7 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
           .map(l => ({ category: "MAIN", itemDate: lastDayOfYm(ym), hoNo: l.hoNo, block: l.block, description: `${l.hoNo}호선 ${l.block} 절단`, qty: String(l.qty), weight: String(l.weight), unitPrice: "" }));
         return [...prev, ...add];
       });
+      setBomCount(c => c + 1); // 상세내역 부수 = BOM 첨부 수
     } catch (err) { alert(err instanceof Error ? err.message : "BOM 읽기 실패"); }
   };
 
@@ -94,6 +101,7 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
       qty: numOrNull(it.qty), weight: numOrNull(it.weight), unitPrice: numOrNull(it.unitPrice), amount: a, vatAmount: calcVat(a),
     }; }),
     supplyAmount, vat, total,
+    writer, senderDate, bomCount,
   });
 
   const save = async (): Promise<boolean> => {
@@ -102,7 +110,7 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
       const r = await fetch(`/api/billing/statements/${statementId}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ym, title, memo,
+          ym, title, memo, writer, senderDate, bomCount,
           items: items.map(it => ({ category: it.category, itemDate: it.itemDate, hoNo: it.hoNo, block: it.block, description: it.description, qty: numOrNull(it.qty), weight: numOrNull(it.weight), unitPrice: numOrNull(it.unitPrice) })),
         }),
       }).then(r => r.json());
@@ -125,12 +133,25 @@ export default function StatementEditor({ statementId, onClose, onSaved }: { sta
         ) : (
           <>
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 <label className="text-xs text-gray-500">문서 제목
                   <input value={title} onChange={e => setTitle(e.target.value)} className="mt-0.5 w-full px-2 py-1.5 text-sm border border-gray-300 rounded" />
                 </label>
                 <label className="text-xs text-gray-500">청구월 <span className="text-gray-400">(월일=말일 자동)</span>
                   <input type="month" value={ym} onChange={e => { const v = e.target.value; setYm(v); const ld = lastDayOfYm(v); setItems(prev => prev.map(it => ({ ...it, itemDate: ld }))); }} className="mt-0.5 w-full px-2 py-1.5 text-sm border border-gray-300 rounded" />
+                </label>
+                <label className="text-xs text-gray-500">작성자 <span className="text-gray-400">(표지)</span>
+                  <select value={writer} onChange={e => setWriter(e.target.value)} className="mt-0.5 w-full px-2 py-1.5 text-sm border border-gray-300 rounded">
+                    <option value="">선택</option>
+                    {writer && !authors.some(a => `${a.name}${a.title ? " " + a.title : ""}` === writer) && <option value={writer}>{writer}</option>}
+                    {authors.map(a => { const v = `${a.name}${a.title ? " " + a.title : ""}`; return <option key={a.id} value={v}>{v}</option>; })}
+                  </select>
+                </label>
+                <label className="text-xs text-gray-500">발신일자 <span className="text-gray-400">(표지)</span>
+                  <input type="date" value={senderDate} onChange={e => setSenderDate(e.target.value)} className="mt-0.5 w-full px-2 py-1.5 text-sm border border-gray-300 rounded" />
+                </label>
+                <label className="text-xs text-gray-500">상세내역 부수 <span className="text-gray-400">(BOM 첨부 수)</span>
+                  <input type="number" min={0} value={bomCount} onChange={e => setBomCount(Number(e.target.value) || 0)} className="mt-0.5 w-full px-2 py-1.5 text-sm border border-gray-300 rounded text-right" />
                 </label>
               </div>
 

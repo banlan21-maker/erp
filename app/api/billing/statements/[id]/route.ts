@@ -39,6 +39,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (b?.ym !== undefined && /^\d{4}-\d{2}$/.test(b.ym)) head.ym = b.ym;
     if (b?.status !== undefined) head.status = b.status === "ISSUED" ? "ISSUED" : "DRAFT";
     if (b?.memo !== undefined)   head.memo = String(b.memo).trim() || null;
+    if (b?.writer !== undefined) head.writer = String(b.writer).trim() || null;
+    if (b?.senderDate !== undefined) head.senderDate = String(b.senderDate).trim() || null;
+    if (b?.bomCount !== undefined) head.bomCount = Math.max(0, parseInt(b.bomCount) || 0);
     if (b?.prevBalance !== undefined) head.prevBalance = num(b.prevBalance);
     if (b?.deposit !== undefined)     head.deposit = num(b.deposit);
 

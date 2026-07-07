@@ -10,9 +10,24 @@ export interface StmtClient { name: string; bizNo?: string | null; ceo?: string 
 export interface Stmt {
   ym: string; title?: string | null; client: StmtClient; items: StmtItem[];
   supplyAmount: number; vat: number; total: number;
+  writer?: string | null; senderDate?: string | null; bomCount?: number;
+}
+
+// 라인이 제일 많은 호선 (표지 제목용)
+function topHoOf(items: StmtItem[]): string {
+  const m = new Map<string, number>();
+  for (const it of items) if (it.category === "MAIN" && it.hoNo) m.set(it.hoNo, (m.get(it.hoNo) ?? 0) + 1);
+  let best = "", n = -1;
+  for (const [ho, c] of m) if (c > n) { best = ho; n = c; }
+  return best;
 }
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
+// 발신일자 "YYYY-MM-DD" → "YYYY. M. D"
+function fmtSenderDate(v: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  return m ? `${m[1]}. ${Number(m[2])}. ${Number(m[3])}` : v;
+}
 const safe = (v: string) => v.replace(/[\\/:*?"<>|]/g, "_").slice(0, 60);
 const MONEY = "#,##0";
 
@@ -45,6 +60,29 @@ export async function downloadStatementXlsx(s: Stmt) {
   const grand = sumG(s.items);
 
   const wb = new ExcelJS.Workbook();
+
+  // 표지(기성요청서) — 공용 템플릿을 첫 시트로 로드 후 동적 셀 채움
+  try {
+    const res = await fetch("/billing-cover.xlsx", { cache: "no-store" });
+    if (res.ok) {
+      await wb.xlsx.load(await res.arrayBuffer());
+      const cover = wb.worksheets[0];
+      if (cover) {
+        const topHo = topHoOf(s.items);
+        const title = topHo ? `${s.client.name} ${topHo}호선 외` : `${s.client.name} 기성`;
+        const set = (addr: string, v: string) => { cover.getCell(addr).value = v; };
+        if (s.senderDate) set("C7", fmtSenderDate(s.senderDate));   // 발신일자
+        if (s.writer) set("C9", s.writer);            // 작성자
+        set("C11", s.client.name);                    // 수신
+        set("C13", title);                            // 제목
+        set("A21", `2. 표제의 건과 같이 ${title} 시공분의 정산 관련하여,`);
+        set("A32", `2) 기성 요청내용 : ${title}`);
+        set("A38", `( 4 ) 상세내역 - ${Math.max(1, s.bomCount ?? 0)}부`);
+        // 문서번호(C5)·요청월(A29)은 템플릿 값 그대로 유지
+      }
+    }
+  } catch { /* 표지 템플릿 없으면 생략 */ }
+
   const ws = wb.addWorksheet("기성청구서", {
     pageSetup: {
       paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0,

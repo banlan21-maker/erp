@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CreditCard, Plus, Trash2, FileText, Building2, Pencil, X } from "lucide-react";
+import { CreditCard, Plus, Trash2, FileText, Building2, Pencil, X, UserCog } from "lucide-react";
 import { fmtWon, UNIT_LABEL, RATE_MODE_LABEL } from "@/lib/billing";
 import StatementEditor from "@/components/billing/statement-editor";
 
@@ -13,12 +13,17 @@ const prevYm = () => { const [y, m] = thisYm().split("-").map(Number); const d =
 
 export default function BillingPage() {
   const [tab, setTab] = useState<"statements" | "clients">("statements");
+  const [authorOpen, setAuthorOpen] = useState(false);
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><CreditCard size={22} className="text-blue-600" /> 기성관리</h2>
-        <p className="text-sm text-gray-500 mt-1">원청별 월 기성청구서 작성·보관·출력 (거래명세표/출고증과는 별개)</p>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><CreditCard size={22} className="text-blue-600" /> 기성관리</h2>
+          <p className="text-sm text-gray-500 mt-1">원청별 월 기성청구서 작성·보관·출력 (거래명세표/출고증과는 별개)</p>
+        </div>
+        <button onClick={() => setAuthorOpen(true)} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 shrink-0"><UserCog size={15} /> 작성자 설정</button>
       </div>
+      {authorOpen && <AuthorsModal onClose={() => setAuthorOpen(false)} />}
       <div className="flex gap-1 border-b border-gray-200">
         {([["statements", "기성청구"], ["clients", "원청 관리"]] as const).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
@@ -281,6 +286,64 @@ function ClientForm({ value, onClose, onSaved }: { value: Partial<Client>; onClo
         <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">취소</button>
           <button onClick={save} disabled={busy} className="px-4 py-2 text-sm bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50">{busy ? "저장 중..." : "저장"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── 작성자 설정 모달 ─────────────────────────────────────── */
+function AuthorsModal({ onClose }: { onClose: () => void }) {
+  const [list, setList] = useState<{ id: string; name: string; title: string | null }[]>([]);
+  const [name, setName] = useState("");
+  const [title, setTitle] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    const r = await fetch("/api/billing/authors").then(r => r.json()).catch(() => ({ success: false }));
+    if (r.success) setList(r.data);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const add = async () => {
+    if (!name.trim()) { alert("이름을 입력하세요."); return; }
+    setBusy(true);
+    try {
+      const r = await fetch("/api/billing/authors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, title }) }).then(r => r.json());
+      if (!r.success) { alert(r.error ?? "추가 실패"); return; }
+      setName(""); setTitle(""); load();
+    } finally { setBusy(false); }
+  };
+  const remove = async (id: string) => {
+    if (!confirm("작성자를 삭제하시겠습니까?")) return;
+    await fetch(`/api/billing/authors/${id}`, { method: "DELETE" });
+    load();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+          <h3 className="font-bold text-gray-900 flex items-center gap-2"><UserCog size={18} className="text-blue-600" /> 작성자 설정</h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full text-gray-400"><X size={18} /></button>
+        </div>
+        <div className="p-4 space-y-3">
+          <p className="text-xs text-gray-500">표지(기성요청서) 작성자에 표시됩니다. 기성청구 작성 시 선택.</p>
+          <div className="flex gap-2">
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="이름 (예: 김동언)" className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg" />
+            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="직책 (예: 차장)" className="w-28 px-3 py-2 text-sm border border-gray-300 rounded-lg" />
+            <button onClick={add} disabled={busy} className="px-3 py-2 text-sm bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50"><Plus size={15} /></button>
+          </div>
+          <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-72 overflow-y-auto">
+            {list.length === 0 ? (
+              <p className="px-3 py-6 text-center text-xs text-gray-400">등록된 작성자가 없습니다.</p>
+            ) : list.map(a => (
+              <div key={a.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                <span>{a.name}{a.title ? <span className="text-gray-500"> {a.title}</span> : null}</span>
+                <button onClick={() => remove(a.id)} className="text-gray-400 hover:text-red-500"><Trash2 size={14} /></button>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

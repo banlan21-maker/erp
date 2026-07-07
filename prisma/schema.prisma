@@ -1674,10 +1674,14 @@ model BillingStatement {
   supplyAmount   Float @default(0) // 공급가액 합
   vat            Float @default(0) // 부가세 합
   total          Float @default(0) // 합계(공급가+부가세)
-  prevBalance    Float @default(0) // 전잔금
-  deposit        Float @default(0) // 입금
-  balance        Float @default(0) // 잔금
+  prevBalance    Float @default(0) // (미사용) 전잔금
+  deposit        Float @default(0) // (미사용) 입금
+  balance        Float @default(0) // (미사용) 잔금
   memo           String?
+  // 표지(기성요청서)용
+  writer         String? // 작성자 "이름 직책" (작성자 설정에서 선택)
+  senderDate     String? // 발신일자 (사용자 선택, 예 "2026. 6. 4")
+  bomCount       Int @default(0) // 첨부 상세내역(BOM) 부수
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -1704,4 +1708,12 @@ model BillingItem {
   sortOrder   Int   @default(0)
 
   @@index([statementId])
+}
+
+// 기성 표지 작성자 (이름 + 직책). 업체별 작성 시 선택.
+model BillingAuthor {
+  id        String   @id @default(cuid())
+  name      String   // 이름
+  title     String?  // 직책
+  createdAt DateTime @default(now())
 }
