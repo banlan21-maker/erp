@@ -5,19 +5,38 @@ import { prisma } from "@/lib/prisma";
 
 const calcW = (t: number, w: number, l: number) => parseFloat((t * w * l * 7.85 / 1_000_000).toFixed(1));
 
+// 대상 판정 — 터미널 날짜(절단일/출고일) 우선, 없으면 updatedAt 폴백 (과거 데이터 대응)
+const heatWhere = (cutoff: Date) => ({
+  archivedAt: null,
+  OR: [
+    { status: "CUT" as const,     cutAt:     { not: null, lte: cutoff } },
+    { status: "CUT" as const,     cutAt:     null, updatedAt: { lte: cutoff } },
+    { status: "SHIPPED" as const, shippedAt: { not: null, lte: cutoff } },
+    { status: "SHIPPED" as const, shippedAt: null, updatedAt: { lte: cutoff } },
+  ],
+});
+const planWhere = (cutoff: Date) => ({
+  archivedAt: null,
+  status: { in: ["COMPLETED", "SHIPPED_OUT"] as ("COMPLETED" | "SHIPPED_OUT")[] },
+  // 출고일(절단완료일/외부출고일) 우선, 없으면 updatedAt 폴백. updatedAt 은 백필로 밀릴 수 있어 issuedAt 우선.
+  OR: [
+    { issuedAt: { not: null, lte: cutoff } },
+    { issuedAt: null, updatedAt: { lte: cutoff } },
+  ],
+});
+
 // GET /api/cutpart/archive?months=1  → 아카이브된 판번호 전 생애 리스트 (+ 실행 대상 미리보기 수)
 export async function GET(req: NextRequest) {
   try {
     const months = Math.max(0, parseInt(new URL(req.url).searchParams.get("months") ?? "1") || 1);
     const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth() - months);
 
-    // 실행 대상 미리보기: 완료(CUT)·출고(SHIPPED)된 지 months 이상 + 미아카이브
-    const eligible = await prisma.steelPlanHeat.count({
-      where: { archivedAt: null, OR: [
-        { status: "CUT",     cutAt:     { not: null, lte: cutoff } },
-        { status: "SHIPPED", shippedAt: { not: null, lte: cutoff } },
-      ] },
-    });
+    // 실행 대상 미리보기: 판번호(CUT/SHIPPED) + 강재(COMPLETED/SHIPPED_OUT), N개월 이상, 미아카이브
+    const [eligibleHeats, eligiblePlans] = await Promise.all([
+      prisma.steelPlanHeat.count({ where: heatWhere(cutoff) }),
+      prisma.steelPlan.count({ where: planWhere(cutoff) }),
+    ]);
+    const eligible = eligibleHeats + eligiblePlans;
 
     const heats = await prisma.steelPlanHeat.findMany({
       where: { archivedAt: { not: null } },
@@ -72,18 +91,10 @@ export async function POST(req: NextRequest) {
       const months = Math.max(0, parseInt(b?.months) || 1);
       const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth() - months);
       const now = new Date();
-      const heats = await prisma.steelPlanHeat.updateMany({
-        where: { archivedAt: null, OR: [
-          { status: "CUT",     cutAt:     { not: null, lte: cutoff } },
-          { status: "SHIPPED", shippedAt: { not: null, lte: cutoff } },
-        ] },
-        data: { archivedAt: now },
-      });
-      // 강재전체목록: 완료(COMPLETED)·외부출고(SHIPPED_OUT)된 지 오래된 사양단위 숨김
-      const plans = await prisma.steelPlan.updateMany({
-        where: { archivedAt: null, status: { in: ["COMPLETED", "SHIPPED_OUT"] }, updatedAt: { lte: cutoff } },
-        data: { archivedAt: now },
-      });
+      const [heats, plans] = await Promise.all([
+        prisma.steelPlanHeat.updateMany({ where: heatWhere(cutoff), data: { archivedAt: now } }),
+        prisma.steelPlan.updateMany({ where: planWhere(cutoff), data: { archivedAt: now } }),
+      ]);
       return NextResponse.json({ success: true, archivedHeats: heats.count, archivedPlans: plans.count });
     }
 
