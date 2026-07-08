@@ -1416,20 +1416,18 @@ export default function SteelPlanMain() {
                         </button>
                       </div>
                     </th>
-                    <th className="w-16 px-2 py-1 text-center font-medium text-gray-600 text-[11px]">입고</th>
-                    <th className="w-16 px-2 py-1 text-center font-medium text-gray-600 text-[11px]">출고</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {loading ? (
-                    <tr><td colSpan={18} className="py-12 text-center text-gray-400">불러오는 중...</td></tr>
+                    <tr><td colSpan={16} className="py-12 text-center text-gray-400">불러오는 중...</td></tr>
                   ) : (() => {
                     const wSel = colFilters.weight;
                     const filtered = (wSel && wSel.length > 0)
                       ? rows.filter(r => wSel.includes(calcWeight(r.thickness, r.width, r.length).toFixed(1)))
                       : rows;
                     if (filtered.length === 0) {
-                      return <tr><td colSpan={18} className="py-12 text-center text-gray-400">{rows.length === 0 ? "등록된 강재 계획이 없습니다" : "필터 조건에 맞는 자재가 없습니다"}</td></tr>;
+                      return <tr><td colSpan={16} className="py-12 text-center text-gray-400">{rows.length === 0 ? "등록된 강재 계획이 없습니다" : "필터 조건에 맞는 자재가 없습니다"}</td></tr>;
                     }
                     return filtered.map((row) => {
                       const st = PLAN_STATUS[row.status];
@@ -1506,50 +1504,23 @@ export default function SteelPlanMain() {
                           <td className="px-2 py-1 text-center text-gray-500 font-mono">
                             {row.issuedAt ? fmtYMDcompact(row.issuedAt) : <span className="text-gray-300">-</span>}
                           </td>
-                          {/* 메모 버튼 */}
-                          <td className="px-2 py-1 text-center">
+                          {/* 메모 — 미리보기(클릭 시 모달에서 보기/수정/삭제) */}
+                          <td className="px-2 py-1">
                             {row.memo ? (
                               <button
                                 onClick={() => { setMemoModal({ id: row.id, memo: row.memo!, mode: "view" }); setMemoInput(row.memo!); }}
-                                className="px-1.5 py-0 text-[11px] border border-gray-300 rounded text-gray-600 hover:bg-gray-50"
+                                title="클릭하여 메모 보기/수정"
+                                className="block max-w-[240px] truncate text-left text-[11px] text-gray-700 hover:text-blue-600 hover:underline"
                               >
-                                확인
+                                {row.memo}
                               </button>
                             ) : (
                               <button
                                 onClick={() => { setMemoModal({ id: row.id, memo: "", mode: "input" }); setMemoInput(""); }}
-                                className="px-1.5 py-0 text-[11px] border border-blue-300 rounded text-blue-600 hover:bg-blue-50"
+                                className="text-[11px] text-gray-300 hover:text-blue-600"
                               >
-                                입력
+                                ＋ 메모
                               </button>
-                            )}
-                          </td>
-                          {/* 입고/입고취소 버튼 */}
-                          <td className="px-2 py-1 text-center">
-                            {row.status === "REGISTERED" ? (
-                              <button onClick={() => markReceived(row.id)} className="px-2 py-0.5 text-[11px] bg-green-600 text-white rounded hover:bg-green-700 font-medium">
-                                입고
-                              </button>
-                            ) : row.status === "RECEIVED" ? (
-                              <button onClick={() => revertReceived(row.id)} className="px-2 py-0.5 text-[11px] bg-gray-400 text-white rounded hover:bg-gray-500 font-medium">
-                                취소
-                              </button>
-                            ) : (
-                              <span className="text-gray-300">-</span>
-                            )}
-                          </td>
-                          {/* 출고/출고취소 버튼 */}
-                          <td className="px-2 py-1 text-center">
-                            {row.status === "RECEIVED" ? (
-                              <button onClick={() => markIssued(row.id)} className="px-2 py-0.5 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-700 font-medium">
-                                출고
-                              </button>
-                            ) : row.status === "ISSUED" ? (
-                              <button onClick={() => revertIssued(row.id)} className="px-2 py-0.5 text-[11px] bg-gray-400 text-white rounded hover:bg-gray-500 font-medium">
-                                취소
-                              </button>
-                            ) : (
-                              <span className="text-gray-300">-</span>
                             )}
                           </td>
                         </tr>
