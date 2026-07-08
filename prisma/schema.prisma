@@ -1295,6 +1295,7 @@ model SteelPlan {
   sourceFile         String? // 업로드 파일명
   uploadBatchNo      String? // 업로드 배치번호 (YYMMDDHHMMSS, 같은 업로드끼리 공유)
   reservedFor        String? // 확정 블록 (예: "B80C")
+  archivedAt         DateTime? // 아카이브(숨김) 시각 — 활성 목록서 제외, 아카이브 메뉴서 조회
 
   // 외부 출고 선별 확정 (출고등록) — 판번호 확인 후 선별지시서 출력 시 마킹.
   // 상태(status)는 입고(RECEIVED) 유지하며, 확정정보에 빨간 "출고"로 표시. 되돌리기 가능.
@@ -1323,6 +1324,7 @@ model SteelPlanHeat {
   status        SteelPlanHeatStatus @default(WAITING)
   cutAt         DateTime? // 절단 완료일 (CUT 전환 시 기록, WAITING 복원 시 초기화)
   shippedAt     DateTime? // 외부 출고일 (SHIPPED 전환 시 기록, 복원 시 초기화)
+  archivedAt    DateTime? // 아카이브(숨김) 시각 — 활성 목록서 제외, 아카이브 메뉴서 조회
   sourceFile    String? // 업로드 파일명
   uploadBatchNo String? // 업로드 배치번호 (YYMMDDHHMMSS, 같은 업로드끼리 공유)
   autoCreatedFromShipment Boolean @default(false) // 출고 시 직접입력으로 자동 생성된 판번호

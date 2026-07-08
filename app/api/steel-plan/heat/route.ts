@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
   };
 
   const where = {
+    archivedAt: null, // 아카이브(숨김) 제외
     ...(ids.length ? { id: { in: ids } } : {}),
     ...(search
       ? { OR: [
