@@ -181,6 +181,8 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
         where: { id: targetPlan.id },
         data: {
           status:           "COMPLETED",
+          // 입출고장 투입(출고)을 안 했으면 절단완료일로 출고일 자동 기록. 기존 투입일 있으면 보존.
+          ...(targetPlan.issuedAt ? {} : { issuedAt: log.endAt ?? new Date() }),
           actualHeatNo:     log.heatNo?.trim() || null,
           actualVesselCode: effectiveVessel,
           actualDrawingNo:  log.drawingNo,
@@ -342,6 +344,7 @@ export async function applyCuttingRestore(tx: Tx, log: RestoreLog): Promise<void
         where: { id: target.id },
         data: {
           status:           "RECEIVED",
+          issuedAt:         null, // 절단완료 시 자동 기록된 출고일 초기화 (미투입 상태로 복원)
           actualHeatNo:     null,
           actualVesselCode: null,
           actualDrawingNo:  null,
