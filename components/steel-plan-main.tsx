@@ -137,6 +137,8 @@ export default function SteelPlanMain() {
   const shipoutCart = useShipoutCartActions(); // add 만 사용 → 카트 변경 시 이 대형 테이블 리렌더 방지
   const [registerExcelOpen, setRegisterExcelOpen] = useState(false);
   const [tab, setTab] = useState<"plan" | "heatno" | "match" | "selection">("plan");
+  const [matchOpen, setMatchOpen] = useState(false); // 절단매칭(출고일 백필) 모달
+  const [matchBusy, setMatchBusy] = useState(false);
 
   /* ── 강재 전체목록 상태 ── */
   const [rows, setRows]         = useState<SteelPlanRow[]>([]);
@@ -1191,6 +1193,13 @@ export default function SteelPlanMain() {
             {/* 오른쪽 */}
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-500">총 {total}건</span>
+              <button
+                onClick={() => setMatchOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                title="절단완료됐지만 출고일이 비어있는 강재에 출고일을 절단완료일로 채웁니다"
+              >
+                <RefreshCw size={14} /> 절단매칭
+              </button>
               <button
                 onClick={() => {
                   const hasFilter = !!search
@@ -2494,6 +2503,41 @@ export default function SteelPlanMain() {
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Trash2 size={13} /> {deleteSubmitting ? "삭제 중..." : "삭제"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 절단매칭 — 출고일 백필 모달 */}
+      {matchOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onMouseDown={e => { if (e.target === e.currentTarget) setMatchOpen(false); }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2"><RefreshCw size={18} className="text-blue-600" /> 절단매칭</h3>
+              <button onClick={() => setMatchOpen(false)} className="p-1 hover:bg-gray-100 rounded-full text-gray-400"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-2">
+              <p className="text-sm text-gray-800 font-medium">절단완료된 철판에 출고완료일을 입력합니다.</p>
+              <p className="text-xs text-gray-500">출고일이 비어 있는 절단완료(COMPLETED) 강재의 출고일을 <b>절단완료일</b>로 자동 채웁니다. 이미 출고일이 있는 건은 그대로 둡니다.</p>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+              <button onClick={() => setMatchOpen(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">취소</button>
+              <button
+                onClick={async () => {
+                  setMatchBusy(true);
+                  try {
+                    const r = await fetch("/api/steel-plan/backfill-issued", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then(r => r.json());
+                    if (!r.success) { alert(r.error ?? "처리 실패"); return; }
+                    alert(`${r.count}건의 출고일을 절단완료일로 채웠습니다.`);
+                    setMatchOpen(false);
+                    loadPlan();
+                  } finally { setMatchBusy(false); }
+                }}
+                disabled={matchBusy}
+                className="px-4 py-2 text-sm bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {matchBusy ? "처리 중..." : "확인"}
               </button>
             </div>
           </div>
