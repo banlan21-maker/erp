@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
     const fromStr = params.get("from");
     const toStr   = params.get("to");
     // 기간 미지정 → 카운트만 (초기 진입: 리스트 숨김)
-    if (!fromStr || !toStr) return NextResponse.json({ success: true, data: [], eligible });
+    if (!fromStr || !toStr) return NextResponse.json({ success: true, data: [], plans: [], eligible });
 
     const basis = params.get("basis") ?? "terminal";
     const from = new Date(`${fromStr}T00:00:00`);
@@ -52,12 +52,12 @@ export async function GET(req: NextRequest) {
     if (isNaN(from.getTime()) || isNaN(to.getTime())) {
       return NextResponse.json({ success: false, error: "기간 형식이 올바르지 않습니다." }, { status: 400 });
     }
+    const inRange = (d: Date | null) => d != null && d >= from && d <= to;
 
     const heats = await prisma.steelPlanHeat.findMany({
       where: { archivedAt: { not: null } },
       orderBy: { archivedAt: "desc" },
     });
-    if (heats.length === 0) return NextResponse.json({ success: true, data: [], eligible });
 
     const heatNos = [...new Set(heats.map(h => h.heatNo))];
     const heatIds = heats.map(h => h.id);
@@ -101,10 +101,32 @@ export async function GET(req: NextRequest) {
         basisDate,
       };
     })
-      .filter(x => x.basisDate != null && x.basisDate >= from && x.basisDate <= to)
+      .filter(x => inRange(x.basisDate))
       .map(x => x.row);
 
-    return NextResponse.json({ success: true, data, eligible });
+    // 강재(사양단위 SteelPlan) — 아카이브 대상은 status COMPLETED/SHIPPED_OUT
+    const plansRaw = await prisma.steelPlan.findMany({
+      where: { archivedAt: { not: null } },
+      orderBy: { archivedAt: "desc" },
+    });
+    const plans = plansRaw.map(p => {
+      // 강재 기준일: archivedAt 외에는 출고/투입일(issuedAt) 우선, 없으면 입고일 ?? 아카이브일
+      const basisDate =
+        basis === "archivedAt" ? p.archivedAt :
+                                 (p.issuedAt ?? p.receivedAt ?? p.archivedAt);
+      return {
+        row: {
+          id: p.id, vesselCode: p.vesselCode, material: p.material, thickness: p.thickness, width: p.width, length: p.length,
+          weight: calcW(p.thickness, p.width, p.length), status: p.status, reservedFor: p.reservedFor ?? "",
+          receivedAt: p.receivedAt, issuedAt: p.issuedAt, archivedAt: p.archivedAt,
+        },
+        basisDate,
+      };
+    })
+      .filter(x => inRange(x.basisDate))
+      .map(x => x.row);
+
+    return NextResponse.json({ success: true, data, plans, eligible });
   } catch (e) {
     return NextResponse.json({ success: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
@@ -135,10 +157,14 @@ export async function POST(req: NextRequest) {
         ]);
         return NextResponse.json({ success: true });
       }
-      const ids: string[] = Array.isArray(b?.heatIds) ? b.heatIds : [];
-      if (ids.length === 0) return NextResponse.json({ success: false, error: "복원할 판번호가 없습니다." }, { status: 400 });
-      const r = await prisma.steelPlanHeat.updateMany({ where: { id: { in: ids } }, data: { archivedAt: null } });
-      return NextResponse.json({ success: true, restored: r.count });
+      const heatIds: string[] = Array.isArray(b?.heatIds) ? b.heatIds : [];
+      const planIds: string[] = Array.isArray(b?.planIds) ? b.planIds : [];
+      if (heatIds.length === 0 && planIds.length === 0) return NextResponse.json({ success: false, error: "복원할 항목이 없습니다." }, { status: 400 });
+      const [h, p] = await Promise.all([
+        heatIds.length ? prisma.steelPlanHeat.updateMany({ where: { id: { in: heatIds } }, data: { archivedAt: null } }) : Promise.resolve({ count: 0 }),
+        planIds.length ? prisma.steelPlan.updateMany({ where: { id: { in: planIds } }, data: { archivedAt: null } }) : Promise.resolve({ count: 0 }),
+      ]);
+      return NextResponse.json({ success: true, restored: h.count + p.count });
     }
 
     return NextResponse.json({ success: false, error: "알 수 없는 action" }, { status: 400 });
