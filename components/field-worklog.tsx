@@ -132,7 +132,7 @@ export default function FieldWorklog({
   // 2단계 (매 절단마다 초기화)
   const [drawingId,    setDrawingId]    = useState("");
   const [heatNo,       setHeatNo]       = useState("");
-  const [heatOptions,  setHeatOptions]  = useState<{ id: string; heatNo: string; status: string }[]>([]);
+  const [heatOptions,  setHeatOptions]  = useState<{ id: string; heatNo: string; status: string; vesselCode: string }[]>([]);
   const [heatLoading,  setHeatLoading]  = useState(false);
   const [memo,         setMemo]         = useState("");
   const [drawings,     setDrawings]     = useState<DrawingRow[]>([]);
@@ -334,8 +334,7 @@ export default function FieldWorklog({
     setHeatLoading(true);
     try {
       const params = new URLSearchParams({
-        // 호선 격리 — 대체호선 우선, 없으면 현재 호선. 다른 호선 동일스펙 판번호 노출 방지
-        vesselCode: row.alternateVesselCode?.trim() || s1.vesselCode,
+        // 호선 무시 — 재질·사양(두께/폭/길이)만 일치하면 노출. 타 호선 판번호도 현장에서 사용 가능
         material:   row.material,
         thickness:  String(row.thickness),
         width:      String(row.width),
@@ -1169,23 +1168,37 @@ export default function FieldWorklog({
                   )}
 
                   {/* 판번호 선택 목록 */}
-                  {!heatLoading && drawingId && heatOptions.length > 0 && (
-                    <div className="max-h-40 overflow-y-auto space-y-1 rounded-xl border border-gray-700 bg-gray-900 p-1.5">
-                      {heatOptions.map(h => (
-                        <button
-                          key={h.id}
-                          onClick={() => setHeatNo(heatNo === h.heatNo ? "" : h.heatNo!)}
-                          className={`w-full text-left px-3 py-2 rounded-lg text-sm font-mono transition-colors ${
-                            heatNo === h.heatNo
-                              ? "bg-blue-700 text-white"
-                              : "bg-gray-800 text-gray-300 active:bg-gray-700"
-                          }`}
-                        >
-                          {h.heatNo}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  {!heatLoading && drawingId && heatOptions.length > 0 && (() => {
+                    const curRow = drawings.find(d => d.id === drawingId);
+                    const ownVessel = curRow?.alternateVesselCode?.trim() || s1.vesselCode;
+                    return (
+                      <div className="max-h-40 overflow-y-auto space-y-1 rounded-xl border border-gray-700 bg-gray-900 p-1.5">
+                        {heatOptions.map(h => {
+                          const other = !!h.vesselCode && h.vesselCode !== ownVessel;
+                          return (
+                            <button
+                              key={h.id}
+                              onClick={() => setHeatNo(heatNo === h.heatNo ? "" : h.heatNo!)}
+                              className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm font-mono transition-colors ${
+                                heatNo === h.heatNo
+                                  ? "bg-blue-700 text-white"
+                                  : "bg-gray-800 text-gray-300 active:bg-gray-700"
+                              }`}
+                            >
+                              <span>{h.heatNo}</span>
+                              {h.vesselCode && (
+                                <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-sans font-semibold ${
+                                  other ? "bg-amber-500/20 text-amber-300" : "bg-gray-700 text-gray-400"
+                                }`}>
+                                  {h.vesselCode}{other ? " · 타호선" : ""}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
 
                   {/* 목록 없을 때 안내 */}
                   {!heatLoading && drawingId && heatOptions.length === 0 && (
