@@ -25,10 +25,13 @@ const planWhere = (cutoff: Date) => ({
   ],
 });
 
-// GET /api/cutpart/archive?months=1  → 아카이브된 판번호 전 생애 리스트 (+ 실행 대상 미리보기 수)
+// GET /api/cutpart/archive?months=1[&from=YYYY-MM-DD&to=YYYY-MM-DD&basis=terminal|useDate|outDate|archivedAt]
+//   - from/to 미지정 → 실행 대상 수(eligible)만 반환, 리스트는 빈 배열 (초기 진입 시 숨김)
+//   - from/to 지정   → 기준일(basis)이 해당 기간에 드는 아카이브 판번호만 반환
 export async function GET(req: NextRequest) {
   try {
-    const months = Math.max(0, parseInt(new URL(req.url).searchParams.get("months") ?? "1") || 1);
+    const params = new URL(req.url).searchParams;
+    const months = Math.max(0, parseInt(params.get("months") ?? "1") || 1);
     const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth() - months);
 
     // 실행 대상 미리보기: 판번호(CUT/SHIPPED) + 강재(COMPLETED/SHIPPED_OUT), N개월 이상, 미아카이브
@@ -37,6 +40,18 @@ export async function GET(req: NextRequest) {
       prisma.steelPlan.count({ where: planWhere(cutoff) }),
     ]);
     const eligible = eligibleHeats + eligiblePlans;
+
+    const fromStr = params.get("from");
+    const toStr   = params.get("to");
+    // 기간 미지정 → 카운트만 (초기 진입: 리스트 숨김)
+    if (!fromStr || !toStr) return NextResponse.json({ success: true, data: [], eligible });
+
+    const basis = params.get("basis") ?? "terminal";
+    const from = new Date(`${fromStr}T00:00:00`);
+    const to   = new Date(`${toStr}T23:59:59.999`);
+    if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+      return NextResponse.json({ success: false, error: "기간 형식이 올바르지 않습니다." }, { status: 400 });
+    }
 
     const heats = await prisma.steelPlanHeat.findMany({
       where: { archivedAt: { not: null } },
@@ -68,13 +83,27 @@ export async function GET(req: NextRequest) {
       const cut = cutByHeat.get(h.heatNo);
       const ship = shipByHeat.get(h.id);
       const dest = ship ? ((ship.vehicle?.deliverySnapshot as { name?: string } | null)?.name ?? "") : "";
+      const useDate = cut?.endAt ?? null;
+      const outDate = ship?.vehicle?.shipment?.shippedAt ?? null;
+      // 기준일: 지정 basis 우선, terminal = 사용일 ?? 출고일 ?? 아카이브일 (항상 존재)
+      const basisDate =
+        basis === "useDate"    ? useDate :
+        basis === "outDate"    ? outDate :
+        basis === "archivedAt" ? h.archivedAt :
+                                 (useDate ?? outDate ?? h.archivedAt);
       return {
-        id: h.id, heatNo: h.heatNo, status: h.status, archivedAt: h.archivedAt,
-        inVessel: h.vesselCode, inBlock: "", material: h.material, thickness: h.thickness, width: h.width, length: h.length, weight: calcW(h.thickness, h.width, h.length),
-        useVessel: cut?.project?.projectCode ?? "", useBlock: cut?.drawingList?.block ?? "", drawingNo: cut?.drawingNo ?? cut?.drawingList?.drawingNo ?? "", equipment: cut?.equipment?.name ?? "", useDate: cut?.endAt ?? null,
-        outVessel: ship?.vesselCode ?? "", outBlock: ship?.block ?? "", dest, outDate: ship?.vehicle?.shipment?.shippedAt ?? null,
+        row: {
+          id: h.id, heatNo: h.heatNo, status: h.status, archivedAt: h.archivedAt,
+          inVessel: h.vesselCode, inBlock: "", material: h.material, thickness: h.thickness, width: h.width, length: h.length, weight: calcW(h.thickness, h.width, h.length),
+          useVessel: cut?.project?.projectCode ?? "", useBlock: cut?.drawingList?.block ?? "", drawingNo: cut?.drawingNo ?? cut?.drawingList?.drawingNo ?? "", equipment: cut?.equipment?.name ?? "", useDate,
+          outVessel: ship?.vesselCode ?? "", outBlock: ship?.block ?? "", dest, outDate,
+        },
+        basisDate,
       };
-    });
+    })
+      .filter(x => x.basisDate != null && x.basisDate >= from && x.basisDate <= to)
+      .map(x => x.row);
+
     return NextResponse.json({ success: true, data, eligible });
   } catch (e) {
     return NextResponse.json({ success: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
