@@ -768,7 +768,7 @@ function UploadTab({
                                 title="전체 선택"
                               />
                             </th>
-                            {["블록","도면번호","재질","두께","폭","길이","",""].map((h, i) => (
+                            {["블록","도면번호","재질","두께","폭","길이","강재중량","사용중량","",""].map((h, i) => (
                               <th key={i} className={`px-3 py-2 text-gray-500 font-semibold ${i >= 3 ? "text-right" : "text-left"}`}>{h}</th>
                             ))}
                           </tr>
@@ -796,6 +796,8 @@ function UploadTab({
                                   <td className="px-3 py-2 text-right">{row.thickness}</td>
                                   <td className="px-3 py-2 text-right">{row.width.toLocaleString()}</td>
                                   <td className="px-3 py-2 text-right">{row.length.toLocaleString()}</td>
+                                  <td className="px-3 py-2 text-right text-gray-500">{row.steelWeight != null ? row.steelWeight.toFixed(1) : "-"}</td>
+                                  <td className="px-3 py-2 text-right font-medium text-blue-600">{row.useWeight != null ? row.useWeight.toFixed(1) : "-"}</td>
                                   <td className="px-3 py-2 text-right" colSpan={2}>
                                     <div className="flex items-center justify-end gap-1.5">
                                       <button
@@ -835,7 +837,7 @@ function UploadTab({
                                 </tr>
                                 {rem?.open && (
                                   <tr className="bg-orange-50 border-b">
-                                    <td colSpan={9} className="px-4 py-3">
+                                    <td colSpan={11} className="px-4 py-3">
                                       <div className="space-y-3">
                                         {rem.items.map((item, itemIdx) => (
                                           <div key={itemIdx} className="bg-white border border-orange-200 rounded-lg p-3 relative">
@@ -870,7 +872,7 @@ function UploadTab({
                             );
                           })}
                           {normalCount === 0 && (
-                            <tr><td colSpan={9} className="px-3 py-4 text-center text-gray-400">정규원재 사용 항목이 없습니다.</td></tr>
+                            <tr><td colSpan={11} className="px-3 py-4 text-center text-gray-400">정규원재 사용 항목이 없습니다.</td></tr>
                           )}
                         </tbody>
                       </table>
