@@ -327,6 +327,10 @@ export default function DrawingTable({
   const [bulkReserving, setBulkReserving] = useState(false);
   const [bulkUnreserving, setBulkUnreserving] = useState(false);
 
+  // 항목별 선택 (개별 확정/확정취소)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selecting, setSelecting] = useState(false);
+
   const bulkReserve = async () => {
     setBulkReserving(true);
     try {
@@ -342,6 +346,14 @@ export default function DrawingTable({
     } catch { alert("서버 오류"); } finally { setBulkReserving(false); }
   };
 
+  // 확정취소 결과 요약 메시지 (절단완료·투입은 건너뜀)
+  const unreserveSummary = (d: { cancelled?: number; cutSkipped?: number; issuedSkipped?: number }) => {
+    const parts = [`${d.cancelled ?? 0}건 확정취소`];
+    if (d.cutSkipped)    parts.push(`절단완료 ${d.cutSkipped}건 유지`);
+    if (d.issuedSkipped) parts.push(`투입 ${d.issuedSkipped}건 유지`);
+    return parts.join(" · ");
+  };
+
   const bulkUnreserve = async () => {
     setBulkUnreserving(true);
     try {
@@ -352,9 +364,41 @@ export default function DrawingTable({
       });
       const data = await res.json();
       if (!data.success) { alert(data.error ?? "일괄 확정 취소 실패"); return; }
+      alert(unreserveSummary(data.data ?? {}));
       await loadAvailability();
       window.location.reload();
     } catch { alert("서버 오류"); } finally { setBulkUnreserving(false); }
+  };
+
+  // 선택 항목 확정 / 확정취소
+  const reserveSelected = async () => {
+    if (selectedIds.size === 0) return;
+    setSelecting(true);
+    try {
+      const res = await fetch("/api/drawings/reserve-bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, drawingIds: [...selectedIds] }),
+      });
+      const data = await res.json();
+      if (!data.success) { alert(data.error ?? "선택 확정 실패"); return; }
+      window.location.reload();
+    } catch { alert("서버 오류"); } finally { setSelecting(false); }
+  };
+  const unreserveSelected = async () => {
+    if (selectedIds.size === 0) return;
+    setSelecting(true);
+    try {
+      const res = await fetch("/api/drawings/reserve-bulk", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, drawingIds: [...selectedIds] }),
+      });
+      const data = await res.json();
+      if (!data.success) { alert(data.error ?? "선택 확정취소 실패"); return; }
+      alert(unreserveSummary(data.data ?? {}));
+      window.location.reload();
+    } catch { alert("서버 오류"); } finally { setSelecting(false); }
   };
 
   // 단건 추가 모달
@@ -482,6 +526,18 @@ export default function DrawingTable({
     if (!sort) return filtered;
     return [...filtered].sort((a, b) => compareSortKey(a, b, sort, colSortValue));
   }, [normalDrawings, filters, predicates, sort]);
+
+  // 선택 (정규원재 표시행 기준) — 필터로 사라진 선택 id 는 무시
+  const toggleSelect = (id: string) =>
+    setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const allVisibleSelected = filteredDrawings.length > 0 && filteredDrawings.every(d => selectedIds.has(d.id));
+  const toggleSelectAll = () =>
+    setSelectedIds(prev => {
+      const n = new Set(prev);
+      if (filteredDrawings.length > 0 && filteredDrawings.every(d => prev.has(d.id))) filteredDrawings.forEach(d => n.delete(d.id));
+      else filteredDrawings.forEach(d => n.add(d.id));
+      return n;
+    });
 
   // 등록잔재사용 정렬 (잔재 상세값까지 비교 가능)
   const sortedAssignedDrawings = useMemo(() => {
@@ -892,14 +948,34 @@ export default function DrawingTable({
       </div>
 
       {/* 정규원재 사용 리스트 (메인) */}
-      <div className="flex items-center gap-2 mt-2">
+      <div className="flex items-center gap-2 mt-2 flex-wrap">
         <span className="text-sm font-semibold text-gray-700">정규원재 사용 리스트</span>
         <span className="text-xs text-gray-400">{normalDrawings.length}행</span>
+        {selectedIds.size > 0 && (
+          <div className="ml-auto flex items-center gap-1.5 bg-purple-50 border border-purple-200 rounded-lg px-2.5 py-1">
+            <span className="text-xs font-semibold text-purple-700">{selectedIds.size}건 선택</span>
+            <Button size="sm" onClick={reserveSelected} disabled={selecting}
+              className="h-7 text-xs flex items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white">
+              <CalendarCheck size={12} /> 선택 확정
+            </Button>
+            <Button size="sm" variant="outline" onClick={unreserveSelected} disabled={selecting}
+              className="h-7 text-xs text-purple-600 border-purple-300 hover:bg-purple-100">
+              선택 확정취소
+            </Button>
+            <button onClick={() => setSelectedIds(new Set())} className="text-xs text-gray-400 hover:text-gray-600 ml-0.5" title="선택 해제">
+              <X size={13} />
+            </button>
+          </div>
+        )}
       </div>
       <div className="bg-white rounded-xl border overflow-x-auto">
         <table className="w-full text-sm whitespace-nowrap">
           <thead className="bg-gray-50 border-b">
             <tr>
+              <th className="px-2 py-2.5 w-9 text-center">
+                <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAll}
+                  className="w-3.5 h-3.5 accent-purple-600 cursor-pointer align-middle" title="전체 선택" />
+              </th>
               <FilterHeader col="status"      label="상태"         align="center" {...filterHeaderProps} />
               <th className="px-2 py-2.5 text-xs font-semibold text-gray-500 text-center whitespace-nowrap">대체호선</th>
               <FilterHeader col="block"       label="블록"                        {...filterHeaderProps} />
@@ -918,7 +994,7 @@ export default function DrawingTable({
           <tbody className="divide-y">
             {filteredDrawings.length === 0 ? (
               <tr>
-                <td colSpan={13} className="text-center py-8 text-gray-400 text-xs">
+                <td colSpan={14} className="text-center py-8 text-gray-400 text-xs">
                   필터 조건에 맞는 데이터가 없습니다.
                   <button onClick={() => { setFilters({}); setPredicates({}); }} className="ml-2 text-blue-500 hover:underline">
                     필터 초기화
@@ -950,6 +1026,10 @@ export default function DrawingTable({
                 if (isEditing && editForm) {
                   return (
                     <tr key={d.id} className="bg-blue-50">
+                      <td className="px-2 py-1.5 text-center">
+                        <input type="checkbox" checked={selectedIds.has(d.id)} onChange={() => toggleSelect(d.id)}
+                          className="w-3.5 h-3.5 accent-purple-600 cursor-pointer align-middle" />
+                      </td>
                       <td className="px-2 py-1.5 text-center">{statusCell}</td>
                       <td className="px-2 py-1.5">
                         <select className="h-7 text-xs w-full border rounded px-1 bg-white" value={editForm.alternateVesselCode} onChange={e => f("alternateVesselCode", e.target.value)}>
@@ -978,7 +1058,11 @@ export default function DrawingTable({
                 }
 
                 return (
-                  <tr key={d.id} className={`hover:bg-gray-50 transition-colors ${isDeleting ? "opacity-40" : ""} ${status === "CUT" ? "bg-green-50/30" : ""}`}>
+                  <tr key={d.id} className={`hover:bg-gray-50 transition-colors ${isDeleting ? "opacity-40" : ""} ${status === "CUT" ? "bg-green-50/30" : ""} ${selectedIds.has(d.id) ? "bg-purple-50/50" : ""}`}>
+                    <td className="px-2 py-2 text-center">
+                      <input type="checkbox" checked={selectedIds.has(d.id)} onChange={() => toggleSelect(d.id)}
+                        className="w-3.5 h-3.5 accent-purple-600 cursor-pointer align-middle" />
+                    </td>
                     <td className="px-2 py-2 text-center">{statusCell}</td>
                     <td className="px-2 py-2 text-center text-xs">
                       {dExt.alternateVesselCode ? (
@@ -1030,7 +1114,7 @@ export default function DrawingTable({
           </tbody>
           <tfoot className="bg-gray-50 border-t">
             <tr>
-              <td colSpan={7} className="px-2 py-2 text-xs text-gray-500 font-medium">
+              <td colSpan={8} className="px-2 py-2 text-xs text-gray-500 font-medium">
                 합계 ({filteredDrawings.length}행{activeFilterCount > 0 ? ` / 전체 ${drawings.length}행` : ""})
               </td>
               <td className="px-2 py-2 text-right text-xs font-bold text-gray-700">
