@@ -44,6 +44,7 @@ interface ShipmentItemInput {
   block?:          string | null;
   heatNo?:         string | null;
   manualHeatNo:    boolean;
+  adHocFromField?: boolean;              // 현장직접출고 탭에서 담긴 자재 감사 태그
 }
 // 항목이 잔재 출고인지 판별 (kind 명시 우선, 아니면 remnantId 유무로)
 const isRemnantItem = (i: ShipmentItemInput) => i.kind === "remnant" || (!i.steelPlanId && !!i.remnantId);
@@ -313,6 +314,7 @@ export async function POST(req: NextRequest) {
                 block:      item.block ?? null,
                 heatNo:     remHeatNo,
                 manualHeatNo: false,
+                adHocFromField: item.adHocFromField ?? false,
                 remnantNo:  remNoMap.get(item.remnantId!) ?? null,
               },
             });
@@ -421,6 +423,7 @@ export async function POST(req: NextRequest) {
               block:      item.block ?? null,
               heatNo:     heatNoText,
               manualHeatNo: item.manualHeatNo,
+              adHocFromField: item.adHocFromField ?? false,
             },
           });
 

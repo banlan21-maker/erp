@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Search, PackageOpen, Truck, Trash2, X, Loader2, CheckCircle2, AlertTriangle,
-  ChevronLeft, ChevronUp, ChevronDown, ListChecks, ClipboardList, MapPin, RefreshCw, History,
+  ChevronLeft, ChevronUp, ChevronDown, ListChecks, ClipboardList, MapPin, RefreshCw, History, Zap,
 } from "lucide-react";
 import { ShipoutCartProvider, useShipoutCart, type ShipoutCartItem } from "@/components/shipout-cart";
 
@@ -63,7 +63,7 @@ export default function FieldShipout() {
 
 function Inner() {
   const cart = useShipoutCart();
-  const [tab, setTab] = useState<"add" | "list">("add");
+  const [tab, setTab] = useState<"add" | "adhoc" | "list">("add");
   const [wizardOpen, setWizardOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);   // 하단 카트바 "담은 목록" 펼침
 
@@ -82,21 +82,25 @@ function Inner() {
       </header>
 
       {/* 탭 */}
-      <div className="grid grid-cols-2 border-b border-gray-800 bg-gray-900 sticky top-[57px] z-10">
+      <div className="grid grid-cols-3 border-b border-gray-800 bg-gray-900 sticky top-[57px] z-10">
         <button onClick={() => setTab("add")}
-          className={`py-3 text-sm font-semibold flex items-center justify-center gap-1.5 ${tab === "add" ? "text-amber-400 border-b-2 border-amber-400" : "text-gray-500"}`}>
-          <ListChecks size={16} /> 출고 담기
+          className={`py-3 text-xs font-semibold flex items-center justify-center gap-1 ${tab === "add" ? "text-amber-400 border-b-2 border-amber-400" : "text-gray-500"}`}>
+          <ListChecks size={15} /> 출고 담기
+        </button>
+        <button onClick={() => setTab("adhoc")}
+          className={`py-3 text-xs font-semibold flex items-center justify-center gap-1 ${tab === "adhoc" ? "text-cyan-300 border-b-2 border-cyan-400" : "text-gray-500"}`}>
+          <Zap size={15} /> 현장직접출고
         </button>
         <button onClick={() => setTab("list")}
-          className={`py-3 text-sm font-semibold flex items-center justify-center gap-1.5 ${tab === "list" ? "text-amber-400 border-b-2 border-amber-400" : "text-gray-500"}`}>
-          <ClipboardList size={16} /> 출고장 목록
+          className={`py-3 text-xs font-semibold flex items-center justify-center gap-1 ${tab === "list" ? "text-amber-400 border-b-2 border-amber-400" : "text-gray-500"}`}>
+          <ClipboardList size={15} /> 출고장 목록
         </button>
       </div>
 
-      {tab === "add" ? <AddTab /> : <ShipmentListTab />}
+      {tab === "add" ? <AddTab /> : tab === "adhoc" ? <AdHocTab /> : <ShipmentListTab />}
 
       {/* 하단 카트바 (+ 펼친 담은 목록 — 개별 🗑️ 취소) */}
-      {cart.items.length > 0 && tab === "add" && (
+      {cart.items.length > 0 && tab !== "list" && (
         <div className="fixed bottom-0 left-0 right-0 z-20">
           {/* 펼친 담은 목록 — 잘못 담은 자재를 1건씩 취소 */}
           {cartOpen && (
@@ -107,6 +111,7 @@ function Inner() {
                     <div className="text-xs text-gray-200 truncate">
                       {it.vesselCode} · {it.material} · {fmtT(it.thickness)}×{fmtL(it.width)}×{fmtL(it.length)} · {fmtKg(it.weight)}
                       {it.kind === "remnant" && <span className="ml-1 text-[10px] px-1 rounded bg-amber-900/50 text-amber-300">잔재</span>}
+                      {it.adHocFromField && <span className="ml-1 text-[10px] px-1 rounded bg-cyan-900/50 text-cyan-300">현장직접</span>}
                     </div>
                     {(it.kind === "remnant" ? it.remnantNo : it.prefilledHeatNo) && (
                       <div className="font-mono text-xs text-gray-400 mt-0.5 truncate">
@@ -381,6 +386,284 @@ function AddTab() {
   );
 }
 
+/* ── 현장직접출고 탭 ────────────────────────────────────────────────────────
+   사무실 선별지시서(shipoutMarkedAt) 없이 현장에서 판번호 또는 사양으로
+   직접 조회하여 담는 흐름. 담긴 자재는 adHocFromField=true 로 저장돼
+   사후 감사/통계에서 구분됨. 카트는 [출고 담기] 탭과 공유. */
+
+interface AdHocCandidate {
+  id: string; vesselCode: string; material: string;
+  thickness: number; width: number; length: number; weight: number;
+  storageLocation: string | null;
+  receivedAt: string | null;
+  shipoutHeatNo: string | null; shipoutLabel: string | null;
+  shipoutMarkedAt: string | null;
+}
+interface AdHocResult {
+  matched: boolean; reason?: string; heatNo?: string; heatId?: string;
+  spec?: { vesselCode: string; material: string; thickness: number; width: number; length: number };
+  candidates?: AdHocCandidate[];
+}
+
+function AdHocTab() {
+  const cart = useShipoutCart();
+  const [heatNo, setHeatNo] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<AdHocResult | null>(null);
+
+  // 사양 폴백 폼 (판번호가 시스템에 없을 때 표시)
+  const [specVessel, setSpecVessel]   = useState("");
+  const [specMaterial, setSpecMaterial] = useState("");
+  const [specT, setSpecT] = useState("");
+  const [specW, setSpecW] = useState("");
+  const [specL, setSpecL] = useState("");
+
+  // 담기 확인 다이얼로그 (카트에 자재가 있을 때만)
+  const [pending, setPending] = useState<{ c: AdHocCandidate; heatNo: string; heatId?: string } | null>(null);
+
+  const resetSpec = () => { setSpecVessel(""); setSpecMaterial(""); setSpecT(""); setSpecW(""); setSpecL(""); };
+
+  const lookupByHeat = async () => {
+    const h = heatNo.trim();
+    if (!h) return;
+    setBusy(true); setResult(null); resetSpec();
+    try {
+      const r = await fetch(`/api/steel-plan/shipout-field-adhoc?heatNo=${encodeURIComponent(h)}`).then(r => r.json());
+      if (!r.success) { alert(r.error ?? "조회 실패"); return; }
+      setResult(r as AdHocResult);
+    } catch (e) { alert(e instanceof Error ? e.message : "네트워크 오류"); }
+    finally { setBusy(false); }
+  };
+
+  const lookupBySpec = async () => {
+    const t = parseFloat(specT), w = parseFloat(specW), l = parseFloat(specL);
+    if (!specVessel.trim() || !specMaterial.trim() || !Number.isFinite(t) || !Number.isFinite(w) || !Number.isFinite(l)) {
+      alert("호선·재질·두께·폭·길이를 모두 입력하세요."); return;
+    }
+    setBusy(true);
+    try {
+      const q = new URLSearchParams({
+        vesselCode: specVessel.trim(),
+        material:   specMaterial.trim(),
+        thickness:  String(t),
+        width:      String(w),
+        length:     String(l),
+      });
+      const r = await fetch(`/api/steel-plan/shipout-field-adhoc?${q}`).then(r => r.json());
+      if (!r.success) { alert(r.error ?? "조회 실패"); return; }
+      // 사양 조회 결과에도 heatNo 는 사용자가 입력한 값 유지 → 신규 SteelPlanHeat 로 생성됨
+      setResult({ ...(r as AdHocResult), heatNo: heatNo.trim() || undefined });
+    } catch (e) { alert(e instanceof Error ? e.message : "네트워크 오류"); }
+    finally { setBusy(false); }
+  };
+
+  const addToCart = (c: AdHocCandidate, heatText: string, heatId?: string) => {
+    const item: ShipoutCartItem = {
+      steelPlanId: c.id, kind: "plate",
+      vesselCode: c.vesselCode, material: c.material,
+      thickness: c.thickness, width: c.width, length: c.length,
+      weight: c.weight,
+      prefilledHeatNo: heatText || undefined,
+      steelPlanHeatId: heatId,             // 매칭된 판번호가 있으면 그 heat 를 SHIPPED 로 전환
+      adHocFromField: true,                // 현장직접출고 감사 태그
+    };
+    const { added, duplicates } = cart.add([item]);
+    if (duplicates) { alert("이미 카트에 담긴 강재입니다."); return; }
+    if (added) {
+      // 다음 판번호 스캔을 위해 초기화
+      setHeatNo(""); setResult(null); resetSpec();
+    }
+  };
+
+  const requestAdd = (c: AdHocCandidate) => {
+    if (cart.has(c.id)) { alert("이미 카트에 담긴 강재입니다."); return; }
+    const heatText = (result?.heatNo ?? heatNo).trim();
+    if (!heatText) { alert("판번호를 먼저 입력하세요. (현장직접출고는 판번호 필수)"); return; }
+    if (cart.items.length === 0) {
+      addToCart(c, heatText, result?.heatId);
+      return;
+    }
+    // 카트에 자재가 있으면 다이얼로그
+    setPending({ c, heatNo: heatText, heatId: result?.heatId });
+  };
+
+  const confirmAppend = () => {
+    if (!pending) return;
+    addToCart(pending.c, pending.heatNo, pending.heatId);
+    setPending(null);
+  };
+  const confirmNew = () => {
+    if (!pending) return;
+    cart.clear();
+    addToCart(pending.c, pending.heatNo, pending.heatId);
+    setPending(null);
+  };
+
+  return (
+    <div className="p-4 space-y-4">
+      {/* 안내 */}
+      <div className="bg-cyan-950/40 border border-cyan-800/60 rounded-2xl p-3 text-xs text-cyan-200 flex items-start gap-2">
+        <Zap size={14} className="mt-0.5 flex-shrink-0" />
+        <div>
+          <div className="font-bold mb-0.5">현장직접출고</div>
+          사무실 선별지시서 없이 판번호(또는 사양)로 <b>입고 상태이고 아직 아무데도 안 잡힌</b> 자재를 즉시 담습니다.
+          블록 확정된 자재나 다른 출고장에 잡힌 자재는 후보에서 자동 제외됩니다.
+        </div>
+      </div>
+
+      {/* 판번호 입력 */}
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+        <label className="block text-xs font-semibold text-gray-400 mb-2">
+          판번호 입력 <span className="font-normal text-gray-500">(대문자·숫자만 — 키보드·바코드 모두 자동 정리)</span>
+        </label>
+        <div className="flex gap-2">
+          <input
+            value={heatNo}
+            onChange={e => setHeatNo(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+            onKeyDown={e => { if (e.key === "Enter") lookupByHeat(); }}
+            placeholder="예: HT240001"
+            inputMode="text" autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false}
+            className="flex-1 px-4 py-3 text-lg font-mono bg-gray-800 border border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-400 text-white placeholder-gray-600"
+          />
+          <button onClick={lookupByHeat} disabled={busy || !heatNo.trim()}
+            className="px-5 bg-cyan-500 text-black font-bold rounded-xl disabled:opacity-40 flex items-center gap-1">
+            {busy ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />}
+          </button>
+        </div>
+      </div>
+
+      {/* 조회 결과 — 판번호 이미 절단/출고 소진 */}
+      {result && !result.matched && result.reason === "ALREADY_USED" && (
+        <div className="bg-red-950/60 border border-red-800 rounded-2xl p-4 flex items-start gap-2 text-sm text-red-300">
+          <AlertTriangle size={18} className="flex-shrink-0 mt-0.5" />
+          <div><div className="font-bold text-red-200">{heatNo}</div>이미 절단/출고로 소진된 판번호입니다.</div>
+        </div>
+      )}
+
+      {/* 조회 결과 — 신규 판번호. 사양 폼 노출 */}
+      {result && !result.matched && result.reason === "NOT_FOUND" && (
+        <div className="bg-gray-900 border border-cyan-700/40 rounded-2xl p-4 space-y-3">
+          <div className="text-sm text-cyan-200 flex items-start gap-2">
+            <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+            <div>
+              <b>{heatNo}</b> 는 시스템에 없는 신규 판번호입니다.<br/>
+              사양을 입력해 <b>강재전체목록의 입고 자재 중 일치하는 것</b>을 찾으세요.<br/>
+              선택 후 담으면 이 판번호가 자동으로 신규 등록됩니다.
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <input value={specVessel}   onChange={e => setSpecVessel(e.target.value.toUpperCase())} placeholder="호선 (예: RS01)" className={inputCls} />
+            <input value={specMaterial} onChange={e => setSpecMaterial(e.target.value.toUpperCase())} placeholder="재질 (예: AH36)" className={inputCls} />
+            <input value={specT} onChange={e => setSpecT(e.target.value)} placeholder="두께 (예: 8)"    inputMode="decimal" className={inputCls} />
+            <input value={specW} onChange={e => setSpecW(e.target.value)} placeholder="폭 (예: 1829)"    inputMode="decimal" className={inputCls} />
+            <input value={specL} onChange={e => setSpecL(e.target.value)} placeholder="길이 (예: 6096)"  inputMode="decimal" className={inputCls + " col-span-2"} />
+          </div>
+          <button onClick={lookupBySpec} disabled={busy}
+            className="w-full py-2.5 bg-cyan-500 text-black font-bold rounded-xl flex items-center justify-center gap-2 disabled:opacity-40">
+            {busy ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+            사양으로 후보 조회
+          </button>
+        </div>
+      )}
+
+      {/* 조회 결과 — 매칭됨 (판번호 or 사양) */}
+      {result && result.matched && result.spec && (
+        <>
+          <div className="bg-gray-900 border border-cyan-700/40 rounded-2xl p-4">
+            <div className="text-xs text-gray-400 mb-1">
+              {result.heatId
+                ? <>판번호 <span className="font-mono font-bold text-cyan-300">{result.heatNo}</span> 사양</>
+                : <>사양 조회 결과 <span className="font-mono text-cyan-300">{heatNo}</span> (신규 판번호로 등록됩니다)</>}
+            </div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+              <span><span className="text-gray-500">호선</span> <b className="text-white">{result.spec.vesselCode}</b></span>
+              <span><span className="text-gray-500">재질</span> <b className="text-white">{result.spec.material}</b></span>
+              <span><span className="text-gray-500">규격</span> <b className="text-white font-mono">{fmtT(result.spec.thickness)}×{fmtL(result.spec.width)}×{fmtL(result.spec.length)}</b></span>
+            </div>
+          </div>
+
+          <div>
+            <div className="text-xs font-semibold text-gray-400 mb-2 px-1">
+              입고 자재 {result.candidates?.length ?? 0}건 — 실물과 맞는 강재를 선택
+              <span className="text-gray-600 font-normal ml-1">(사무실 선별 여부 무관)</span>
+            </div>
+            {(result.candidates?.length ?? 0) === 0 ? (
+              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-center text-sm text-gray-500">
+                일치하는 입고 자재가 없습니다.<br />강재전체목록에 이 사양의 [입고] 상태 자재가 있는지 확인하세요.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {result.candidates!.map(c => {
+                  const inCart = cart.has(c.id);
+                  return (
+                    <div key={c.id} className={`bg-gray-900 border rounded-2xl p-3.5 ${inCart ? "border-purple-700 opacity-60" : "border-gray-800"}`}>
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm">
+                          <div className="font-bold text-white">{c.vesselCode} · {c.material}</div>
+                          <div className="font-mono text-gray-400 text-xs mt-0.5">{fmtT(c.thickness)}×{fmtL(c.width)}×{fmtL(c.length)} · {fmtKg(c.weight)}</div>
+                          <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] text-gray-500">
+                            {c.storageLocation && <span className="flex items-center gap-0.5"><MapPin size={11} />{c.storageLocation}</span>}
+                            {c.receivedAt && <span>입고 {c.receivedAt.slice(0, 10).replace(/-/g, ".")}</span>}
+                            {c.shipoutMarkedAt && <span className="px-1.5 py-0.5 rounded bg-red-900/40 text-red-300">사무실선별됨</span>}
+                          </div>
+                        </div>
+                        {inCart ? (
+                          <span className="text-purple-300 text-xs font-semibold flex items-center gap-1"><CheckCircle2 size={15} /> 담김</span>
+                        ) : (
+                          <button onClick={() => requestAdd(c)}
+                            className="px-3.5 py-2 bg-cyan-500 text-black text-sm font-bold rounded-xl flex-shrink-0">담기</button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* 담기 확인 다이얼로그 — 카트에 이미 자재가 있을 때 */}
+      {pending && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center p-4"
+             onClick={() => setPending(null)}>
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-md p-5 space-y-3"
+               onClick={e => e.stopPropagation()}>
+            <div className="font-bold text-white">담을 위치 선택</div>
+            <div className="text-xs text-gray-400">
+              카트에 이미 <b className="text-amber-300">{cart.items.length}건</b> 이 담겨 있습니다.<br/>
+              새 자재를 어떻게 처리할까요?
+            </div>
+            <div className="bg-gray-800/60 rounded-lg p-2.5 text-xs text-gray-200">
+              <div className="font-mono">{pending.heatNo}</div>
+              <div className="text-gray-500 mt-0.5">
+                {pending.c.vesselCode} · {pending.c.material} · {fmtT(pending.c.thickness)}×{fmtL(pending.c.width)}×{fmtL(pending.c.length)}
+              </div>
+            </div>
+            <button onClick={confirmAppend}
+              className="w-full py-2.5 bg-cyan-500 text-black font-bold rounded-xl text-sm">
+              현재 카트에 추가 (같은 거래명세서로)
+            </button>
+            <button onClick={confirmNew}
+              className="w-full py-2.5 bg-gray-800 border border-gray-700 text-white font-semibold rounded-xl text-sm">
+              카트 비우고 새로 담기 (새 거래명세서)
+            </button>
+            <button onClick={() => setPending(null)}
+              className="w-full py-2 text-gray-500 text-xs">취소</button>
+          </div>
+        </div>
+      )}
+
+      {!result && (
+        <p className="text-center text-sm text-gray-600 pt-4">
+          판번호를 입력하면 입고 상태의 자재 중 일치하는 것을 찾아줍니다.<br/>
+          시스템에 없는 판번호면 사양 폼으로 폴백됩니다.
+        </p>
+      )}
+    </div>
+  );
+}
+
 /* ── 출고장 만들기 (간소 1차분) ───────────────────────────────────────────── */
 function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const cart = useShipoutCart();
@@ -467,6 +750,7 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }
             heatNo: it.prefilledHeatNo?.trim() || null,
             // heatId 있으면 그 heat 를 정확히 SHIPPED 전환(manual 아님). 없으면 사양+판번호로 find/create
             manualHeatNo: it.kind !== "remnant" && !it.steelPlanHeatId,
+            adHocFromField: it.adHocFromField ?? false,
           })),
         }],
       };
@@ -505,6 +789,7 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }
                     <div className="text-xs text-gray-200">
                       {it.vesselCode} · {it.material} · {fmtT(it.thickness)}×{fmtL(it.width)}×{fmtL(it.length)} · {fmtKg(it.weight)}
                       {it.kind === "remnant" && <span className="ml-1 text-[10px] px-1 rounded bg-amber-900/50 text-amber-300">잔재</span>}
+                      {it.adHocFromField && <span className="ml-1 text-[10px] px-1 rounded bg-cyan-900/50 text-cyan-300">현장직접</span>}
                     </div>
                     {(it.kind === "remnant" ? it.remnantNo : it.prefilledHeatNo) && (
                       <div className="font-mono text-xs text-amber-300 mt-0.5">

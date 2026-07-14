@@ -15,6 +15,7 @@ interface ShipmentItem {
   weight: number;
   block: string | null;
   heatNo: string | null;
+  adHocFromField?: boolean;
 }
 interface ShipmentVehicle {
   id: string;
@@ -149,7 +150,12 @@ export default function ShipmentDetailMain({ initial }: { initial: Shipment }) {
                 <tbody className="divide-y divide-gray-100">
                   {v.items.map(it => (
                     <tr key={it.id}>
-                      <td className="px-2 py-1 font-mono">{it.vesselCode}</td>
+                      <td className="px-2 py-1 font-mono">
+                        {it.vesselCode}
+                        {it.adHocFromField && (
+                          <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-cyan-100 text-cyan-700 font-sans" title="현장직접출고 — 사무실 선별 없이 현장에서 즉시 담긴 자재">현장직접</span>
+                        )}
+                      </td>
                       <td className="px-2 py-1">{it.block ?? "-"}</td>
                       <td className="px-2 py-1 font-mono">{it.heatNo ?? "-"}</td>
                       <td className="px-2 py-1">{it.material}</td>
