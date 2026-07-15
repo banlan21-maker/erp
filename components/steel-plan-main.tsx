@@ -187,6 +187,7 @@ export default function SteelPlanMain() {
   const [locationSaving, setLocationSaving] = useState(false);
 
   /* ── 판번호 리스트 상태 ── */
+  const [heatRegisterOpen, setHeatRegisterOpen] = useState(false);   // N1: 판번호 독립 등록 모달
   const [heatRows, setHeatRows]         = useState<SteelPlanHeatRow[]>([]);
   const [heatLoading, setHeatLoading]   = useState(false);
   const [selectedHeatIds, setSelectedHeatIds] = useState<Set<string>>(new Set());
@@ -1630,6 +1631,13 @@ export default function SteelPlanMain() {
               </button>
             )}
             <button onClick={syncAndRefresh} title="작업일보 기준으로 강재·판번호 상태 자동 동기화" className="p-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-500"><RefreshCw size={14} /></button>
+            <button
+              onClick={() => setHeatRegisterOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600"
+              title="판번호를 강재와 별개로 미리 등록 (사양 + 여러 판번호 일괄)"
+            >
+              <Plus size={14} /> 판번호 등록
+            </button>
             <span className="text-sm text-gray-500 ml-auto">총 {heatTotal}건</span>
             <button
               onClick={() => downloadHeatExcel("all")}
@@ -2527,6 +2535,14 @@ export default function SteelPlanMain() {
         />
       )}
 
+      {/* N1: 판번호 독립 등록 모달 (판번호 리스트 탭에서 진입) */}
+      {heatRegisterOpen && (
+        <HeatRegisterModal
+          onClose={() => setHeatRegisterOpen(false)}
+          onDone={() => { setHeatRegisterOpen(false); loadHeat(); loadHeatDistinct(); }}
+        />
+      )}
+
       {/* 출고등록 모달 — 판번호 입력 / 엑셀 업로드 탭 */}
       {showShipoutRegister && (
         <ShipoutRegisterModal
@@ -2872,6 +2888,133 @@ function ShipoutRegisterModal({ onClose, onDone }: { onClose: () => void; onDone
         </div>
         </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────────── */
+/* 판번호 독립 등록 모달 (N1)                                                   */
+/* 사양(호선/재질/두께/폭/길이) + 판번호 여러 개 → SteelPlanHeat batch create   */
+/* ──────────────────────────────────────────────────────────────────────────── */
+function HeatRegisterModal({
+  onClose, onDone,
+}: {
+  onClose: () => void;
+  onDone: () => void;   // 등록 성공 후 부모에게 리로드 요청
+}) {
+  const [vesselCode, setVesselCode] = useState("");
+  const [material, setMaterial]     = useState("");
+  const [thickness, setThickness]   = useState("");
+  const [width, setWidth]           = useState("");
+  const [length, setLength]         = useState("");
+  const [heatNos, setHeatNos]       = useState("");   // 여러 줄
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError]           = useState("");
+
+  const submit = async () => {
+    setError("");
+    const v = vesselCode.trim();
+    const m = material.trim().toUpperCase();
+    const t = parseFloat(thickness);
+    const w = parseFloat(width);
+    const l = parseFloat(length);
+    if (!v || !m) { setError("호선·재질은 필수입니다."); return; }
+    if (!Number.isFinite(t) || t <= 0) { setError("두께가 올바르지 않습니다."); return; }
+    if (!Number.isFinite(w) || w <= 0) { setError("폭이 올바르지 않습니다."); return; }
+    if (!Number.isFinite(l) || l <= 0) { setError("길이가 올바르지 않습니다."); return; }
+
+    // 판번호 여러 줄 파싱 (한 줄에 1개, 공백/빈 줄 제외)
+    const heats = heatNos.split(/\r?\n/).map(s => s.trim().toUpperCase()).filter(Boolean);
+    if (heats.length === 0) { setError("판번호를 1개 이상 입력하세요."); return; }
+    // 중복 제거
+    const uniqueHeats = Array.from(new Set(heats));
+
+    const items = uniqueHeats.map(heatNo => ({
+      vesselCode: v, material: m, thickness: t, width: w, length: l, heatNo,
+    }));
+
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/steel-plan/heat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      });
+      const json = await res.json();
+      if (!json.success) { setError(json.error || "등록 실패"); return; }
+      alert(`판번호 ${json.count}개 등록 완료`);
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "네트워크 오류");
+    } finally { setSubmitting(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm"
+         onClick={() => !submitting && onClose()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+          <h3 className="font-bold text-base text-gray-900 flex items-center gap-2">
+            <Plus size={16} className="text-orange-500" /> 판번호 독립 등록
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><X size={16} /></button>
+        </div>
+
+        <div className="p-5 space-y-3">
+          <div className="text-xs text-gray-600 bg-orange-50 border border-orange-200 rounded p-2">
+            판번호만 미리 등록해두는 화면입니다. 강재(SteelPlan) 는 만들지 않습니다.<br />
+            같은 사양의 판번호 여러 개를 한 번에 등록할 수 있습니다.
+          </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded p-2 text-sm text-red-700">{error}</div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-xs">
+              <div className="text-gray-600 mb-1">호선 *</div>
+              <input value={vesselCode} onChange={e => setVesselCode(e.target.value.toUpperCase())}
+                placeholder="예: RS01" className="w-full h-9 px-2 border border-gray-300 rounded" />
+            </label>
+            <label className="text-xs">
+              <div className="text-gray-600 mb-1">재질 *</div>
+              <input value={material} onChange={e => setMaterial(e.target.value.toUpperCase())}
+                placeholder="예: AH36" className="w-full h-9 px-2 border border-gray-300 rounded" />
+            </label>
+            <label className="text-xs">
+              <div className="text-gray-600 mb-1">두께 *</div>
+              <input value={thickness} onChange={e => setThickness(e.target.value)} inputMode="decimal"
+                placeholder="예: 8" className="w-full h-9 px-2 border border-gray-300 rounded" />
+            </label>
+            <label className="text-xs">
+              <div className="text-gray-600 mb-1">폭 *</div>
+              <input value={width} onChange={e => setWidth(e.target.value)} inputMode="decimal"
+                placeholder="예: 1829" className="w-full h-9 px-2 border border-gray-300 rounded" />
+            </label>
+            <label className="text-xs col-span-2">
+              <div className="text-gray-600 mb-1">길이 *</div>
+              <input value={length} onChange={e => setLength(e.target.value)} inputMode="decimal"
+                placeholder="예: 6096" className="w-full h-9 px-2 border border-gray-300 rounded" />
+            </label>
+          </div>
+
+          <label className="block text-xs">
+            <div className="text-gray-600 mb-1">판번호 (한 줄에 1개, 중복 자동 제거) *</div>
+            <textarea value={heatNos} onChange={e => setHeatNos(e.target.value.toUpperCase())}
+              rows={6} placeholder={"HT240001\nHT240002\nHT240003"}
+              className="w-full px-2 py-1.5 text-sm font-mono border border-gray-300 rounded resize-y" />
+          </label>
+        </div>
+
+        <div className="px-5 py-3 border-t border-gray-200 flex items-center justify-end gap-2">
+          <button onClick={onClose} disabled={submitting}
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50">취소</button>
+          <button onClick={submit} disabled={submitting}
+            className="inline-flex items-center gap-1 px-4 py-1.5 text-sm bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-40">
+            {submitting ? "등록 중…" : "등록"}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -86,3 +86,56 @@ export async function DELETE(req: NextRequest) {
   const { count } = await prisma.steelPlanHeat.deleteMany({ where: { id: { in: body.ids } } });
   return NextResponse.json({ count });
 }
+
+/**
+ * POST /api/steel-plan/heat
+ * 판번호(SteelPlanHeat) 만 독립 등록 — 강재(SteelPlan) 와 별개.
+ * 강재 등록/절단완료/외부출고 자동생성 이외의 경로가 없어 신설 (N1 대응).
+ *
+ * body: { items: [{ vesselCode, material, thickness, width, length, heatNo }, ...] }
+ *   - status 는 항상 WAITING 으로 시작 (사용 전 재고)
+ *   - createdAt 은 배치 내 순서 유지
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const items = Array.isArray(body?.items) ? body.items : [];
+
+    if (items.length === 0) {
+      return NextResponse.json({ success: false, error: "등록할 판번호가 없습니다." }, { status: 400 });
+    }
+
+    // 각 항목 검증 + normalize
+    const rows: {
+      vesselCode: string; material: string;
+      thickness: number; width: number; length: number;
+      heatNo: string; status: "WAITING";
+    }[] = [];
+    for (const raw of items) {
+      const vesselCode = String(raw?.vesselCode ?? "").trim();
+      const material   = String(raw?.material   ?? "").trim().toUpperCase();
+      const thickness  = Number(raw?.thickness);
+      const width      = Number(raw?.width);
+      const length     = Number(raw?.length);
+      const heatNo     = String(raw?.heatNo ?? "").trim().toUpperCase();
+      if (!vesselCode || !material || !heatNo) continue;
+      if (!Number.isFinite(thickness) || !Number.isFinite(width) || !Number.isFinite(length)) continue;
+      if (thickness <= 0 || width <= 0 || length <= 0) continue;
+      rows.push({ vesselCode, material, thickness, width, length, heatNo, status: "WAITING" });
+    }
+
+    if (rows.length === 0) {
+      return NextResponse.json({
+        success: false,
+        error: "유효한 판번호가 없습니다. 호선·재질·두께·폭·길이·판번호가 모두 있어야 합니다.",
+      }, { status: 400 });
+    }
+
+    const { count } = await prisma.steelPlanHeat.createMany({ data: rows });
+    return NextResponse.json({ success: true, count });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "판번호 등록 실패";
+    console.error("[POST /api/steel-plan/heat]", err);
+    return NextResponse.json({ success: false, error: msg }, { status: 500 });
+  }
+}
