@@ -204,6 +204,8 @@ export async function DELETE(request: NextRequest) {
       if (!groups.has(key)) groups.set(key, { steelVessel, material: t.material, thickness: t.thickness, width: t.width, length: t.length, block, count: 0 });
       groups.get(key)!.count++;
     }
+    // N14: 해제된 강재 정보를 사용자에게 안내하기 위해 각 강재의 판번호 흔적도 함께 수집
+    const releasedList: { id: string; vesselCode: string; material: string; thickness: number; width: number; length: number; heatNo: string | null }[] = [];
     for (const g of groups.values()) {
       const newFmt = `${vesselCode}/${g.block}`;
       // 신규("호선/블록") 또는 구형("블록") 형식으로 확정된 RECEIVED 판재를 count 만큼 해제
@@ -215,11 +217,22 @@ export async function DELETE(request: NextRequest) {
         },
         take: g.count,
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        select: { id: true },
+        // N14: 해제된 강재 안내용 정보 수집 (actualHeatNo — 절단 후 취소된 판재의 판번호 흔적)
+        select: {
+          id: true, vesselCode: true, material: true,
+          thickness: true, width: true, length: true, actualHeatNo: true,
+        },
       });
       if (releasable.length > 0) {
         await prisma.steelPlan.updateMany({ where: { id: { in: releasable.map(p => p.id) } }, data: { reservedFor: null } });
         cancelled += releasable.length;
+        for (const p of releasable) {
+          releasedList.push({
+            id: p.id, vesselCode: p.vesselCode, material: p.material,
+            thickness: p.thickness, width: p.width, length: p.length,
+            heatNo: p.actualHeatNo,
+          });
+        }
       }
       issuedSkipped += g.count - releasable.length; // RECEIVED 부족분 = ISSUED(투입)로 확정된 도면
       const specKey = `${g.steelVessel}|${g.material}|${g.thickness}|${g.width}|${g.length}`;
@@ -239,7 +252,7 @@ export async function DELETE(request: NextRequest) {
     await syncDrawingListBySpecs([...specsToSync.values()]);
     await syncProjectStatus(projectId);
 
-    return NextResponse.json({ success: true, data: { cancelled, cutSkipped, issuedSkipped } });
+    return NextResponse.json({ success: true, data: { cancelled, cutSkipped, issuedSkipped, released: releasedList } });
   } catch (error) {
     console.error("[DELETE /api/drawings/reserve-bulk]", error);
     return NextResponse.json({ success: false, error: "일괄 확정 취소 중 오류가 발생했습니다." }, { status: 500 });

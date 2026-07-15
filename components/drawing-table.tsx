@@ -352,11 +352,22 @@ export default function DrawingTable({
   };
 
   // 확정취소 결과 요약 메시지 (절단완료·투입은 건너뜀)
-  const unreserveSummary = (d: { cancelled?: number; cutSkipped?: number; issuedSkipped?: number }) => {
+  // N14: 실제로 어느 강재가 해제됐는지 사용자에게 노출 (LIFO 자동 선택이라 원하지 않은 판이 풀릴 수 있음)
+  interface ReleasedPlan { id: string; vesselCode: string; material: string; thickness: number; width: number; length: number; heatNo: string | null }
+  const unreserveSummary = (d: { cancelled?: number; cutSkipped?: number; issuedSkipped?: number; released?: ReleasedPlan[] }) => {
     const parts = [`${d.cancelled ?? 0}건 확정취소`];
     if (d.cutSkipped)    parts.push(`절단완료 ${d.cutSkipped}건 유지`);
     if (d.issuedSkipped) parts.push(`투입 ${d.issuedSkipped}건 유지`);
-    return parts.join(" · ");
+    let msg = parts.join(" · ");
+    if (d.released && d.released.length > 0) {
+      const lines = d.released.map(p => {
+        const heat = p.heatNo ? `판번호 ${p.heatNo}` : "판번호 없음";
+        return `· ${p.vesselCode} ${p.material} ${p.thickness}×${p.width}×${p.length} (${heat})`;
+      });
+      msg += `\n\n해제된 강재:\n${lines.join("\n")}`;
+      msg += `\n\n원한 강재가 아니면 다시 확정 후 순서를 조정하세요.`;
+    }
+    return msg;
   };
 
   const bulkUnreserve = async () => {
