@@ -54,21 +54,39 @@ export async function GET(req: NextRequest) {
     }
 
     // 2) 같은 사양의 입고 강재 중 아직 출고확정 안 됐고 이번에 안 고른 것 1장 (FIFO)
+    const specWhere = {
+      vesselCode: heat.vesselCode,
+      material:   heat.material,
+      thickness: { gte: heat.thickness - FLOAT_TOL, lte: heat.thickness + FLOAT_TOL },
+      width:     { gte: heat.width - FLOAT_TOL, lte: heat.width + FLOAT_TOL },
+      length:    { gte: heat.length - FLOAT_TOL, lte: heat.length + FLOAT_TOL },
+      ...(exclude.length ? { id: { notIn: exclude } } : {}),
+    };
     const plan = await prisma.steelPlan.findFirst({
       where: {
-        vesselCode: heat.vesselCode,
-        material:   heat.material,
-        thickness: { gte: heat.thickness - FLOAT_TOL, lte: heat.thickness + FLOAT_TOL },
-        width:     { gte: heat.width - FLOAT_TOL, lte: heat.width + FLOAT_TOL },
-        length:    { gte: heat.length - FLOAT_TOL, lte: heat.length + FLOAT_TOL },
+        ...specWhere,
         status: "RECEIVED",
         shipoutMarkedAt: null,
         reservedFor: null,   // 블록확정(절단용) 강재는 출고 대상에서 제외 (절단↔출고 상호배제)
-        ...(exclude.length ? { id: { notIn: exclude } } : {}),
       },
       orderBy: [{ receivedAt: "asc" }, { createdAt: "asc" }],
     });
     if (!plan) {
+      // N4: 후보 0건일 때 원인 세분화 — 사용자가 정확한 다음 액션을 알 수 있게.
+      //     (a) 확정(reservedFor) 때문에 제외 → RESERVED_FOR_CUTTING (확정취소 필요)
+      //     (b) 그 외 → NOT_RECEIVED (실제 미입고/투입/절단/외부)
+      const reserved = await prisma.steelPlan.findFirst({
+        where: { ...specWhere, status: "RECEIVED", shipoutMarkedAt: null, reservedFor: { not: null } },
+        select: { id: true, reservedFor: true },
+      });
+      if (reserved) {
+        return NextResponse.json({
+          success: true, matched: false,
+          reason: "RESERVED_FOR_CUTTING",
+          heatNo,
+          reservedFor: reserved.reservedFor,
+        });
+      }
       return NextResponse.json({ success: true, matched: false, reason: "NOT_RECEIVED", heatNo });
     }
 

@@ -2647,6 +2647,10 @@ function ShipoutRegisterModal({ onClose, onDone }: { onClose: () => void; onDone
           ALREADY_USED:  "이미 절단·사용된 판번호 (남은 원판 없음)",
           ALREADY_MARKED:"이미 선별/출고된 판번호",
           NOT_RECEIVED:  "매칭되는 입고 강재 없음 (미입고 또는 소진)",
+          // N4: 확정(reservedFor) 때문에 제외된 케이스 — 사용자가 다음 액션(확정취소)을 알 수 있게
+          RESERVED_FOR_CUTTING: d.reservedFor
+            ? `블록확정(절단용) 자재 — ${d.reservedFor} 에 확정되어 있음. 프로젝트에서 확정취소 후 시도하세요.`
+            : "블록확정(절단용)된 자재. 프로젝트에서 확정취소 후 시도하세요.",
         };
         setMsg({ type: "err", text: `${heatNo} — ${reasonMap[d.reason] ?? "매칭 실패"}` });
         return;
