@@ -1234,9 +1234,12 @@ model Remnant {
   sourceVesselName String? // 직접 입력 호선명
   sourceBlock      String? // 직접 입력 블록 번호
 
-  // DrawingList 연결 (원철판 → 등록잔재, cascade 삭제)
+  // DrawingList 연결 (원철판 → 등록잔재)
+  // I3 대응 (2026-07-15): Cascade → SetNull 로 변경.
+  // §9 B4 원칙 "부모 도면이 삭제되어도 자식 잔재는 독립 유지"
+  //   (밀시트 역추적 근거 소실 방지)
   drawingListId String?
-  drawingList   DrawingList? @relation(fields: [drawingListId], references: [id], onDelete: Cascade)
+  drawingList   DrawingList? @relation(fields: [drawingListId], references: [id], onDelete: SetNull)
 
   // 부모 등록잔재 연결 (등록잔재 → 자식 등록잔재)
   parentRemnantId String?

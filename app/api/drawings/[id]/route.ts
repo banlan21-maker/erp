@@ -165,45 +165,63 @@ export async function DELETE(
       where: { id },
       include: { project: { select: { projectCode: true } } },
     });
+    if (!current) {
+      return NextResponse.json({ success: false, error: "도면을 찾을 수 없습니다." }, { status: 404 });
+    }
+
+    // I3: 절단완료(CUT) / 확정(WAITING) 도면은 삭제 차단 — 먼저 작업일보에서 절단취소 / 확정취소 필요.
+    //     CuttingLog 참조 있어도 차단 (도면과 로그가 분리된 상태로 방치되는 것 방지).
+    if (current.status === "CUT" || current.status === "WAITING") {
+      const stateLabel = current.status === "CUT" ? "절단완료(CUT)" : "확정(WAITING)";
+      return NextResponse.json({
+        success: false,
+        error: `${stateLabel} 상태 도면은 삭제할 수 없습니다.\n먼저 작업일보에서 절단취소 → 확정취소 후 시도하세요.`,
+      }, { status: 409 });
+    }
+    const linkedLogCount = await prisma.cuttingLog.count({ where: { drawingListId: id } });
+    if (linkedLogCount > 0) {
+      return NextResponse.json({
+        success: false,
+        error: `이 도면에 연결된 작업일보가 ${linkedLogCount}건 있습니다.\n먼저 작업일보를 삭제하거나 절단취소 후 시도하세요.`,
+      }, { status: 409 });
+    }
 
     await prisma.drawingList.delete({ where: { id } });
 
     // SteelPlan 확정 예약 해제 및 sync
-    if (current) {
-      const projectCode     = current.project.projectCode;
-      const effectiveVessel = current.alternateVesselCode?.trim() || projectCode;
-      const oldBlock        = current.block ?? "UNKNOWN";
-      const oldFmt          = `${projectCode}/${oldBlock}`;
+    const projectCode     = current.project.projectCode;
+    const effectiveVessel = current.alternateVesselCode?.trim() || projectCode;
+    const oldBlock        = current.block ?? "UNKNOWN";
+    const oldFmt          = `${projectCode}/${oldBlock}`;
 
-      const toRelease = await prisma.steelPlan.findFirst({
-        where: {
-          vesselCode:  effectiveVessel,
-          material:    current.material,
-          thickness:   current.thickness,
-          width:       current.width,
-          length:      current.length,
-          status:      "RECEIVED",
-          reservedFor: { in: [oldFmt, oldBlock] },
-        },
-        orderBy: { createdAt: "desc" },
-      });
+    const toRelease = await prisma.steelPlan.findFirst({
+      where: {
+        vesselCode:  effectiveVessel,
+        material:    current.material,
+        thickness:   current.thickness,
+        width:       current.width,
+        length:      current.length,
+        status:      "RECEIVED",
+        reservedFor: { in: [oldFmt, oldBlock] },
+      },
+      orderBy: { createdAt: "desc" },
+    });
 
-      if (toRelease) {
-        await prisma.steelPlan.update({ where: { id: toRelease.id }, data: { reservedFor: null } });
-      }
-
-      await syncDrawingListBySpecs([{
-        vesselCode: effectiveVessel,
-        material:   current.material,
-        thickness:  current.thickness,
-        width:      current.width,
-        length:     current.length,
-      }]);
-
-      // I8: 마지막 미완료 도면 삭제로 블록의 모든 도면이 CUT 이 되면
-      //     Project.status 를 COMPLETED 로 자동 판정 (R5)
-      await syncProjectStatus(current.projectId);
+    if (toRelease) {
+      await prisma.steelPlan.update({ where: { id: toRelease.id }, data: { reservedFor: null } });
     }
+
+    await syncDrawingListBySpecs([{
+      vesselCode: effectiveVessel,
+      material:   current.material,
+      thickness:  current.thickness,
+      width:      current.width,
+      length:     current.length,
+    }]);
+
+    // I8: 마지막 미완료 도면 삭제로 블록의 모든 도면이 CUT 이 되면
+    //     Project.status 를 COMPLETED 로 자동 판정 (R5)
+    await syncProjectStatus(current.projectId);
 
     return NextResponse.json({ success: true });
   } catch (error) {
