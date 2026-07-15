@@ -101,7 +101,9 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
   const effectiveVessel = targetDrawing?.alternateVesselCode?.trim() || project?.projectCode;
   // 잔재(등록/현장/여유) 사용 절단은 정규원재(SteelPlan/SteelPlanHeat)를 건드리지 않음 — 여유원재는 아래 전용 블록에서 처리
   if (!targetDrawing?.assignedRemnantId && log.drawingNo && log.heatNo?.trim() && effectiveVessel && log.material && log.thickness && log.width && log.length) {
-    await tx.steelPlanHeat.updateMany({
+    // N3: 수입재 다판(같은 heatNo+사양 여러 장) 케이스에서 updateMany 가 매칭 전부를 CUT 로 뒤집던 결함 수정.
+    //     findFirst(WAITING, createdAt asc) 로 오래된 1건만 CUT 처리 → SURPLUS 경로와 통일.
+    const heatMatch = await tx.steelPlanHeat.findFirst({
       where: {
         heatNo: log.heatNo.trim(),
         status: "WAITING",
@@ -109,8 +111,15 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
         material: { equals: log.material.trim().toUpperCase(), mode: "insensitive" },
         thickness: log.thickness, width: log.width, length: log.length,
       },
-      data:  { status: "CUT", cutAt: log.endAt ?? new Date() },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
     });
+    if (heatMatch) {
+      await tx.steelPlanHeat.update({
+        where: { id: heatMatch.id },
+        data:  { status: "CUT", cutAt: log.endAt ?? new Date() },
+      });
+    }
   }
 
   // ── 여유원재(SURPLUS) 사용 절단 — 실물 판번호 추적 ─────────────────────
