@@ -312,12 +312,17 @@ export default function DrawingTable({
 
   // 스펙별 미선점 입고 수량 (클라이언트 직접 fetch)
   const [specAvailability, setSpecAvailability] = useState<Record<string, number>>({});
+  // N6: 스펙별 선점 상세 (available/reservedElsewhere/shipoutMarked) — 배지 툴팁 안내용
+  const [specDetail, setSpecDetail] = useState<Record<string, { available: number; reservedElsewhere: number; shipoutMarked: number }>>({});
 
   const loadAvailability = useCallback(async () => {
     try {
       const res = await fetch(`/api/drawings/availability?projectId=${encodeURIComponent(projectId)}`);
       const data = await res.json();
-      if (data.success) setSpecAvailability(data.data);
+      if (data.success) {
+        setSpecAvailability(data.data);
+        setSpecDetail(data.detail ?? {});
+      }
     } catch { /* silent */ }
   }, [projectId]);
 
@@ -1010,13 +1015,40 @@ export default function DrawingTable({
                 const steelVessel = dExt.alternateVesselCode?.trim() || projectCode || "";
                 const specKey = `${d.material}|${d.thickness}|${d.width}|${d.length}|${steelVessel}`;
                 const available = specAvailability[specKey] ?? 0;
+                const detail    = specDetail[specKey];
+                const blocked   = detail ? (detail.reservedElsewhere + detail.shipoutMarked) : 0;
+                // N6: 실제 재고는 있으나 다른 곳에 선점되어 사용 불가한 경우 안내
+                const blockedTooltip = detail && blocked > 0
+                  ? `실제 입고 자재 ${available + blocked}장 중 ${blocked}장이 이미 선점되어 사용 불가.\n` +
+                    `${detail.reservedElsewhere > 0 ? `· 다른 블록 확정: ${detail.reservedElsewhere}장\n` : ""}` +
+                    `${detail.shipoutMarked     > 0 ? `· 외부출고 선별: ${detail.shipoutMarked}장\n` : ""}` +
+                    `선점 취소 후 확정 가능합니다.`
+                  : "";
 
                 // 상태 셀: REGISTERED는 남은 입고 수량 표시, WAITING은 확정
                 const statusCell = (() => {
                   if (status === "REGISTERED") {
+                    // 실제 사용 가능 자재 vs 선점된 자재 구분 표시
+                    if (available > 0) {
+                      return (
+                        <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-700"
+                              title={blocked > 0 ? blockedTooltip : undefined}>
+                          {available}장 입고{blocked > 0 ? ` (+${blocked} 선점)` : ""}
+                        </span>
+                      );
+                    }
+                    // 사용 가능 0장 but 선점된 자재 있음 → 이유 명시
+                    if (blocked > 0) {
+                      return (
+                        <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-700 cursor-help"
+                              title={blockedTooltip}>
+                          선점 {blocked}장 ⓘ
+                        </span>
+                      );
+                    }
                     return (
-                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${available > 0 ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>
-                        {available}장 입고
+                      <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-orange-100 text-orange-700">
+                        0장 입고
                       </span>
                     );
                   }

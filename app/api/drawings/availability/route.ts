@@ -8,7 +8,13 @@ const norm = (s: string) => s.trim().toLowerCase();
 
 // GET /api/drawings/availability?projectId=xxx
 // 해당 프로젝트 호선의 스펙별 미확정(선점 가능) 입고 수량 반환
-// 반환: { [스펙키]: number }  예) { "AH36|14|1950|8400|1022": 3 }
+//
+// 반환:
+//   data: { [스펙키]: number }  하위호환 (사용 가능 자재 수)
+//   detail: { [스펙키]: { available, reservedElsewhere, shipoutMarked } }
+//     · available          — 실제 확정 가능 강재 수 (RECEIVED + 미예약 + 미선별)
+//     · reservedElsewhere  — RECEIVED 이나 다른 블록에 이미 확정된 강재 수
+//     · shipoutMarked      — RECEIVED 이나 외부출고로 선별된 강재 수 (사용 불가 이유 표시용, N6)
 // 주의: 키는 프론트엔드와 동일하게 DrawingList.material 원본값을 사용하되,
 //       철판 매칭은 trim+lowercase 관대 비교로 수행 (공백/대소문자 불일치 방지)
 export async function GET(request: NextRequest) {
@@ -20,7 +26,7 @@ export async function GET(request: NextRequest) {
 
   const project = await prisma.project.findUnique({ where: { id: projectId } });
   if (!project) {
-    return NextResponse.json({ success: false, data: {} });
+    return NextResponse.json({ success: false, data: {}, detail: {} });
   }
 
   // 이 프로젝트의 고유 스펙 목록 (행별 대체호선 포함)
@@ -35,35 +41,41 @@ export async function GET(request: NextRequest) {
     vessels.add(r.alternateVesselCode?.trim() || project.projectCode);
   }
   if (vessels.size === 0) {
-    return NextResponse.json({ success: true, data: {} });
+    return NextResponse.json({ success: true, data: {}, detail: {} });
   }
 
-  // 후보 철판 (RECEIVED + 미예약 + 출고예정 아님) — 한 번에 조회 후 JS에서 관대 매칭
-  // 출고 선별/예정(shipoutMarkedAt)된 강재는 절단 가용에서 제외 (절단↔출고 상호배제)
-  const plates = await prisma.steelPlan.findMany({
+  // 후보 철판을 상태별로 한 번에 로드 (같은 vessel/spec 조회 3회 대신 1회 조회 후 JS 파티션)
+  const allReceived = await prisma.steelPlan.findMany({
     where: {
       vesselCode: { in: [...vessels] },
       status: "RECEIVED",
-      reservedFor: null,
-      shipoutMarkedAt: null,
     },
-    select: { vesselCode: true, material: true, thickness: true, width: true, length: true },
+    select: {
+      vesselCode: true, material: true, thickness: true, width: true, length: true,
+      reservedFor: true, shipoutMarkedAt: true,
+    },
   });
 
-  const result: Record<string, number> = {};
+  const result:  Record<string, number> = {};
+  const detail:  Record<string, { available: number; reservedElsewhere: number; shipoutMarked: number }> = {};
   for (const r of rows) {
     const steelVessel = r.alternateVesselCode?.trim() || project.projectCode;
     const key = `${r.material}|${r.thickness}|${r.width}|${r.length}|${steelVessel}`;
-    if (key in result) continue; // 이미 계산됨
-    result[key] = plates.filter(
+    if (key in result) continue;
+    const matched = allReceived.filter(
       (p) =>
         p.vesselCode === steelVessel &&
         norm(p.material) === norm(r.material) &&
         p.thickness === r.thickness &&
         p.width === r.width &&
-        p.length === r.length
-    ).length;
+        p.length === r.length,
+    );
+    const available         = matched.filter((p) => !p.reservedFor && !p.shipoutMarkedAt).length;
+    const reservedElsewhere = matched.filter((p) => !!p.reservedFor).length;
+    const shipoutMarked     = matched.filter((p) => !!p.shipoutMarkedAt).length;
+    result[key] = available;
+    detail[key] = { available, reservedElsewhere, shipoutMarked };
   }
 
-  return NextResponse.json({ success: true, data: result });
+  return NextResponse.json({ success: true, data: result, detail });
 }
