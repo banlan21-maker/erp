@@ -111,7 +111,11 @@ function Inner() {
                     <div className="text-xs text-gray-200 truncate">
                       {it.vesselCode} · {it.material} · {fmtT(it.thickness)}×{fmtL(it.width)}×{fmtL(it.length)} · {fmtKg(it.weight)}
                       {it.kind === "remnant" && <span className="ml-1 text-[10px] px-1 rounded bg-amber-900/50 text-amber-300">잔재</span>}
-                      {it.adHocFromField && <span className="ml-1 text-[10px] px-1 rounded bg-cyan-900/50 text-cyan-300">현장직접</span>}
+                      {it.adHocFromField && (
+                        <span className="ml-1 text-[10px] px-1 rounded bg-cyan-900/50 text-cyan-300">
+                          현장직접{it.originShipoutLabel ? ` (원선별: ${it.originShipoutLabel})` : ""}
+                        </span>
+                      )}
                     </div>
                     {(it.kind === "remnant" ? it.remnantNo : it.prefilledHeatNo) && (
                       <div className="font-mono text-xs text-gray-400 mt-0.5 truncate">
@@ -466,6 +470,7 @@ function AdHocTab() {
       prefilledHeatNo: heatText || undefined,
       steelPlanHeatId: heatId,             // 매칭된 판번호가 있으면 그 heat 를 SHIPPED 로 전환
       adHocFromField: true,                // 현장직접출고 감사 태그
+      originShipoutLabel: c.shipoutLabel,  // I1: 원 사무실 선별 라벨 스냅샷 (없으면 null)
     };
     const { added, duplicates } = cart.add([item]);
     if (duplicates) { alert("이미 카트에 담긴 강재입니다."); return; }
@@ -479,6 +484,18 @@ function AdHocTab() {
     if (cart.has(c.id)) { alert("이미 카트에 담긴 강재입니다."); return; }
     const heatText = (result?.heatNo ?? heatNo).trim();
     if (!heatText) { alert("판번호를 먼저 입력하세요. (현장직접출고는 판번호 필수)"); return; }
+    // I1: 사무실 선별된 자재는 담기 전 명시적 확인
+    // shipoutMarkedAt 이 있으면 사무실이 특정 납품처용으로 골라둔 자재 — 조용히 가져가지 못하게
+    if (c.shipoutMarkedAt) {
+      const labelText = c.shipoutLabel ? `[${c.shipoutLabel}]` : "";
+      const ok = confirm(
+        `이 자재는 사무실이 ${labelText} 용으로 선별해둔 자재입니다.\n\n` +
+        `이 출고장에 담으면 사무실 선별목록에서 사라집니다.\n` +
+        `(원 선별 정보는 이력에 남아 추후 확인 가능)\n\n` +
+        `계속 담으시겠습니까?`
+      );
+      if (!ok) return;
+    }
     if (cart.items.length === 0) {
       addToCart(c, heatText, result?.heatId);
       return;
@@ -751,6 +768,7 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }
             // heatId 있으면 그 heat 를 정확히 SHIPPED 전환(manual 아님). 없으면 사양+판번호로 find/create
             manualHeatNo: it.kind !== "remnant" && !it.steelPlanHeatId,
             adHocFromField: it.adHocFromField ?? false,
+            originShipoutLabel: it.originShipoutLabel ?? null,
           })),
         }],
       };
@@ -789,7 +807,11 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }
                     <div className="text-xs text-gray-200">
                       {it.vesselCode} · {it.material} · {fmtT(it.thickness)}×{fmtL(it.width)}×{fmtL(it.length)} · {fmtKg(it.weight)}
                       {it.kind === "remnant" && <span className="ml-1 text-[10px] px-1 rounded bg-amber-900/50 text-amber-300">잔재</span>}
-                      {it.adHocFromField && <span className="ml-1 text-[10px] px-1 rounded bg-cyan-900/50 text-cyan-300">현장직접</span>}
+                      {it.adHocFromField && (
+                        <span className="ml-1 text-[10px] px-1 rounded bg-cyan-900/50 text-cyan-300">
+                          현장직접{it.originShipoutLabel ? ` (원선별: ${it.originShipoutLabel})` : ""}
+                        </span>
+                      )}
                     </div>
                     {(it.kind === "remnant" ? it.remnantNo : it.prefilledHeatNo) && (
                       <div className="font-mono text-xs text-amber-300 mt-0.5">

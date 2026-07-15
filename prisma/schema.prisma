@@ -1420,6 +1420,10 @@ model ShipmentItem {
   // 사무실 선별지시서 없이 현장(/field/shipout - 현장직접출고 탭) 에서 즉시 담아 출고된 자재
   // 사후 감사/통계용 — 흐름 자체에는 영향 없음
   adHocFromField Boolean @default(false)
+  // 현장직접출고로 담을 때 원 자재가 사무실 선별(SteelPlan.shipoutLabel)되어 있었다면
+  // 그 라벨의 스냅샷. 출고 확정 후 SteelPlan.shipoutLabel 은 null 로 정리되어도
+  // 이 스냅샷으로 "원래 어느 선별 작업 자재였는지" 추적 가능 (I1 대응, 2026-07-15)
+  originShipoutLabel String?
   remnantNo    String?  // 잔재 출고 시 잔재번호 스냅샷 (거래명세표 "잔재번호" 컬럼). 원판 출고면 null
 
   // 거래명세서 양식 — 사용자 수동 입력 (PDF 화면에서 인라인 편집)

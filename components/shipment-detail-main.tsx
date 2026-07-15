@@ -16,6 +16,7 @@ interface ShipmentItem {
   block: string | null;
   heatNo: string | null;
   adHocFromField?: boolean;
+  originShipoutLabel?: string | null;
 }
 interface ShipmentVehicle {
   id: string;
@@ -153,7 +154,14 @@ export default function ShipmentDetailMain({ initial }: { initial: Shipment }) {
                       <td className="px-2 py-1 font-mono">
                         {it.vesselCode}
                         {it.adHocFromField && (
-                          <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-cyan-100 text-cyan-700 font-sans" title="현장직접출고 — 사무실 선별 없이 현장에서 즉시 담긴 자재">현장직접</span>
+                          <span
+                            className="ml-1 text-[9px] px-1 py-0.5 rounded bg-cyan-100 text-cyan-700 font-sans"
+                            title={it.originShipoutLabel
+                              ? `현장직접출고 — 원래 사무실 선별: ${it.originShipoutLabel}`
+                              : "현장직접출고 — 사무실 선별 없이 현장에서 즉시 담긴 자재"}
+                          >
+                            현장직접{it.originShipoutLabel ? ` (원선별: ${it.originShipoutLabel})` : ""}
+                          </span>
                         )}
                       </td>
                       <td className="px-2 py-1">{it.block ?? "-"}</td>

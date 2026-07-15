@@ -30,6 +30,9 @@ export interface ShipoutCartItem {
   remnantNo?:       string;
   // 현장직접출고 탭에서 담긴 자재 (사무실 선별 없이 즉시 담음) — 감사 태그
   adHocFromField?:  boolean;
+  // I1: 현장직접출고로 담을 때 원 자재의 사무실 선별 라벨 스냅샷.
+  // 출고 확정 시 ShipmentItem.originShipoutLabel 로 저장되어 사후 추적 가능.
+  originShipoutLabel?: string | null;
 }
 
 // 카트 변경 시마다 값이 바뀌는 "상태"와, 참조가 고정된 "동작"을 분리한다.

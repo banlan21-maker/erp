@@ -176,11 +176,15 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 원판(SteelPlan) 검증 ────────────────────────────────────────────────
+    // 원판별 원 shipoutLabel 스냅샷 (I1) — 트랜잭션 안에서 ShipmentItem 생성 시 사용
+    const shipoutLabelMap = new Map<string, string | null>();
     if (allSteelPlanIds.length > 0) {
       const targets = await prisma.steelPlan.findMany({
         where: { id: { in: allSteelPlanIds } },
-        select: { id: true, status: true, vesselCode: true, reservedFor: true },
+        // shipoutLabel: 사무실 선별 라벨 — 현장직접출고 원판일 경우 스냅샷으로 보존 (I1)
+        select: { id: true, status: true, vesselCode: true, reservedFor: true, shipoutLabel: true },
       });
+      for (const t of targets) shipoutLabelMap.set(t.id, t.shipoutLabel);
       if (targets.length !== allSteelPlanIds.length) {
         return NextResponse.json({ success: false, error: "존재하지 않는 원판이 포함되어 있습니다." }, { status: 400 });
       }
@@ -424,6 +428,9 @@ export async function POST(req: NextRequest) {
               heatNo:     heatNoText,
               manualHeatNo: item.manualHeatNo,
               adHocFromField: item.adHocFromField ?? false,
+              // 현장직접출고(adHocFromField=true)이고 원 자재가 사무실 선별(shipoutLabel)되어 있었다면
+              // 그 라벨을 스냅샷으로 보존 — 취소해도 유지되어 사후 추적 가능 (I1)
+              originShipoutLabel: item.adHocFromField ? (shipoutLabelMap.get(item.steelPlanId!) ?? null) : null,
             },
           });
 
