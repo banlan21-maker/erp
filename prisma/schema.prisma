@@ -1327,7 +1327,11 @@ model SteelPlanHeat {
   archivedAt    DateTime? // 아카이브(숨김) 시각 — 활성 목록서 제외, 아카이브 메뉴서 조회
   sourceFile    String? // 업로드 파일명
   uploadBatchNo String? // 업로드 배치번호 (YYMMDDHHMMSS, 같은 업로드끼리 공유)
-  autoCreatedFromShipment Boolean @default(false) // 출고 시 직접입력으로 자동 생성된 판번호
+  autoCreatedFromShipment    Boolean @default(false) // 출고 시 직접입력으로 자동 생성된 판번호
+  // I2 대응 (2026-07-15): 여유원재(SURPLUS) 절단완료 시 사양+heatNo 매칭 heat 가 없어
+  // 신규 생성된 판번호. 절단취소 시 원판(SURPLUS)이 IN_STOCK 으로 되살아나면 이 heat 는
+  // 실물이 없는 유령이 되므로 WAITING 복원 대신 완전 삭제.
+  autoCreatedFromSurplusCut  Boolean @default(false)
 
   // 외부 출고 시 어떤 ShipmentItem 에서 참조하는지 (SetNull 으로 출고취소 안전)
   shipmentItems ShipmentItem[]

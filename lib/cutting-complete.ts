@@ -140,11 +140,13 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
         data:  { status: "CUT", cutAt: log.endAt ?? new Date() },
       });
     } else {
+      // I2: SURPLUS 절단으로 신규 생성되는 판번호 — 절단 취소 시 유령 heat 잔류 방지 마커
       await tx.steelPlanHeat.create({
         data: {
           heatNo: hn, vesselCode: effectiveVessel, material: mat,
           thickness: log.thickness, width: log.width, length: log.length,
           status: "CUT", cutAt: log.endAt ?? new Date(),
+          autoCreatedFromSurplusCut: true,
         },
       });
     }
@@ -285,14 +287,38 @@ export async function applyCuttingRestore(tx: Tx, log: RestoreLog): Promise<void
 
   // SteelPlanHeat 상태 복원 CUT → WAITING — effectiveVessel + spec 매칭 필수
   if (log.heatNo?.trim() && effectiveVesselForLog && log.material && log.thickness && log.width && log.length) {
+    const heatSpec = {
+      heatNo: log.heatNo.trim(),
+      status: "CUT" as const,
+      vesselCode: effectiveVesselForLog,
+      material: { equals: log.material.trim().toUpperCase(), mode: "insensitive" as const },
+      thickness: log.thickness, width: log.width, length: log.length,
+    };
+    // I2: SURPLUS 절단으로 신규 생성됐던 heat (autoCreatedFromSurplusCut=true) 는
+    //     실물이 SURPLUS 원판으로 되살아나므로 유령 잔류 방지 위해 완전 삭제.
+    //     단 (드물게) ShipmentItem 이 참조 중이면 안전을 위해 WAITING 복원 유지.
+    const surplusHeats = await tx.steelPlanHeat.findMany({
+      where: { ...heatSpec, autoCreatedFromSurplusCut: true },
+      select: { id: true },
+    });
+    if (surplusHeats.length > 0) {
+      const ids = surplusHeats.map(h => h.id);
+      const referenced = await tx.shipmentItem.findMany({
+        where: { steelPlanHeatId: { in: ids } },
+        select: { steelPlanHeatId: true },
+      });
+      const refSet = new Set(referenced.map(r => r.steelPlanHeatId).filter((x): x is string => !!x));
+      const safeIds    = ids.filter(id => !refSet.has(id));
+      const referredIds = ids.filter(id => refSet.has(id));
+      if (safeIds.length > 0)     await tx.steelPlanHeat.deleteMany({ where: { id: { in: safeIds } } });
+      if (referredIds.length > 0) await tx.steelPlanHeat.updateMany({
+        where: { id: { in: referredIds } },
+        data:  { status: "WAITING", cutAt: null },
+      });
+    }
+    // 일반 heat (autoCreatedFromSurplusCut=false) 는 그대로 WAITING 복원
     await tx.steelPlanHeat.updateMany({
-      where: {
-        heatNo: log.heatNo.trim(),
-        status: "CUT",
-        vesselCode: effectiveVesselForLog,
-        material: { equals: log.material.trim().toUpperCase(), mode: "insensitive" },
-        thickness: log.thickness, width: log.width, length: log.length,
-      },
+      where: { ...heatSpec, autoCreatedFromSurplusCut: false },
       data:  { status: "WAITING", cutAt: null },
     });
   }
