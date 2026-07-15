@@ -1274,7 +1274,15 @@ export default function SteelPlanMain() {
                   const blockedStatus   = selected.filter(r => r.status !== "RECEIVED").length;
                   const blockedReserved = selected.filter(r => r.status === "RECEIVED" && r.reservedFor).length;
                   if (eligible.length === 0) {
-                    alert("외부 출고 카트에 담을 수 있는 강재가 없습니다.\n(입고 상태 + 블록 미확정 강재만 가능)");
+                    // N10: 원인별 안내 — 사용자가 다음 액션을 알 수 있게
+                    const msgs: string[] = ["외부 출고 카트에 담을 수 있는 강재가 없습니다."];
+                    if (blockedReserved > 0) {
+                      msgs.push(`· 블록확정(절단용) ${blockedReserved}건 — 프로젝트에서 확정취소 후 시도하세요.`);
+                    }
+                    if (blockedStatus > 0) {
+                      msgs.push(`· 입고 전 상태 ${blockedStatus}건 — 먼저 [입고] 처리하세요.`);
+                    }
+                    alert(msgs.join("\n"));
                     return;
                   }
                   const result = shipoutCart.add(eligible.map(r => ({

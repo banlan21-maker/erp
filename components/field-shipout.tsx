@@ -292,8 +292,15 @@ function AddTab() {
           <div>
             <div className="text-xs font-semibold text-gray-400 mb-2 px-1">선별목록 일치 강재 {result.candidates?.length ?? 0}건 — 실물과 맞는 강재를 선택</div>
             {(result.candidates?.length ?? 0) === 0 ? (
-              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-center text-sm text-gray-500">
-                일치하는 선별 강재가 없습니다.<br />사무실에서 먼저 선별(출고등록/강재매칭)했는지 확인하세요.
+              // N10: 사무실 선별 요구 흐름의 후보 없음 안내 — 대안 흐름 명시
+              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-sm text-gray-400 space-y-2">
+                <div className="text-center text-gray-500">일치하는 <b className="text-white">선별</b> 강재가 없습니다.</div>
+                <div className="text-[11px] leading-relaxed border-t border-gray-800 pt-2">
+                  가능한 이유:<br />
+                  · 사무실이 아직 선별하지 않았음 → 사무실에 <b>출고등록/강재매칭</b> 요청<br />
+                  · 자재가 블록확정(절단용)되어 있음 → 프로젝트에서 <b>확정취소</b> 필요<br />
+                  · 실제 재고 없음 → <b>[현장직접출고]</b> 탭에서 사양으로 재검색해보세요
+                </div>
               </div>
             ) : (
               <div className="space-y-2">
@@ -410,6 +417,9 @@ interface AdHocResult {
   candidates?: AdHocCandidate[];
   multiSpecCount?: number;   // I10: 같은 판번호가 여러 사양에 있으면 그 수
   otherSpecs?: AdHocSpec[];  // I10: 대표 사양 외 다른 사양들
+  // N10: 후보 0건일 때 원인 카운트
+  reservedCount?: number;    // 사양 매칭 자재 중 블록확정 상태
+  notReceivedCount?: number; // 사양 매칭 자재 중 미입고/투입/절단/외부
 }
 
 function AdHocTab() {
@@ -627,9 +637,23 @@ function AdHocTab() {
               <span className="text-gray-600 font-normal ml-1">(사무실 선별 여부 무관)</span>
             </div>
             {(result.candidates?.length ?? 0) === 0 ? (
-              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-center text-sm text-gray-500">
-                일치하는 입고 자재가 없습니다.<br />강재전체목록에 이 사양의 [입고] 상태 자재가 있는지 확인하세요.
-              </div>
+              // N10: 후보 0건 원인 세분화 안내
+              (result.reservedCount ?? 0) > 0 ? (
+                <div className="bg-amber-950/60 border border-amber-800 rounded-2xl p-4 text-sm text-amber-200 space-y-1">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+                    <div>
+                      <b>실제 입고 자재는 있지만 사용 불가</b><br />
+                      이 사양의 자재 <b>{result.reservedCount}장</b>이 블록확정(절단용)되어 있어 외부출고 불가.<br />
+                      <span className="text-amber-300">프로젝트 → 블록강재리스트에서 확정취소 후 다시 시도하세요.</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-center text-sm text-gray-500">
+                  일치하는 입고 자재가 없습니다.<br />강재전체목록에 이 사양의 [입고] 상태 자재가 있는지 확인하세요.
+                </div>
+              )
             ) : (
               <div className="space-y-2">
                 {result.candidates!.map(c => {

@@ -60,6 +60,24 @@ async function findCandidatesBySpec(spec: {
   }));
 }
 
+// N10: 후보 0건일 때 원인 세분화 (사용자에게 정확한 다음 액션 제시)
+async function countExcludedBySpec(spec: {
+  vesselCode: string; material: string; thickness: number; width: number; length: number;
+}) {
+  const specWhere = {
+    vesselCode: spec.vesselCode,
+    material:   spec.material,
+    thickness: { gte: spec.thickness - TOL, lte: spec.thickness + TOL },
+    width:     { gte: spec.width - TOL,     lte: spec.width + TOL },
+    length:    { gte: spec.length - TOL,    lte: spec.length + TOL },
+  };
+  const [reserved, notReceived] = await Promise.all([
+    prisma.steelPlan.count({ where: { ...specWhere, status: "RECEIVED", reservedFor: { not: null } } }),
+    prisma.steelPlan.count({ where: { ...specWhere, status: { not: "RECEIVED" } } }),
+  ]);
+  return { reservedCount: reserved, notReceivedCount: notReceived };
+}
+
 export async function GET(req: NextRequest) {
   try {
     const sp = new URL(req.url).searchParams;
@@ -93,19 +111,19 @@ export async function GET(req: NextRequest) {
         `${h.vesselCode}|${h.material}|${h.thickness}|${h.width}|${h.length}`;
       const uniqueSpecs = Array.from(new Map(heats.map(h => [specKey(h), h])).values());
       const heat = heats[0];  // 대표 (가장 오래된)
-      const candidates = await findCandidatesBySpec({
+      const spec = {
         vesselCode: heat.vesselCode, material: heat.material,
         thickness: heat.thickness, width: heat.width, length: heat.length,
-      });
+      };
+      const candidates = await findCandidatesBySpec(spec);
+      // N10: 후보 0건일 때 원인 카운트 (사용자에게 정확한 액션 안내)
+      const excluded = candidates.length === 0 ? await countExcludedBySpec(spec) : { reservedCount: 0, notReceivedCount: 0 };
       return NextResponse.json({
         success: true,
         matched: true,
         heatNo,
         heatId: heat.id,
-        spec: {
-          vesselCode: heat.vesselCode, material: heat.material,
-          thickness: heat.thickness, width: heat.width, length: heat.length,
-        },
+        spec,
         candidates,
         // I10: 사양이 여러 개면 UI 가 "다른 사양으로도 등록된 동일 판번호 N건" 안내
         multiSpecCount: uniqueSpecs.length,
@@ -115,17 +133,23 @@ export async function GET(req: NextRequest) {
               thickness: h.thickness, width: h.width, length: h.length,
             }))
           : [],
+        // N10: 후보 0건 시 세부 원인
+        ...excluded,
       });
     }
 
     // ── (2) 사양 조회 모드 (판번호가 시스템에 없거나 신규일 때) ──
     if (vesselCode && material && Number.isFinite(t) && Number.isFinite(w) && Number.isFinite(l)) {
-      const candidates = await findCandidatesBySpec({ vesselCode, material, thickness: t, width: w, length: l });
+      const spec = { vesselCode, material, thickness: t, width: w, length: l };
+      const candidates = await findCandidatesBySpec(spec);
+      // N10: 후보 0건일 때 원인 세분화
+      const excluded = candidates.length === 0 ? await countExcludedBySpec(spec) : { reservedCount: 0, notReceivedCount: 0 };
       return NextResponse.json({
         success: true,
         matched: true,
-        spec: { vesselCode, material, thickness: t, width: w, length: l },
+        spec,
         candidates,
+        ...excluded,
       });
     }
 
