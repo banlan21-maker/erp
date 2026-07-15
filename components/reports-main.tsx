@@ -325,7 +325,7 @@ export default function ReportsMain({
         {/* 요약 카드 */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 no-print">
           {[
-            { label: "총 가동시간", value: formatDurationMs(totalDuration), color: "text-blue-700 bg-blue-50" },
+            { label: "실 가동시간", value: formatDurationMs(totalDuration), color: "text-blue-700 bg-blue-50" },
             { label: "총 수량",     value: `${totalQty.toLocaleString()}매`, color: "text-green-700 bg-green-50" },
             { label: "강재중량",    value: `${totalSteel.toLocaleString()}kg`, color: "text-orange-700 bg-orange-50" },
             { label: "사용중량",    value: `${totalUse.toLocaleString()}kg`,   color: "text-purple-700 bg-purple-50" },
@@ -611,7 +611,7 @@ const NORMAL_COLS = [
   { key: "operator",    label: "작업자",       align: "left"   as const, getVal: (l: CuttingLog) => l.operator },
   { key: "equipment",   label: "장비",         align: "left"   as const, getVal: (l: CuttingLog) => eqShort(l.equipment.name) },
   { key: "workDate",    label: "작업일",       align: "left"   as const, getVal: (l: CuttingLog) => formatDate(l.startAt) },
-  { key: "totalTime",   label: "총가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(durationMs(l.startAt, l.endAt)) },
+  { key: "totalTime",   label: "총가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(totalSpanMs(l.startAt, l.endAt, l.nightOffMs)) },
   { key: "pauseTime",   label: "중단시간",     align: "center" as const, getVal: (l: CuttingLog) => formatPauseMin(l.pauseMs) },
   { key: "activeTime",  label: "실가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(durationMs(l.startAt, l.endAt, l.pauseMs, l.nightOffMs)) },
   { key: "memo",        label: "비고",         align: "left"   as const, getVal: (l: CuttingLog) => l.memo ?? "" },
@@ -633,7 +633,7 @@ const URGENT_COLS = [
   { key: "steelWeight",   label: "중량(kg)",     align: "right"  as const, getVal: (l: CuttingLog) => l.steelWeight != null ? String(l.steelWeight) : "" },
   { key: "useWeight",     label: "사용중량(kg)", align: "right"  as const, getVal: (l: CuttingLog) => l.useWeight != null ? String(l.useWeight) : "" },
   { key: "workDate",      label: "작업일",       align: "left"   as const, getVal: (l: CuttingLog) => formatDate(l.startAt) },
-  { key: "totalTime",     label: "총가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(durationMs(l.startAt, l.endAt)) },
+  { key: "totalTime",     label: "총가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(totalSpanMs(l.startAt, l.endAt, l.nightOffMs)) },
   { key: "pauseTime",     label: "중단시간",     align: "center" as const, getVal: (l: CuttingLog) => formatPauseMin(l.pauseMs) },
   { key: "activeTime",    label: "실가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(durationMs(l.startAt, l.endAt, l.pauseMs, l.nightOffMs)) },
 ];

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncDrawingListBySpecs } from "@/lib/sync-drawing-spec";
+import { syncProjectStatus } from "@/lib/sync-project-status";
 
 // PATCH /api/drawings/[id] - 강재리스트 행 수정 또는 상태 변경
 export async function PATCH(
@@ -198,6 +199,10 @@ export async function DELETE(
         width:      current.width,
         length:     current.length,
       }]);
+
+      // I8: 마지막 미완료 도면 삭제로 블록의 모든 도면이 CUT 이 되면
+      //     Project.status 를 COMPLETED 로 자동 판정 (R5)
+      await syncProjectStatus(current.projectId);
     }
 
     return NextResponse.json({ success: true });

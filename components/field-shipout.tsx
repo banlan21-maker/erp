@@ -403,10 +403,13 @@ interface AdHocCandidate {
   shipoutHeatNo: string | null; shipoutLabel: string | null;
   shipoutMarkedAt: string | null;
 }
+interface AdHocSpec { vesselCode: string; material: string; thickness: number; width: number; length: number }
 interface AdHocResult {
   matched: boolean; reason?: string; heatNo?: string; heatId?: string;
-  spec?: { vesselCode: string; material: string; thickness: number; width: number; length: number };
+  spec?: AdHocSpec;
   candidates?: AdHocCandidate[];
+  multiSpecCount?: number;   // I10: 같은 판번호가 여러 사양에 있으면 그 수
+  otherSpecs?: AdHocSpec[];  // I10: 대표 사양 외 다른 사양들
 }
 
 function AdHocTab() {
@@ -484,6 +487,12 @@ function AdHocTab() {
     if (cart.has(c.id)) { alert("이미 카트에 담긴 강재입니다."); return; }
     const heatText = (result?.heatNo ?? heatNo).trim();
     if (!heatText) { alert("판번호를 먼저 입력하세요. (현장직접출고는 판번호 필수)"); return; }
+    // I6: 같은 판번호(다른 원판)를 카트에 이미 담았으면 사전 차단
+    // — 서버 POST 에서 최종 검증되지만 담기 시점에서 즉시 알림
+    if (cart.items.some(it => (it.prefilledHeatNo ?? "").trim() === heatText)) {
+      alert(`판번호 ${heatText} 는 이미 카트에 담긴 다른 자재에 사용됐습니다.`);
+      return;
+    }
     // I1: 사무실 선별된 자재는 담기 전 명시적 확인
     // shipoutMarkedAt 이 있으면 사무실이 특정 납품처용으로 골라둔 자재 — 조용히 가져가지 못하게
     if (c.shipoutMarkedAt) {
@@ -597,6 +606,19 @@ function AdHocTab() {
               <span><span className="text-gray-500">재질</span> <b className="text-white">{result.spec.material}</b></span>
               <span><span className="text-gray-500">규격</span> <b className="text-white font-mono">{fmtT(result.spec.thickness)}×{fmtL(result.spec.width)}×{fmtL(result.spec.length)}</b></span>
             </div>
+            {/* I10: 같은 판번호가 여러 사양에 등록된 경우 (수입재) 안내 */}
+            {(result.multiSpecCount ?? 0) > 1 && result.otherSpecs && result.otherSpecs.length > 0 && (
+              <div className="mt-2 pt-2 border-t border-cyan-800/40 text-[11px] text-amber-300">
+                ⚠ 같은 판번호 <b className="font-mono">{result.heatNo}</b> 가 <b>{result.multiSpecCount}개 사양</b>에 등록되어 있습니다. 실물이 위 사양이 아니면 아래 중 하나를 재검색하세요:
+                <ul className="mt-1 space-y-0.5">
+                  {result.otherSpecs.map((s, i) => (
+                    <li key={i} className="ml-2 font-mono">
+                      • {s.vesselCode} · {s.material} · {fmtT(s.thickness)}×{fmtL(s.width)}×{fmtL(s.length)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
 
           <div>

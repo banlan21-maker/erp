@@ -370,6 +370,12 @@ export async function applyCuttingRestore(tx: Tx, log: RestoreLog): Promise<void
         data:  { status: "IN_STOCK" },
       });
     }
+    // I9: 로그 삭제로 돌발작업이 다시 필요해지면 UrgentWork.status 를 PENDING 으로 복원.
+    //     COMPLETED 로 남아있으면 loadUrgentWorks(PENDING/IN_PROGRESS 만) 에서 사라져 재작업 불가.
+    await tx.urgentWork.updateMany({
+      where: { id: log.urgentWorkId, status: { in: ["IN_PROGRESS", "COMPLETED"] } },
+      data:  { status: "PENDING" },
+    });
   }
 
   // ── 통합 sync — DrawingList 복원 spec + SteelPlan 복원 spec ───────────

@@ -72,11 +72,14 @@ export async function GET(req: NextRequest) {
 
     // ── (1) 판번호 조회 모드 ──
     if (heatNo) {
-      const heat = await prisma.steelPlanHeat.findFirst({
+      // I10: 같은 heatNo 가 여러 사양(수입재 케이스)에 WAITING 으로 존재할 수 있음.
+      //      findFirst 로 첫 사양만 노출하면 사용자가 실물의 다른 사양을 못 찾음 →
+      //      전체 조회해서 사양이 여럿이면 응답에 다중 사양 목록 포함 (UI 안내용).
+      const heats = await prisma.steelPlanHeat.findMany({
         where: { heatNo, status: "WAITING" },
         orderBy: { createdAt: "asc" },
       });
-      if (!heat) {
+      if (heats.length === 0) {
         const exists = await prisma.steelPlanHeat.findFirst({ where: { heatNo }, select: { id: true } });
         return NextResponse.json({
           success: true,
@@ -85,6 +88,11 @@ export async function GET(req: NextRequest) {
           heatNo,
         });
       }
+      // 사양별 그룹핑 (호선/재질/두께/폭/길이 조합 unique)
+      const specKey = (h: typeof heats[number]) =>
+        `${h.vesselCode}|${h.material}|${h.thickness}|${h.width}|${h.length}`;
+      const uniqueSpecs = Array.from(new Map(heats.map(h => [specKey(h), h])).values());
+      const heat = heats[0];  // 대표 (가장 오래된)
       const candidates = await findCandidatesBySpec({
         vesselCode: heat.vesselCode, material: heat.material,
         thickness: heat.thickness, width: heat.width, length: heat.length,
@@ -99,6 +107,14 @@ export async function GET(req: NextRequest) {
           thickness: heat.thickness, width: heat.width, length: heat.length,
         },
         candidates,
+        // I10: 사양이 여러 개면 UI 가 "다른 사양으로도 등록된 동일 판번호 N건" 안내
+        multiSpecCount: uniqueSpecs.length,
+        otherSpecs: uniqueSpecs.length > 1
+          ? uniqueSpecs.slice(1).map(h => ({
+              vesselCode: h.vesselCode, material: h.material,
+              thickness: h.thickness, width: h.width, length: h.length,
+            }))
+          : [],
       });
     }
 
