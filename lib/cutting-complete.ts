@@ -271,6 +271,12 @@ export async function applyCuttingRestore(tx: Tx, log: RestoreLog): Promise<void
           data:  { status: "IN_STOCK" },
         });
       }
+      // N8: 이 도면 절단완료 시 applyCuttingComplete 가 발생 REGISTERED 잔재에 heatNo 를
+      //     전파했으므로, 취소 시에도 대칭적으로 heatNo 를 null 로 되돌려 스테일 데이터 방지.
+      await tx.remnant.updateMany({
+        where: { drawingListId: log.drawingListId, type: "REGISTERED" },
+        data:  { heatNo: null },
+      });
       const effectiveVessel = drawing.alternateVesselCode?.trim() || drawing.project.projectCode;
       drawingSyncSpec = {
         vesselCode: effectiveVessel,
