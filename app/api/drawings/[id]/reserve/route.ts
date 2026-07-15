@@ -99,10 +99,16 @@ export async function DELETE(
     const reservedFor = `${projectCode}/${block}`;
 
     // 신규 형식으로 확정된 판재 먼저 찾기, 없으면 구형 형식으로 찾기
+    // N19: orderBy 명시로 결정적 선택 (reserve-bulk 와 동일한 LIFO 정책)
     const steelPlan = await prisma.steelPlan.findFirst({
       where: { vesselCode: steelVesselCode, material, thickness, width, length, status: "RECEIVED", reservedFor },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      // N19: 해제된 강재를 사용자에게 안내하기 위한 정보 수집
+      select: { id: true, vesselCode: true, material: true, thickness: true, width: true, length: true, actualHeatNo: true },
     }) ?? await prisma.steelPlan.findFirst({
       where: { vesselCode: steelVesselCode, material, thickness, width, length, status: "RECEIVED", reservedFor: block },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { id: true, vesselCode: true, material: true, thickness: true, width: true, length: true, actualHeatNo: true },
     });
 
     if (!steelPlan) {
@@ -120,7 +126,19 @@ export async function DELETE(
     // 확정 해제 → 미예약 풀 증가, 동일 spec 다른 행 매칭 영향 → sync
     await syncDrawingListBySpec(steelVesselCode, material, thickness, width, length);
 
-    return NextResponse.json({ success: true });
+    // N19: 어느 강재가 해제됐는지 응답에 포함 (LIFO 선택이라 원한 판이 아닐 수 있음)
+    return NextResponse.json({
+      success: true,
+      released: {
+        id: steelPlan.id,
+        vesselCode: steelPlan.vesselCode,
+        material: steelPlan.material,
+        thickness: steelPlan.thickness,
+        width: steelPlan.width,
+        length: steelPlan.length,
+        heatNo: steelPlan.actualHeatNo,
+      },
+    });
   } catch (error) {
     console.error("[DELETE /api/drawings/[id]/reserve]", error);
     return NextResponse.json({ success: false, error: "확정 취소 중 오류가 발생했습니다." }, { status: 500 });

@@ -73,7 +73,9 @@ export async function PATCH(
       ...(body.status === "ISSUED" ? { issuedAt: new Date(), storageLocation: null, shipoutMarkedAt: null, shipoutHeatNo: null, shipoutLabel: null } : {}),
       // 출고 취소(RECEIVED로 되돌리기) 시 issuedAt 초기화
       ...(body.status === "RECEIVED" && body.cancelIssue ? { issuedAt: null } : {}),
-      ...(body.receivedAt !== undefined ? { receivedAt: body.receivedAt ? new Date(body.receivedAt) : null } : {}),
+      // N15: receivedAt 은 유효한 값일 때만 반영. status=RECEIVED + receivedAt=null 조합으로
+      //     '입고 상태인데 입고일 null' 이 되는 이상 상태 방지 (입고취소는 위 REGISTERED 분기가 처리).
+      ...(body.receivedAt ? { receivedAt: new Date(body.receivedAt) } : {}),
       ...(body.memo              !== undefined ? { memo:            body.memo }            : {}),
       ...(body.storageLocation   !== undefined ? { storageLocation: body.storageLocation } : {}),
     },
