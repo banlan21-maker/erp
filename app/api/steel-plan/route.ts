@@ -196,7 +196,7 @@ export async function POST(req: NextRequest) {
       .map((item) => ({
         vesselCode: item.vesselCode, material: item.material.trim().toUpperCase(),
         thickness: item.thickness,  width: item.width, length: item.length,
-        heatNo: item.heatNo!.trim(), sourceFile: item.sourceFile ?? null,
+        heatNo: item.heatNo!.trim().toUpperCase(), sourceFile: item.sourceFile ?? null,  // N22: 저장 시 대문자 정규화
         uploadBatchNo,
       }));
     if (heatData.length > 0) await tx.steelPlanHeat.createMany({ data: heatData });

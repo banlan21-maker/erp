@@ -241,7 +241,7 @@ export async function POST(request: NextRequest) {
       projectId:     projectId     || null,
       drawingListId: drawingListId || null,
       urgentWorkId:  urgentWorkId  || null,
-      heatNo:    heatNo?.trim()    || "",
+      heatNo:    heatNo?.trim().toUpperCase()    || "",   // N22: 저장 시 대문자 정규화
       material:  material?.trim()  || null,
       thickness: thickness != null ? Number(thickness) : null,
       width:     width     != null ? Number(width)     : null,

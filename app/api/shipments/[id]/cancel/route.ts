@@ -70,7 +70,14 @@ export async function POST(
               where: { id: sp.id },
               // I7: shipoutLabel 은 유지 (사무실이 '원래 어느 선별 작업 자재였는지' 추적 가능하게).
               //     shipoutHeatNo / shipoutMarkedAt 은 null — 자동 재선별 방지 (취소된 자재는 검토 후 재선별 필요)
-              data:  { status: SteelPlanStatus.RECEIVED, issuedAt: null, shipoutHeatNo: null, shipoutMarkedAt: null },
+              // N20: originStorageLocation 스냅샷이 있으면 storageLocation 로 복원 (원 위치 참고용, 물리 이동은 사용자 확인)
+              data:  {
+                status: SteelPlanStatus.RECEIVED,
+                issuedAt: null,
+                shipoutHeatNo: null,
+                shipoutMarkedAt: null,
+                ...(item.originStorageLocation ? { storageLocation: item.originStorageLocation } : {}),
+              },
             });
           } else if (sp) {
             restoreFailures.push(`원판(${item.steelPlanId}) 상태가 SHIPPED_OUT 가 아니라 복원 불가 (현재: ${sp?.status})`);

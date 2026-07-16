@@ -176,15 +176,20 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 원판(SteelPlan) 검증 ────────────────────────────────────────────────
-    // 원판별 원 shipoutLabel 스냅샷 (I1) — 트랜잭션 안에서 ShipmentItem 생성 시 사용
-    const shipoutLabelMap = new Map<string, string | null>();
+    // 원판별 원 shipoutLabel 스냅샷 (I1) + 원 storageLocation 스냅샷 (N20)
+    // — 트랜잭션 안에서 ShipmentItem 생성 시 사용
+    const shipoutLabelMap    = new Map<string, string | null>();
+    const storageLocationMap = new Map<string, string | null>();
     if (allSteelPlanIds.length > 0) {
       const targets = await prisma.steelPlan.findMany({
         where: { id: { in: allSteelPlanIds } },
-        // shipoutLabel: 사무실 선별 라벨 — 현장직접출고 원판일 경우 스냅샷으로 보존 (I1)
-        select: { id: true, status: true, vesselCode: true, reservedFor: true, shipoutLabel: true },
+        // shipoutLabel: 사무실 선별 라벨 (I1) / storageLocation: 원 보관위치 (N20)
+        select: { id: true, status: true, vesselCode: true, reservedFor: true, shipoutLabel: true, storageLocation: true },
       });
-      for (const t of targets) shipoutLabelMap.set(t.id, t.shipoutLabel);
+      for (const t of targets) {
+        shipoutLabelMap.set(t.id, t.shipoutLabel);
+        storageLocationMap.set(t.id, t.storageLocation);
+      }
       if (targets.length !== allSteelPlanIds.length) {
         return NextResponse.json({ success: false, error: "존재하지 않는 원판이 포함되어 있습니다." }, { status: 400 });
       }
@@ -302,7 +307,8 @@ export async function POST(req: NextRequest) {
         for (const item of v.items) {
           // ── 잔재 출고 — remnantId 로 ShipmentItem 생성, 잔재 소진(EXHAUSTED) + 선별마킹 정리 ──
           if (isRemnantItem(item)) {
-            const remHeatNo = (item.heatNo ?? "").trim() || null;
+            // N22: heatNo 저장 시 대문자 정규화 (조회는 이미 case-insensitive)
+            const remHeatNo = (item.heatNo ?? "").trim().toUpperCase() || null;
             await tx.shipmentItem.create({
               data: {
                 vehicleId:       vehicle.id,
@@ -336,7 +342,8 @@ export async function POST(req: NextRequest) {
           // ── 원판 출고 ── (기존 로직 그대로)
           // 판번호 처리
           let heatId: string | null = item.steelPlanHeatId ?? null;
-          const heatNoText = (item.heatNo ?? "").trim() || null;
+          // N22: heatNo 저장 시 대문자 정규화 (조회는 이미 case-insensitive)
+          const heatNoText = (item.heatNo ?? "").trim().toUpperCase() || null;
           if (heatNoText) {
             // 직접입력(manualHeatNo=true) — 같은 사양 + 판번호 일치하는 행이 이미 있는가
             if (item.manualHeatNo) {
@@ -431,6 +438,8 @@ export async function POST(req: NextRequest) {
               // 현장직접출고(adHocFromField=true)이고 원 자재가 사무실 선별(shipoutLabel)되어 있었다면
               // 그 라벨을 스냅샷으로 보존 — 취소해도 유지되어 사후 추적 가능 (I1)
               originShipoutLabel: item.adHocFromField ? (shipoutLabelMap.get(item.steelPlanId!) ?? null) : null,
+              // N20: 원 보관위치 스냅샷 — 취소 시 SteelPlan.storageLocation 로 복원
+              originStorageLocation: storageLocationMap.get(item.steelPlanId!) ?? null,
             },
           });
 

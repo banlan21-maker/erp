@@ -1431,6 +1431,10 @@ model ShipmentItem {
   // 그 라벨의 스냅샷. 출고 확정 후 SteelPlan.shipoutLabel 은 null 로 정리되어도
   // 이 스냅샷으로 "원래 어느 선별 작업 자재였는지" 추적 가능 (I1 대응, 2026-07-15)
   originShipoutLabel String?
+  // N20 대응 (2026-07-15): 출고 확정 시 원판 보관위치 스냅샷.
+  // 출고 후 SteelPlan.storageLocation 은 null 로 정리되지만, 취소 시 이 스냅샷으로 복원 가능
+  // (원판이 창고로 되돌아오면 원 위치 참고용, 물리 이동 가능성은 사용자 확인)
+  originStorageLocation String?
   remnantNo    String?  // 잔재 출고 시 잔재번호 스냅샷 (거래명세표 "잔재번호" 컬럼). 원판 출고면 null
 
   // 거래명세서 양식 — 사용자 수동 입력 (PDF 화면에서 인라인 편집)
