@@ -13,7 +13,8 @@
  */
 
 import { useRouter, usePathname } from "next/navigation";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { flushSync } from "react-dom";
 import { Printer, Search, FileDown, BarChart2, Zap, ClipboardList, ChevronRight, ChevronDown, Filter, XCircle, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input }  from "@/components/ui/input";
@@ -683,6 +684,36 @@ function useTableFilter(logs: CuttingLog[], cols: { key: string; getVal: (l: Cut
     return arr;
   }, [cascadedLogs, sortKey, sortDir, accessors]);
 
+  // ── 페이지네이션 (50행/페이지) ──────────────────────────────────────────
+  // 전체 행을 한 번에 렌더하면 느려져서 페이지 단위로 끊어 렌더.
+  // 단, 인쇄(window.print) 시에는 전체 행이 나와야 하므로 beforeprint 에서 일시적으로 전체 렌더.
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(1);
+  const [printAll, setPrintAll] = useState(false);
+
+  useEffect(() => { setPage(1); }, [filters, predicates, sortKey, sortDir, logs]);
+
+  useEffect(() => {
+    // flushSync — 인쇄 대화상자가 뜨기 전에 DOM 이 실제로 갱신되도록 강제
+    const before = () => flushSync(() => setPrintAll(true));
+    const after  = () => flushSync(() => setPrintAll(false));
+    window.addEventListener("beforeprint", before);
+    window.addEventListener("afterprint",  after);
+    return () => {
+      window.removeEventListener("beforeprint", before);
+      window.removeEventListener("afterprint",  after);
+    };
+  }, []);
+
+  const totalPages = Math.max(1, Math.ceil(filteredLogs.length / PAGE_SIZE));
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
+
+  // 실제 렌더할 행 — 합계는 filteredLogs(전체) 기준이므로 영향 없음
+  const rows = useMemo(
+    () => (printAll ? filteredLogs : filteredLogs.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)),
+    [filteredLogs, page, printAll],
+  );
+
   const filterCount =
     Object.keys(filters).length +
     Object.values(predicates).filter(p => p && (p.op === "empty" || p.op === "notEmpty" || p.val.length > 0)).length;
@@ -711,7 +742,36 @@ function useTableFilter(logs: CuttingLog[], cols: { key: string; getVal: (l: Cut
     filters, predicates, openCol, anchorEl, filteredLogs, filterCount,
     allValues, handleFilterChange, handleFilterOpen, handleFilterClose, resetAllFilters,
     sortKey, sortDir, handleSortFor, setPredicateFor,
+    rows, page, setPage, totalPages, pageSize: PAGE_SIZE,
   };
+}
+
+// ─── 상세 테이블 페이지네이션 (작업일보관리와 동일 형식, 인쇄 시 숨김) ──────────
+function DetailPagination({ page, totalPages, total, pageSize, onPage }: {
+  page: number; totalPages: number; total: number; pageSize: number; onPage: (p: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+  // 현재 페이지 주변으로 최대 10개 버튼 (페이지가 많아도 이동 가능하도록 윈도잉)
+  const start = Math.max(1, Math.min(page - 4, totalPages - 9));
+  const nums  = Array.from({ length: Math.min(10, totalPages) }, (_, i) => start + i);
+  return (
+    <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-gray-50 no-print">
+      <span className="text-xs text-gray-500">
+        {total}건 중 {(page - 1) * pageSize + 1}~{Math.min(page * pageSize, total)}번째
+      </span>
+      <div className="flex items-center gap-1">
+        <button onClick={() => onPage(Math.max(1, page - 1))} disabled={page === 1}
+          className="px-2.5 py-1 text-xs rounded border border-gray-200 disabled:opacity-40 hover:bg-white transition-colors">이전</button>
+        {nums.map(p => (
+          <button key={p} onClick={() => onPage(p)}
+            className={`px-2.5 py-1 text-xs rounded border transition-colors ${page === p ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 hover:bg-white"}`}>{p}</button>
+        ))}
+        {nums[nums.length - 1] < totalPages && <span className="text-xs text-gray-400">... {totalPages}p</span>}
+        <button onClick={() => onPage(Math.min(totalPages, page + 1))} disabled={page === totalPages}
+          className="px-2.5 py-1 text-xs rounded border border-gray-200 disabled:opacity-40 hover:bg-white transition-colors">다음</button>
+      </div>
+    </div>
+  );
 }
 
 // ─── 정규작업 탭: Heat NO + 폭×길이 + 수량 + 작업시간 + 특이사항 ──────────────
@@ -720,6 +780,7 @@ function NormalDetailTable({ logs }: { logs: CuttingLog[] }) {
     filters, predicates, openCol, anchorEl, filteredLogs, filterCount,
     allValues, handleFilterChange, handleFilterOpen, handleFilterClose, resetAllFilters,
     sortKey, sortDir, handleSortFor, setPredicateFor,
+    rows, page, setPage, totalPages, pageSize,
   } = useTableFilter(logs, NORMAL_COLS);
 
   const totalQty   = filteredLogs.length;
@@ -781,7 +842,7 @@ function NormalDetailTable({ logs }: { logs: CuttingLog[] }) {
         </tr>
       </thead>
       <tbody className="divide-y">
-        {filteredLogs.map((log) => {
+        {rows.map((log) => {
           const totMs  = totalSpanMs(log.startAt, log.endAt, log.nightOffMs);
           const actMs  = durationMs(log.startAt, log.endAt, log.pauseMs, log.nightOffMs);
           return (
@@ -815,6 +876,7 @@ function NormalDetailTable({ logs }: { logs: CuttingLog[] }) {
       </tbody>
       <TotalFootNormal totalQty={totalQty} totalSteel={totalSteel} totalUse={totalUse} totalMs={totalMs} count={filteredLogs.length} />
     </table>
+    <DetailPagination page={page} totalPages={totalPages} total={filteredLogs.length} pageSize={pageSize} onPage={setPage} />
     </div>
   );
 }
@@ -825,6 +887,7 @@ function UrgentDetailTable({ logs }: { logs: CuttingLog[] }) {
     filters, predicates, openCol, anchorEl, filteredLogs, filterCount,
     allValues, handleFilterChange, handleFilterOpen, handleFilterClose, resetAllFilters,
     sortKey, sortDir, handleSortFor, setPredicateFor,
+    rows, page, setPage, totalPages, pageSize,
   } = useTableFilter(logs, URGENT_COLS);
 
   const totalQty   = filteredLogs.length;
@@ -886,7 +949,7 @@ function UrgentDetailTable({ logs }: { logs: CuttingLog[] }) {
         </tr>
       </thead>
       <tbody className="divide-y">
-        {filteredLogs.map((log) => {
+        {rows.map((log) => {
           const totMs  = totalSpanMs(log.startAt, log.endAt, log.nightOffMs);
           const actMs  = durationMs(log.startAt, log.endAt, log.pauseMs, log.nightOffMs);
           return (
@@ -926,6 +989,7 @@ function UrgentDetailTable({ logs }: { logs: CuttingLog[] }) {
       </tbody>
       <TotalFootUrgent totalQty={totalQty} totalSteel={totalSteel} totalUse={totalUse} totalMs={totalMs} count={filteredLogs.length} />
     </table>
+    <DetailPagination page={page} totalPages={totalPages} total={filteredLogs.length} pageSize={pageSize} onPage={setPage} />
     </div>
   );
 }
