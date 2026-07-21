@@ -17,27 +17,29 @@ export async function GET(request: NextRequest) {
 
     // 전체 프로젝트 확정 목록 (projectId 불필요) — 검색-우선: 호선/블록/재질/두께/폭/길이 서버 필터(모두 선택)
     if (allConfirmed) {
-      const sVessel = searchParams.get("vesselCode")?.trim();
-      const sBlock  = searchParams.get("block")?.trim();
-      const sMat    = searchParams.get("material")?.trim();
-      const sThk    = searchParams.get("thickness");
-      const sWidth  = searchParams.get("width");
-      const sLength = searchParams.get("length");
-      const numOr = (v: string | null) => (v && !isNaN(Number(v)) ? Number(v) : undefined);
-      const w = numOr(sWidth), l = numOr(sLength);
-      // 폭·길이는 화면에 배정잔재 치수(width1/length1)가 우선 표시되므로, 검색도 원판 OR 잔재치수를 매칭
-      // (그래야 사용자가 화면에 보이는 값으로 검색했을 때 그 행이 잡힘). 여러 조건은 AND 로 합성.
-      const dimAnd: object[] = [];
-      if (w !== undefined) dimAnd.push({ OR: [{ width:  w }, { assignedRemnant: { width1:  w } }] });
-      if (l !== undefined) dimAnd.push({ OR: [{ length: l }, { assignedRemnant: { length1: l } }] });
+      // 각 칸은 쉼표(또는 공백)로 여러 값 → 그 칸 안에서는 OR, 칸끼리는 AND.
+      const splitTxt = (v: string | null) => (v ?? "").split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
+      const splitNum = (v: string | null) => splitTxt(v).map(Number).filter(n => !isNaN(n));
+      const vessels = splitTxt(searchParams.get("vesselCode"));
+      const blocks  = splitTxt(searchParams.get("block"));
+      const mats    = splitTxt(searchParams.get("material"));
+      const thks    = splitNum(searchParams.get("thickness"));
+      const widths  = splitNum(searchParams.get("width"));
+      const lengths = splitNum(searchParams.get("length"));
+
+      // 폭·길이는 화면에 배정잔재 치수(width1/length1)가 우선 표시되므로 원판 OR 잔재치수를 함께 매칭.
+      const AND: object[] = [];
+      if (vessels.length) AND.push({ OR: vessels.map(v => ({ project: { projectCode: { contains: v, mode: "insensitive" as const } } })) });
+      if (blocks.length)  AND.push({ OR: blocks.map(b  => ({ block:    { contains: b, mode: "insensitive" as const } })) });
+      if (mats.length)    AND.push({ OR: mats.map(m    => ({ material: { contains: m, mode: "insensitive" as const } })) });
+      if (thks.length)    AND.push({ thickness: { in: thks } });
+      if (widths.length)  AND.push({ OR: [{ width:  { in: widths } },  { assignedRemnant: { width1:  { in: widths } } }] });
+      if (lengths.length) AND.push({ OR: [{ length: { in: lengths } }, { assignedRemnant: { length1: { in: lengths } } }] });
+
       const drawings = await prisma.drawingList.findMany({
         where: {
           status: { in: ["WAITING", "CUT"] },
-          ...(sVessel ? { project: { projectCode: { contains: sVessel, mode: "insensitive" } } } : {}),
-          ...(sBlock  ? { block:    { contains: sBlock,  mode: "insensitive" } } : {}),
-          ...(sMat    ? { material: { contains: sMat,    mode: "insensitive" } } : {}),
-          ...(numOr(sThk) !== undefined ? { thickness: numOr(sThk) } : {}),
-          ...(dimAnd.length ? { AND: dimAnd } : {}),
+          ...(AND.length ? { AND } : {}),
         },
         include: {
           project:         { select: { id: true, projectCode: true, projectName: true } },

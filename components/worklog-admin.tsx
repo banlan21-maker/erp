@@ -1142,12 +1142,12 @@ export default function WorklogAdmin({
               <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="text-sm" />
             </div>
           </div>
-          <div><label className="block text-xs font-semibold text-gray-600 mb-1">호선</label><Input value={sVessel} onChange={e => setSVessel(e.target.value)} placeholder="호선" className="text-sm" onKeyDown={e => e.key === "Enter" && fetchData()} /></div>
-          <div><label className="block text-xs font-semibold text-gray-600 mb-1">블록</label><Input value={sBlock} onChange={e => setSBlock(e.target.value)} placeholder="블록" className="text-sm" onKeyDown={e => e.key === "Enter" && fetchData()} /></div>
-          <div><label className="block text-xs font-semibold text-gray-600 mb-1">재질</label><Input value={sMaterial} onChange={e => setSMaterial(e.target.value)} placeholder="재질" className="text-sm" onKeyDown={e => e.key === "Enter" && fetchData()} /></div>
-          <div><label className="block text-xs font-semibold text-gray-600 mb-1">두께</label><Input value={sThk} onChange={e => setSThk(e.target.value)} placeholder="두께" className="text-sm" onKeyDown={e => e.key === "Enter" && fetchData()} /></div>
-          <div><label className="block text-xs font-semibold text-gray-600 mb-1">폭</label><Input value={sWidth} onChange={e => setSWidth(e.target.value)} placeholder="폭" className="text-sm" onKeyDown={e => e.key === "Enter" && fetchData()} /></div>
-          <div><label className="block text-xs font-semibold text-gray-600 mb-1">길이</label><Input value={sLength} onChange={e => setSLength(e.target.value)} placeholder="길이" className="text-sm" onKeyDown={e => e.key === "Enter" && fetchData()} /></div>
+          <div><label className="block text-xs font-semibold text-gray-600 mb-1">호선</label><Input value={sVessel} onChange={e => setSVessel(e.target.value)} placeholder="여러개 쉼표" className="text-sm" onKeyDown={e => e.key === "Enter" && fetchData()} /></div>
+          <div><label className="block text-xs font-semibold text-gray-600 mb-1">블록</label><Input value={sBlock} onChange={e => setSBlock(e.target.value)} placeholder="여러개 쉼표" className="text-sm" onKeyDown={e => e.key === "Enter" && fetchData()} /></div>
+          <div><label className="block text-xs font-semibold text-gray-600 mb-1">재질</label><Input value={sMaterial} onChange={e => setSMaterial(e.target.value)} placeholder="여러개 쉼표" className="text-sm" onKeyDown={e => e.key === "Enter" && fetchData()} /></div>
+          <div><label className="block text-xs font-semibold text-gray-600 mb-1">두께</label><Input value={sThk} onChange={e => setSThk(e.target.value)} placeholder="예: 10,20,25" className="text-sm" onKeyDown={e => e.key === "Enter" && fetchData()} /></div>
+          <div><label className="block text-xs font-semibold text-gray-600 mb-1">폭</label><Input value={sWidth} onChange={e => setSWidth(e.target.value)} placeholder="여러개 쉼표" className="text-sm" onKeyDown={e => e.key === "Enter" && fetchData()} /></div>
+          <div><label className="block text-xs font-semibold text-gray-600 mb-1">길이</label><Input value={sLength} onChange={e => setSLength(e.target.value)} placeholder="여러개 쉼표" className="text-sm" onKeyDown={e => e.key === "Enter" && fetchData()} /></div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => fetchData()} disabled={loading}
@@ -1162,7 +1162,7 @@ export default function WorklogAdmin({
             className="inline-flex items-center gap-1 px-3 py-2 text-sm text-gray-400 hover:text-gray-600">
             <X size={13} /> 조건 초기화
           </button>
-          <span className="text-xs text-gray-400 ml-auto">호선·블록·재질은 부분검색, 여러 조건은 함께(AND) 적용됩니다.</span>
+          <span className="text-xs text-gray-400 ml-auto">한 칸에 <b>쉼표로 여러 값</b> 입력 = OR (예: 두께 <b>10,20,25</b>) · 칸끼리는 AND · 호선·블록·재질은 부분검색</span>
         </div>
       </div>
 
