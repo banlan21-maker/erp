@@ -557,7 +557,9 @@ function LogModal({
   const [form, setForm] = useState({
     equipmentId: log?.equipmentId ?? equipment[0]?.id ?? "",
     operator:    log?.operator ?? "",
-    heatNo:      log?.heatNo ?? drawing?.heatNo ?? "",
+    // 추가(add)모드는 판번호를 목록 선택으로만 채움(프리필 안 함) — select(selectedHeatId)과 heatNo 불일치 방지.
+    // 수정(edit)모드는 기존 값 표시(잠금).
+    heatNo:      log?.heatNo ?? "",
     selectedHeatId: "" as string, // 목록에서 고른 판번호(SteelPlanHeat) id — 정확 소진용
     startAt:     toLocalDatetimeValue(log?.startAt ?? new Date().toISOString()),
     endAt:       toLocalDatetimeValue(log?.endAt ?? null),

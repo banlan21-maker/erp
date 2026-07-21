@@ -102,8 +102,9 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
   const effectiveVessel = targetDrawing?.alternateVesselCode?.trim() || project?.projectCode;
   // 잔재(등록/현장/여유) 사용 절단은 정규원재(SteelPlan/SteelPlanHeat)를 건드리지 않음 — 여유원재는 아래 전용 블록에서 처리
   if (!targetDrawing?.assignedRemnantId) {
+    let consumedHeatId: string | null = null;
+    // ★ P1: 현장에서 목록에서 고른 바로 그 판번호(재고 id)를 정확히 소진 — 글자대조 없음(타호선·오타·중복 무관).
     if (log.selectedHeatId) {
-      // ★ P1: 현장에서 목록에서 고른 바로 그 판번호(재고 id)를 정확히 소진 — 글자대조 없음(타호선·오타·중복 무관).
       const picked = await tx.steelPlanHeat.findFirst({
         where: { id: log.selectedHeatId, status: "WAITING" },
         select: { id: true },
@@ -113,10 +114,12 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
           where: { id: picked.id },
           data:  { status: "CUT", cutAt: log.endAt ?? new Date() },
         });
+        consumedHeatId = picked.id;
       }
-    } else if (log.drawingNo && log.heatNo?.trim() && effectiveVessel && log.material && log.thickness && log.width && log.length) {
-      // 폴백(레거시/직접입력) — selectedHeatId 없을 때만 heatNo+사양 매칭.
-      // N3: 수입재 다판 케이스에서 findFirst(WAITING, createdAt asc) 로 오래된 1건만 CUT.
+    }
+    // 폴백 — selectedHeatId 가 없거나(레거시/직접입력) 이미 소진돼 충돌한 경우(수입재 다판 동시절단)
+    // heatNo+사양 로 남은 WAITING 형제 1장을 소진. (if/else 아님 — selected 충돌 시에도 반드시 형제 소진)
+    if (!consumedHeatId && log.drawingNo && log.heatNo?.trim() && effectiveVessel && log.material && log.thickness && log.width && log.length) {
       const heatMatch = await tx.steelPlanHeat.findFirst({
         where: {
           heatNo: log.heatNo.trim(),
@@ -133,7 +136,12 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
           where: { id: heatMatch.id },
           data:  { status: "CUT", cutAt: log.endAt ?? new Date() },
         });
+        consumedHeatId = heatMatch.id;
       }
+    }
+    // 실제 소진한 판 id 를 로그에 기록 — 복원 시 그 판을 정확히 되돌리기 위함(selectedHeatId 는 '의도', consumedHeatId 는 '실제').
+    if (consumedHeatId) {
+      await tx.cuttingLog.update({ where: { id: log.id }, data: { consumedHeatId } });
     }
   }
 
@@ -248,7 +256,7 @@ interface RestoreLog {
   drawingNo: string | null;
   projectId: string | null;
   heatNo: string | null;
-  selectedHeatId: string | null;
+  consumedHeatId: string | null;
   material: string | null;
   thickness: number | null;
   width: number | null;
@@ -316,52 +324,63 @@ export async function applyCuttingRestore(tx: Tx, log: RestoreLog): Promise<void
     }
   }
 
-  // ★ P1: 완료 때 selectedHeatId 로 정확히 소진했으면, 복원도 그 판을 정확히 되돌림 (CUT → WAITING).
-  let restoredBySelectedHeat = false;
-  if (log.selectedHeatId) {
+  // ── SteelPlanHeat 복원 CUT → WAITING ─────────────────────────────────
+  // ★ (1) 정확 복원: 완료 때 '실제로' 소진한 판(consumedHeatId)만 되돌림 — 타 로그가 소진한 형제 판은 절대 안 건드림.
+  let restoredHeat = false;
+  if (log.consumedHeatId) {
     const r = await tx.steelPlanHeat.updateMany({
-      where: { id: log.selectedHeatId, status: "CUT" },
+      where: { id: log.consumedHeatId, status: "CUT" },
       data:  { status: "WAITING", cutAt: null },
     });
-    if (r.count > 0) restoredBySelectedHeat = true;
+    if (r.count > 0) restoredHeat = true;
   }
 
-  // SteelPlanHeat 상태 복원 CUT → WAITING — effectiveVessel + spec 매칭 (selectedHeatId 로 복원됐으면 스킵)
-  if (!restoredBySelectedHeat && log.heatNo?.trim() && effectiveVesselForLog && log.material && log.thickness && log.width && log.length) {
+  // (2) 폴백: consumedHeatId 없는 레거시 로그·여유원재. heatNo+사양 매칭하되
+  //     (a) 다른 로그가 정확 소진(consumedHeatId)한 판은 제외, (b) 여러 장 일괄 아닌 1장만 복원(과다복원 방지).
+  if (!restoredHeat && log.heatNo?.trim() && effectiveVesselForLog && log.material && log.thickness && log.width && log.length) {
+    const others = await tx.cuttingLog.findMany({
+      where: { id: { not: log.id }, consumedHeatId: { not: null } },
+      select: { consumedHeatId: true },
+    });
+    const excludeIds = others.map(o => o.consumedHeatId).filter((x): x is string => !!x);
     const heatSpec = {
       heatNo: log.heatNo.trim(),
       status: "CUT" as const,
       vesselCode: effectiveVesselForLog,
       material: { equals: log.material.trim().toUpperCase(), mode: "insensitive" as const },
       thickness: log.thickness, width: log.width, length: log.length,
+      ...(excludeIds.length > 0 ? { id: { notIn: excludeIds } } : {}),
     };
-    // I2: SURPLUS 절단으로 신규 생성됐던 heat (autoCreatedFromSurplusCut=true) 는
-    //     실물이 SURPLUS 원판으로 되살아나므로 유령 잔류 방지 위해 완전 삭제.
-    //     단 (드물게) ShipmentItem 이 참조 중이면 안전을 위해 WAITING 복원 유지.
-    const surplusHeats = await tx.steelPlanHeat.findMany({
+    // I2: SURPLUS 절단으로 신규 생성됐던 heat (autoCreatedFromSurplusCut=true) 는 실물이 SURPLUS 원판으로
+    //     되살아나므로 삭제(참조 있으면 WAITING 복원). 1장만.
+    const surplusHeat = await tx.steelPlanHeat.findFirst({
       where: { ...heatSpec, autoCreatedFromSurplusCut: true },
+      orderBy: { createdAt: "desc" },
       select: { id: true },
     });
-    if (surplusHeats.length > 0) {
-      const ids = surplusHeats.map(h => h.id);
-      const referenced = await tx.shipmentItem.findMany({
-        where: { steelPlanHeatId: { in: ids } },
-        select: { steelPlanHeatId: true },
+    if (surplusHeat) {
+      const referenced = await tx.shipmentItem.findFirst({
+        where: { steelPlanHeatId: surplusHeat.id },
+        select: { id: true },
       });
-      const refSet = new Set(referenced.map(r => r.steelPlanHeatId).filter((x): x is string => !!x));
-      const safeIds    = ids.filter(id => !refSet.has(id));
-      const referredIds = ids.filter(id => refSet.has(id));
-      if (safeIds.length > 0)     await tx.steelPlanHeat.deleteMany({ where: { id: { in: safeIds } } });
-      if (referredIds.length > 0) await tx.steelPlanHeat.updateMany({
-        where: { id: { in: referredIds } },
-        data:  { status: "WAITING", cutAt: null },
-      });
+      if (referenced) {
+        await tx.steelPlanHeat.update({ where: { id: surplusHeat.id }, data: { status: "WAITING", cutAt: null } });
+      } else {
+        await tx.steelPlanHeat.delete({ where: { id: surplusHeat.id } });
+      }
+      restoredHeat = true;
     }
-    // 일반 heat (autoCreatedFromSurplusCut=false) 는 그대로 WAITING 복원
-    await tx.steelPlanHeat.updateMany({
-      where: { ...heatSpec, autoCreatedFromSurplusCut: false },
-      data:  { status: "WAITING", cutAt: null },
-    });
+    // 일반 heat (autoCreatedFromSurplusCut=false) — 1장만 복원
+    if (!restoredHeat) {
+      const one = await tx.steelPlanHeat.findFirst({
+        where: { ...heatSpec, autoCreatedFromSurplusCut: false },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      });
+      if (one) {
+        await tx.steelPlanHeat.update({ where: { id: one.id }, data: { status: "WAITING", cutAt: null } });
+      }
+    }
   }
 
   // ── SteelPlan 복원: 이 작업으로 COMPLETED 됐던 강재 → RECEIVED ──────────

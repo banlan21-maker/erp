@@ -350,9 +350,12 @@ model CuttingLog {
   drawingList   DrawingList? @relation(fields: [drawingListId], references: [id], onDelete: SetNull)
 
   heatNo    String // Heat NO (필수)
-  // 현장에서 목록에서 고른 판번호(SteelPlanHeat)의 id — 절단완료 시 글자대조 없이 이 판을 정확히 소진.
+  // 현장에서 목록에서 고른 판번호(SteelPlanHeat)의 id — '의도'. 절단완료 시 글자대조 없이 이 판을 정확히 소진.
   // FK 미설정(소프트 참조): 판번호는 heatNo 중복 가능·아카이브/삭제될 수 있어 느슨하게 보관. 없으면 heatNo 매칭 폴백(레거시/여유원재).
   selectedHeatId String?
+  // 절단완료 시 '실제로' 소진한 판번호(SteelPlanHeat) id — 복원 시 그 판을 정확히 되돌리는 근거.
+  // selectedHeatId(의도)와 다를 수 있음: 수입재 다판 동시절단으로 selected 충돌 시 heatNo 폴백으로 형제 판을 소진하면 그 id가 기록됨.
+  consumedHeatId String?
   material  String? // 재질 (도면에서 자동입력)
   thickness Float? // 두께 (도면에서 자동입력)
   width     Float? // 폭 (도면에서 자동입력)
