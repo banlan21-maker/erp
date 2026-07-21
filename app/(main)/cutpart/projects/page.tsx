@@ -6,11 +6,15 @@ import ProjectsMain from "@/components/projects-main";
 export default async function ProjectsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; projectId?: string }>;
+  searchParams: Promise<{ tab?: string; projectId?: string; view?: string }>;
 }) {
-  const { tab: rawTab = "vessels", projectId } = await searchParams;
-  // upload·remnants 탭은 제거됨 — vessels로 폴백 (remnants는 잔재관리 메뉴로 이동)
-  const tab = (rawTab === "upload" || rawTab === "remnants") ? "vessels" : rawTab;
+  const { tab: rawTab = "vessels", projectId, view: rawView } = await searchParams;
+  // 재설계: 탭은 vessels(호선/블록) + pdf 만. 옛 list/bom 탭 링크는 vessels + view 로 매핑(하위호환).
+  let tab = rawTab;
+  let view = rawView === "bom" ? "bom" : "list";
+  if (rawTab === "list") { tab = "vessels"; view = rawView ? view : "list"; }
+  else if (rawTab === "bom") { tab = "vessels"; view = "bom"; }
+  else if (rawTab === "upload" || rawTab === "remnants") tab = "vessels";
 
   const projects = await prisma.project.findMany({
     orderBy: [{ projectCode: "asc" }, { projectName: "asc" }],
@@ -86,37 +90,40 @@ export default async function ProjectsPage({
   let drawings: Awaited<ReturnType<typeof prisma.drawingList.findMany>> = [];
   let activeProject: { id: string; projectCode: string; projectName: string; storageLocation: string | null } | null = null;
 
-  if ((tab === "list" || tab === "bom") && projectId) {
+  if (tab === "vessels" && projectId) {
     const proj = await prisma.project.findUnique({
       where: { id: projectId },
       select: { id: true, projectCode: true, projectName: true, storageLocation: true },
     });
     if (proj) {
-      // 잔재 사용 도면의 type/사이즈/번호 등을 SSR 단에서 함께 fetch — 클라이언트 추가 fetch 불필요
-      drawings = await prisma.drawingList.findMany({
-        where: { projectId },
-        orderBy: { createdAt: "asc" },
-        include: {
-          assignedRemnant: {
-            select: {
-              id: true, remnantNo: true, type: true, shape: true,
-              width1: true, length1: true, width2: true, length2: true, weight: true,
-            },
-          },
-        },
-      });
       activeProject = {
         id: proj.id,
         projectCode: proj.projectCode,
         projectName: proj.projectName,
         storageLocation: proj.storageLocation ?? null,
       };
+      // 강재리스트 뷰일 때만 도면 로드 (BOM 뷰는 자체 fetch). 잔재 정보 SSR 동시 fetch.
+      if (view === "list") {
+        drawings = await prisma.drawingList.findMany({
+          where: { projectId },
+          orderBy: { createdAt: "asc" },
+          include: {
+            assignedRemnant: {
+              select: {
+                id: true, remnantNo: true, type: true, shape: true,
+                width1: true, length1: true, width2: true, length2: true, weight: true,
+              },
+            },
+          },
+        });
+      }
     }
   }
 
   return (
     <ProjectsMain
       tab={tab}
+      view={view}
       vessels={vessels}
       projectOptions={projectOptions}
       recentUploads={recentUploads}
