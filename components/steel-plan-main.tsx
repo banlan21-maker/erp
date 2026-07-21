@@ -213,6 +213,18 @@ export default function SteelPlanMain() {
   const [heatFilterAnchorEl, setHeatFilterAnchorEl] = useState<HTMLElement | null>(null);
   const [heatDistinctValues, setHeatDistinctValues] = useState<Record<string, FilterValue[]>>({});
 
+  // 검색-우선(판번호 탭): 진입 시 자동로드 없음. 판번호/호선/재질 부분검색, 두께/폭/길이 정확 in.
+  const [heatQueried, setHeatQueried] = useState(false);
+  const [hHeatNo,   setHHeatNo]   = useState("");
+  const [hVessel,   setHVessel]   = useState("");
+  const [hMaterial, setHMaterial] = useState("");
+  const [hThk,      setHThk]      = useState("");
+  const [hWidth,    setHWidth]    = useState("");
+  const [hLength,   setHLength]   = useState("");
+  const [appliedHeatNo,       setAppliedHeatNo]       = useState("");
+  const [appliedHeatVessel,   setAppliedHeatVessel]   = useState("");
+  const [appliedHeatMaterial, setAppliedHeatMaterial] = useState("");
+
   /* ── 일괄 입고 모달 ── */
   const emptyBulkRow = (): BulkRow => ({ vesselCode: "", material: "", thickness: "", width: "", length: "", qty: "1", storageLocation: "" });
   const [showBulkReceive, setShowBulkReceive]   = useState(false);
@@ -328,6 +340,9 @@ export default function SteelPlanMain() {
     if (cf.heatNo?.length)        p.set("heatNos",        cf.heatNo.join(","));
     if (cf.status?.length)        p.set("statuses",       cf.status.join(","));
     if (cf.uploadBatchNo?.length) p.set("uploadBatchNos", cf.uploadBatchNo.join(","));
+    if (appliedHeatNo)       p.set("heatNoSearch",   appliedHeatNo);
+    if (appliedHeatVessel)   p.set("vesselSearch",   appliedHeatVessel);
+    if (appliedHeatMaterial) p.set("materialSearch", appliedHeatMaterial);
     const res = await fetch(`/api/steel-plan/heat?${p}`);
     if (res.ok) {
       const json = await res.json();
@@ -336,11 +351,29 @@ export default function SteelPlanMain() {
       setHeatTotalPages(json.totalPages);
     }
     setHeatLoading(false);
-  }, [heatSearch, heatPage, heatColFilters]);
+  }, [heatSearch, heatPage, heatColFilters, appliedHeatNo, appliedHeatVessel, appliedHeatMaterial]);
+
+  // 판번호 검색: 판번호/호선/재질은 부분검색 파라미터, 두께/폭/길이는 heatColFilters(정확 in). 각 칸 쉼표=OR.
+  const runHeatSearch = () => {
+    const splitTxt = (v: string) => v.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
+    const badNum = ([["두께", hThk], ["폭", hWidth], ["길이", hLength]] as const)
+      .find(([, v]) => v.trim() && splitTxt(v).some((t) => isNaN(Number(t))));
+    if (badNum) { alert(`${badNum[0]}에는 숫자만 입력하세요(여러 개는 쉼표). 예: 10,20,25`); return; }
+    const cf: Record<string, string[]> = {};
+    const ts = splitTxt(hThk);    if (ts.length) cf.thickness = ts;
+    const ws = splitTxt(hWidth);  if (ws.length) cf.width     = ws;
+    const ls = splitTxt(hLength); if (ls.length) cf.length    = ls;
+    setAppliedHeatNo(splitTxt(hHeatNo).join(","));
+    setAppliedHeatVessel(splitTxt(hVessel).join(","));
+    setAppliedHeatMaterial(splitTxt(hMaterial).join(","));
+    setHeatColFilters(cf); setHeatPage(1); setHeatQueried(true);
+  };
+  const runHeatSearchAll = () => { setAppliedHeatNo(""); setAppliedHeatVessel(""); setAppliedHeatMaterial(""); setHeatColFilters({}); setHeatPage(1); setHeatQueried(true); };
+  const resetHeatSearchFields = () => { setHHeatNo(""); setHVessel(""); setHMaterial(""); setHThk(""); setHWidth(""); setHLength(""); };
 
   useEffect(() => { if (queried) loadDistinct(); }, [loadDistinct, queried]);
   useEffect(() => { if (queried) loadPlan(); }, [loadPlan, queried]);
-  useEffect(() => { if (tab === "heatno") { loadHeatDistinct(); loadHeat(); } }, [tab, loadHeatDistinct, loadHeat]);
+  useEffect(() => { if (tab === "heatno" && heatQueried) { loadHeatDistinct(); loadHeat(); } }, [tab, loadHeatDistinct, loadHeat, heatQueried]);
 
   /* ── 엑셀 다운로드 ── */
   const [excelLoading, setExcelLoading] = useState<"none" | "plan-all" | "plan-current" | "heat-all" | "heat-current">("none");
@@ -720,7 +753,7 @@ export default function SteelPlanMain() {
   /* ── 새로고침: 작업일보 기준 강재 상태 자동 동기화 ── */
   const syncAndRefresh = async () => {
     setLoading(true);
-    setQueried(true); // 헤더에서 직접 실행 시(미조회 상태) 결과가 게이트에 가려지지 않게
+    setQueried(true); setHeatQueried(true); // 헤더에서 직접 실행 시(미조회 상태) 결과가 게이트에 가려지지 않게
     // 작업일보(CuttingLog)와 불일치하는 강재·판번호 상태를 자동 복원
     await fetch("/api/steel-plan/sync", { method: "POST" });
     // 동기화 후 최신 데이터 로드
@@ -1677,6 +1710,33 @@ export default function SteelPlanMain() {
       {/* ── 판번호 리스트 탭 ── */}
       {tab === "heatno" && (
         <>
+          {/* 검색 패널 (검색-우선) */}
+          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+              <div><label className="block text-xs font-semibold text-gray-600 mb-1">판번호</label><input value={hHeatNo} onChange={e => setHHeatNo(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runHeatSearch()} /></div>
+              <div><label className="block text-xs font-semibold text-gray-600 mb-1">호선</label><input value={hVessel} onChange={e => setHVessel(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runHeatSearch()} /></div>
+              <div><label className="block text-xs font-semibold text-gray-600 mb-1">재질</label><input value={hMaterial} onChange={e => setHMaterial(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runHeatSearch()} /></div>
+              <div><label className="block text-xs font-semibold text-gray-600 mb-1">두께</label><input value={hThk} onChange={e => setHThk(e.target.value)} placeholder="예: 10,20,25" className={inputCls} onKeyDown={e => e.key === "Enter" && runHeatSearch()} /></div>
+              <div><label className="block text-xs font-semibold text-gray-600 mb-1">폭</label><input value={hWidth} onChange={e => setHWidth(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runHeatSearch()} /></div>
+              <div><label className="block text-xs font-semibold text-gray-600 mb-1">길이</label><input value={hLength} onChange={e => setHLength(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runHeatSearch()} /></div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={runHeatSearch} disabled={heatLoading} className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                <Search size={14} /> 조회
+              </button>
+              <button onClick={runHeatSearchAll} disabled={heatLoading} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50">전체 보기</button>
+              <button onClick={resetHeatSearchFields} className="inline-flex items-center gap-1 px-3 py-2 text-sm text-gray-400 hover:text-gray-600"><X size={13} /> 조건 초기화</button>
+              <span className="text-xs text-gray-400 ml-auto">한 칸에 <b>쉼표로 여러 값</b>=OR · 칸끼리 AND · 판번호·호선·재질은 부분검색</span>
+            </div>
+          </div>
+
+          {!heatQueried ? (
+            <div className="bg-white border border-gray-200 rounded-xl py-16 text-center text-gray-400 text-sm">
+              <Search size={28} className="mx-auto mb-2 text-gray-300" />
+              조회 조건을 설정하고 <b className="text-gray-600">[조회]</b>를 누르면 판번호 리스트가 표시됩니다.
+            </div>
+          ) : (
+          <>
           {/* 상단 바 */}
           <div className="flex items-center gap-2 flex-wrap">
             <div className="relative">
@@ -1906,6 +1966,8 @@ export default function SteelPlanMain() {
               </button>
               <span className="text-xs text-gray-400 ml-2">{heatPage} / {heatTotalPages} 페이지</span>
             </div>
+          )}
+          </>
           )}
         </>
       )}
