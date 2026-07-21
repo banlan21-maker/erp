@@ -3,8 +3,9 @@
 import { useState, useEffect, useMemo } from "react";
 import {
   ClipboardList, RefreshCw, Plus, Edit2, Trash2,
-  AlertCircle, X, Save, Zap, Filter, XCircle,
+  AlertCircle, X, Save, Zap, Filter, XCircle, Search, Download,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
@@ -229,6 +230,7 @@ interface UrgentDisplayRow {
 function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers: Worker[] }) {
   const [works,    setWorks]    = useState<UrgentWorkRow[]>([]);
   const [loading,  setLoading]  = useState(false);
+  const [queried,  setQueried]  = useState(false); // 검색-우선: 진입 시 자동로드 없음
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo,   setDateTo]   = useState("");
   const [editLog,  setEditLog]  = useState<CuttingLog | null>(null);
@@ -247,10 +249,10 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
       const res  = await fetch("/api/urgent-works");
       const data = await res.json();
       if (data.success) setWorks(data.data as UrgentWorkRow[]);
+      setQueried(true);
     } finally { setLoading(false); }
   };
-
-  useEffect(() => { fetchData(); }, []);
+  // 진입 시 자동로드 없음 — [조회] 눌러야 표시
 
   const handleDeleteLog = async (id: string) => {
     if (!confirm("이 돌발 작업로그를 삭제할까요? (돌발 등록은 유지)")) return;
@@ -384,12 +386,19 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
               )}
             </div>
           </div>
-          <button onClick={fetchData} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-600 pb-1">
-            <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> 새로고침
+          <button onClick={fetchData} disabled={loading}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            <Search size={14} /> 조회
           </button>
         </div>
       </div>
 
+      {!queried ? (
+        <div className="bg-white border border-gray-200 rounded-xl py-16 text-center text-gray-400 text-sm">
+          <Search size={28} className="mx-auto mb-2 text-gray-300" />
+          <b className="text-gray-600">[조회]</b>를 누르면 돌발 작업일보가 표시됩니다.
+        </div>
+      ) : (<>
       {/* 요약 */}
       <div className="flex items-center gap-4 text-sm bg-white border border-gray-200 rounded-xl px-5 py-3 shadow-sm">
         <span className="text-gray-500">전체 <strong className="text-gray-900">{totalCount}</strong>건</span>
@@ -501,6 +510,7 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
           </div>
         </div>
       )}
+      </>)}
 
       {editLog && (
         <LogModal
@@ -838,6 +848,15 @@ export default function WorklogAdmin({
   const [dateTo,   setDateTo]   = useState<string>("");
   const [page, setPage] = useState(1);
 
+  // 검색-우선: 진입 시 리스트 없음. 조회 조건(호선/블록/재질/규격) 설정 후 [조회] 해야 표시.
+  const [sVessel,  setSVessel]  = useState("");
+  const [sBlock,   setSBlock]   = useState("");
+  const [sMaterial,setSMaterial]= useState("");
+  const [sThk,     setSThk]     = useState("");
+  const [sWidth,   setSWidth]   = useState("");
+  const [sLength,  setSLength]  = useState("");
+  const [queried,  setQueried]  = useState(false);
+
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [logs,     setLogs]     = useState<CuttingLog[]>([]);
   const [loading,  setLoading]  = useState(false);
@@ -856,21 +875,33 @@ export default function WorklogAdmin({
   const [openCol,    setOpenCol]    = useState<string | null>(null);
   const [anchorEl,   setAnchorEl]   = useState<HTMLElement | null>(null);
 
-  const fetchData = async () => {
+  // 검색-우선 조회. all=true 면 조건 무시하고 전체 확정 목록(escape hatch).
+  const fetchData = async (all = false) => {
     setLoading(true);
     try {
+      const dp = new URLSearchParams({ allConfirmed: "true" });
+      if (!all) {
+        if (sVessel.trim())   dp.set("vesselCode", sVessel.trim());
+        if (sBlock.trim())    dp.set("block",      sBlock.trim());
+        if (sMaterial.trim()) dp.set("material",   sMaterial.trim());
+        if (sThk.trim())      dp.set("thickness",  sThk.trim());
+        if (sWidth.trim())    dp.set("width",      sWidth.trim());
+        if (sLength.trim())   dp.set("length",     sLength.trim());
+      }
       const logParams = new URLSearchParams();
       if (dateFrom) logParams.set("dateFrom", dateFrom);
       if (dateTo)   logParams.set("dateTo",   dateTo);
       if (!dateFrom && !dateTo) logParams.set("all", "true");
 
       const [drawRes, logRes] = await Promise.all([
-        fetch("/api/drawings?allConfirmed=true"),
+        fetch(`/api/drawings?${dp}`),
         fetch(`/api/cutting-logs?${logParams}`),
       ]);
       const [drawJson, logJson] = await Promise.all([drawRes.json(), logRes.json()]);
       if (drawJson.success) setDrawings(drawJson.data);
       if (logJson.success)  setLogs(logJson.data);
+      setQueried(true);
+      setPage(1);
     } catch (e) {
       console.error(e);
     } finally {
@@ -878,8 +909,8 @@ export default function WorklogAdmin({
     }
   };
 
-  useEffect(() => { fetchData(); }, [dateFrom, dateTo]);
-  useEffect(() => { setPage(1); }, [dateFrom, dateTo, filters]);
+  // 진입 시 자동로드 없음(검색-우선). 필터 변경 시에만 페이지 초기화.
+  useEffect(() => { setPage(1); }, [filters, normalPredicates]);
 
   const logByDrawingId = useMemo(() => {
     const map = new Map<string, CuttingLog>();
@@ -1043,6 +1074,20 @@ export default function WorklogAdmin({
     fetchData();
   };
 
+  // 현재 조회·필터된 목록만 엑셀 다운로드
+  const downloadExcel = () => {
+    const rows = sortedDrawings.map((d, i) => {
+      const log = logByDrawingId.get(d.id) ?? null;
+      const r: Record<string, string | number> = { No: i + 1 };
+      for (const c of COLUMNS) r[c.label] = getVal(d, log, c.key as FCKey);
+      return r;
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "정규작업일보");
+    XLSX.writeFile(wb, `정규작업일보_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
   return (
     <div className="space-y-6">
       {/* 헤더 */}
@@ -1051,7 +1096,7 @@ export default function WorklogAdmin({
           <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <ClipboardList size={24} className="text-blue-600" /> 작업일보 관리
           </h2>
-          <p className="text-sm text-gray-500 mt-1">날짜 필터로 작업일보를 조회하고 수정·삭제할 수 있습니다.</p>
+          <p className="text-sm text-gray-500 mt-1">검색 조건(기간·호선·블록·재질·규격)으로 필요한 작업일보만 조회·수정·삭제합니다.</p>
         </div>
       </div>
 
@@ -1079,35 +1124,48 @@ export default function WorklogAdmin({
 
       {mainTab === "normal" && (<>
 
-      {/* 날짜 필터 */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-        <div className="flex flex-wrap items-end gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-              날짜 필터 <span className="font-normal text-gray-400">(비우면 전체)</span>
-            </label>
+      {/* 검색 패널 — 검색-우선: 조건 설정 후 [조회] 해야 목록 표시 */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+          <div className="col-span-2 sm:col-span-3 lg:col-span-2">
+            <label className="block text-xs font-semibold text-gray-600 mb-1">기간 <span className="font-normal text-gray-400">(작업일, 비우면 전체)</span></label>
             <div className="flex items-center gap-1.5">
               <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="text-sm" />
               <span className="text-gray-400 text-xs">~</span>
               <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="text-sm" />
-              {(dateFrom || dateTo) && (
-                <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-gray-400 hover:text-gray-600">
-                  <X className="w-4 h-4" />
-                </button>
-              )}
             </div>
           </div>
-          <button
-            onClick={() => fetchData()}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-600 transition-colors pb-1"
-          >
-            <RefreshCw size={13} /> 새로고침
+          <div><label className="block text-xs font-semibold text-gray-600 mb-1">호선</label><Input value={sVessel} onChange={e => setSVessel(e.target.value)} placeholder="호선" className="text-sm" onKeyDown={e => e.key === "Enter" && fetchData()} /></div>
+          <div><label className="block text-xs font-semibold text-gray-600 mb-1">블록</label><Input value={sBlock} onChange={e => setSBlock(e.target.value)} placeholder="블록" className="text-sm" onKeyDown={e => e.key === "Enter" && fetchData()} /></div>
+          <div><label className="block text-xs font-semibold text-gray-600 mb-1">재질</label><Input value={sMaterial} onChange={e => setSMaterial(e.target.value)} placeholder="재질" className="text-sm" onKeyDown={e => e.key === "Enter" && fetchData()} /></div>
+          <div><label className="block text-xs font-semibold text-gray-600 mb-1">두께</label><Input value={sThk} onChange={e => setSThk(e.target.value)} placeholder="두께" className="text-sm" onKeyDown={e => e.key === "Enter" && fetchData()} /></div>
+          <div><label className="block text-xs font-semibold text-gray-600 mb-1">폭</label><Input value={sWidth} onChange={e => setSWidth(e.target.value)} placeholder="폭" className="text-sm" onKeyDown={e => e.key === "Enter" && fetchData()} /></div>
+          <div><label className="block text-xs font-semibold text-gray-600 mb-1">길이</label><Input value={sLength} onChange={e => setSLength(e.target.value)} placeholder="길이" className="text-sm" onKeyDown={e => e.key === "Enter" && fetchData()} /></div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => fetchData()} disabled={loading}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            <Search size={14} /> 조회
           </button>
+          <button onClick={() => fetchData(true)} disabled={loading}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50">
+            전체 보기
+          </button>
+          <button onClick={() => { setSVessel(""); setSBlock(""); setSMaterial(""); setSThk(""); setSWidth(""); setSLength(""); setDateFrom(""); setDateTo(""); }}
+            className="inline-flex items-center gap-1 px-3 py-2 text-sm text-gray-400 hover:text-gray-600">
+            <X size={13} /> 조건 초기화
+          </button>
+          <span className="text-xs text-gray-400 ml-auto">호선·블록·재질은 부분검색, 여러 조건은 함께(AND) 적용됩니다.</span>
         </div>
       </div>
 
       {/* 데이터 영역 */}
-      {loading ? (
+      {!queried ? (
+        <div className="bg-white border border-gray-200 rounded-xl py-16 text-center text-gray-400 text-sm">
+          <Search size={28} className="mx-auto mb-2 text-gray-300" />
+          조회 조건을 설정하고 <b className="text-gray-600">[조회]</b>를 누르면 작업일보가 표시됩니다.
+        </div>
+      ) : loading ? (
         <div className="flex justify-center items-center py-20 text-gray-400 gap-3">
           <RefreshCw className="animate-spin text-blue-500" size={24} /> 데이터를 불러오는 중...
         </div>
@@ -1129,6 +1187,11 @@ export default function WorklogAdmin({
                 </button>
               </div>
             )}
+            <button onClick={downloadExcel} disabled={filteredDrawings.length === 0}
+              className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+              title="현재 조회·필터된 목록만 엑셀 다운로드">
+              <Download size={13} /> 엑셀 다운로드
+            </button>
           </div>
 
           {/* 작업일보 리스트 */}

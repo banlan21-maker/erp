@@ -15,10 +15,25 @@ export async function GET(request: NextRequest) {
     const projectId    = searchParams.get("projectId");
     const allConfirmed = searchParams.get("allConfirmed") === "true";
 
-    // 전체 프로젝트 확정 목록 (projectId 불필요)
+    // 전체 프로젝트 확정 목록 (projectId 불필요) — 검색-우선: 호선/블록/재질/두께/폭/길이 서버 필터(모두 선택)
     if (allConfirmed) {
+      const sVessel = searchParams.get("vesselCode")?.trim();
+      const sBlock  = searchParams.get("block")?.trim();
+      const sMat    = searchParams.get("material")?.trim();
+      const sThk    = searchParams.get("thickness");
+      const sWidth  = searchParams.get("width");
+      const sLength = searchParams.get("length");
+      const numOr = (v: string | null) => (v && !isNaN(Number(v)) ? Number(v) : undefined);
       const drawings = await prisma.drawingList.findMany({
-        where: { status: { in: ["WAITING", "CUT"] } },
+        where: {
+          status: { in: ["WAITING", "CUT"] },
+          ...(sVessel ? { project: { projectCode: { contains: sVessel, mode: "insensitive" } } } : {}),
+          ...(sBlock  ? { block:    { contains: sBlock,  mode: "insensitive" } } : {}),
+          ...(sMat    ? { material: { contains: sMat,    mode: "insensitive" } } : {}),
+          ...(numOr(sThk)    !== undefined ? { thickness: numOr(sThk) } : {}),
+          ...(numOr(sWidth)  !== undefined ? { width:     numOr(sWidth) } : {}),
+          ...(numOr(sLength) !== undefined ? { length:    numOr(sLength) } : {}),
+        },
         include: {
           project:         { select: { id: true, projectCode: true, projectName: true } },
           assignedRemnant: { select: { width1: true, length1: true, width2: true, length2: true } },
