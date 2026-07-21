@@ -125,10 +125,14 @@ export default function ReportsMain({
   logs,
   fromStr,
   toStr,
+  searched,
+  init,
 }: {
   logs:    CuttingLog[];
   fromStr: string;
   toStr:   string;
+  searched: boolean;
+  init: { vessel: string; block: string; material: string; thickness: string; width: string; length: string };
 }) {
   const router   = useRouter();
   const pathname = usePathname();
@@ -137,6 +141,14 @@ export default function ReportsMain({
   const [to,         setTo]         = useState(toStr);
   const [workType,      setWorkType]      = useState<WorkTypeFilter>("all");
   const [expandedVessel, setExpandedVessel] = useState<Set<string>>(new Set());
+
+  // 검색-우선: 각 칸 쉼표로 여러 값(OR), 칸끼리 AND. 서버(searchParams)로 조회.
+  const [sVessel,   setSVessel]   = useState(init.vessel);
+  const [sBlock,    setSBlock]    = useState(init.block);
+  const [sMaterial, setSMaterial] = useState(init.material);
+  const [sThk,      setSThk]      = useState(init.thickness);
+  const [sWidth,    setSWidth]    = useState(init.width);
+  const [sLength,   setSLength]   = useState(init.length);
 
   // ── 필터링 ────────────────────────────────────────────────────────────────
   const filteredLogs = logs.filter(l =>
@@ -192,8 +204,18 @@ export default function ReportsMain({
       return acc;
     }, {} as Record<string, VesselStat>);
 
-  // ── 기간 조회 ─────────────────────────────────────────────────────────────
-  const applyFilter = () => router.push(`${pathname}?from=${from}&to=${to}`);
+  // ── 조회 (검색-우선) ────────────────────────────────────────────────────────
+  const applyFilter = () => {
+    const p = new URLSearchParams({ q: "1", from, to });
+    if (sVessel.trim())   p.set("vessel",    sVessel.trim());
+    if (sBlock.trim())    p.set("block",     sBlock.trim());
+    if (sMaterial.trim()) p.set("material",  sMaterial.trim());
+    if (sThk.trim())      p.set("thickness", sThk.trim());
+    if (sWidth.trim())    p.set("width",     sWidth.trim());
+    if (sLength.trim())   p.set("length",    sLength.trim());
+    router.push(`${pathname}?${p.toString()}`);
+  };
+  const resetSearch = () => { setSVessel(""); setSBlock(""); setSMaterial(""); setSThk(""); setSWidth(""); setSLength(""); };
 
   // ── Excel 다운로드 ────────────────────────────────────────────────────────
   const downloadExcel = () => {
@@ -279,18 +301,42 @@ export default function ReportsMain({
           </div>
         </div>
 
-        {/* 기간 필터 */}
-        <div className="bg-white border rounded-xl p-4 no-print">
+        {/* 검색 패널 (검색-우선) */}
+        <div className="bg-white border rounded-xl p-4 no-print space-y-3">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-medium text-gray-700">조회 기간</span>
-            <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="h-8 text-sm w-36" />
+            <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="h-8 text-sm w-36" onKeyDown={e => e.key === "Enter" && applyFilter()} />
             <span className="text-gray-400">~</span>
-            <Input type="date" value={to}   onChange={e => setTo(e.target.value)}   className="h-8 text-sm w-36" />
+            <Input type="date" value={to}   onChange={e => setTo(e.target.value)}   className="h-8 text-sm w-36" onKeyDown={e => e.key === "Enter" && applyFilter()} />
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+            <div><label className="block text-[11px] font-semibold text-gray-500 mb-1">호선</label><Input value={sVessel} onChange={e => setSVessel(e.target.value)} placeholder="여러개 쉼표" className="h-8 text-sm" onKeyDown={e => e.key === "Enter" && applyFilter()} /></div>
+            <div><label className="block text-[11px] font-semibold text-gray-500 mb-1">블록</label><Input value={sBlock} onChange={e => setSBlock(e.target.value)} placeholder="여러개 쉼표" className="h-8 text-sm" onKeyDown={e => e.key === "Enter" && applyFilter()} /></div>
+            <div><label className="block text-[11px] font-semibold text-gray-500 mb-1">재질</label><Input value={sMaterial} onChange={e => setSMaterial(e.target.value)} placeholder="여러개 쉼표" className="h-8 text-sm" onKeyDown={e => e.key === "Enter" && applyFilter()} /></div>
+            <div><label className="block text-[11px] font-semibold text-gray-500 mb-1">두께</label><Input value={sThk} onChange={e => setSThk(e.target.value)} placeholder="예: 10,20,25" className="h-8 text-sm" onKeyDown={e => e.key === "Enter" && applyFilter()} /></div>
+            <div><label className="block text-[11px] font-semibold text-gray-500 mb-1">폭</label><Input value={sWidth} onChange={e => setSWidth(e.target.value)} placeholder="여러개 쉼표" className="h-8 text-sm" onKeyDown={e => e.key === "Enter" && applyFilter()} /></div>
+            <div><label className="block text-[11px] font-semibold text-gray-500 mb-1">길이</label><Input value={sLength} onChange={e => setSLength(e.target.value)} placeholder="여러개 쉼표" className="h-8 text-sm" onKeyDown={e => e.key === "Enter" && applyFilter()} /></div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
             <Button size="sm" onClick={applyFilter} className="flex items-center gap-1.5 h-8">
               <Search size={13} /> 조회
             </Button>
+            <button onClick={resetSearch} className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-gray-600">
+              <XCircle size={13} /> 조건 초기화
+            </button>
+            <span className="text-xs text-gray-400 ml-auto">한 칸에 <b>쉼표로 여러 값</b>=OR (예: 두께 10,20,25) · 칸끼리 AND · 호선·블록·재질은 부분검색</span>
           </div>
         </div>
+
+        {/* 미조회 시 안내 (검색-우선) */}
+        {!searched && (
+          <div className="bg-white border rounded-xl py-16 text-center text-gray-400 text-sm no-print">
+            <Search size={28} className="mx-auto mb-2 text-gray-300" />
+            조회 기간·조건을 설정하고 <b className="text-gray-600">[조회]</b>를 누르면 보고서가 표시됩니다.
+          </div>
+        )}
+
+        {searched && (<>
 
         {/* 정규 / 돌발 / 통계 구분 탭 */}
         <div className="flex gap-2 no-print flex-wrap">
@@ -517,6 +563,8 @@ export default function ReportsMain({
               <UrgentDetailTable logs={filteredLogs} />
             )}
           </div>
+        )}
+        </>
         )}
         </>
         )}

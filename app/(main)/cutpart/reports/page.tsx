@@ -13,9 +13,13 @@ import { calcPauseMs, calcNightOffMs } from "@/lib/cutting-time";
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string }>;
+  searchParams: Promise<{
+    from?: string; to?: string; q?: string;
+    vessel?: string; block?: string; material?: string; thickness?: string; width?: string; length?: string;
+  }>;
 }) {
   const params = await searchParams;
+  const q = params.q === "1"; // 검색-우선: q=1 일 때만 조회. 진입(미조회) 시 빈 화면.
 
   // 기본값: 이번달 1일 ~ 오늘
   const today       = new Date();
@@ -29,10 +33,28 @@ export default async function ReportsPage({
   const from = new Date(fromStr); from.setHours(0, 0, 0, 0);
   const to   = new Date(toStr);   to.setHours(23, 59, 59, 999);
 
-  const rawLogs = await prisma.cuttingLog.findMany({
+  // 각 칸은 쉼표/공백으로 여러 값 → 칸 안에서는 OR, 칸끼리는 AND
+  const splitTxt = (v?: string) => (v ?? "").split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
+  const splitNum = (v?: string) => splitTxt(v).map(Number).filter(n => !isNaN(n));
+  const vessels = splitTxt(params.vessel);
+  const blocks  = splitTxt(params.block);
+  const mats    = splitTxt(params.material);
+  const thks    = splitNum(params.thickness);
+  const widths  = splitNum(params.width);
+  const lengths = splitNum(params.length);
+  const AND: object[] = [];
+  if (vessels.length) AND.push({ OR: vessels.map(v => ({ project: { projectCode: { contains: v, mode: "insensitive" as const } } })) });
+  if (blocks.length)  AND.push({ OR: blocks.map(b  => ({ drawingList: { block: { contains: b, mode: "insensitive" as const } } })) });
+  if (mats.length)    AND.push({ OR: mats.map(m    => ({ material: { contains: m, mode: "insensitive" as const } })) });
+  if (thks.length)    AND.push({ thickness: { in: thks } });
+  if (widths.length)  AND.push({ OR: [{ width:  { in: widths } },  { drawingList: { assignedRemnant: { width1:  { in: widths } } } },  { urgentWork: { remnant: { width1:  { in: widths } } } }] });
+  if (lengths.length) AND.push({ OR: [{ length: { in: lengths } }, { drawingList: { assignedRemnant: { length1: { in: lengths } } } }, { urgentWork: { remnant: { length1: { in: lengths } } } }] });
+
+  const rawLogs = q ? await prisma.cuttingLog.findMany({
     where: {
       status:  "COMPLETED",
       startAt: { gte: from, lte: to },
+      ...(AND.length ? { AND } : {}),
     },
     include: {
       equipment:   { select: { id: true, name: true, type: true } },
@@ -59,7 +81,7 @@ export default async function ReportsPage({
       },
     },
     orderBy: { startAt: "asc" },
-  });
+  }) : [];
 
   const logs = rawLogs.map((l) => ({
     ...l,
@@ -114,5 +136,20 @@ export default async function ReportsPage({
     nightOffMs: calcNightOffMs(l.pauses),
   }));
 
-  return <ReportsMain logs={logs} fromStr={fromStr} toStr={toStr} />;
+  return (
+    <ReportsMain
+      logs={logs}
+      fromStr={fromStr}
+      toStr={toStr}
+      searched={q}
+      init={{
+        vessel:    params.vessel    ?? "",
+        block:     params.block     ?? "",
+        material:  params.material  ?? "",
+        thickness: params.thickness ?? "",
+        width:     params.width     ?? "",
+        length:    params.length    ?? "",
+      }}
+    />
+  );
 }
