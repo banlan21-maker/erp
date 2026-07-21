@@ -149,6 +149,14 @@ export default function SteelPlanMain() {
   const [total,      setTotal]      = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
+  // 검색-우선(강재 탭): 진입 시 자동로드 없음. 조건 조회해야 표시. (각 칸 쉼표=OR, 칸끼리 AND → colFilters로 서버필터)
+  const [queried,   setQueried]   = useState(false);
+  const [sVessel,   setSVessel]   = useState("");
+  const [sMaterial, setSMaterial] = useState("");
+  const [sThk,      setSThk]      = useState("");
+  const [sWidth,    setSWidth]    = useState("");
+  const [sLength,   setSLength]   = useState("");
+
   /* ── 컬럼 필터 (Excel 스타일) ── */
   const [colFilters,     setColFilters]     = useState<Record<string, string[]>>({});
   const [openFilter,     setOpenFilter]     = useState<string | null>(null);
@@ -275,6 +283,23 @@ export default function SteelPlanMain() {
     setLoading(false);
   }, [search, page, colFilters, sortKey, sortDir, memoMode]);
 
+  // 검색 패널 → colFilters 로 변환(각 칸 쉼표=OR). 조회 시 queried=true 로 로드 개시.
+  const runSearch = () => {
+    const splitTxt = (v: string) => v.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
+    const badNum = ([["두께", sThk], ["폭", sWidth], ["길이", sLength]] as const)
+      .find(([, v]) => v.trim() && splitTxt(v).some((t) => isNaN(Number(t))));
+    if (badNum) { alert(`${badNum[0]}에는 숫자만 입력하세요(여러 개는 쉼표). 예: 10,20,25`); return; }
+    const cf: Record<string, string[]> = {};
+    const vs = splitTxt(sVessel);   if (vs.length) cf.vesselCode = vs;
+    const ms = splitTxt(sMaterial); if (ms.length) cf.material   = ms;
+    const ts = splitTxt(sThk);      if (ts.length) cf.thickness  = ts;
+    const ws = splitTxt(sWidth);    if (ws.length) cf.width      = ws;
+    const ls = splitTxt(sLength);   if (ls.length) cf.length     = ls;
+    setColFilters(cf); setPage(1); setQueried(true);
+  };
+  const runSearchAll = () => { setColFilters({}); setPage(1); setQueried(true); };
+  const resetSearchFields = () => { setSVessel(""); setSMaterial(""); setSThk(""); setSWidth(""); setSLength(""); };
+
   const loadHeatDistinct = useCallback(async () => {
     const qs = serializeColFilters(heatColFilters, STEEL_PLAN_HEAT_QS_KEY);
     const sp = new URLSearchParams(qs);
@@ -308,8 +333,8 @@ export default function SteelPlanMain() {
     setHeatLoading(false);
   }, [heatSearch, heatPage, heatColFilters]);
 
-  useEffect(() => { loadDistinct(); }, [loadDistinct]);
-  useEffect(() => { loadPlan(); }, [loadPlan]);
+  useEffect(() => { if (queried) loadDistinct(); }, [loadDistinct, queried]);
+  useEffect(() => { if (queried) loadPlan(); }, [loadPlan, queried]);
   useEffect(() => { if (tab === "heatno") { loadHeatDistinct(); loadHeat(); } }, [tab, loadHeatDistinct, loadHeat]);
 
   /* ── 엑셀 다운로드 ── */
@@ -1152,6 +1177,32 @@ export default function SteelPlanMain() {
             </div>
           )}
 
+          {/* 검색 패널 (검색-우선) */}
+          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+              <div><label className="block text-xs font-semibold text-gray-600 mb-1">호선</label><input value={sVessel} onChange={e => setSVessel(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runSearch()} /></div>
+              <div><label className="block text-xs font-semibold text-gray-600 mb-1">재질</label><input value={sMaterial} onChange={e => setSMaterial(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runSearch()} /></div>
+              <div><label className="block text-xs font-semibold text-gray-600 mb-1">두께</label><input value={sThk} onChange={e => setSThk(e.target.value)} placeholder="예: 10,20,25" className={inputCls} onKeyDown={e => e.key === "Enter" && runSearch()} /></div>
+              <div><label className="block text-xs font-semibold text-gray-600 mb-1">폭</label><input value={sWidth} onChange={e => setSWidth(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runSearch()} /></div>
+              <div><label className="block text-xs font-semibold text-gray-600 mb-1">길이</label><input value={sLength} onChange={e => setSLength(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runSearch()} /></div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={runSearch} disabled={loading} className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                <Search size={14} /> 조회
+              </button>
+              <button onClick={runSearchAll} disabled={loading} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50">전체 보기</button>
+              <button onClick={resetSearchFields} className="inline-flex items-center gap-1 px-3 py-2 text-sm text-gray-400 hover:text-gray-600"><X size={13} /> 조건 초기화</button>
+              <span className="text-xs text-gray-400 ml-auto">한 칸에 <b>쉼표로 여러 값</b>=OR (예: 두께 10,20,25) · 칸끼리 AND · 호선·재질은 부분검색</span>
+            </div>
+          </div>
+
+          {!queried ? (
+            <div className="bg-white border border-gray-200 rounded-xl py-16 text-center text-gray-400 text-sm">
+              <Search size={28} className="mx-auto mb-2 text-gray-300" />
+              조회 조건을 설정하고 <b className="text-gray-600">[조회]</b>를 누르면 강재목록이 표시됩니다.
+            </div>
+          ) : (
+          <>
           {/* 상단 바: 필터 초기화 + 페이지네이션 + 액션 */}
           <div className="flex items-center gap-2">
             {/* 왼쪽 */}
@@ -1609,6 +1660,8 @@ export default function SteelPlanMain() {
               </button>
               <span className="text-xs text-gray-400 ml-2">{page} / {totalPages} 페이지</span>
             </div>
+          )}
+          </>
           )}
         </>
       )}
