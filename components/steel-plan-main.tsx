@@ -306,13 +306,18 @@ export default function SteelPlanMain() {
     const badNum = ([["두께", sThk], ["폭", sWidth], ["길이", sLength]] as const)
       .find(([, v]) => v.trim() && splitTxt(v).some((t) => isNaN(Number(t))));
     if (badNum) { alert(`${badNum[0]}에는 숫자만 입력하세요(여러 개는 쉼표). 예: 10,20,25`); return; }
-    const cf: Record<string, string[]> = {};
-    const ts = splitTxt(sThk);    if (ts.length) cf.thickness = ts;
-    const ws = splitTxt(sWidth);  if (ws.length) cf.width     = ws;
-    const ls = splitTxt(sLength); if (ls.length) cf.length    = ls;
+    const ts = splitTxt(sThk), ws = splitTxt(sWidth), ls = splitTxt(sLength);
     setAppliedVessel(splitTxt(sVessel).join(","));
     setAppliedMaterial(splitTxt(sMaterial).join(","));
-    setColFilters(cf); setPage(1); setQueried(true);
+    // 패널 소유 컬럼(두께/폭/길이)만 갱신 — 컬럼 드롭다운으로 건 다른 필터(상태·입고일 등)는 보존
+    setColFilters((prev) => {
+      const next = { ...prev };
+      if (ts.length) next.thickness = ts; else delete next.thickness;
+      if (ws.length) next.width     = ws; else delete next.width;
+      if (ls.length) next.length    = ls; else delete next.length;
+      return next;
+    });
+    setPage(1); setQueried(true);
   };
   const runSearchAll = () => { setAppliedVessel(""); setAppliedMaterial(""); setColFilters({}); setPage(1); setQueried(true); };
   const resetSearchFields = () => { setSVessel(""); setSMaterial(""); setSThk(""); setSWidth(""); setSLength(""); };
@@ -359,14 +364,19 @@ export default function SteelPlanMain() {
     const badNum = ([["두께", hThk], ["폭", hWidth], ["길이", hLength]] as const)
       .find(([, v]) => v.trim() && splitTxt(v).some((t) => isNaN(Number(t))));
     if (badNum) { alert(`${badNum[0]}에는 숫자만 입력하세요(여러 개는 쉼표). 예: 10,20,25`); return; }
-    const cf: Record<string, string[]> = {};
-    const ts = splitTxt(hThk);    if (ts.length) cf.thickness = ts;
-    const ws = splitTxt(hWidth);  if (ws.length) cf.width     = ws;
-    const ls = splitTxt(hLength); if (ls.length) cf.length    = ls;
+    const ts = splitTxt(hThk), ws = splitTxt(hWidth), ls = splitTxt(hLength);
     setAppliedHeatNo(splitTxt(hHeatNo).join(","));
     setAppliedHeatVessel(splitTxt(hVessel).join(","));
     setAppliedHeatMaterial(splitTxt(hMaterial).join(","));
-    setHeatColFilters(cf); setHeatPage(1); setHeatQueried(true);
+    // 패널 소유 컬럼(두께/폭/길이)만 갱신 — 상태·배치 등 컬럼 드롭다운 필터는 보존
+    setHeatColFilters((prev) => {
+      const next = { ...prev };
+      if (ts.length) next.thickness = ts; else delete next.thickness;
+      if (ws.length) next.width     = ws; else delete next.width;
+      if (ls.length) next.length    = ls; else delete next.length;
+      return next;
+    });
+    setHeatPage(1); setHeatQueried(true);
   };
   const runHeatSearchAll = () => { setAppliedHeatNo(""); setAppliedHeatVessel(""); setAppliedHeatMaterial(""); setHeatColFilters({}); setHeatPage(1); setHeatQueried(true); };
   const resetHeatSearchFields = () => { setHHeatNo(""); setHVessel(""); setHMaterial(""); setHThk(""); setHWidth(""); setHLength(""); };
@@ -879,7 +889,7 @@ export default function SteelPlanMain() {
     setDeleting(false);
     setShowDeleteModal(false);
     setDeleteVessel("");
-    setQueried(true);
+    setQueried(true); setHeatQueried(true);
     loadPlan();
     loadHeat();
   };
@@ -897,7 +907,7 @@ export default function SteelPlanMain() {
     setDeleting(false);
     setShowDeleteModal(false);
     setDeleteBatchNo("");
-    setQueried(true);
+    setQueried(true); setHeatQueried(true);
     loadPlan();
     loadHeat();
   };
@@ -1250,7 +1260,7 @@ export default function SteelPlanMain() {
             <div className="flex items-center min-w-[120px]">
               {Object.values(colFilters).some((v) => v.length > 0) && (
                 <button
-                  onClick={() => { setColFilters({}); setPage(1); }}
+                  onClick={() => { setColFilters({}); setAppliedVessel(""); setAppliedMaterial(""); resetSearchFields(); setPage(1); }}
                   className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50"
                 >
                   <X size={12} /> 필터 전체 초기화
@@ -1726,6 +1736,8 @@ export default function SteelPlanMain() {
               </button>
               <button onClick={runHeatSearchAll} disabled={heatLoading} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50">전체 보기</button>
               <button onClick={resetHeatSearchFields} className="inline-flex items-center gap-1 px-3 py-2 text-sm text-gray-400 hover:text-gray-600"><X size={13} /> 조건 초기화</button>
+              <button onClick={() => setHeatRegisterOpen(true)} title="판번호를 강재와 별개로 미리 등록 (사양 + 여러 판번호 일괄)"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600"><Plus size={14} /> 판번호 등록</button>
               <span className="text-xs text-gray-400 ml-auto">한 칸에 <b>쉼표로 여러 값</b>=OR · 칸끼리 AND · 판번호·호선·재질은 부분검색</span>
             </div>
           </div>
@@ -1753,20 +1765,13 @@ export default function SteelPlanMain() {
             </div>
             {Object.values(heatColFilters).some((v) => v.length > 0) && (
               <button
-                onClick={() => { setHeatColFilters({}); setHeatPage(1); }}
+                onClick={() => { runHeatSearchAll(); resetHeatSearchFields(); }}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50"
               >
                 <X size={12} /> 필터 전체 초기화
               </button>
             )}
             <button onClick={syncAndRefresh} title="작업일보 기준으로 강재·판번호 상태 자동 동기화" className="p-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-500"><RefreshCw size={14} /></button>
-            <button
-              onClick={() => setHeatRegisterOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600"
-              title="판번호를 강재와 별개로 미리 등록 (사양 + 여러 판번호 일괄)"
-            >
-              <Plus size={14} /> 판번호 등록
-            </button>
             <span className="text-sm text-gray-500 ml-auto">총 {heatTotal}건</span>
             <button
               onClick={() => downloadHeatExcel("all")}
@@ -2670,7 +2675,7 @@ export default function SteelPlanMain() {
       {heatRegisterOpen && (
         <HeatRegisterModal
           onClose={() => setHeatRegisterOpen(false)}
-          onDone={() => { setHeatRegisterOpen(false); loadHeat(); loadHeatDistinct(); }}
+          onDone={() => { setHeatRegisterOpen(false); setHeatQueried(true); loadHeat(); loadHeatDistinct(); }}
         />
       )}
 
