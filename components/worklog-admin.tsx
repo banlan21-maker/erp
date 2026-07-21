@@ -558,6 +558,7 @@ function LogModal({
     equipmentId: log?.equipmentId ?? equipment[0]?.id ?? "",
     operator:    log?.operator ?? "",
     heatNo:      log?.heatNo ?? drawing?.heatNo ?? "",
+    selectedHeatId: "" as string, // 목록에서 고른 판번호(SteelPlanHeat) id — 정확 소진용
     startAt:     toLocalDatetimeValue(log?.startAt ?? new Date().toISOString()),
     endAt:       toLocalDatetimeValue(log?.endAt ?? null),
     status:      log?.status ?? "COMPLETED",
@@ -610,6 +611,7 @@ function LogModal({
             projectId,
             drawingListId: drawing?.id ?? null,
             heatNo:        form.heatNo || (drawing?.heatNo ?? ""),
+            selectedHeatId: form.selectedHeatId || null,
             material:      drawing?.material ?? null,
             thickness:     drawing?.thickness ?? null,
             width:         drawing?.width ?? null,
@@ -743,13 +745,17 @@ function LogModal({
               </div>
             ) : heatOptions.length > 0 ? (
               <select
-                value={form.heatNo}
-                onChange={e => setForm(f => ({ ...f, heatNo: e.target.value }))}
+                value={form.selectedHeatId}
+                onChange={e => {
+                  const id = e.target.value;
+                  const h = heatOptions.find(x => x.id === id);
+                  setForm(f => ({ ...f, selectedHeatId: id, heatNo: h?.heatNo ?? "" }));
+                }}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">-- 판번호 선택 --</option>
                 {heatOptions.map(h => (
-                  <option key={h.id} value={h.heatNo}>{h.heatNo}</option>
+                  <option key={h.id} value={h.id}>{h.heatNo}</option>
                 ))}
               </select>
             ) : null}

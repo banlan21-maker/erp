@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       equipmentId, projectId, drawingListId,
-      heatNo, material, thickness, width, length, qty, drawingNo,
+      heatNo, selectedHeatId, material, thickness, width, length, qty, drawingNo,
       operator, memo, isUrgent, urgentWorkId, startAt, endAt, status,
     } = body;
 
@@ -242,6 +242,7 @@ export async function POST(request: NextRequest) {
       drawingListId: drawingListId || null,
       urgentWorkId:  urgentWorkId  || null,
       heatNo:    heatNo?.trim().toUpperCase()    || "",   // N22: 저장 시 대문자 정규화
+      selectedHeatId: typeof selectedHeatId === "string" && selectedHeatId.trim() ? selectedHeatId.trim() : null, // P1: 현장에서 고른 재고 판번호 id
       material:  material?.trim()  || null,
       thickness: thickness != null ? Number(thickness) : null,
       width:     width     != null ? Number(width)     : null,

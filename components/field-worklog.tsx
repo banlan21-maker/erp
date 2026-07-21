@@ -132,6 +132,7 @@ export default function FieldWorklog({
   // 2단계 (매 절단마다 초기화)
   const [drawingId,    setDrawingId]    = useState("");
   const [heatNo,       setHeatNo]       = useState("");
+  const [heatId,       setHeatId]       = useState<string | null>(null); // 목록에서 고른 판번호(SteelPlanHeat) id — 정확 소진용
   const [heatOptions,  setHeatOptions]  = useState<{ id: string; heatNo: string; status: string; vesselCode: string }[]>([]);
   const [heatLoading,  setHeatLoading]  = useState(false);
   const [memo,         setMemo]         = useState("");
@@ -167,7 +168,7 @@ export default function FieldWorklog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEq]);
 
-  const resetStep2 = () => { setDrawingId(""); setHeatNo(""); setHeatOptions([]); setMemo(""); setSearch(""); };
+  const resetStep2 = () => { setDrawingId(""); setHeatNo(""); setHeatId(null); setHeatOptions([]); setMemo(""); setSearch(""); };
   const resetAll   = () => { setS1({ vesselCode: "", projectId: "", operatorId: "" }); resetStep2(); setDrawings([]); setStep1Open(true); };
 
   const loadUrgentWorks = useCallback(async () => {
@@ -332,6 +333,7 @@ export default function FieldWorklog({
   const handleDrawingSelect = async (did: string) => {
     setDrawingId(did);
     setHeatOptions([]);
+    setHeatId(null); // 도면 바뀌면 선택 판번호 id 초기화 (여유원재 프리필은 자유입력이라 id 없음)
     const row = drawings.find(d => d.id === did);
     // 여유원재 사용 절단: 잔재의 기존 판번호로 프리필 (현장에서 수정 가능), 그 외엔 초기화
     setHeatNo(row?.assignedRemnant?.type === "SURPLUS" ? (row.assignedRemnant.heatNo ?? "") : "");
@@ -381,6 +383,7 @@ export default function FieldWorklog({
           projectId:     s1.projectId,
           drawingListId: drawingId,
           heatNo:        heatNo || "",
+          selectedHeatId: heatId || null,
           material:      row?.material   || null,
           thickness:     row?.thickness  || null,
           width:         row?.width      || null,
@@ -1192,12 +1195,16 @@ export default function FieldWorklog({
                       <div className="max-h-40 overflow-y-auto space-y-1 rounded-xl border border-gray-700 bg-gray-900 p-1.5">
                         {heatOptions.map(h => {
                           const other = !!h.vesselCode && h.vesselCode !== ownVessel;
+                          const selected = heatId === h.id;
                           return (
                             <button
                               key={h.id}
-                              onClick={() => setHeatNo(heatNo === h.heatNo ? "" : h.heatNo!)}
+                              onClick={() => {
+                                if (selected) { setHeatNo(""); setHeatId(null); }
+                                else { setHeatNo(h.heatNo!); setHeatId(h.id); }
+                              }}
                               className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm font-mono transition-colors ${
-                                heatNo === h.heatNo
+                                selected
                                   ? "bg-blue-700 text-white"
                                   : "bg-gray-800 text-gray-300 active:bg-gray-700"
                               }`}

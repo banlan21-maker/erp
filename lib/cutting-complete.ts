@@ -17,6 +17,7 @@ interface CompleteLog {
   drawingNo: string | null;
   projectId: string | null;
   heatNo: string | null;
+  selectedHeatId: string | null;
   material: string | null;
   thickness: number | null;
   width: number | null;
@@ -100,25 +101,39 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
   // 동일 heatNo 가 여러 호선에 있을 수 있으므로 effectiveVessel + spec 필터 필수
   const effectiveVessel = targetDrawing?.alternateVesselCode?.trim() || project?.projectCode;
   // 잔재(등록/현장/여유) 사용 절단은 정규원재(SteelPlan/SteelPlanHeat)를 건드리지 않음 — 여유원재는 아래 전용 블록에서 처리
-  if (!targetDrawing?.assignedRemnantId && log.drawingNo && log.heatNo?.trim() && effectiveVessel && log.material && log.thickness && log.width && log.length) {
-    // N3: 수입재 다판(같은 heatNo+사양 여러 장) 케이스에서 updateMany 가 매칭 전부를 CUT 로 뒤집던 결함 수정.
-    //     findFirst(WAITING, createdAt asc) 로 오래된 1건만 CUT 처리 → SURPLUS 경로와 통일.
-    const heatMatch = await tx.steelPlanHeat.findFirst({
-      where: {
-        heatNo: log.heatNo.trim(),
-        status: "WAITING",
-        vesselCode: effectiveVessel,
-        material: { equals: log.material.trim().toUpperCase(), mode: "insensitive" },
-        thickness: log.thickness, width: log.width, length: log.length,
-      },
-      orderBy: { createdAt: "asc" },
-      select: { id: true },
-    });
-    if (heatMatch) {
-      await tx.steelPlanHeat.update({
-        where: { id: heatMatch.id },
-        data:  { status: "CUT", cutAt: log.endAt ?? new Date() },
+  if (!targetDrawing?.assignedRemnantId) {
+    if (log.selectedHeatId) {
+      // ★ P1: 현장에서 목록에서 고른 바로 그 판번호(재고 id)를 정확히 소진 — 글자대조 없음(타호선·오타·중복 무관).
+      const picked = await tx.steelPlanHeat.findFirst({
+        where: { id: log.selectedHeatId, status: "WAITING" },
+        select: { id: true },
       });
+      if (picked) {
+        await tx.steelPlanHeat.update({
+          where: { id: picked.id },
+          data:  { status: "CUT", cutAt: log.endAt ?? new Date() },
+        });
+      }
+    } else if (log.drawingNo && log.heatNo?.trim() && effectiveVessel && log.material && log.thickness && log.width && log.length) {
+      // 폴백(레거시/직접입력) — selectedHeatId 없을 때만 heatNo+사양 매칭.
+      // N3: 수입재 다판 케이스에서 findFirst(WAITING, createdAt asc) 로 오래된 1건만 CUT.
+      const heatMatch = await tx.steelPlanHeat.findFirst({
+        where: {
+          heatNo: log.heatNo.trim(),
+          status: "WAITING",
+          vesselCode: effectiveVessel,
+          material: { equals: log.material.trim().toUpperCase(), mode: "insensitive" },
+          thickness: log.thickness, width: log.width, length: log.length,
+        },
+        orderBy: { createdAt: "asc" },
+        select: { id: true },
+      });
+      if (heatMatch) {
+        await tx.steelPlanHeat.update({
+          where: { id: heatMatch.id },
+          data:  { status: "CUT", cutAt: log.endAt ?? new Date() },
+        });
+      }
     }
   }
 
@@ -233,6 +248,7 @@ interface RestoreLog {
   drawingNo: string | null;
   projectId: string | null;
   heatNo: string | null;
+  selectedHeatId: string | null;
   material: string | null;
   thickness: number | null;
   width: number | null;
@@ -300,8 +316,18 @@ export async function applyCuttingRestore(tx: Tx, log: RestoreLog): Promise<void
     }
   }
 
-  // SteelPlanHeat 상태 복원 CUT → WAITING — effectiveVessel + spec 매칭 필수
-  if (log.heatNo?.trim() && effectiveVesselForLog && log.material && log.thickness && log.width && log.length) {
+  // ★ P1: 완료 때 selectedHeatId 로 정확히 소진했으면, 복원도 그 판을 정확히 되돌림 (CUT → WAITING).
+  let restoredBySelectedHeat = false;
+  if (log.selectedHeatId) {
+    const r = await tx.steelPlanHeat.updateMany({
+      where: { id: log.selectedHeatId, status: "CUT" },
+      data:  { status: "WAITING", cutAt: null },
+    });
+    if (r.count > 0) restoredBySelectedHeat = true;
+  }
+
+  // SteelPlanHeat 상태 복원 CUT → WAITING — effectiveVessel + spec 매칭 (selectedHeatId 로 복원됐으면 스킵)
+  if (!restoredBySelectedHeat && log.heatNo?.trim() && effectiveVesselForLog && log.material && log.thickness && log.width && log.length) {
     const heatSpec = {
       heatNo: log.heatNo.trim(),
       status: "CUT" as const,
