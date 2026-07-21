@@ -591,6 +591,11 @@ function LogModal({
       setError("장비, 작업자, 시작일시는 필수입니다.");
       return;
     }
+    // 판번호 재확인 — 신규 등록 시 현물과 일치하는지 최종 확인 (판번호 있는 절단만)
+    if (mode === "add") {
+      const hn = (form.heatNo || drawing?.heatNo || "").trim();
+      if (hn && !confirm(`판번호 「${hn}」\n\n현물(실물 철판)의 판번호와 일치합니까?\n확인을 누르면 이 판번호로 등록합니다.`)) return;
+    }
     setSaving(true);
     try {
       if (mode === "add") {
@@ -747,7 +752,13 @@ function LogModal({
                   <option key={h.id} value={h.heatNo}>{h.heatNo}</option>
                 ))}
               </select>
-            ) : (
+            ) : null}
+            {mode === "add" && form.heatNo && (
+              <p className="mt-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5">
+                ⚠ 선택한 판번호 <span className="font-mono font-bold">{form.heatNo}</span> 가 현물(실물 철판)과 <b>일치하는지 다시 확인</b>하세요.
+              </p>
+            )}
+            {mode !== "edit" && heatOptions.length === 0 && (
               <p className="text-xs text-yellow-600 bg-yellow-50 border border-yellow-200 rounded-md px-3 py-2">
                 등록된 판번호가 없습니다. 강재입출고에서 판번호를 먼저 등록하세요.
               </p>

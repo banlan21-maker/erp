@@ -246,8 +246,15 @@ export default function FieldWorklog({
       });
       const d = await res.json();
       if (!d.success) { setError(d.error); return; }
+      // I9: 팝업 이탈/미처리 시 UrgentWork 가 IN_PROGRESS 로 남는 문제 방지 —
+      //     완료 직후 즉시 COMPLETED 로 전환. 잔재 팝업은 순수 잔재 등록만 담당.
+      await fetch(`/api/urgent-works/${urgentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "COMPLETED" }),
+      });
       await refreshLogs();
-      // show remnant popup
+      // show remnant popup (잔재 등록만 — UrgentWork 상태는 위에서 이미 처리)
       setRemnantPopup({ logId, urgentId });
     } catch { setError("서버 오류"); }
     finally { setLoading(false); }
@@ -356,6 +363,11 @@ export default function FieldWorklog({
       if (selRow?.assignedRemnant?.type === "SURPLUS" && !heatNo.trim()) {
         setError("여유원재는 실물 판번호를 입력하세요."); return;
       }
+    }
+
+    // 판번호 재확인 — 현물(실물 철판)의 판번호와 일치하는지 최종 확인 (판번호 있는 절단만)
+    if (heatNo.trim()) {
+      if (!confirm(`판번호 「${heatNo.trim()}」\n\n현물(실물 철판)의 판번호와 일치합니까?\n확인을 누르면 이 판번호로 절단을 시작합니다.`)) return;
     }
 
     setLoading(true);
@@ -1156,6 +1168,11 @@ export default function FieldWorklog({
                     placeholder="실물 판번호 입력"
                     className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white placeholder-gray-500 font-mono"
                   />
+                  {heatNo && (
+                    <p className="text-[11px] text-amber-300 bg-amber-950/50 border border-amber-800 rounded-lg px-2.5 py-1.5 mt-1.5">
+                      ⚠ 입력한 판번호 <span className="font-mono font-bold text-amber-200">{heatNo}</span> 가 현물과 <b>일치하는지 다시 확인</b>하세요.
+                    </p>
+                  )}
                 </div>
               )}
               {!isRemnantDraw && <div>
@@ -1203,6 +1220,13 @@ export default function FieldWorklog({
                   {/* 목록 없을 때 안내 */}
                   {!heatLoading && drawingId && heatOptions.length === 0 && (
                     <p className="text-xs text-yellow-400 px-1">등록된 판번호가 없습니다. 강재입출고에서 판번호를 먼저 등록하세요.</p>
+                  )}
+
+                  {/* 선택 후 재확인 경고 */}
+                  {heatNo && (
+                    <p className="text-[11px] text-amber-300 bg-amber-950/50 border border-amber-800 rounded-lg px-2.5 py-1.5">
+                      ⚠ 선택한 판번호 <span className="font-mono font-bold text-amber-200">{heatNo}</span> 가 현물(실물 철판)과 <b>일치하는지 다시 확인</b>하세요.
+                    </p>
                   )}
                 </div>
               </div>}
