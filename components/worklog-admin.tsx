@@ -879,6 +879,11 @@ export default function WorklogAdmin({
 
   // 검색-우선 조회. all=true 면 조건·기간 모두 무시하고 전체 확정 목록(escape hatch).
   const fetchData = async (all = false) => {
+    if (!all) {
+      const badNum = ([["두께", sThk], ["폭", sWidth], ["길이", sLength]] as const)
+        .find(([, v]) => v.trim() && v.split(/[,\s]+/).filter(Boolean).some(t => isNaN(Number(t))));
+      if (badNum) { alert(`${badNum[0]}에는 숫자만 입력하세요(여러 개는 쉼표). 예: 10,20,25`); return; }
+    }
     setLoading(true);
     setAllMode(all);
     setLastFiltered(!all && !!(sVessel.trim() || sBlock.trim() || sMaterial.trim() || sThk.trim() || sWidth.trim() || sLength.trim() || dateFrom || dateTo));

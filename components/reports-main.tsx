@@ -150,6 +150,13 @@ export default function ReportsMain({
   const [sWidth,    setSWidth]    = useState(init.width);
   const [sLength,   setSLength]   = useState(init.length);
 
+  // 뒤로/앞으로 이동 등 searchParams 변경 시 검색폼을 URL(서버 전달값)과 재동기화
+  useEffect(() => {
+    setFrom(fromStr); setTo(toStr);
+    setSVessel(init.vessel); setSBlock(init.block); setSMaterial(init.material);
+    setSThk(init.thickness); setSWidth(init.width); setSLength(init.length);
+  }, [fromStr, toStr, init.vessel, init.block, init.material, init.thickness, init.width, init.length]);
+
   // ── 필터링 ────────────────────────────────────────────────────────────────
   const filteredLogs = logs.filter(l =>
     workType === "all"    ? true :
@@ -206,6 +213,10 @@ export default function ReportsMain({
 
   // ── 조회 (검색-우선) ────────────────────────────────────────────────────────
   const applyFilter = () => {
+    // 두께/폭/길이는 숫자만 — 비숫자 토큰이 있으면 조용히 무시되지 않도록 경고
+    const badNum = ([["두께", sThk], ["폭", sWidth], ["길이", sLength]] as const)
+      .find(([, v]) => v.trim() && v.split(/[,\s]+/).filter(Boolean).some(t => isNaN(Number(t))));
+    if (badNum) { alert(`${badNum[0]}에는 숫자만 입력하세요(여러 개는 쉼표). 예: 10,20,25`); return; }
     const p = new URLSearchParams({ q: "1", from, to });
     if (sVessel.trim())   p.set("vessel",    sVessel.trim());
     if (sBlock.trim())    p.set("block",     sBlock.trim());
@@ -286,9 +297,10 @@ export default function ReportsMain({
             </h1>
             <p className="text-sm text-gray-500 mt-0.5">완료된 절단 작업 내역 조회 및 출력</p>
           </div>
+          {searched && (
           <div className="flex gap-2">
             {workType !== "stats" && (
-              <Button variant="outline" onClick={downloadExcel} className="flex items-center gap-2">
+              <Button variant="outline" onClick={downloadExcel} disabled={filteredLogs.length === 0} className="flex items-center gap-2">
                 <FileDown size={15} /> 엑셀 다운로드
                 <span className="text-xs text-gray-500">
                   ({workType === "all" ? "전체" : workType === "normal" ? "정규" : "돌발"})
@@ -299,6 +311,7 @@ export default function ReportsMain({
               <Printer size={15} /> 인쇄
             </Button>
           </div>
+          )}
         </div>
 
         {/* 검색 패널 (검색-우선) */}
