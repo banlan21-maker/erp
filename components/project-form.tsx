@@ -50,7 +50,9 @@ export default function ProjectForm({ defaultCode }: { defaultCode?: string }) {
         return;
       }
 
-      router.push(`/cutpart/projects?tab=upload`);
+      // 생성된 블록을 바로 선택해 강재리스트 뷰로 착지 (헤더 [블록강재등록]으로 업로드)
+      const newId = data.data?.id;
+      router.push(newId ? `/cutpart/projects?tab=vessels&projectId=${newId}&view=list` : `/cutpart/projects?tab=vessels`);
     } catch {
       setError("서버 연결 오류가 발생했습니다.");
     } finally {

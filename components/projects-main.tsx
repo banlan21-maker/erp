@@ -111,24 +111,24 @@ export default function ProjectsMain({
 
   const currentVessel = useMemo(() => vessels.find(v => v.code === selVessel) ?? null, [vessels, selVessel]);
 
-  // 호선 드롭다운 옵션 (진행중만이면 진행중 블록 있는 호선만)
+  // 진행중만 = 완료(COMPLETED) 제외 → 진행중(ACTIVE) + 신규(도면0행, status=null) 노출.
+  // 선택된 호선/블록은 완료여도 항상 표시(드롭다운이 선택값을 못 보여주는 문제 방지).
   const vesselOptions = useMemo(() => vessels
-    .filter(v => !activeOnly || v.blocks.some(b => b.status === "ACTIVE"))
-    .map(v => ({ value: v.code, label: `[${v.code}]`, hint: `${v.blocks.length}블록` })), [vessels, activeOnly]);
+    .filter(v => !activeOnly || v.code === selVessel || v.blocks.some(b => b.status !== "COMPLETED"))
+    .map(v => ({ value: v.code, label: `[${v.code}]`, hint: `${v.blocks.length}블록` })), [vessels, activeOnly, selVessel]);
 
-  // 블록 드롭다운 옵션 (선택 호선 + 진행중 필터)
   const blockOptions = useMemo(() => (currentVessel?.blocks ?? [])
-    .filter(b => !activeOnly || b.status === "ACTIVE")
+    .filter(b => !activeOnly || b.id === projectId || b.status !== "COMPLETED")
     .map(b => ({
       value: b.id,
       label: b.projectName,
       hint: `${b.drawingCount}행`,
-      badge: b.status ? <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] ${STATUS_COLOR[b.status] ?? ""}`}>{STATUS_LABEL[b.status]}</span> : undefined,
-    })), [currentVessel, activeOnly]);
+      badge: <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] ${b.status ? STATUS_COLOR[b.status] ?? "" : "bg-gray-100 text-gray-500"}`}>{b.status ? STATUS_LABEL[b.status] : "신규"}</span>,
+    })), [currentVessel, activeOnly, projectId]);
 
-  // 진입(블록 미선택) 시 진행중 블록 바로가기
+  // 진입(블록 미선택) 시 바로가기 — 완료 제외(진행중+신규). 진행중만 해제 시 전체.
   const activeBlocks = useMemo(() =>
-    vessels.flatMap(v => v.blocks.filter(b => b.status === "ACTIVE").map(b => ({ ...b, vessel: v.code }))), [vessels]);
+    vessels.flatMap(v => v.blocks.filter(b => activeOnly ? b.status !== "COMPLETED" : true).map(b => ({ ...b, vessel: v.code }))), [vessels, activeOnly]);
 
   const selectBlock = (id: string) => go({ tab: "vessels", projectId: id, view: view || "list" });
 
@@ -203,12 +203,15 @@ export default function ProjectsMain({
             )}
           </div>
 
-          {/* 블록 미선택 → 진행중 블록 바로가기 */}
-          {!projectId && (
+          {/* 블록 미선택(또는 잘못된 projectId) → 바로가기 */}
+          {(!projectId || !activeProject) && (
             <div className="bg-white border border-gray-200 rounded-xl p-4">
-              <p className="text-sm text-gray-500 mb-3">호선·블록을 선택하거나, 아래 <b className="text-gray-700">진행중 블록</b>에서 바로 선택하세요.</p>
+              {projectId && !activeProject && (
+                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">해당 블록을 찾을 수 없습니다(삭제되었거나 잘못된 링크). 아래에서 다시 선택하세요.</p>
+              )}
+              <p className="text-sm text-gray-500 mb-3">호선·블록을 선택하거나, 아래 <b className="text-gray-700">{activeOnly ? "진행중·신규" : "전체"} 블록</b>에서 바로 선택하세요.</p>
               {activeBlocks.length === 0 ? (
-                <p className="text-center py-10 text-gray-400 text-sm">진행중인 블록이 없습니다.</p>
+                <p className="text-center py-10 text-gray-400 text-sm">표시할 블록이 없습니다.</p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {activeBlocks.map(b => (
@@ -220,7 +223,7 @@ export default function ProjectsMain({
                         <div className="text-[11px] text-gray-400">[{b.vessel}] · {b.drawingCount}행</div>
                       </div>
                       {b.storageLocation && <span className="shrink-0 flex items-center gap-0.5 text-[10px] text-amber-700"><MapPin size={9} />{b.storageLocation}</span>}
-                      <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] bg-green-100 text-green-700">진행중</span>
+                      <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] ${b.status ? STATUS_COLOR[b.status] ?? "" : "bg-gray-100 text-gray-500"}`}>{b.status ? STATUS_LABEL[b.status] : "신규"}</span>
                     </button>
                   ))}
                 </div>
