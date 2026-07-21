@@ -56,6 +56,17 @@ const toUniqueDates = (rows: { toISOString: () => string }[]) =>
 export async function GET(req: NextRequest) {
   const sp = new URL(req.url).searchParams;
 
+  // 경량 분기: 등록된 호선 목록만 (검색 패널 호선 참고/선택용) — 15개 distinct 쿼리 회피
+  if (sp.get("only") === "vesselCode") {
+    const vessels = await prisma.steelPlan.findMany({
+      where: { archivedAt: null },
+      select: { vesselCode: true },
+      distinct: ["vesselCode"],
+      orderBy: { vesselCode: "asc" },
+    });
+    return NextResponse.json({ vesselCode: vessels.map((v) => ({ value: v.vesselCode, label: v.vesselCode })) });
+  }
+
   // 1) 쿼리스트링 → filters
   const filters: Record<string, string[]> = {};
   for (const [colKey, qsKey] of Object.entries(QS_KEY)) {

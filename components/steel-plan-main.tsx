@@ -5,7 +5,7 @@ import * as XLSX from "xlsx";
 import {
   Upload, Plus, Trash2, RefreshCw, Download, Search, X,
   CheckSquare, Square, ClipboardList, PackageOpen, Hash, PackageCheck, Printer, Filter,
-  ArrowUp, ArrowDown, FileSpreadsheet, Truck, ListChecks,
+  ArrowUp, ArrowDown, FileSpreadsheet, Truck, ListChecks, ChevronDown,
 } from "lucide-react";
 import ColumnFilterDropdown, { type FilterValue } from "./column-filter-dropdown";
 import { serializeColFilters } from "@/lib/client-cascading";
@@ -132,6 +132,60 @@ function downloadRegisterTemplate() {
   XLSX.writeFile(wb, "강재등록_양식.xlsx");
 }
 
+/* 호선 입력 — 등록된 호선 목록을 드롭다운으로 참고/다중선택(체크) + 자유 입력(쉼표=OR) */
+function VesselPicker({ value, onChange, onEnter, options }: {
+  value: string; onChange: (v: string) => void; onEnter: () => void; options: string[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+  const current = value.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
+  const toggle = (code: string) =>
+    onChange(current.includes(code) ? current.filter((c) => c !== code).join(",") : [...current, code].join(","));
+  const filtered = q.trim() ? options.filter((o) => o.toLowerCase().includes(q.trim().toLowerCase())) : options;
+  return (
+    <div ref={ref} className="relative">
+      <div className="flex">
+        <input value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onEnter()}
+          placeholder="여러개 쉼표" className="border border-gray-300 rounded-l rounded-r-none px-2 py-1 text-sm w-full focus:outline-none focus:ring-1 focus:ring-blue-400" />
+        <button type="button" onClick={() => setOpen((o) => !o)} title="등록된 호선 목록"
+          className="px-2 border border-l-0 border-gray-300 rounded-r bg-gray-50 hover:bg-gray-100"><ChevronDown size={14} className="text-gray-400" /></button>
+      </div>
+      {open && (
+        <div className="absolute z-30 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-xl">
+          <div className="p-1.5 border-b border-gray-100 relative">
+            <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="호선 검색..."
+              className="w-full pl-7 pr-2 py-1 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400" />
+          </div>
+          <div className="max-h-56 overflow-y-auto py-1">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-gray-400 text-center">등록된 호선 없음</p>
+            ) : filtered.map((o) => {
+              const on = current.includes(o);
+              return (
+                <button key={o} type="button" onClick={() => toggle(o)}
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-blue-50 ${on ? "bg-blue-50 text-blue-700 font-semibold" : "text-gray-700"}`}>
+                  <input type="checkbox" checked={on} readOnly className="w-3.5 h-3.5 accent-blue-600 pointer-events-none" />
+                  <span className="truncate">{o}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="p-1.5 border-t border-gray-100 flex justify-end">
+            <button type="button" onClick={() => { setOpen(false); onEnter(); }} className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">조회</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ══════════════════════════════════════════════════════════════════════════ */
 export default function SteelPlanMain() {
   const shipoutCart = useShipoutCartActions(); // add 만 사용 → 카트 변경 시 이 대형 테이블 리렌더 방지
@@ -159,6 +213,14 @@ export default function SteelPlanMain() {
   // 호선/재질은 부분검색 → colFilters(in) 가 아니라 별도 서버파라미터(contains)로 전달
   const [appliedVessel,   setAppliedVessel]   = useState("");
   const [appliedMaterial, setAppliedMaterial] = useState("");
+  // 등록된 호선 목록 (검색 패널 호선 드롭다운 참고/선택용) — 진입 시 경량 로드
+  const [vesselList, setVesselList] = useState<string[]>([]);
+  useEffect(() => {
+    fetch("/api/steel-plan/distinct?only=vesselCode")
+      .then((r) => r.json())
+      .then((d) => setVesselList((d.vesselCode ?? []).map((v: { value: string }) => v.value)))
+      .catch(() => {});
+  }, []);
 
   /* ── 컬럼 필터 (Excel 스타일) ── */
   const [colFilters,     setColFilters]     = useState<Record<string, string[]>>({});
@@ -1231,7 +1293,7 @@ export default function SteelPlanMain() {
           {/* 검색 패널 (검색-우선) */}
           <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
-              <div><label className="block text-xs font-semibold text-gray-600 mb-1">호선</label><input value={sVessel} onChange={e => setSVessel(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runSearch()} /></div>
+              <div><label className="block text-xs font-semibold text-gray-600 mb-1">호선</label><VesselPicker value={sVessel} onChange={setSVessel} onEnter={runSearch} options={vesselList} /></div>
               <div><label className="block text-xs font-semibold text-gray-600 mb-1">재질</label><input value={sMaterial} onChange={e => setSMaterial(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runSearch()} /></div>
               <div><label className="block text-xs font-semibold text-gray-600 mb-1">두께</label><input value={sThk} onChange={e => setSThk(e.target.value)} placeholder="예: 10,20,25" className={inputCls} onKeyDown={e => e.key === "Enter" && runSearch()} /></div>
               <div><label className="block text-xs font-semibold text-gray-600 mb-1">폭</label><input value={sWidth} onChange={e => setSWidth(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runSearch()} /></div>
@@ -1724,7 +1786,7 @@ export default function SteelPlanMain() {
           <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
               <div><label className="block text-xs font-semibold text-gray-600 mb-1">판번호</label><input value={hHeatNo} onChange={e => setHHeatNo(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runHeatSearch()} /></div>
-              <div><label className="block text-xs font-semibold text-gray-600 mb-1">호선</label><input value={hVessel} onChange={e => setHVessel(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runHeatSearch()} /></div>
+              <div><label className="block text-xs font-semibold text-gray-600 mb-1">호선</label><VesselPicker value={hVessel} onChange={setHVessel} onEnter={runHeatSearch} options={vesselList} /></div>
               <div><label className="block text-xs font-semibold text-gray-600 mb-1">재질</label><input value={hMaterial} onChange={e => setHMaterial(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runHeatSearch()} /></div>
               <div><label className="block text-xs font-semibold text-gray-600 mb-1">두께</label><input value={hThk} onChange={e => setHThk(e.target.value)} placeholder="예: 10,20,25" className={inputCls} onKeyDown={e => e.key === "Enter" && runHeatSearch()} /></div>
               <div><label className="block text-xs font-semibold text-gray-600 mb-1">폭</label><input value={hWidth} onChange={e => setHWidth(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runHeatSearch()} /></div>
