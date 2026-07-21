@@ -24,15 +24,20 @@ export async function GET(request: NextRequest) {
       const sWidth  = searchParams.get("width");
       const sLength = searchParams.get("length");
       const numOr = (v: string | null) => (v && !isNaN(Number(v)) ? Number(v) : undefined);
+      const w = numOr(sWidth), l = numOr(sLength);
+      // 폭·길이는 화면에 배정잔재 치수(width1/length1)가 우선 표시되므로, 검색도 원판 OR 잔재치수를 매칭
+      // (그래야 사용자가 화면에 보이는 값으로 검색했을 때 그 행이 잡힘). 여러 조건은 AND 로 합성.
+      const dimAnd: object[] = [];
+      if (w !== undefined) dimAnd.push({ OR: [{ width:  w }, { assignedRemnant: { width1:  w } }] });
+      if (l !== undefined) dimAnd.push({ OR: [{ length: l }, { assignedRemnant: { length1: l } }] });
       const drawings = await prisma.drawingList.findMany({
         where: {
           status: { in: ["WAITING", "CUT"] },
           ...(sVessel ? { project: { projectCode: { contains: sVessel, mode: "insensitive" } } } : {}),
           ...(sBlock  ? { block:    { contains: sBlock,  mode: "insensitive" } } : {}),
           ...(sMat    ? { material: { contains: sMat,    mode: "insensitive" } } : {}),
-          ...(numOr(sThk)    !== undefined ? { thickness: numOr(sThk) } : {}),
-          ...(numOr(sWidth)  !== undefined ? { width:     numOr(sWidth) } : {}),
-          ...(numOr(sLength) !== undefined ? { length:    numOr(sLength) } : {}),
+          ...(numOr(sThk) !== undefined ? { thickness: numOr(sThk) } : {}),
+          ...(dimAnd.length ? { AND: dimAnd } : {}),
         },
         include: {
           project:         { select: { id: true, projectCode: true, projectName: true } },

@@ -856,6 +856,8 @@ export default function WorklogAdmin({
   const [sWidth,   setSWidth]   = useState("");
   const [sLength,  setSLength]  = useState("");
   const [queried,  setQueried]  = useState(false);
+  const [allMode,  setAllMode]  = useState(false); // 마지막 조회가 '전체 보기'였는지 — 재조회 시 모드 유지
+  const [lastFiltered, setLastFiltered] = useState(false); // 마지막 조회에 검색조건이 있었는지 — 0건 메시지 구분
 
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [logs,     setLogs]     = useState<CuttingLog[]>([]);
@@ -875,9 +877,11 @@ export default function WorklogAdmin({
   const [openCol,    setOpenCol]    = useState<string | null>(null);
   const [anchorEl,   setAnchorEl]   = useState<HTMLElement | null>(null);
 
-  // 검색-우선 조회. all=true 면 조건 무시하고 전체 확정 목록(escape hatch).
+  // 검색-우선 조회. all=true 면 조건·기간 모두 무시하고 전체 확정 목록(escape hatch).
   const fetchData = async (all = false) => {
     setLoading(true);
+    setAllMode(all);
+    setLastFiltered(!all && !!(sVessel.trim() || sBlock.trim() || sMaterial.trim() || sThk.trim() || sWidth.trim() || sLength.trim() || dateFrom || dateTo));
     try {
       const dp = new URLSearchParams({ allConfirmed: "true" });
       if (!all) {
@@ -889,9 +893,12 @@ export default function WorklogAdmin({
         if (sLength.trim())   dp.set("length",     sLength.trim());
       }
       const logParams = new URLSearchParams();
-      if (dateFrom) logParams.set("dateFrom", dateFrom);
-      if (dateTo)   logParams.set("dateTo",   dateTo);
-      if (!dateFrom && !dateTo) logParams.set("all", "true");
+      // 전체 보기(all)면 기간 무시하고 전 로그. 아니면 기간 적용(없으면 전체).
+      if (all || (!dateFrom && !dateTo)) logParams.set("all", "true");
+      else {
+        if (dateFrom) logParams.set("dateFrom", dateFrom);
+        if (dateTo)   logParams.set("dateTo",   dateTo);
+      }
 
       const [drawRes, logRes] = await Promise.all([
         fetch(`/api/drawings?${dp}`),
@@ -1071,7 +1078,7 @@ export default function WorklogAdmin({
   const handleDelete = async (logId: string) => {
     if (!confirm("이 작업일보를 삭제할까요? (강재 상태가 복원됩니다)")) return;
     await fetch(`/api/cutting-logs/${logId}`, { method: "DELETE" });
-    fetchData();
+    fetchData(allMode); // 마지막 조회 모드 유지(전체보기 유실 방지)
   };
 
   // 현재 조회·필터된 목록만 엑셀 다운로드
@@ -1147,7 +1154,7 @@ export default function WorklogAdmin({
             className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50">
             <Search size={14} /> 조회
           </button>
-          <button onClick={() => fetchData(true)} disabled={loading}
+          <button onClick={() => { setDateFrom(""); setDateTo(""); fetchData(true); }} disabled={loading}
             className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50">
             전체 보기
           </button>
@@ -1353,7 +1360,9 @@ export default function WorklogAdmin({
                   {filteredDrawings.length === 0 && (
                     <tr>
                       <td colSpan={22} className="px-4 py-10 text-center text-gray-400">
-                        {drawings.length === 0 ? "확정된 강재리스트가 없습니다." : "필터 결과가 없습니다."}
+                        {drawings.length === 0
+                          ? (lastFiltered ? "검색 결과가 없습니다. 조건을 바꿔 다시 조회하세요." : "확정된 강재리스트가 없습니다.")
+                          : "필터 결과가 없습니다."}
                       </td>
                     </tr>
                   )}
@@ -1413,7 +1422,7 @@ export default function WorklogAdmin({
           workers={workers}
           projectId={modal.drawing?.projectId ?? ""}
           onClose={() => setModal(m => ({ ...m, open: false }))}
-          onSaved={() => { setModal(m => ({ ...m, open: false })); fetchData(); }}
+          onSaved={() => { setModal(m => ({ ...m, open: false })); fetchData(allMode); }}
         />
       )}
       </>)}
