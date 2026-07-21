@@ -156,6 +156,9 @@ export default function SteelPlanMain() {
   const [sThk,      setSThk]      = useState("");
   const [sWidth,    setSWidth]    = useState("");
   const [sLength,   setSLength]   = useState("");
+  // 호선/재질은 부분검색 → colFilters(in) 가 아니라 별도 서버파라미터(contains)로 전달
+  const [appliedVessel,   setAppliedVessel]   = useState("");
+  const [appliedMaterial, setAppliedMaterial] = useState("");
 
   /* ── 컬럼 필터 (Excel 스타일) ── */
   const [colFilters,     setColFilters]     = useState<Record<string, string[]>>({});
@@ -273,6 +276,8 @@ export default function SteelPlanMain() {
     if (cf.selectionPrintedAt?.length)  p.set("selectionPrintedDates", cf.selectionPrintedAt.join(","));
     if (cf.issuedAt?.length)            p.set("issuedDates",           cf.issuedAt.join(","));
     if (memoMode) p.set("memoMode", memoMode);
+    if (appliedVessel)   p.set("vesselSearch",   appliedVessel);
+    if (appliedMaterial) p.set("materialSearch", appliedMaterial);
     const res = await fetch(`/api/steel-plan?${p}`);
     if (res.ok) {
       const json = await res.json();
@@ -281,23 +286,23 @@ export default function SteelPlanMain() {
       setTotalPages(json.totalPages);
     }
     setLoading(false);
-  }, [search, page, colFilters, sortKey, sortDir, memoMode]);
+  }, [search, page, colFilters, sortKey, sortDir, memoMode, appliedVessel, appliedMaterial]);
 
-  // 검색 패널 → colFilters 로 변환(각 칸 쉼표=OR). 조회 시 queried=true 로 로드 개시.
+  // 검색 패널 → 호선/재질은 부분검색(contains) 파라미터, 두께/폭/길이는 colFilters(정확 in). 각 칸 쉼표=OR.
   const runSearch = () => {
     const splitTxt = (v: string) => v.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
     const badNum = ([["두께", sThk], ["폭", sWidth], ["길이", sLength]] as const)
       .find(([, v]) => v.trim() && splitTxt(v).some((t) => isNaN(Number(t))));
     if (badNum) { alert(`${badNum[0]}에는 숫자만 입력하세요(여러 개는 쉼표). 예: 10,20,25`); return; }
     const cf: Record<string, string[]> = {};
-    const vs = splitTxt(sVessel);   if (vs.length) cf.vesselCode = vs;
-    const ms = splitTxt(sMaterial); if (ms.length) cf.material   = ms;
-    const ts = splitTxt(sThk);      if (ts.length) cf.thickness  = ts;
-    const ws = splitTxt(sWidth);    if (ws.length) cf.width      = ws;
-    const ls = splitTxt(sLength);   if (ls.length) cf.length     = ls;
+    const ts = splitTxt(sThk);    if (ts.length) cf.thickness = ts;
+    const ws = splitTxt(sWidth);  if (ws.length) cf.width     = ws;
+    const ls = splitTxt(sLength); if (ls.length) cf.length    = ls;
+    setAppliedVessel(splitTxt(sVessel).join(","));
+    setAppliedMaterial(splitTxt(sMaterial).join(","));
     setColFilters(cf); setPage(1); setQueried(true);
   };
-  const runSearchAll = () => { setColFilters({}); setPage(1); setQueried(true); };
+  const runSearchAll = () => { setAppliedVessel(""); setAppliedMaterial(""); setColFilters({}); setPage(1); setQueried(true); };
   const resetSearchFields = () => { setSVessel(""); setSMaterial(""); setSThk(""); setSWidth(""); setSLength(""); };
 
   const loadHeatDistinct = useCallback(async () => {
@@ -715,6 +720,7 @@ export default function SteelPlanMain() {
   /* ── 새로고침: 작업일보 기준 강재 상태 자동 동기화 ── */
   const syncAndRefresh = async () => {
     setLoading(true);
+    setQueried(true); // 헤더에서 직접 실행 시(미조회 상태) 결과가 게이트에 가려지지 않게
     // 작업일보(CuttingLog)와 불일치하는 강재·판번호 상태를 자동 복원
     await fetch("/api/steel-plan/sync", { method: "POST" });
     // 동기화 후 최신 데이터 로드
@@ -840,6 +846,7 @@ export default function SteelPlanMain() {
     setDeleting(false);
     setShowDeleteModal(false);
     setDeleteVessel("");
+    setQueried(true);
     loadPlan();
     loadHeat();
   };
@@ -857,6 +864,7 @@ export default function SteelPlanMain() {
     setDeleting(false);
     setShowDeleteModal(false);
     setDeleteBatchNo("");
+    setQueried(true);
     loadPlan();
     loadHeat();
   };

@@ -57,6 +57,9 @@ export async function GET(req: NextRequest) {
   // Column IN filters
   const vesselCodes     = parseList(sp.get("vesselCodes"));
   const materials       = parseList(sp.get("materials"));
+  // 검색패널 호선/재질 — 부분검색(contains), 칸 안 여러 값 OR (컬럼 드롭다운의 in 과 별개)
+  const vesselSearch    = parseList(sp.get("vesselSearch"));
+  const materialSearch  = parseList(sp.get("materialSearch"));
   const thicknesses     = parseList(sp.get("thicknesses")).map(Number).filter((n) => !isNaN(n));
   const widths          = parseList(sp.get("widths")).map(Number).filter((n) => !isNaN(n));
   const lengths         = parseList(sp.get("lengths")).map(Number).filter((n) => !isNaN(n));
@@ -87,6 +90,11 @@ export async function GET(req: NextRequest) {
       : {}),
     ...(vesselCodes.length  ? { vesselCode: { in: vesselCodes } }  : {}),
     ...(materials.length    ? { material:   { in: materials } }    : {}),
+    // 검색패널 호선/재질 부분검색 — 필드끼리 AND, 필드 안 여러 값 OR (contains, 대소문자 무시)
+    ...((vesselSearch.length || materialSearch.length) ? { AND: [
+      ...(vesselSearch.length   ? [{ OR: vesselSearch.map(v   => ({ vesselCode: { contains: v, mode: "insensitive" as const } })) }] : []),
+      ...(materialSearch.length ? [{ OR: materialSearch.map(m => ({ material:   { contains: m, mode: "insensitive" as const } })) }] : []),
+    ] } : {}),
     ...(thicknesses.length  ? { thickness:  { in: thicknesses } }  : {}),
     ...(widths.length       ? { width:      { in: widths } }       : {}),
     ...(lengths.length      ? { length:     { in: lengths } }      : {}),
