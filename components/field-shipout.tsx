@@ -37,6 +37,7 @@ const fmtRecent = (ms: number) => {
 interface Candidate {
   id: string; vesselCode: string; material: string; thickness: number; width: number; length: number;
   weight: number; storageLocation: string | null; shipoutHeatNo: string | null; shipoutLabel: string | null;
+  otherVessel?: boolean;   // 입력 판번호의 호선과 다른 호선의 강재 (야드에 호선이 섞여 쌓이므로 정상)
 }
 interface LookResult {
   matched: boolean; reason?: string; heatNo: string; heatId?: string;
@@ -290,7 +291,10 @@ function AddTab() {
 
           {/* 선별목록 후보 */}
           <div>
-            <div className="text-xs font-semibold text-gray-400 mb-2 px-1">선별목록 일치 강재 {result.candidates?.length ?? 0}건 — 실물과 맞는 강재를 선택</div>
+            <div className="text-xs font-semibold text-gray-400 mb-2 px-1">
+              선별목록 일치 강재 {result.candidates?.length ?? 0}건 — 실물과 맞는 강재를 선택
+              <span className="text-gray-600 font-normal ml-1">(규격 기준 · 호선 무관)</span>
+            </div>
             {(result.candidates?.length ?? 0) === 0 ? (
               // N10: 사무실 선별 요구 흐름의 후보 없음 안내 — 대안 흐름 명시
               <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-sm text-gray-400 space-y-2">
@@ -310,7 +314,12 @@ function AddTab() {
                     <div key={c.id} className={`bg-gray-900 border rounded-2xl p-3.5 ${inCart ? "border-purple-700 opacity-60" : "border-gray-800"}`}>
                       <div className="flex items-center justify-between">
                         <div className="text-sm">
-                          <div className="font-bold text-white">{c.vesselCode} · {c.material}</div>
+                          <div className="font-bold text-white flex items-center gap-1.5">
+                            {c.vesselCode} · {c.material}
+                            {c.otherVessel && (
+                              <span className="text-[10px] px-1 py-0.5 rounded bg-cyan-900/60 text-cyan-300 font-normal">다른 호선</span>
+                            )}
+                          </div>
                           <div className="font-mono text-gray-400 text-xs mt-0.5">{fmtT(c.thickness)}×{fmtL(c.width)}×{fmtL(c.length)} · {fmtKg(c.weight)}</div>
                           <div className="flex items-center gap-2 mt-1 text-[11px] text-gray-500">
                             {c.storageLocation && <span className="flex items-center gap-0.5"><MapPin size={11} />{c.storageLocation}</span>}
@@ -409,6 +418,7 @@ interface AdHocCandidate {
   receivedAt: string | null;
   shipoutHeatNo: string | null; shipoutLabel: string | null;
   shipoutMarkedAt: string | null;
+  otherVessel?: boolean;   // 입력 판번호의 호선과 다른 호선의 강재
 }
 interface AdHocSpec { vesselCode: string; material: string; thickness: number; width: number; length: number }
 interface AdHocResult {
@@ -665,7 +675,7 @@ function AdHocTab() {
           <div>
             <div className="text-xs font-semibold text-gray-400 mb-2 px-1">
               입고 자재 {result.candidates?.length ?? 0}건 — 실물과 맞는 강재를 선택
-              <span className="text-gray-600 font-normal ml-1">(사무실 선별 여부 무관)</span>
+              <span className="text-gray-600 font-normal ml-1">(규격 기준 · 호선·선별 여부 무관)</span>
             </div>
             {(result.candidates?.length ?? 0) === 0 ? (
               <div className="space-y-3">
@@ -683,9 +693,9 @@ function AdHocTab() {
                   </div>
                 ) : (
                   <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 text-sm text-gray-400">
-                    <b className="text-gray-200">{result.spec.vesselCode}</b> 호선에는 이 사양의 [입고] 자재가 없습니다.
+                    이 규격의 [입고] 자재가 <b className="text-gray-200">어느 호선에도</b> 없습니다.
                     {(result.notReceivedCount ?? 0) > 0 && (
-                      <> (이 사양 <b>{result.notReceivedCount}장</b>은 이미 절단/출고 처리됨)</>
+                      <> (이 규격 <b>{result.notReceivedCount}장</b>은 이미 절단/출고 처리됨)</>
                     )}
                   </div>
                 )}
@@ -743,7 +753,12 @@ function AdHocTab() {
                     <div key={c.id} className={`bg-gray-900 border rounded-2xl p-3.5 ${inCart ? "border-purple-700 opacity-60" : "border-gray-800"}`}>
                       <div className="flex items-center justify-between">
                         <div className="text-sm">
-                          <div className="font-bold text-white">{c.vesselCode} · {c.material}</div>
+                          <div className="font-bold text-white flex items-center gap-1.5">
+                            {c.vesselCode} · {c.material}
+                            {c.otherVessel && (
+                              <span className="text-[10px] px-1 py-0.5 rounded bg-cyan-900/60 text-cyan-300 font-normal">다른 호선</span>
+                            )}
+                          </div>
                           <div className="font-mono text-gray-400 text-xs mt-0.5">{fmtT(c.thickness)}×{fmtL(c.width)}×{fmtL(c.length)} · {fmtKg(c.weight)}</div>
                           <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] text-gray-500">
                             {c.storageLocation && <span className="flex items-center gap-0.5"><MapPin size={11} />{c.storageLocation}</span>}

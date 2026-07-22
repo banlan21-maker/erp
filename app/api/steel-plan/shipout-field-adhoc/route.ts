@@ -9,14 +9,19 @@
  * 두 가지 조회 모드 (URL 파라미터로 분기):
  *
  * (1) GET ?heatNo=XXXX
- *     판번호로 heat 찾기 → 사양 확인 → 같은 사양의 RECEIVED + reservedFor=null 자재 목록
+ *     판번호로 heat 찾기 → 규격 확인 → 같은 규격의 RECEIVED + reservedFor=null 자재 목록.
+ *     ★ 호선(vesselCode)은 후보 조건에서 제외한다. 판번호는 철판 한 장의 고유번호이고
+ *       호선은 "어느 호선 예산으로 입고됐나" 라는 꼬리표일 뿐 실물을 구분하지 않는다.
+ *       야드에는 같은 규격의 1022·1023 철판이 섞여 쌓여 있으므로 호선으로 잠그면 현장이
+ *       실물을 집어 찍었을 때 "재고 없음" 으로 막힌다. 판번호와 같은 호선을 목록 앞에 두고,
+ *       다른 호선 강재는 otherVessel=true 로 표시해 현장이 실물과 대조하게 한다.
  *     matched=true               → { spec, candidates }
  *     matched=false, NOT_FOUND   → 이 판번호 시스템에 없음. 프론트가 사양 선택 UI 로 전환
  *     matched=false, ALREADY_USED → 이미 절단/출고로 소진된 판번호
  *
  * (2) GET ?vesselCode=&material=&thickness=&width=&length=
- *     판번호가 시스템에 없거나 신규 판번호일 때 — 사양만으로 후보 조회
- *     candidates 반환
+ *     판번호가 시스템에 없거나 신규 판번호일 때 — 사양만으로 후보 조회.
+ *     이쪽은 사용자가 호선을 명시적으로 입력했으므로 그 호선으로 한정한다.
  *
  * 후보 조건 (공통):
  *   - status = RECEIVED
@@ -32,12 +37,22 @@ const TOL = 0.001;
 const calcWeight = (t: number, w: number, l: number) =>
   parseFloat(((t * w * l * 7.85) / 1_000_000).toFixed(1));
 
-async function findCandidatesBySpec(spec: {
-  vesselCode: string; material: string; thickness: number; width: number; length: number;
-}) {
+/**
+ * 규격이 맞는 출고 가능 강재 후보.
+ *
+ * @param lockVessel true 면 spec.vesselCode 로 호선을 한정한다(사용자가 사양 폼에서 호선을
+ *   직접 지정한 경우). 판번호 조회 모드에서는 false — 판번호는 철판 한 장의 고유번호이고
+ *   호선은 "어느 호선 예산으로 입고됐나" 라는 꼬리표일 뿐 실물을 구분하지 않는다. 야드에는
+ *   같은 규격의 1022·1023 철판이 섞여 쌓여 있으므로 호선으로 잠그면 현장이 실물을 집어
+ *   찍었을 때 "재고 없음" 으로 막힌다.
+ */
+async function findCandidatesBySpec(
+  spec: { vesselCode: string; material: string; thickness: number; width: number; length: number },
+  lockVessel = true,
+) {
   const plans = await prisma.steelPlan.findMany({
     where: {
-      vesselCode: spec.vesselCode,
+      ...(lockVessel ? { vesselCode: spec.vesselCode } : {}),
       material:   spec.material,
       thickness: { gte: spec.thickness - TOL, lte: spec.thickness + TOL },
       width:     { gte: spec.width - TOL,     lte: spec.width + TOL },
@@ -52,11 +67,17 @@ async function findCandidatesBySpec(spec: {
       shipoutHeatNo: true, shipoutLabel: true, shipoutMarkedAt: true,
     },
   });
-  return plans.map((p) => ({
+  // 판번호와 같은 호선을 먼저 — 현장이 대개 그걸 집기 때문. 나머지는 뒤에.
+  const sorted = lockVessel ? plans : [
+    ...plans.filter(p => p.vesselCode === spec.vesselCode),
+    ...plans.filter(p => p.vesselCode !== spec.vesselCode),
+  ];
+  return sorted.map((p) => ({
     ...p,
     receivedAt: p.receivedAt?.toISOString() ?? null,
     shipoutMarkedAt: p.shipoutMarkedAt?.toISOString() ?? null,
     weight: calcWeight(p.thickness, p.width, p.length),
+    otherVessel: p.vesselCode !== spec.vesselCode,
   }));
 }
 
@@ -90,11 +111,12 @@ async function findOtherVesselStock(spec: {
 }
 
 // N10: 후보 0건일 때 원인 세분화 (사용자에게 정확한 다음 액션 제시)
-async function countExcludedBySpec(spec: {
-  vesselCode: string; material: string; thickness: number; width: number; length: number;
-}) {
+async function countExcludedBySpec(
+  spec: { vesselCode: string; material: string; thickness: number; width: number; length: number },
+  lockVessel = true,
+) {
   const specWhere = {
-    vesselCode: spec.vesselCode,
+    ...(lockVessel ? { vesselCode: spec.vesselCode } : {}),
     material:   spec.material,
     thickness: { gte: spec.thickness - TOL, lte: spec.thickness + TOL },
     width:     { gte: spec.width - TOL,     lte: spec.width + TOL },
@@ -144,11 +166,12 @@ export async function GET(req: NextRequest) {
         vesselCode: heat.vesselCode, material: heat.material,
         thickness: heat.thickness, width: heat.width, length: heat.length,
       };
-      const candidates = await findCandidatesBySpec(spec);
+      // 호선 잠금 없이 규격으로만 매칭 — 판번호는 철판 고유번호이지 호선 소속이 아니다.
+      const candidates = await findCandidatesBySpec(spec, false);
       // N10: 후보 0건일 때 원인 카운트 (사용자에게 정확한 액션 안내)
-      const excluded = candidates.length === 0 ? await countExcludedBySpec(spec) : { reservedCount: 0, notReceivedCount: 0 };
-      // 후보 0건이면 같은 사양이 남아 있는 다른 호선을 함께 반환 (호선 유용 대응)
-      const otherVesselStock = candidates.length === 0 ? await findOtherVesselStock(spec) : [];
+      const excluded = candidates.length === 0
+        ? await countExcludedBySpec(spec, false)
+        : { reservedCount: 0, notReceivedCount: 0 };
       return NextResponse.json({
         success: true,
         matched: true,
@@ -156,7 +179,8 @@ export async function GET(req: NextRequest) {
         heatId: heat.id,
         spec,
         candidates,
-        otherVesselStock,
+        // 호선 무관 매칭이라 "다른 호선 재고" 안내는 더 이상 필요 없다(후보에 이미 포함).
+        otherVesselStock: [],
         // I10: 사양이 여러 개면 UI 가 "다른 사양으로도 등록된 동일 판번호 N건" 안내
         multiSpecCount: uniqueSpecs.length,
         otherSpecs: uniqueSpecs.length > 1
