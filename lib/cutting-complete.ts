@@ -98,7 +98,8 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
   }
 
   // ── SteelPlanHeat 상태 → CUT ───────────────────────────────────────
-  // 동일 heatNo 가 여러 호선에 있을 수 있으므로 effectiveVessel + spec 필터 필수
+  // 동일 heatNo 가 여러 호선에 있을 수 있으므로 spec 필터 필수. 호선은 effectiveVessel 을
+  // "우선" 으로만 쓴다 — 잠금으로 쓰면 호선 유용 시 아무 판도 소진 못 한다(아래 ② 참고).
   const effectiveVessel = targetDrawing?.alternateVesselCode?.trim() || project?.projectCode;
   // 잔재(등록/현장/여유) 사용 절단은 정규원재(SteelPlan/SteelPlanHeat)를 건드리지 않음 — 여유원재는 아래 전용 블록에서 처리
   if (!targetDrawing?.assignedRemnantId) {
@@ -119,18 +120,32 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
     }
     // 폴백 — selectedHeatId 가 없거나(레거시/직접입력) 이미 소진돼 충돌한 경우(수입재 다판 동시절단)
     // heatNo+사양 로 남은 WAITING 형제 1장을 소진. (if/else 아님 — selected 충돌 시에도 반드시 형제 소진)
-    if (!consumedHeatId && log.drawingNo && log.heatNo?.trim() && effectiveVessel && log.material && log.thickness && log.width && log.length) {
-      const heatMatch = await tx.steelPlanHeat.findFirst({
-        where: {
-          heatNo: log.heatNo.trim(),
-          status: "WAITING",
-          vesselCode: effectiveVessel,
-          material: { equals: log.material.trim().toUpperCase(), mode: "insensitive" },
-          thickness: log.thickness, width: log.width, length: log.length,
-        },
-        orderBy: { createdAt: "asc" },
-        select: { id: true },
-      });
+    if (!consumedHeatId && log.drawingNo && log.heatNo?.trim() && log.material && log.thickness && log.width && log.length) {
+      const heatWhere = {
+        heatNo: log.heatNo.trim(),
+        status: "WAITING" as const,
+        material: { equals: log.material.trim().toUpperCase(), mode: "insensitive" as const },
+        thickness: log.thickness, width: log.width, length: log.length,
+      };
+      // ① 작업 호선(또는 대체호선)에서 먼저 찾는다 — 정상 흐름은 여기서 끝난다.
+      let heatMatch = effectiveVessel
+        ? await tx.steelPlanHeat.findFirst({
+            where: { ...heatWhere, vesselCode: effectiveVessel },
+            orderBy: { createdAt: "asc" },
+            select: { id: true },
+          })
+        : null;
+      // ② 호선 유용 폴백 — 대체호선을 지정하지 않고 옆 호선 실물을 꺼내 쓴 경우.
+      //    판번호+사양이 같으면 물리적으로 그 판이 잘린 것이므로 호선이 달라도 소진한다.
+      //    (호선으로 잠가두면 아무 판번호도 소진되지 않아 유령 WAITING 이 영구히 남고,
+      //     그 사양 재고가 어긋나 현장직접출고에서 "입고 자재 없음" 으로 막힌다 — 실제 31건 발생)
+      if (!heatMatch) {
+        heatMatch = await tx.steelPlanHeat.findFirst({
+          where: heatWhere,
+          orderBy: { createdAt: "asc" },
+          select: { id: true },
+        });
+      }
       if (heatMatch) {
         await tx.steelPlanHeat.update({
           where: { id: heatMatch.id },
