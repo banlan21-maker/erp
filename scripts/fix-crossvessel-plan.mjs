@@ -60,9 +60,17 @@ async function collect() {
     if (!wrong) continue;
 
     // 실제 잘린 타호선 강재 — 그 판번호의 호선·사양으로 아직 입고로 남아 있는 것.
+    //
+    // ★ 출고 선별(shipoutMarkedAt)된 강재는 제외한다 — 절단↔출고 상호배제(R1).
+    //   lib/cutting-complete.ts 의 소진 대상 조건(matchBase.shipoutMarkedAt: null)과 동일하게 맞춘 것.
+    //   이 가드가 없던 최초 실행(2026-07-22 12:21)에서 Steellist-1023-F10C(태금-1) 선별분 3장을
+    //   COMPLETED 로 넘겨 R1 위반을 만들었다. reservedFor nulls-first 정렬이 하필 선별강재를
+    //   1순위로 집는데(선별강재는 정의상 reservedFor=null) 마킹 가드가 없었던 탓.
+    //   → scripts/fix-selection-transfer.mjs 로 사후 교정함.
+    //
     // 미확정(reservedFor=null) 을 먼저 고른다 — 남의 호선 절단계획에 잡힌 강재를 빼앗지 않기 위함.
     const right = await prisma.steelPlan.findFirst({
-      where: { vesselCode: heat.vesselCode, ...spec, status: "RECEIVED" },
+      where: { vesselCode: heat.vesselCode, ...spec, status: "RECEIVED", shipoutMarkedAt: null },
       orderBy: [
         { reservedFor: { sort: "asc", nulls: "first" } },
         { receivedAt: "asc" },
