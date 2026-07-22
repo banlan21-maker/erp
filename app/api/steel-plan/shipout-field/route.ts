@@ -22,6 +22,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { findHeatsByNo, heatExists } from "@/lib/heat-lookup";
 
 const TOL = 0.001;
 const calcWeight = (t: number, w: number, l: number) => parseFloat(((t * w * l * 7.85) / 1_000_000).toFixed(1));
@@ -33,12 +34,10 @@ export async function GET(req: NextRequest) {
 
     // 1) 판번호 → 미사용(WAITING) 판재 → 규격
     //    같은 판번호가 여러 호선/규격에 등록된 경우(수입재)를 대비해 전부 가져온다.
-    const heats = await prisma.steelPlanHeat.findMany({
-      where: { heatNo, status: "WAITING" },
-      orderBy: { createdAt: "asc" },
-    });
+    //    입력창이 하이픈을 지워버려도 findHeatsByNo 가 정규화 폴백으로 찾아준다(SUS-4 ↔ SUS4).
+    const heats = await findHeatsByNo(heatNo, "WAITING");
     if (heats.length === 0) {
-      const exists = await prisma.steelPlanHeat.findFirst({ where: { heatNo }, select: { id: true } });
+      const exists = await heatExists(heatNo);
       return NextResponse.json({ success: true, matched: false, reason: exists ? "ALREADY_USED" : "NOT_FOUND", heatNo });
     }
     const heat = heats[0];   // 대표 (가장 오래된)
@@ -75,7 +74,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       matched: true,
-      heatNo,
+      // DB 에 등록된 원래 표기를 돌려준다 — 사용자가 하이픈을 빼고 쳐도(SUS4) 출고장·거래명세표에는
+      // 실물 라벨과 같은 표기(SUS-4)가 찍히도록.
+      heatNo: heat.heatNo,
       heatId: heat.id,   // 이 판번호의 WAITING 판재 — 출고 시 정확히 이 heat 를 SHIPPED 로 전환
       spec: {
         vesselCode: heat.vesselCode, material: heat.material,

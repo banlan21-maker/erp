@@ -22,6 +22,17 @@ const fmtT = (v: number) => parseFloat(v.toFixed(1));
 const fmtL = (v: number) => Math.round(v);
 const fmtKg = (n: number) => `${n.toLocaleString("ko-KR", { maximumFractionDigits: 1 })} kg`;
 const todayKst = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
+
+/**
+ * 판번호 입력 정리 — 바코드 스캐너가 붙이는 공백·개행·제어문자는 걸러내되
+ * 실제 판번호에 쓰이는 하이픈은 살린다.
+ *
+ * 예전 규칙 `replace(/[^A-Z0-9]/g, "")` 은 하이픈까지 지워서, 실물 라벨이 "SUS-4" 인 철판을
+ * 찍으면 "SUS4" 가 서버로 가고 "등록되지 않은 판번호" 가 떴다(현재 DB 에 하이픈 판번호 72개).
+ * 더 나쁜 건 현장직접출고에서 그 상태로 담으면 "SUS4" 라는 가짜 판번호가 새로 등록되는 것.
+ * 서버(lib/heat-lookup.ts)에도 정규화 폴백이 있어 하이픈을 빼고 쳐도 찾아준다.
+ */
+const cleanHeatNo = (s: string) => s.toUpperCase().replace(/[^A-Z0-9-]/g, "");
 const firstOfMonthKst = () => { const t = todayKst(); return `${t.slice(0, 7)}-01`; };
 
 // ── 최근 담은 내역(이 기기 localStorage, 최대 20) — "어디까지 했는지" 추적용 ──
@@ -249,14 +260,14 @@ function AddTab() {
         </label>
         <label className="block text-xs font-semibold text-gray-400 mb-2">
           {remMode ? "잔재번호 입력" : "판번호 입력"}{" "}
-          <span className="font-normal text-gray-500">{remMode ? "(대문자·숫자·특수문자)" : "(대문자·숫자만 — 키보드·바코드 모두 자동 정리)"}</span>
+          <span className="font-normal text-gray-500">{remMode ? "(대문자·숫자·특수문자)" : "(대문자·숫자·하이픈 — 키보드·바코드 모두 자동 정리)"}</span>
         </label>
         <div className="flex gap-2">
           <input
             value={heatNo}
             // 판번호: 대문자영문+숫자만. 잔재번호: 대문자영문+숫자+특수문자 허용(소문자만 대문자화).
             // 바코드(PDA) 스캔 입력도 onChange 를 거치므로 동일하게 정리됨.
-            onChange={e => setHeatNo(remMode ? e.target.value.toUpperCase() : e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+            onChange={e => setHeatNo(remMode ? e.target.value.toUpperCase() : cleanHeatNo(e.target.value))}
             onKeyDown={e => { if (e.key === "Enter") lookup(); }}
             placeholder={remMode ? "예: REM-2026-031" : "예: HT240001"}
             inputMode="text" autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false}
@@ -602,12 +613,12 @@ function AdHocTab() {
       {/* 판번호 입력 */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
         <label className="block text-xs font-semibold text-gray-400 mb-2">
-          판번호 입력 <span className="font-normal text-gray-500">(대문자·숫자만 — 키보드·바코드 모두 자동 정리)</span>
+          판번호 입력 <span className="font-normal text-gray-500">(대문자·숫자·하이픈 — 키보드·바코드 모두 자동 정리)</span>
         </label>
         <div className="flex gap-2">
           <input
             value={heatNo}
-            onChange={e => setHeatNo(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+            onChange={e => setHeatNo(cleanHeatNo(e.target.value))}
             onKeyDown={e => { if (e.key === "Enter") lookupByHeat(); }}
             placeholder="예: HT240001"
             inputMode="text" autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false}

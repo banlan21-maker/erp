@@ -32,6 +32,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { findHeatsByNo, heatExists } from "@/lib/heat-lookup";
 
 const TOL = 0.001;
 const calcWeight = (t: number, w: number, l: number) =>
@@ -144,12 +145,12 @@ export async function GET(req: NextRequest) {
       // I10: 같은 heatNo 가 여러 사양(수입재 케이스)에 WAITING 으로 존재할 수 있음.
       //      findFirst 로 첫 사양만 노출하면 사용자가 실물의 다른 사양을 못 찾음 →
       //      전체 조회해서 사양이 여럿이면 응답에 다중 사양 목록 포함 (UI 안내용).
-      const heats = await prisma.steelPlanHeat.findMany({
-        where: { heatNo, status: "WAITING" },
-        orderBy: { createdAt: "asc" },
-      });
+      // 입력창이 하이픈을 지워버려도 findHeatsByNo 가 정규화 폴백으로 찾아준다(SUS-4 ↔ SUS4).
+      // 이 폴백이 없으면 실재하는 판번호가 NOT_FOUND 로 떨어지고, 현장이 신규 등록 경로를 타
+      // 가짜 판번호(SUS4)가 새로 생긴다.
+      const heats = await findHeatsByNo(heatNo, "WAITING");
       if (heats.length === 0) {
-        const exists = await prisma.steelPlanHeat.findFirst({ where: { heatNo }, select: { id: true } });
+        const exists = await heatExists(heatNo);
         return NextResponse.json({
           success: true,
           matched: false,
@@ -175,7 +176,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({
         success: true,
         matched: true,
-        heatNo,
+        // DB 에 등록된 원래 표기를 돌려준다 — 하이픈을 빼고 쳐도(SUS4) 출고장에는 실물 라벨 표기(SUS-4)로.
+        heatNo: heat.heatNo,
         heatId: heat.id,
         spec,
         candidates,
