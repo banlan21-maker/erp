@@ -122,6 +122,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  // 트랜잭션 시간 초과(P2028) 안내에서 쓰려고 catch 밖에서도 보이게 둔다
+  let itemCount = 0;
   try {
     const body = await req.json();
     const shippedAtStr = typeof body?.shippedAt === "string" ? body.shippedAt : "";
@@ -153,6 +155,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: "자재 식별자(원판/잔재 ID)가 없는 항목이 있습니다." }, { status: 400 });
       }
     }
+    itemCount = allItems.length;
     const allSteelPlanIds = allItems.filter(i => !isRemnantItem(i)).map(i => i.steelPlanId!).filter(Boolean);
     const allRemnantIds   = allItems.filter(i =>  isRemnantItem(i)).map(i => i.remnantId!).filter(Boolean);
 
@@ -491,9 +494,19 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, data: created }, { status: 201 });
   } catch (err) {
+    const code = err && typeof err === "object" ? (err as { code?: string }).code : undefined;
     // 발번 동시성 충돌(P2002 unique) — 원시 500 대신 재시도 안내 409
-    if (err && typeof err === "object" && (err as { code?: string }).code === "P2002") {
+    if (code === "P2002") {
       return NextResponse.json({ success: false, error: "출고장/거래명세서 번호가 동시 생성으로 충돌했습니다. 잠시 후 다시 시도하세요." }, { status: 409 });
+    }
+    // 트랜잭션 시간 초과(P2028) — 전체가 롤백돼 아무것도 저장되지 않은 상태다.
+    // 원시 메시지("Transaction already closed")는 현장에서 해석 불가하므로 조치 가능한 안내로 바꾼다.
+    if (code === "P2028") {
+      return NextResponse.json({
+        success: false,
+        error: `자재 ${itemCount}건을 처리하는 데 시간이 초과되어 출고장이 생성되지 않았습니다(저장된 것 없음). `
+             + `잠시 후 다시 시도하거나, 자재를 차수로 나눠 진행하세요.`,
+      }, { status: 503 });
     }
     const msg = err instanceof Error ? err.message : "출고장 생성 실패";
     console.error("[POST /api/shipments]", err);
