@@ -160,19 +160,24 @@ export async function POST(req: NextRequest) {
         orderBy: [{ receivedAt: "asc" }, { createdAt: "asc" }],
       });
 
-      // 판번호가 있을 때 — 호선 비면 호선 무관 매칭. 미사용(WAITING) 판번호만
+      // 판번호가 있을 때 — 미사용(WAITING) 판번호만.
+      // 호선은 "우선" 조건일 뿐 잠금이 아니다. 야드에는 같은 규격의 자매호선 철판이 섞여 쌓이고
+      // 엑셀에 적힌 판번호가 다른 호선 소속인 경우가 흔하다. 호선으로 잠그면 못 찾은 것으로
+      // 처리돼 출고 확정 시 잘못된 호선으로 같은 판번호가 새로 생성된다(유령 판번호).
+      const heatWhere = {
+        material:   r.material,
+        thickness:  { gte: r.thickness - TOL, lte: r.thickness + TOL },
+        width:      { gte: r.width     - TOL, lte: r.width     + TOL },
+        length:     { gte: r.length    - TOL, lte: r.length    + TOL },
+        heatNo:     r.heatNo ?? "",
+        status:     "WAITING" as const,
+      };
       if (r.heatNo) {
-        const heat = await prisma.steelPlanHeat.findFirst({
-          where: {
-            ...(r.vesselCode ? { vesselCode: r.vesselCode } : {}),
-            material:   r.material,
-            thickness:  { gte: r.thickness - TOL, lte: r.thickness + TOL },
-            width:      { gte: r.width     - TOL, lte: r.width     + TOL },
-            length:     { gte: r.length    - TOL, lte: r.length    + TOL },
-            heatNo:     r.heatNo,
-            status:     "WAITING",
-          },
-        });
+        const heat =
+          (r.vesselCode
+            ? await prisma.steelPlanHeat.findFirst({ where: { ...heatWhere, vesselCode: r.vesselCode } })
+            : null)
+          ?? await prisma.steelPlanHeat.findFirst({ where: heatWhere, orderBy: { createdAt: "asc" } });
         // 판번호 기록 자체가 없으면 HEAT_NOT_FOUND (사용자가 등록해야 함)
         // 다만 판번호 + 사양 매칭하는 SteelPlan(RECEIVED) 가 있으면 그건 담을 수 있음
         if (!heat && planCandidates.length === 0) {
@@ -189,14 +194,18 @@ export async function POST(req: NextRequest) {
           results.push({ ...r, status: "NOT_RECEIVED", reason: "입고되지 않은 자재" });
           continue;
         }
-        // 판번호 마스터에 그 판번호가 없는 경우 — heat 는 null 로 매칭, 사용자가 모달에서 직접입력 옵션
+        // 판번호 마스터에 그 판번호가 없는 경우 → HEAT_NOT_FOUND 로 구분해 화면에 드러낸다.
+        //   (예전에는 삼항식 양쪽이 모두 "MATCHED" 라 매칭 실패가 사용자에게 보이지 않았고,
+        //    그대로 담기면 출고 확정 시 신규 판번호가 조용히 생성돼 유령 판번호가 됐다.)
+        // steelPlanId 는 그대로 실어 보낸다 — 진짜 신규 판번호일 수도 있으므로,
+        // 사용자가 모달에서 명시적으로 동의하면 담을 수 있게 한다.
         usedSteelPlanIds.add(planReceived.id);
         results.push({
           ...r,
-          status: heat ? "MATCHED" : "MATCHED",
+          status: heat ? "MATCHED" : "HEAT_NOT_FOUND",
           steelPlanId: planReceived.id,
           steelPlanHeatId: heat?.id ?? undefined,
-          reason: heat ? undefined : "판번호 마스터에 없음 — 직접입력으로 자동 등록됨",
+          reason: heat ? undefined : "판번호가 판번호리스트에 없습니다 — 오타인지 확인하세요. 담으면 신규 판번호로 등록됩니다.",
         });
         continue;
       }

@@ -33,6 +33,8 @@ interface HeatOption {
   id:     string;
   heatNo: string;
   status: string;
+  vesselCode?:  string;
+  otherVessel?: boolean;   // 출고하는 원판의 호선과 다른 호선에 등록된 판번호
 }
 
 // 모달 ① 의 행 — 카트 + 매칭/입력된 판번호
@@ -95,6 +97,8 @@ export default function ShipoutBar() {
   const [shippedAt, setShippedAt] = useState(todayYMD());
   const [submitting, setSubmitting] = useState(false);
   const [error,      setError]      = useState("");
+  // 판번호 후보 조회 실패 — 조용히 넘기면 목록이 빈 채로 열려 손입력 → 유령 판번호로 이어진다
+  const [heatOptError, setHeatOptError] = useState("");
 
   // 작성(출고)자 — localStorage 에서 기본값 복원
   const [writerName,    setWriterName]    = useState("");
@@ -161,6 +165,7 @@ export default function ShipoutBar() {
         groups.get(k)!.push(r);
       }
       const optsByKey = new Map<string, HeatOption[]>();
+      const optErrors: string[] = [];
       await Promise.all(Array.from(groups.entries()).map(async ([k, list]) => {
         const r = list[0];
         const params = new URLSearchParams({
@@ -172,8 +177,22 @@ export default function ShipoutBar() {
           const res = await fetch(`/api/steel-plan/heat-match?${params}`);
           const json = await res.json();
           if (json.success) optsByKey.set(k, json.data);
-        } catch { /* 무시 */ }
+          else optErrors.push(`${r.material} ${r.thickness}×${r.width}×${r.length}: ${json.error ?? "조회 실패"}`);
+        } catch (e) {
+          // 조용히 삼키면 후보 목록이 빈 채로 열려 사용자가 판번호를 손으로 치게 되고,
+          // 그 값이 유령 판번호를 만든다. 반드시 화면에 드러낸다.
+          optErrors.push(`${r.material} ${r.thickness}×${r.width}×${r.length}: ${e instanceof Error ? e.message : "네트워크 오류"}`);
+        }
       }));
+      if (optErrors.length) {
+        setHeatOptError(
+          `판번호 후보를 불러오지 못한 사양이 ${optErrors.length}건 있습니다. ` +
+          `해당 행은 목록이 비어 보일 수 있으니, 판번호를 직접 입력하기 전에 다시 시도하세요.\n` +
+          optErrors.slice(0, 5).join("\n"),
+        );
+      } else {
+        setHeatOptError("");
+      }
 
       setRowsM(init.map(r => {
         const opts = optsByKey.get(specKey(r)) ?? [];
@@ -492,6 +511,12 @@ export default function ShipoutBar() {
 
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {error && <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700 flex items-center gap-2"><AlertTriangle size={14} /> {error}</div>}
+              {heatOptError && (
+                <div className="bg-amber-50 border-2 border-amber-300 rounded-lg px-3 py-2 text-sm text-amber-800 flex items-start gap-2">
+                  <AlertTriangle size={15} className="flex-shrink-0 mt-0.5 text-amber-600" />
+                  <span className="whitespace-pre-line">{heatOptError}</span>
+                </div>
+              )}
 
               {/* 출고담당자 — 작성(출고)자 + 연락처 + 기본값 체크박스 */}
               <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 space-y-2">
@@ -790,10 +815,23 @@ function HeatPicker({ row, onChange }: { row: ModalRow; onChange: (p: Partial<Mo
       />
       {row.heatOptions.length > 0 && (
         <datalist id={`heat-${row.steelPlanId}`}>
-          {row.heatOptions.map(o => <option key={o.id} value={o.heatNo} />)}
+          {/* 호선이 다른 판번호도 후보에 포함된다(야드에 자매호선 철판이 섞여 쌓임) — 어느 호선인지 함께 표시 */}
+          {row.heatOptions.map(o => (
+            <option key={o.id} value={o.heatNo}
+              label={o.otherVessel ? `${o.vesselCode} · 다른 호선` : o.vesselCode} />
+          ))}
         </datalist>
       )}
-      {row.manualHeatNo && row.heatNo && <span className="text-[10px] text-amber-700">신규</span>}
+      {(() => {
+        const hit = row.heatOptions.find(o => o.heatNo === row.heatNo);
+        if (hit?.otherVessel) {
+          return <span className="text-[10px] text-cyan-700 font-semibold" title="이 판번호는 다른 호선으로 등록돼 있습니다. 실물이 맞으면 그대로 진행하세요.">{hit.vesselCode}</span>;
+        }
+        if (row.manualHeatNo && row.heatNo) {
+          return <span className="text-[10px] text-amber-700" title="판번호리스트에 없는 판번호입니다. 출고하면 신규로 등록됩니다 — 오타가 아닌지 확인하세요.">신규</span>;
+        }
+        return null;
+      })()}
     </div>
   );
 }
@@ -896,6 +934,8 @@ export function ExcelUploadModal({ onClose, cart, embedded = false }: { onClose:
   const [results,   setResults]   = useState<MatchResult[] | null>(null);
   const [summary,   setSummary]   = useState<Summary | null>(null);
   const [error,     setError]     = useState("");
+  // 판번호리스트에 없는 판번호 행을 담을지 — 기본 꺼짐(오타를 신규 판번호로 등록해버리는 사고 방지)
+  const [includeHeatNotFound, setIncludeHeatNotFound] = useState(false);
 
   const onSelect = async (file: File) => {
     setUploading(true); setError(""); setResults(null);
@@ -915,7 +955,8 @@ export function ExcelUploadModal({ onClose, cart, embedded = false }: { onClose:
   /** 미매칭(미입고·없는 자재) 행만 엑셀로 다운로드 — 추후 입고 후 그대로 다시 업로드 가능 */
   const handleDownloadUnmatched = () => {
     if (!results) return;
-    const unmatched = results.filter(r => r.status !== "MATCHED");
+    // HEAT_NOT_FOUND 는 자재 자체는 있으므로(판번호만 미등록) 미매칭 목록에서 제외 — 담기가 가능하다
+    const unmatched = results.filter(r => r.status === "NOT_RECEIVED" || r.status === "NOT_FOUND");
     if (unmatched.length === 0) return;
     const data: (string | number)[][] = [
       ["호선", "재질", "두께", "폭", "길이", "판번호", "상태", "사유"],
@@ -939,7 +980,11 @@ export function ExcelUploadModal({ onClose, cart, embedded = false }: { onClose:
 
   const handleAddMatched = () => {
     if (!results) return;
-    const matched = results.filter(r => r.status === "MATCHED" && r.steelPlanId);
+    // 판번호가 판번호리스트에 없는 행(HEAT_NOT_FOUND)은 기본 제외 — 대개 오타이고,
+    // 그대로 담으면 출고 확정 시 신규 판번호가 생성돼 실물 추적이 끊긴다.
+    // 진짜 신규 판번호인 경우만 사용자가 체크해서 포함시킨다.
+    const matched = results.filter(r =>
+      r.steelPlanId && (r.status === "MATCHED" || (includeHeatNotFound && r.status === "HEAT_NOT_FOUND")));
     const result = cart.add(matched.map(r => ({
       steelPlanId: r.steelPlanId!,
       vesselCode:  r.vesselCode,
@@ -986,7 +1031,7 @@ export function ExcelUploadModal({ onClose, cart, embedded = false }: { onClose:
           ) : (
             <>
               {summary && (
-                <div className="grid grid-cols-4 gap-2 text-center">
+                <div className="grid grid-cols-5 gap-2 text-center">
                   <div className="bg-gray-100 rounded-lg py-2">
                     <div className="text-xl font-bold">{summary.total}</div>
                     <div className="text-xs text-gray-500">총</div>
@@ -994,6 +1039,10 @@ export function ExcelUploadModal({ onClose, cart, embedded = false }: { onClose:
                   <div className="bg-emerald-100 rounded-lg py-2">
                     <div className="text-xl font-bold text-emerald-700">{summary.matched}</div>
                     <div className="text-xs text-emerald-700">매칭</div>
+                  </div>
+                  <div className={`rounded-lg py-2 ${summary.heatNotFound > 0 ? "bg-amber-100" : "bg-gray-100"}`}>
+                    <div className={`text-xl font-bold ${summary.heatNotFound > 0 ? "text-amber-700" : "text-gray-400"}`}>{summary.heatNotFound}</div>
+                    <div className={`text-xs ${summary.heatNotFound > 0 ? "text-amber-700" : "text-gray-400"}`}>판번호미등록</div>
                   </div>
                   <div className="bg-red-100 rounded-lg py-2">
                     <div className="text-xl font-bold text-red-700">{summary.notReceived}</div>
@@ -1003,6 +1052,29 @@ export function ExcelUploadModal({ onClose, cart, embedded = false }: { onClose:
                     <div className="text-xl font-bold text-red-700">{summary.notFound}</div>
                     <div className="text-xs text-red-700">없는 자재</div>
                   </div>
+                </div>
+              )}
+
+              {/* 판번호가 판번호리스트에 없는 행 — 대개 오타. 담으면 신규 판번호로 등록되므로 명시적 동의를 받는다 */}
+              {summary && summary.heatNotFound > 0 && (
+                <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-3 space-y-2">
+                  <div className="flex items-start gap-2 text-sm text-amber-800">
+                    <AlertTriangle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <strong>판번호 미등록 {summary.heatNotFound}건</strong>
+                      {" — 자재는 있는데 적힌 판번호가 판번호리스트에 없습니다. 대부분 오타입니다."}
+                      <div className="mt-1 text-xs text-amber-700">
+                        그대로 담아 출고하면 그 판번호가 <strong>신규로 등록</strong>되어, 실물의 진짜 판번호는
+                        재고에 남고 장부만 어긋납니다. 판번호를 다시 확인하세요.
+                      </div>
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-amber-900 cursor-pointer select-none pl-7">
+                    <input type="checkbox" checked={includeHeatNotFound}
+                      onChange={e => setIncludeHeatNotFound(e.target.checked)}
+                      className="w-3.5 h-3.5 accent-amber-600" />
+                    확인했습니다 — 진짜 신규 판번호이므로 {summary.heatNotFound}건도 함께 담기
+                  </label>
                 </div>
               )}
 
@@ -1041,7 +1113,8 @@ export function ExcelUploadModal({ onClose, cart, embedded = false }: { onClose:
                   <tbody className="divide-y divide-gray-100">
                     {results.map(r => (
                       <tr key={r.rowNo} className={
-                        r.status === "MATCHED" ? "" :
+                        r.status === "MATCHED"        ? "" :
+                        r.status === "HEAT_NOT_FOUND" ? "bg-amber-50" :
                         "bg-red-50"
                       }>
                         <td className="px-2 py-1 text-center">{r.rowNo}</td>
@@ -1054,6 +1127,7 @@ export function ExcelUploadModal({ onClose, cart, embedded = false }: { onClose:
                         <td className="px-2 py-1 font-mono">{r.heatNo ?? "-"}</td>
                         <td className="px-2 py-1 text-center">
                           {r.status === "MATCHED" ? <span className="text-emerald-600 font-bold">✓ 매칭</span> :
+                           r.status === "HEAT_NOT_FOUND" ? <span className="text-amber-700 font-semibold" title={r.reason}>⚠ 판번호미등록</span> :
                             <span className="text-red-600 font-semibold" title={r.reason}>✗ {r.status === "NOT_RECEIVED" ? "미입고" : "없음"}</span>}
                         </td>
                       </tr>

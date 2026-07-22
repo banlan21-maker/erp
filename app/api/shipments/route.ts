@@ -345,18 +345,30 @@ export async function POST(req: NextRequest) {
           // N22: heatNo 저장 시 대문자 정규화 (조회는 이미 case-insensitive)
           const heatNoText = (item.heatNo ?? "").trim().toUpperCase() || null;
           if (heatNoText) {
-            // 직접입력(manualHeatNo=true) — 같은 사양 + 판번호 일치하는 행이 이미 있는가
+            // 직접입력(manualHeatNo=true) — 같은 규격 + 판번호 일치하는 행이 이미 있는가
+            //
+            // ★ 호선(vesselCode)은 조회 조건에서 뺀다. 판번호는 철판 한 장의 고유번호이고
+            //   호선은 입고 예산 꼬리표일 뿐이다. 야드에 자매호선 철판이 섞여 쌓이므로
+            //   출고하는 원판의 호선과 실물 판번호의 호선이 다른 경우가 흔한데, 호선으로
+            //   잠그면 ① 재고 판번호를 못 찾고 ② 중복 검사도 통과해서 ③ 잘못된 호선으로
+            //   같은 판번호를 새로 만들어버린다(유령 판번호). 그러면 진짜 판번호는 WAITING 으로
+            //   남아 나중에 절단이나 다른 출고에 다시 소진된다.
             if (item.manualHeatNo) {
               const specWhere = {
-                vesselCode: item.vesselCode, material: item.material,
-                thickness:  item.thickness, width: item.width, length: item.length,
-                heatNo:     heatNoText,
+                material:  item.material,
+                thickness: item.thickness, width: item.width, length: item.length,
+                heatNo:    heatNoText,
               };
-              // 재고(WAITING) 판번호가 있으면 그걸 출고 — 같은 사양+판번호 행이 여러 개(SHIPPED+WAITING)여도 WAITING 우선.
-              const waiting = await tx.steelPlanHeat.findFirst({
-                where: { ...specWhere, status: SteelPlanHeatStatus.WAITING },
-                orderBy: { createdAt: "asc" },
-              });
+              // 재고(WAITING) 판번호가 있으면 그걸 출고. 같은 호선 것을 우선하고, 없으면 타 호선.
+              const waiting =
+                await tx.steelPlanHeat.findFirst({
+                  where: { ...specWhere, vesselCode: item.vesselCode, status: SteelPlanHeatStatus.WAITING },
+                  orderBy: { createdAt: "asc" },
+                })
+                ?? await tx.steelPlanHeat.findFirst({
+                  where: { ...specWhere, status: SteelPlanHeatStatus.WAITING },
+                  orderBy: { createdAt: "asc" },
+                });
               if (waiting) {
                 // 원자적 SHIPPED 전환 — 조회~제출 사이 상태변경 시 count=0 → 롤백(이중출고/절단오염 차단).
                 const moved = await tx.steelPlanHeat.updateMany({
@@ -369,9 +381,15 @@ export async function POST(req: NextRequest) {
                 heatId = waiting.id;
               } else {
                 // 재고 판번호 없음 — 이미 사용(절단 CUT/출고 SHIPPED)된 동일 판번호가 있으면 차단, 없으면 신규 SHIPPED 생성.
-                const used = await tx.steelPlanHeat.findFirst({ where: specWhere, select: { id: true } });
+                // 중복 검사도 호선 무관 — 타 호선에 이미 소진된 같은 판번호가 있는데 신규 생성하면
+                // 같은 판번호가 두 줄이 되어 실물 추적이 끊긴다.
+                const used = await tx.steelPlanHeat.findFirst({
+                  where: specWhere,
+                  select: { id: true, vesselCode: true, status: true },
+                });
                 if (used) {
-                  throw new Error(`판번호(${heatNoText})가 이미 절단/출고 처리되어 출고할 수 없습니다. 새로고침 후 다시 시도하세요.`);
+                  const where = used.vesselCode === item.vesselCode ? "" : ` (${used.vesselCode} 호선 등록분)`;
+                  throw new Error(`판번호(${heatNoText})가 이미 절단/출고 처리되어 출고할 수 없습니다${where}. 새로고침 후 다시 시도하세요.`);
                 }
                 const fresh = await tx.steelPlanHeat.create({
                   data: {
