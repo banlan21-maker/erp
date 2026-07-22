@@ -50,3 +50,11 @@ tools/pdf-to-excel/venv/
 tools/pdf-to-excel/*.pdf
 tools/pdf-to-excel/*_output.xlsx
 tools/pdf-to-excel/__pycache__/
+
+# docs 폴더의 엑셀 원본 양식/기성 파일 — 저장소에 커밋하지 않음 (양식 참고용 로컬 파일)
+docs/*.xlsx
+
+# 워크플로 조사용 임시 스크립트 (에이전트 생성, 일회성) — 커밋 안 함
+scripts/wf-*.mjs
+scripts/wf2-*.mjs
+scripts/wf3-*.mjs
