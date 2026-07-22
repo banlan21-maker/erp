@@ -60,6 +60,35 @@ async function findCandidatesBySpec(spec: {
   }));
 }
 
+/**
+ * 후보 0건일 때 — 재질·치수는 같은데 "다른 호선"에 남아 있는 입고 자재를 찾아준다.
+ *
+ * 호선 간 강재 유용(1022 블록을 1023 강재로 절단)이 실무에서 흔한데, 작업일보에 타 호선
+ * 판번호를 입력하면 강재 차감은 작업 호선에서 일어나 재고가 어긋난다. 그 결과 현장이 야드
+ * 실물 라벨을 찍으면 "그 호선 재고 없음" 으로 막힌다. 실제 물건은 옆 호선 줄에 살아 있으므로
+ * 어느 호선에 몇 장 남았는지 알려주고 원터치로 재검색하게 한다.
+ */
+async function findOtherVesselStock(spec: {
+  vesselCode: string; material: string; thickness: number; width: number; length: number;
+}) {
+  const rows = await prisma.steelPlan.groupBy({
+    by: ["vesselCode"],
+    where: {
+      vesselCode: { not: spec.vesselCode },
+      material:   spec.material,
+      thickness: { gte: spec.thickness - TOL, lte: spec.thickness + TOL },
+      width:     { gte: spec.width - TOL,     lte: spec.width + TOL },
+      length:    { gte: spec.length - TOL,    lte: spec.length + TOL },
+      status:      "RECEIVED",
+      reservedFor: null,
+    },
+    _count: { _all: true },
+  });
+  return rows
+    .map((r) => ({ vesselCode: r.vesselCode, count: r._count._all }))
+    .sort((a, b) => b.count - a.count);
+}
+
 // N10: 후보 0건일 때 원인 세분화 (사용자에게 정확한 다음 액션 제시)
 async function countExcludedBySpec(spec: {
   vesselCode: string; material: string; thickness: number; width: number; length: number;
@@ -118,6 +147,8 @@ export async function GET(req: NextRequest) {
       const candidates = await findCandidatesBySpec(spec);
       // N10: 후보 0건일 때 원인 카운트 (사용자에게 정확한 액션 안내)
       const excluded = candidates.length === 0 ? await countExcludedBySpec(spec) : { reservedCount: 0, notReceivedCount: 0 };
+      // 후보 0건이면 같은 사양이 남아 있는 다른 호선을 함께 반환 (호선 유용 대응)
+      const otherVesselStock = candidates.length === 0 ? await findOtherVesselStock(spec) : [];
       return NextResponse.json({
         success: true,
         matched: true,
@@ -125,6 +156,7 @@ export async function GET(req: NextRequest) {
         heatId: heat.id,
         spec,
         candidates,
+        otherVesselStock,
         // I10: 사양이 여러 개면 UI 가 "다른 사양으로도 등록된 동일 판번호 N건" 안내
         multiSpecCount: uniqueSpecs.length,
         otherSpecs: uniqueSpecs.length > 1
@@ -144,11 +176,13 @@ export async function GET(req: NextRequest) {
       const candidates = await findCandidatesBySpec(spec);
       // N10: 후보 0건일 때 원인 세분화
       const excluded = candidates.length === 0 ? await countExcludedBySpec(spec) : { reservedCount: 0, notReceivedCount: 0 };
+      const otherVesselStock = candidates.length === 0 ? await findOtherVesselStock(spec) : [];
       return NextResponse.json({
         success: true,
         matched: true,
         spec,
         candidates,
+        otherVesselStock,
         ...excluded,
       });
     }

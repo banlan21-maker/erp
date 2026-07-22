@@ -420,6 +420,8 @@ interface AdHocResult {
   // N10: 후보 0건일 때 원인 카운트
   reservedCount?: number;    // 사양 매칭 자재 중 블록확정 상태
   notReceivedCount?: number; // 사양 매칭 자재 중 미입고/투입/절단/외부
+  // 후보 0건일 때, 재질·치수가 같고 다른 호선에 남아 있는 입고 자재 (호선 유용 대응)
+  otherVesselStock?: { vesselCode: string; count: number }[];
 }
 
 function AdHocTab() {
@@ -428,17 +430,18 @@ function AdHocTab() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<AdHocResult | null>(null);
 
-  // 사양 폴백 폼 (판번호가 시스템에 없을 때 표시)
+  // 사양 폴백 폼 (판번호가 시스템에 없을 때 + 판번호는 있는데 그 호선 재고가 0건일 때)
   const [specVessel, setSpecVessel]   = useState("");
   const [specMaterial, setSpecMaterial] = useState("");
   const [specT, setSpecT] = useState("");
   const [specW, setSpecW] = useState("");
   const [specL, setSpecL] = useState("");
+  const [specOpen, setSpecOpen] = useState(false);   // 0건일 때 사양 폼 펼침 여부
 
   // 담기 확인 다이얼로그 (카트에 자재가 있을 때만)
   const [pending, setPending] = useState<{ c: AdHocCandidate; heatNo: string; heatId?: string } | null>(null);
 
-  const resetSpec = () => { setSpecVessel(""); setSpecMaterial(""); setSpecT(""); setSpecW(""); setSpecL(""); };
+  const resetSpec = () => { setSpecVessel(""); setSpecMaterial(""); setSpecT(""); setSpecW(""); setSpecL(""); setSpecOpen(false); };
 
   const lookupByHeat = async () => {
     const h = heatNo.trim();
@@ -452,16 +455,19 @@ function AdHocTab() {
     finally { setBusy(false); }
   };
 
-  const lookupBySpec = async () => {
-    const t = parseFloat(specT), w = parseFloat(specW), l = parseFloat(specL);
-    if (!specVessel.trim() || !specMaterial.trim() || !Number.isFinite(t) || !Number.isFinite(w) || !Number.isFinite(l)) {
+  /** 사양으로 후보 조회 — 폼 입력값 또는 "다른 호선 재고" 원터치 버튼에서 호출 */
+  const runSpecLookup = async (s: {
+    vesselCode: string; material: string; thickness: string; width: string; length: string;
+  }) => {
+    const t = parseFloat(s.thickness), w = parseFloat(s.width), l = parseFloat(s.length);
+    if (!s.vesselCode.trim() || !s.material.trim() || !Number.isFinite(t) || !Number.isFinite(w) || !Number.isFinite(l)) {
       alert("호선·재질·두께·폭·길이를 모두 입력하세요."); return;
     }
     setBusy(true);
     try {
       const q = new URLSearchParams({
-        vesselCode: specVessel.trim(),
-        material:   specMaterial.trim(),
+        vesselCode: s.vesselCode.trim(),
+        material:   s.material.trim(),
         thickness:  String(t),
         width:      String(w),
         length:     String(l),
@@ -470,8 +476,26 @@ function AdHocTab() {
       if (!r.success) { alert(r.error ?? "조회 실패"); return; }
       // 사양 조회 결과에도 heatNo 는 사용자가 입력한 값 유지 → 신규 SteelPlanHeat 로 생성됨
       setResult({ ...(r as AdHocResult), heatNo: heatNo.trim() || undefined });
+      // 이어서 손보기 쉽도록 폼에도 방금 조회한 사양을 반영해 펼쳐둔다
+      setSpecVessel(s.vesselCode.trim()); setSpecMaterial(s.material.trim());
+      setSpecT(String(t)); setSpecW(String(w)); setSpecL(String(l));
+      setSpecOpen(true);
     } catch (e) { alert(e instanceof Error ? e.message : "네트워크 오류"); }
     finally { setBusy(false); }
+  };
+
+  const lookupBySpec = () => runSpecLookup({
+    vesselCode: specVessel, material: specMaterial, thickness: specT, width: specW, length: specL,
+  });
+
+  /** 현재 조회된 사양을 폼에 채우고 펼친다 (호선만 바꿔 재검색하는 용도) */
+  const openSpecFromResult = () => {
+    const s = result?.spec;
+    if (s) {
+      setSpecVessel(s.vesselCode); setSpecMaterial(s.material);
+      setSpecT(String(s.thickness)); setSpecW(String(s.width)); setSpecL(String(s.length));
+    }
+    setSpecOpen(true);
   };
 
   const addToCart = (c: AdHocCandidate, heatText: string, heatId?: string) => {
@@ -535,6 +559,24 @@ function AdHocTab() {
     setPending(null);
   };
 
+  // 사양 입력 폼 — [신규 판번호] 와 [후보 0건] 양쪽에서 재사용
+  const specFormFields = (
+    <>
+      <div className="grid grid-cols-2 gap-2">
+        <input value={specVessel}   onChange={e => setSpecVessel(e.target.value.toUpperCase())} placeholder="호선 (예: RS01)" className={inputCls} />
+        <input value={specMaterial} onChange={e => setSpecMaterial(e.target.value.toUpperCase())} placeholder="재질 (예: AH36)" className={inputCls} />
+        <input value={specT} onChange={e => setSpecT(e.target.value)} placeholder="두께 (예: 8)"    inputMode="decimal" className={inputCls} />
+        <input value={specW} onChange={e => setSpecW(e.target.value)} placeholder="폭 (예: 1829)"    inputMode="decimal" className={inputCls} />
+        <input value={specL} onChange={e => setSpecL(e.target.value)} placeholder="길이 (예: 6096)"  inputMode="decimal" className={inputCls + " col-span-2"} />
+      </div>
+      <button onClick={lookupBySpec} disabled={busy}
+        className="w-full py-2.5 bg-cyan-500 text-black font-bold rounded-xl flex items-center justify-center gap-2 disabled:opacity-40">
+        {busy ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+        사양으로 후보 조회
+      </button>
+    </>
+  );
+
   return (
     <div className="p-4 space-y-4">
       {/* 안내 */}
@@ -587,18 +629,7 @@ function AdHocTab() {
               선택 후 담으면 이 판번호가 자동으로 신규 등록됩니다.
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <input value={specVessel}   onChange={e => setSpecVessel(e.target.value.toUpperCase())} placeholder="호선 (예: RS01)" className={inputCls} />
-            <input value={specMaterial} onChange={e => setSpecMaterial(e.target.value.toUpperCase())} placeholder="재질 (예: AH36)" className={inputCls} />
-            <input value={specT} onChange={e => setSpecT(e.target.value)} placeholder="두께 (예: 8)"    inputMode="decimal" className={inputCls} />
-            <input value={specW} onChange={e => setSpecW(e.target.value)} placeholder="폭 (예: 1829)"    inputMode="decimal" className={inputCls} />
-            <input value={specL} onChange={e => setSpecL(e.target.value)} placeholder="길이 (예: 6096)"  inputMode="decimal" className={inputCls + " col-span-2"} />
-          </div>
-          <button onClick={lookupBySpec} disabled={busy}
-            className="w-full py-2.5 bg-cyan-500 text-black font-bold rounded-xl flex items-center justify-center gap-2 disabled:opacity-40">
-            {busy ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-            사양으로 후보 조회
-          </button>
+          {specFormFields}
         </div>
       )}
 
@@ -637,23 +668,73 @@ function AdHocTab() {
               <span className="text-gray-600 font-normal ml-1">(사무실 선별 여부 무관)</span>
             </div>
             {(result.candidates?.length ?? 0) === 0 ? (
-              // N10: 후보 0건 원인 세분화 안내
-              (result.reservedCount ?? 0) > 0 ? (
-                <div className="bg-amber-950/60 border border-amber-800 rounded-2xl p-4 text-sm text-amber-200 space-y-1">
-                  <div className="flex items-start gap-2">
-                    <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
-                    <div>
-                      <b>실제 입고 자재는 있지만 사용 불가</b><br />
-                      이 사양의 자재 <b>{result.reservedCount}장</b>이 블록확정(절단용)되어 있어 외부출고 불가.<br />
-                      <span className="text-amber-300">프로젝트 → 블록강재리스트에서 확정취소 후 다시 시도하세요.</span>
+              <div className="space-y-3">
+                {/* N10: 후보 0건 원인 세분화 안내 */}
+                {(result.reservedCount ?? 0) > 0 ? (
+                  <div className="bg-amber-950/60 border border-amber-800 rounded-2xl p-4 text-sm text-amber-200">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+                      <div>
+                        <b>실제 입고 자재는 있지만 사용 불가</b><br />
+                        이 사양의 자재 <b>{result.reservedCount}장</b>이 블록확정(절단용)되어 있어 외부출고 불가.<br />
+                        <span className="text-amber-300">프로젝트 → 블록강재리스트에서 확정취소 후 다시 시도하세요.</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-center text-sm text-gray-500">
-                  일치하는 입고 자재가 없습니다.<br />강재전체목록에 이 사양의 [입고] 상태 자재가 있는지 확인하세요.
-                </div>
-              )
+                ) : (
+                  <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 text-sm text-gray-400">
+                    <b className="text-gray-200">{result.spec.vesselCode}</b> 호선에는 이 사양의 [입고] 자재가 없습니다.
+                    {(result.notReceivedCount ?? 0) > 0 && (
+                      <> (이 사양 <b>{result.notReceivedCount}장</b>은 이미 절단/출고 처리됨)</>
+                    )}
+                  </div>
+                )}
+
+                {/* 호선 유용 대응 — 재질·치수가 같고 다른 호선에 남아 있는 입고 자재.
+                    작업일보에 타 호선 판번호를 넣고 절단하면 재고가 호선끼리 어긋나므로,
+                    야드 실물이 옆 호선 줄에 살아 있는 경우가 있다. 원터치로 그 호선 재검색. */}
+                {(result.otherVesselStock?.length ?? 0) > 0 && (
+                  <div className="bg-gray-900 border border-cyan-700/40 rounded-2xl p-4 space-y-2">
+                    <div className="text-sm text-cyan-200 flex items-start gap-2">
+                      <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+                      <div>
+                        같은 규격(<span className="font-mono">{result.spec.material} {fmtT(result.spec.thickness)}×{fmtL(result.spec.width)}×{fmtL(result.spec.length)}</span>)
+                        이 <b>다른 호선</b>에 입고 상태로 남아 있습니다.<br />
+                        실물이 맞으면 아래 호선을 눌러 바로 조회하세요.
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {result.otherVesselStock!.map(v => (
+                        <button key={v.vesselCode} disabled={busy}
+                          onClick={() => runSpecLookup({
+                            vesselCode: v.vesselCode,
+                            material:   result.spec!.material,
+                            thickness:  String(result.spec!.thickness),
+                            width:      String(result.spec!.width),
+                            length:     String(result.spec!.length),
+                          })}
+                          className="px-3.5 py-2.5 bg-cyan-600 text-white text-sm font-bold rounded-xl disabled:opacity-40 flex items-center gap-1.5">
+                          <Search size={14} /> {v.vesselCode}
+                          <span className="text-cyan-200 font-normal">{v.count}장</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 수동 사양 재검색 — 호선/규격을 직접 고쳐서 찾기 */}
+                {specOpen ? (
+                  <div className="bg-gray-900 border border-cyan-700/40 rounded-2xl p-4 space-y-3">
+                    <div className="text-xs text-gray-400">호선·규격을 고쳐서 다시 찾기</div>
+                    {specFormFields}
+                  </div>
+                ) : (
+                  <button onClick={openSpecFromResult}
+                    className="w-full py-2.5 bg-gray-800 border border-gray-700 text-white font-semibold rounded-xl text-sm flex items-center justify-center gap-2">
+                    <Search size={15} /> 다른 호선·규격으로 재검색
+                  </button>
+                )}
+              </div>
             ) : (
               <div className="space-y-2">
                 {result.candidates!.map(c => {
