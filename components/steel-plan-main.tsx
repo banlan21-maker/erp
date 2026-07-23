@@ -2813,6 +2813,7 @@ interface ShipoutPick {
   width: number;
   length: number;
   storageLocation: string | null;
+  otherVessel?: boolean;   // 입력 판번호의 호선과 다른 호선의 강재 (야드에 호선이 섞여 쌓임)
 }
 
 function ShipoutRegisterModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
@@ -2854,12 +2855,18 @@ function ShipoutRegisterModal({ onClose, onDone }: { onClose: () => void; onDone
         return;
       }
       const p = d.plan;
+      // 서버가 DB 등록 표기(하이픈 포함)를 돌려주면 그걸 쓴다 — 실물 라벨과 일치시키기 위함
+      const canonicalHeatNo = typeof d.heatNo === "string" && d.heatNo ? d.heatNo : heatNo;
       setPicked((prev) => [...prev, {
-        planId: p.id, heatNo, vesselCode: p.vesselCode, material: p.material,
+        planId: p.id, heatNo: canonicalHeatNo, vesselCode: p.vesselCode, material: p.material,
         thickness: p.thickness, width: p.width, length: p.length, storageLocation: p.storageLocation,
+        otherVessel: p.otherVessel ?? false,
       }]);
       setSelected((prev) => new Set(prev).add(p.id));
-      setMsg({ type: "ok", text: `추가됨: ${heatNo} → ${p.vesselCode} ${p.material} ${fmtT(p.thickness)}×${fmtL(p.width)}×${fmtL(p.length)}` });
+      setMsg({
+        type: "ok",
+        text: `추가됨: ${canonicalHeatNo} → ${p.vesselCode}${p.otherVessel ? " (다른 호선 — 실물 확인)" : ""} ${p.material} ${fmtT(p.thickness)}×${fmtL(p.width)}×${fmtL(p.length)}`,
+      });
       setInput("");
     } catch (e) {
       setMsg({ type: "err", text: e instanceof Error ? e.message : "네트워크 오류" });
@@ -3054,7 +3061,12 @@ function ShipoutRegisterModal({ onClose, onDone }: { onClose: () => void; onDone
                       <input type="checkbox" checked={selected.has(p.planId)} onChange={() => toggle(p.planId)} className="accent-purple-600" />
                     </td>
                     <td className="px-2 py-1.5 font-mono font-semibold">{p.heatNo}</td>
-                    <td className="px-2 py-1.5 font-medium">{p.vesselCode}</td>
+                    <td className="px-2 py-1.5 font-medium">
+                      {p.vesselCode}
+                      {p.otherVessel && (
+                        <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-cyan-100 text-cyan-700 font-normal align-middle">다른 호선</span>
+                      )}
+                    </td>
                     <td className="px-2 py-1.5">{p.material}</td>
                     <td className="px-2 py-1.5 text-right font-mono">{fmtT(p.thickness)}</td>
                     <td className="px-2 py-1.5 text-right font-mono">{fmtL(p.width)}</td>

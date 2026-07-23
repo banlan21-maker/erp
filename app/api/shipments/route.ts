@@ -27,6 +27,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ShipmentStatus, SteelPlanStatus, SteelPlanHeatStatus, Prisma } from "@prisma/client";
 import { nextShipmentNo, nextInvoiceNo } from "@/lib/shipment-numbering";
+import { normalizedHeatIds } from "@/lib/heat-lookup";
 
 export const dynamic = "force-dynamic";
 
@@ -357,13 +358,13 @@ export async function POST(req: NextRequest) {
             //   같은 판번호를 새로 만들어버린다(유령 판번호). 그러면 진짜 판번호는 WAITING 으로
             //   남아 나중에 절단이나 다른 출고에 다시 소진된다.
             if (item.manualHeatNo) {
-              const specWhere = {
+              const spec = {
                 material:  item.material,
                 thickness: item.thickness, width: item.width, length: item.length,
-                heatNo:    heatNoText,
               };
+              const specWhere = { ...spec, heatNo: heatNoText };
               // 재고(WAITING) 판번호가 있으면 그걸 출고. 같은 호선 것을 우선하고, 없으면 타 호선.
-              const waiting =
+              let waiting =
                 await tx.steelPlanHeat.findFirst({
                   where: { ...specWhere, vesselCode: item.vesselCode, status: SteelPlanHeatStatus.WAITING },
                   orderBy: { createdAt: "asc" },
@@ -372,6 +373,20 @@ export async function POST(req: NextRequest) {
                   where: { ...specWhere, status: SteelPlanHeatStatus.WAITING },
                   orderBy: { createdAt: "asc" },
                 });
+              // R15: 정확일치 실패 시 표기 정규화 폴백 — 실물이 SUS-4 인데 SUS4 로 손입력한 경우.
+              //      이게 없으면 아래에서 SUS4 를 신규 생성해 유령 판번호가 된다.
+              const normIds = waiting ? [] : await normalizedHeatIds(tx, heatNoText);
+              if (!waiting && normIds.length) {
+                waiting =
+                  await tx.steelPlanHeat.findFirst({
+                    where: { ...spec, id: { in: normIds }, vesselCode: item.vesselCode, status: SteelPlanHeatStatus.WAITING },
+                    orderBy: { createdAt: "asc" },
+                  })
+                  ?? await tx.steelPlanHeat.findFirst({
+                    where: { ...spec, id: { in: normIds }, status: SteelPlanHeatStatus.WAITING },
+                    orderBy: { createdAt: "asc" },
+                  });
+              }
               if (waiting) {
                 // 원자적 SHIPPED 전환 — 조회~제출 사이 상태변경 시 count=0 → 롤백(이중출고/절단오염 차단).
                 const moved = await tx.steelPlanHeat.updateMany({
@@ -384,10 +399,13 @@ export async function POST(req: NextRequest) {
                 heatId = waiting.id;
               } else {
                 // 재고 판번호 없음 — 이미 사용(절단 CUT/출고 SHIPPED)된 동일 판번호가 있으면 차단, 없으면 신규 SHIPPED 생성.
-                // 중복 검사도 호선 무관 — 타 호선에 이미 소진된 같은 판번호가 있는데 신규 생성하면
-                // 같은 판번호가 두 줄이 되어 실물 추적이 끊긴다.
+                // 중복 검사도 호선 무관 + 표기 정규화 — 타 호선/다른 표기로 이미 소진된 같은 판번호가 있는데
+                // 신규 생성하면 같은 판번호가 두 줄이 되어 실물 추적이 끊긴다.
                 const used = await tx.steelPlanHeat.findFirst({
-                  where: specWhere,
+                  where: {
+                    ...spec,
+                    OR: [{ heatNo: heatNoText }, ...(normIds.length ? [{ id: { in: normIds } }] : [])],
+                  },
                   select: { id: true, vesselCode: true, status: true },
                 });
                 if (used) {
@@ -422,16 +440,24 @@ export async function POST(req: NextRequest) {
               }
             }
           } else if (!heatId) {
-            // 판번호 미입력 원판 출고 — 강재↔판번호 개수 정합을 위해 같은 사양의 재고(WAITING) 판번호 1장을
+            // 판번호 미입력 원판 출고 — 강재↔판번호 개수 정합을 위해 같은 규격의 재고(WAITING) 판번호 1장을
             // FIFO 로 함께 소진(SHIPPED). 없으면 그냥 통과(진짜 판번호 미상). 잔류 WAITING heat 가 절단에 재소진되는 유령 방지.
-            const fifo = await tx.steelPlanHeat.findFirst({
-              where: {
-                vesselCode: item.vesselCode, material: item.material,
-                thickness: item.thickness, width: item.width, length: item.length,
-                status: SteelPlanHeatStatus.WAITING,
-              },
-              orderBy: { createdAt: "asc" },
-            });
+            // 호선은 우선 조건일 뿐 — 같은 호선에 없으면 타 호선에서 소진(R12). 옆 호선 철판을 판번호 없이
+            // 출고할 때 같은 호선만 보면 아무것도 안 줄어 재고가 어긋난다.
+            const fifoSpec = {
+              material: item.material,
+              thickness: item.thickness, width: item.width, length: item.length,
+              status: SteelPlanHeatStatus.WAITING,
+            };
+            const fifo =
+              await tx.steelPlanHeat.findFirst({
+                where: { ...fifoSpec, vesselCode: item.vesselCode },
+                orderBy: { createdAt: "asc" },
+              })
+              ?? await tx.steelPlanHeat.findFirst({
+                where: fifoSpec,
+                orderBy: { createdAt: "asc" },
+              });
             if (fifo) {
               const moved = await tx.steelPlanHeat.updateMany({
                 where: { id: fifo.id, status: SteelPlanHeatStatus.WAITING },

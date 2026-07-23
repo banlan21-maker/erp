@@ -173,14 +173,23 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
       where: { id: targetDrawing.assignedRemnantId },
       data:  { heatNo: hn },
     });
-    const existingHeat = await tx.steelPlanHeat.findFirst({
-      where: {
-        heatNo: hn, vesselCode: effectiveVessel,
-        material: { equals: mat, mode: "insensitive" },
-        thickness: log.thickness, width: log.width, length: log.length,
-      },
-      select: { id: true },
-    });
+    // 판번호 매칭은 호선 우선, 없으면 호선 무관(R12·R14). SURPLUS 여유원재도 옆 호선 실물을
+    // 쓸 수 있으므로 작업호선으로 잠그면 실재 판번호를 못 찾아 유령 heat 을 새로 만든다.
+    const surplusSpec = {
+      material: { equals: mat, mode: "insensitive" as const },
+      thickness: log.thickness, width: log.width, length: log.length,
+      heatNo: hn,
+    };
+    const existingHeat =
+      await tx.steelPlanHeat.findFirst({
+        where: { ...surplusSpec, vesselCode: effectiveVessel },
+        select: { id: true },
+      })
+      ?? await tx.steelPlanHeat.findFirst({
+        where: surplusSpec,
+        orderBy: { createdAt: "asc" },
+        select: { id: true },
+      });
     if (existingHeat) {
       await tx.steelPlanHeat.update({
         where: { id: existingHeat.id },

@@ -13,10 +13,29 @@
  * 정규화 비교는 인덱스를 타지 않으므로 반드시 "정확 일치 실패 시에만" 호출할 것.
  */
 import { prisma } from "@/lib/prisma";
-import type { SteelPlanHeatStatus } from "@prisma/client";
+import type { SteelPlanHeatStatus, Prisma } from "@prisma/client";
+
+// 트랜잭션 안/밖 모두에서 쓸 수 있도록 DB 클라이언트를 주입받는다 (기본: 전역 prisma)
+type Db = Prisma.TransactionClient | typeof prisma;
 
 /** 비교용 정규화 — 대문자화 후 영문·숫자만 남긴다 (현장 입력창과 동일 규칙) */
 export const normalizeHeatNo = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+/**
+ * 입력 판번호를 정규화(영숫자만)했을 때 일치하는 SteelPlanHeat id 목록.
+ * 정확 일치가 실패한 뒤 표기차(하이픈 등)를 흡수해 재조회할 때 쓴다.
+ * 인덱스를 타지 않는 full scan 이므로 정확 일치 실패 시에만 호출할 것.
+ * @param db 트랜잭션 클라이언트를 넘기면 그 트랜잭션 안에서 조회한다.
+ */
+export async function normalizedHeatIds(db: Db, heatNo: string): Promise<string[]> {
+  const norm = normalizeHeatNo(heatNo.trim());
+  if (!norm) return [];
+  const rows = await db.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "SteelPlanHeat"
+    WHERE regexp_replace(upper("heatNo"), '[^A-Z0-9]', '', 'g') = ${norm}
+  `;
+  return rows.map((r) => r.id);
+}
 
 /**
  * 판번호로 SteelPlanHeat 을 찾는다. 정확 일치를 먼저 시도하고, 없으면 정규화 비교로 재시도.
