@@ -48,30 +48,39 @@ export default function ShipmentDetailMain({ initial }: { initial: Shipment }) {
   const router = useRouter();
   const [s, setS] = useState(initial);
   const [cancelling, setCancelling] = useState(false);
+  const [cancelModal, setCancelModal] = useState(false);
 
-  const handleCancel = async () => {
+  const doCancel = async (keepSelection: boolean) => {
     const reason = prompt("출고 취소 사유를 입력하세요. (선택)");
     if (reason === null) return; // cancel
-    if (!confirm("정말로 이 출고장을 취소하시겠습니까?\n자재는 RECEIVED 로 복원되고 새로 생성된 판번호는 삭제됩니다.")) return;
+    const msg = keepSelection
+      ? "출고를 취소하고 자재를 선별목록에 그대로 둡니다.\n(바로 다시 출고장을 만들 수 있습니다 · 선별 라벨에 '(취소)' 표시)"
+      : "출고를 취소하고 선별까지 해제합니다.\n자재가 강재전체목록 입고 재고로 완전히 돌아갑니다.\n(다시 출고하려면 강재매칭/출고등록부터 선별해야 합니다)";
+    if (!confirm(`${msg}\n\n진행할까요?`)) return;
+    setCancelModal(false);
     setCancelling(true);
     try {
       const res = await fetch(`/api/shipments/${s.id}/cancel`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ reason }),
+        body:    JSON.stringify({ reason, keepSelection }),
       });
       const json = await res.json();
       if (!json.success) { alert(json.error || "취소 실패"); return; }
       router.refresh();
       // 단순 상태 갱신
       setS(prev => ({ ...prev, status: "CANCELLED", cancelledAt: new Date().toISOString(), cancelReason: reason || null }));
+      const after = keepSelection
+        ? "출고가 취소되었습니다.\n자재는 선별목록에 그대로 있습니다 — 바로 다시 출고장을 만들 수 있습니다."
+        : "출고가 취소되었습니다.\n자재는 강재전체목록 입고 재고로 복귀했습니다(선별 해제).";
       if (json.warnings?.length) {
-        alert("취소 처리되었으나 경고:\n" + json.warnings.join("\n"));
+        alert(after + "\n\n경고:\n" + json.warnings.join("\n"));
       } else {
-        alert("출고가 취소되었습니다.");
+        alert(after);
       }
     } finally { setCancelling(false); }
   };
+  const handleCancel = () => setCancelModal(true);
 
   const totalItems  = s.vehicles.reduce((sum, v) => sum + v.items.length, 0);
   const totalWeight = s.vehicles.reduce((sum, v) => sum + (v.totalWeight ?? 0), 0);
@@ -179,6 +188,37 @@ export default function ShipmentDetailMain({ initial }: { initial: Shipment }) {
           </div>
         ))}
       </div>
+
+      {/* 출고취소 — 선별 처리 방식 선택 */}
+      {cancelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+            <div className="px-5 py-3 border-b border-gray-200">
+              <h3 className="text-base font-bold text-gray-900">출고 취소</h3>
+              <p className="text-xs text-gray-500 mt-0.5">취소 후 자재를 어떻게 처리할지 선택하세요.</p>
+            </div>
+            <div className="p-5 space-y-3">
+              <button onClick={() => doCancel(true)} disabled={cancelling}
+                className="w-full text-left border-2 border-purple-300 bg-purple-50 rounded-xl p-4 hover:border-purple-500 disabled:opacity-50">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-purple-800">선별목록에 그대로 두기</span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-600 text-white font-semibold">권장</span>
+                </div>
+                <p className="text-xs text-gray-600 mt-1.5">일정 변경·차량 문제 등으로 다시 출고할 자재. <b>선별목록에 남아 바로 출고장을 다시 만들 수 있습니다.</b> (선별 라벨에 &apos;(취소)&apos; 표시)</p>
+              </button>
+              <button onClick={() => doCancel(false)} disabled={cancelling}
+                className="w-full text-left border-2 border-gray-200 rounded-xl p-4 hover:border-gray-400 disabled:opacity-50">
+                <span className="text-sm font-bold text-gray-800">선별도 해제하고 재고로</span>
+                <p className="text-xs text-gray-600 mt-1.5">자재를 잘못 골랐을 때. 강재전체목록 <b>입고 재고로 완전 복귀</b>합니다. (다시 출고하려면 강재매칭/출고등록부터 선별)</p>
+              </button>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end">
+              <button onClick={() => setCancelModal(false)} disabled={cancelling}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -23,6 +23,9 @@ export async function POST(
     const body = await req.json().catch(() => ({}));
     const reason = typeof body?.reason === "string" ? body.reason.trim() : null;
     const force  = body?.force === true; // 복원 불가 항목이 있어도 강행 취소
+    // keepSelection=true(기본): 선별 마킹(shipoutMarkedAt) 유지 → 선별목록에 그대로 남아 바로 재출고 가능.
+    //   false: 선별까지 해제 → 강재전체목록 입고 재고로 완전 복귀(자재를 잘못 골랐을 때).
+    const keepSelection = body?.keepSelection !== false;
 
     const ship = await prisma.shipment.findUnique({
       where: { id },
@@ -51,10 +54,14 @@ export async function POST(
       for (const v of ship.vehicles) {
         for (const item of v.items) {
           // ── 잔재 출고 복원 — 소진(EXHAUSTED) → 재고(IN_STOCK) ──
+          //   keepSelection: 선별 마킹(shipoutMarkedAt) 유지 → 선별목록에 그대로 남음. 아니면 해제(재고 복귀).
           if (item.remnantId) {
             const rem = await tx.remnant.findUnique({ where: { id: item.remnantId } });
             if (rem && rem.status === "EXHAUSTED") {
-              await tx.remnant.update({ where: { id: rem.id }, data: { status: "IN_STOCK" } });
+              await tx.remnant.update({
+                where: { id: rem.id },
+                data: { status: "IN_STOCK", ...(keepSelection ? { shipoutMarkedAt: rem.shipoutMarkedAt ?? new Date() } : { shipoutMarkedAt: null }) },
+              });
             } else if (rem) {
               restoreFailures.push(`잔재 ${rem.remnantNo} 상태가 소진이 아니라 복원 불가 (현재: ${rem.status})`);
             }
@@ -69,13 +76,19 @@ export async function POST(
             await tx.steelPlan.update({
               where: { id: sp.id },
               // I7: shipoutLabel 은 유지 (사무실이 '원래 어느 선별 작업 자재였는지' 추적 가능하게).
-              //     shipoutHeatNo / shipoutMarkedAt 은 null — 자동 재선별 방지 (취소된 자재는 검토 후 재선별 필요)
+              // keepSelection=true(기본): shipoutMarkedAt/shipoutHeatNo 유지 → 선별목록에 그대로 남아 바로 재출고 가능
+              //   (일정변경·차량문제 등 대부분의 취소). 라벨에 '(취소)' 표시로 검토 필요를 알림.
+              // keepSelection=false: 선별 해제 → 강재전체목록 입고 재고로 완전 복귀(자재를 잘못 골랐을 때).
               // N20: originStorageLocation 스냅샷이 있으면 storageLocation 로 복원 (원 위치 참고용, 물리 이동은 사용자 확인)
               data:  {
                 status: SteelPlanStatus.RECEIVED,
                 issuedAt: null,
-                shipoutHeatNo: null,
-                shipoutMarkedAt: null,
+                ...(keepSelection
+                  ? {
+                      shipoutMarkedAt: sp.shipoutMarkedAt ?? new Date(),
+                      ...(sp.shipoutLabel && !sp.shipoutLabel.includes("(취소)") ? { shipoutLabel: `${sp.shipoutLabel} (취소)` } : {}),
+                    }
+                  : { shipoutHeatNo: null, shipoutMarkedAt: null }),
                 ...(item.originStorageLocation ? { storageLocation: item.originStorageLocation } : {}),
               },
             });
