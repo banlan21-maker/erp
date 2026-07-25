@@ -57,9 +57,20 @@ export async function GET(req: NextRequest) {
   // Column IN filters
   const vesselCodes     = parseList(sp.get("vesselCodes"));
   const materials       = parseList(sp.get("materials"));
-  // 검색패널 호선/재질 — 부분검색(contains), 칸 안 여러 값 OR (컬럼 드롭다운의 in 과 별개)
+  // 검색패널 호선/재질/위치/확정 — 부분검색(contains), 칸 안 여러 값 OR (컬럼 드롭다운의 in 과 별개)
   const vesselSearch    = parseList(sp.get("vesselSearch"));
   const materialSearch  = parseList(sp.get("materialSearch"));
+  const locationSearch  = parseList(sp.get("locationSearch"));
+  const reservedSearch  = parseList(sp.get("reservedSearch"));
+  // 검색패널 날짜 기간 (from~to) — 입고일/선별지시일/출고일
+  const dateRange = (fromKey: string, toKey: string, field: string) => {
+    const f = sp.get(fromKey), t = sp.get(toKey);
+    if (!f && !t) return {};
+    const cond: Record<string, Date> = {};
+    if (f) cond.gte = new Date(`${f}T00:00:00`);
+    if (t) cond.lte = new Date(`${t}T23:59:59.999`);
+    return { [field]: cond };
+  };
   const thicknesses     = parseList(sp.get("thicknesses")).map(Number).filter((n) => !isNaN(n));
   const widths          = parseList(sp.get("widths")).map(Number).filter((n) => !isNaN(n));
   const lengths         = parseList(sp.get("lengths")).map(Number).filter((n) => !isNaN(n));
@@ -90,11 +101,16 @@ export async function GET(req: NextRequest) {
       : {}),
     ...(vesselCodes.length  ? { vesselCode: { in: vesselCodes } }  : {}),
     ...(materials.length    ? { material:   { in: materials } }    : {}),
-    // 검색패널 호선/재질 부분검색 — 필드끼리 AND, 필드 안 여러 값 OR (contains, 대소문자 무시)
-    ...((vesselSearch.length || materialSearch.length) ? { AND: [
+    // 검색패널 부분검색 — 필드끼리 AND, 필드 안 여러 값 OR (contains, 대소문자 무시) + 날짜 기간
+    ...((vesselSearch.length || materialSearch.length || locationSearch.length || reservedSearch.length) ? { AND: [
       ...(vesselSearch.length   ? [{ OR: vesselSearch.map(v   => ({ vesselCode: { contains: v, mode: "insensitive" as const } })) }] : []),
       ...(materialSearch.length ? [{ OR: materialSearch.map(m => ({ material:   { contains: m, mode: "insensitive" as const } })) }] : []),
+      ...(locationSearch.length ? [{ OR: locationSearch.map(l => ({ storageLocation: { contains: l, mode: "insensitive" as const } })) }] : []),
+      ...(reservedSearch.length ? [{ OR: reservedSearch.map(r => ({ reservedFor:     { contains: r, mode: "insensitive" as const } })) }] : []),
     ] } : {}),
+    ...dateRange("receivedFrom",  "receivedTo",  "receivedAt"),
+    ...dateRange("selectionFrom", "selectionTo", "selectionPrintedAt"),
+    ...dateRange("issuedFrom",    "issuedTo",    "issuedAt"),
     ...(thicknesses.length  ? { thickness:  { in: thicknesses } }  : {}),
     ...(widths.length       ? { width:      { in: widths } }       : {}),
     ...(lengths.length      ? { length:     { in: lengths } }      : {}),

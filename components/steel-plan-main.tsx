@@ -152,9 +152,9 @@ function VesselPicker({ value, onChange, onEnter, options }: {
     <div ref={ref} className="relative">
       <div className="flex">
         <input value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onEnter()}
-          placeholder="여러개 쉼표" className="border border-gray-300 rounded-l rounded-r-none px-2 py-1 text-sm w-full focus:outline-none focus:ring-1 focus:ring-blue-400" />
+          placeholder="쉼표" className="border border-gray-300 rounded-l rounded-r-none px-1.5 py-1 text-xs w-full focus:outline-none focus:ring-1 focus:ring-blue-400" />
         <button type="button" onClick={() => setOpen((o) => !o)} title="등록된 호선 목록"
-          className="px-2 border border-l-0 border-gray-300 rounded-r bg-gray-50 hover:bg-gray-100"><ChevronDown size={14} className="text-gray-400" /></button>
+          className="px-1.5 border border-l-0 border-gray-300 rounded-r bg-gray-50 hover:bg-gray-100"><ChevronDown size={13} className="text-gray-400" /></button>
       </div>
       {open && (
         <div className="absolute z-30 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-xl">
@@ -210,9 +210,18 @@ export default function SteelPlanMain() {
   const [sThk,      setSThk]      = useState("");
   const [sWidth,    setSWidth]    = useState("");
   const [sLength,   setSLength]   = useState("");
-  // 호선/재질은 부분검색 → colFilters(in) 가 아니라 별도 서버파라미터(contains)로 전달
+  const [sStatus,   setSStatus]   = useState<string[]>([]); // 상태 다중선택
+  const [sLoc,      setSLoc]      = useState("");           // 보관위치(부분검색)
+  const [sReserved, setSReserved] = useState("");           // 확정정보(부분검색)
+  const [dRecvFrom, setDRecvFrom] = useState(""); const [dRecvTo, setDRecvTo] = useState(""); // 입고일
+  const [dSelFrom,  setDSelFrom]  = useState(""); const [dSelTo,  setDSelTo]  = useState(""); // 선별지시일
+  const [dIssFrom,  setDIssFrom]  = useState(""); const [dIssTo,  setDIssTo]  = useState(""); // 출고일
+  // 호선/재질/위치/확정은 부분검색 → colFilters(in) 가 아니라 별도 서버파라미터(contains)로 전달
   const [appliedVessel,   setAppliedVessel]   = useState("");
   const [appliedMaterial, setAppliedMaterial] = useState("");
+  const [appliedLoc,      setAppliedLoc]      = useState("");
+  const [appliedReserved, setAppliedReserved] = useState("");
+  const [appliedDates,    setAppliedDates]    = useState<Record<string, string>>({});
   // 등록된 호선 목록 (검색 패널 호선 드롭다운 참고/선택용) — 진입 시 경량 로드
   const [vesselList, setVesselList] = useState<string[]>([]);
   useEffect(() => {
@@ -352,6 +361,9 @@ export default function SteelPlanMain() {
     if (memoMode) p.set("memoMode", memoMode);
     if (appliedVessel)   p.set("vesselSearch",   appliedVessel);
     if (appliedMaterial) p.set("materialSearch", appliedMaterial);
+    if (appliedLoc)      p.set("locationSearch", appliedLoc);
+    if (appliedReserved) p.set("reservedSearch", appliedReserved);
+    for (const [k, v] of Object.entries(appliedDates)) if (v) p.set(k, v);
     const res = await fetch(`/api/steel-plan?${p}`);
     if (res.ok) {
       const json = await res.json();
@@ -360,7 +372,7 @@ export default function SteelPlanMain() {
       setTotalPages(json.totalPages);
     }
     setLoading(false);
-  }, [search, page, colFilters, sortKey, sortDir, memoMode, appliedVessel, appliedMaterial]);
+  }, [search, page, colFilters, sortKey, sortDir, memoMode, appliedVessel, appliedMaterial, appliedLoc, appliedReserved, appliedDates]);
 
   // 검색 패널 → 호선/재질은 부분검색(contains) 파라미터, 두께/폭/길이는 colFilters(정확 in). 각 칸 쉼표=OR.
   const runSearch = () => {
@@ -371,18 +383,33 @@ export default function SteelPlanMain() {
     const ts = splitTxt(sThk), ws = splitTxt(sWidth), ls = splitTxt(sLength);
     setAppliedVessel(splitTxt(sVessel).join(","));
     setAppliedMaterial(splitTxt(sMaterial).join(","));
-    // 패널 소유 컬럼(두께/폭/길이)만 갱신 — 컬럼 드롭다운으로 건 다른 필터(상태·입고일 등)는 보존
+    setAppliedLoc(splitTxt(sLoc).join(","));
+    setAppliedReserved(splitTxt(sReserved).join(","));
+    setAppliedDates({
+      receivedFrom: dRecvFrom, receivedTo: dRecvTo,
+      selectionFrom: dSelFrom, selectionTo: dSelTo,
+      issuedFrom: dIssFrom,    issuedTo: dIssTo,
+    });
+    // 패널 소유 컬럼(두께/폭/길이/상태)만 갱신 — 그 외 컬럼 드롭다운 필터는 보존
     setColFilters((prev) => {
       const next = { ...prev };
       if (ts.length) next.thickness = ts; else delete next.thickness;
       if (ws.length) next.width     = ws; else delete next.width;
       if (ls.length) next.length    = ls; else delete next.length;
+      if (sStatus.length) next.status = sStatus; else delete next.status;
       return next;
     });
     setPage(1); setQueried(true);
   };
-  const runSearchAll = () => { setAppliedVessel(""); setAppliedMaterial(""); setColFilters({}); setPage(1); setQueried(true); };
-  const resetSearchFields = () => { setSVessel(""); setSMaterial(""); setSThk(""); setSWidth(""); setSLength(""); };
+  const runSearchAll = () => {
+    setAppliedVessel(""); setAppliedMaterial(""); setAppliedLoc(""); setAppliedReserved(""); setAppliedDates({});
+    setColFilters({}); setPage(1); setQueried(true);
+  };
+  const resetSearchFields = () => {
+    setSVessel(""); setSMaterial(""); setSThk(""); setSWidth(""); setSLength("");
+    setSStatus([]); setSLoc(""); setSReserved("");
+    setDRecvFrom(""); setDRecvTo(""); setDSelFrom(""); setDSelTo(""); setDIssFrom(""); setDIssTo("");
+  };
 
   const loadHeatDistinct = useCallback(async () => {
     const qs = serializeColFilters(heatColFilters, STEEL_PLAN_HEAT_QS_KEY);
@@ -1190,6 +1217,9 @@ export default function SteelPlanMain() {
   };
 
   const inputCls = "border border-gray-300 rounded px-2 py-1 text-sm w-full focus:outline-none focus:ring-1 focus:ring-blue-400";
+  // 검색 패널 컴팩트 입력
+  const miniCls = "border border-gray-300 rounded px-1.5 py-1 text-xs w-full focus:outline-none focus:ring-1 focus:ring-blue-400";
+  const dateCls = "border border-gray-300 rounded px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400";
 
   /* ══ 렌더 ══════════════════════════════════════════════════════════════ */
   return (
@@ -1290,22 +1320,55 @@ export default function SteelPlanMain() {
             </div>
           )}
 
-          {/* 검색 패널 (검색-우선) */}
-          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
-              <div><label className="block text-xs font-semibold text-gray-600 mb-1">호선</label><VesselPicker value={sVessel} onChange={setSVessel} onEnter={runSearch} options={vesselList} /></div>
-              <div><label className="block text-xs font-semibold text-gray-600 mb-1">재질</label><input value={sMaterial} onChange={e => setSMaterial(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runSearch()} /></div>
-              <div><label className="block text-xs font-semibold text-gray-600 mb-1">두께</label><input value={sThk} onChange={e => setSThk(e.target.value)} placeholder="예: 10,20,25" className={inputCls} onKeyDown={e => e.key === "Enter" && runSearch()} /></div>
-              <div><label className="block text-xs font-semibold text-gray-600 mb-1">폭</label><input value={sWidth} onChange={e => setSWidth(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runSearch()} /></div>
-              <div><label className="block text-xs font-semibold text-gray-600 mb-1">길이</label><input value={sLength} onChange={e => setSLength(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runSearch()} /></div>
+          {/* 검색 패널 (검색-우선) — 컴팩트 */}
+          <div className="bg-white border border-gray-200 rounded-xl p-3 space-y-2">
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-1.5">
+              <div><label className="block text-[11px] font-semibold text-gray-500 mb-0.5">호선</label><VesselPicker value={sVessel} onChange={setSVessel} onEnter={runSearch} options={vesselList} /></div>
+              <div><label className="block text-[11px] font-semibold text-gray-500 mb-0.5">재질</label><input value={sMaterial} onChange={e => setSMaterial(e.target.value)} placeholder="쉼표" className={miniCls} onKeyDown={e => e.key === "Enter" && runSearch()} /></div>
+              <div><label className="block text-[11px] font-semibold text-gray-500 mb-0.5">두께</label><input value={sThk} onChange={e => setSThk(e.target.value)} placeholder="10,20" className={miniCls} onKeyDown={e => e.key === "Enter" && runSearch()} /></div>
+              <div><label className="block text-[11px] font-semibold text-gray-500 mb-0.5">폭</label><input value={sWidth} onChange={e => setSWidth(e.target.value)} placeholder="쉼표" className={miniCls} onKeyDown={e => e.key === "Enter" && runSearch()} /></div>
+              <div><label className="block text-[11px] font-semibold text-gray-500 mb-0.5">길이</label><input value={sLength} onChange={e => setSLength(e.target.value)} placeholder="쉼표" className={miniCls} onKeyDown={e => e.key === "Enter" && runSearch()} /></div>
+              <div><label className="block text-[11px] font-semibold text-gray-500 mb-0.5">보관위치</label><input value={sLoc} onChange={e => setSLoc(e.target.value)} placeholder="쉼표" className={miniCls} onKeyDown={e => e.key === "Enter" && runSearch()} /></div>
+              <div><label className="block text-[11px] font-semibold text-gray-500 mb-0.5">확정정보</label><input value={sReserved} onChange={e => setSReserved(e.target.value)} placeholder="호선/블록" className={miniCls} onKeyDown={e => e.key === "Enter" && runSearch()} /></div>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <button onClick={runSearch} disabled={loading} className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50">
-                <Search size={14} /> 조회
+
+            {/* 상태 칩 다중선택 */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] font-semibold text-gray-500 w-12">상태</span>
+              {([["REGISTERED","등록"],["RECEIVED","입고"],["ISSUED","투입"],["COMPLETED","절단"],["SHIPPED_OUT","외부"]] as const).map(([v, label]) => {
+                const on = sStatus.includes(v);
+                return (
+                  <button key={v} type="button"
+                    onClick={() => setSStatus(prev => on ? prev.filter(x => x !== v) : [...prev, v])}
+                    className={`px-2 py-0.5 text-[11px] rounded-full border transition-colors ${on ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-300 hover:border-blue-400"}`}>
+                    {label}
+                  </button>
+                );
+              })}
+              {sStatus.length > 0 && <button onClick={() => setSStatus([])} className="text-[11px] text-gray-400 hover:text-gray-600 ml-0.5">해제</button>}
+            </div>
+
+            {/* 날짜 기간 3종 */}
+            <div className="flex items-center gap-3 flex-wrap">
+              {([["입고일", dRecvFrom, setDRecvFrom, dRecvTo, setDRecvTo],
+                 ["선별지시일", dSelFrom, setDSelFrom, dSelTo, setDSelTo],
+                 ["출고일", dIssFrom, setDIssFrom, dIssTo, setDIssTo]] as const).map(([label, f, setF, t, setT]) => (
+                <div key={label} className="flex items-center gap-1">
+                  <span className="text-[11px] font-semibold text-gray-500 whitespace-nowrap">{label}</span>
+                  <input type="date" value={f} onChange={e => setF(e.target.value)} className={dateCls} />
+                  <span className="text-gray-300 text-xs">~</span>
+                  <input type="date" value={t} onChange={e => setT(e.target.value)} className={dateCls} />
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-1.5 flex-wrap pt-0.5 border-t border-gray-100">
+              <button onClick={runSearch} disabled={loading} className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                <Search size={13} /> 조회
               </button>
-              <button onClick={runSearchAll} disabled={loading} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50">전체 보기</button>
-              <button onClick={resetSearchFields} className="inline-flex items-center gap-1 px-3 py-2 text-sm text-gray-400 hover:text-gray-600"><X size={13} /> 조건 초기화</button>
-              <span className="text-xs text-gray-400 ml-auto">한 칸에 <b>쉼표로 여러 값</b>=OR (예: 두께 10,20,25) · 칸끼리 AND · 호선·재질은 부분검색</span>
+              <button onClick={runSearchAll} disabled={loading} className="px-2.5 py-1.5 text-xs border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50">전체 보기</button>
+              <button onClick={resetSearchFields} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-400 hover:text-gray-600"><X size={12} /> 초기화</button>
+              <span className="text-[11px] text-gray-400 ml-auto">한 칸에 <b>쉼표=OR</b> · 칸끼리 AND · 호선·재질·위치·확정은 부분검색</span>
             </div>
           </div>
 
@@ -1782,25 +1845,25 @@ export default function SteelPlanMain() {
       {/* ── 판번호 리스트 탭 ── */}
       {tab === "heatno" && (
         <>
-          {/* 검색 패널 (검색-우선) */}
-          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-              <div><label className="block text-xs font-semibold text-gray-600 mb-1">판번호</label><input value={hHeatNo} onChange={e => setHHeatNo(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runHeatSearch()} /></div>
-              <div><label className="block text-xs font-semibold text-gray-600 mb-1">호선</label><VesselPicker value={hVessel} onChange={setHVessel} onEnter={runHeatSearch} options={vesselList} /></div>
-              <div><label className="block text-xs font-semibold text-gray-600 mb-1">재질</label><input value={hMaterial} onChange={e => setHMaterial(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runHeatSearch()} /></div>
-              <div><label className="block text-xs font-semibold text-gray-600 mb-1">두께</label><input value={hThk} onChange={e => setHThk(e.target.value)} placeholder="예: 10,20,25" className={inputCls} onKeyDown={e => e.key === "Enter" && runHeatSearch()} /></div>
-              <div><label className="block text-xs font-semibold text-gray-600 mb-1">폭</label><input value={hWidth} onChange={e => setHWidth(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runHeatSearch()} /></div>
-              <div><label className="block text-xs font-semibold text-gray-600 mb-1">길이</label><input value={hLength} onChange={e => setHLength(e.target.value)} placeholder="여러개 쉼표" className={inputCls} onKeyDown={e => e.key === "Enter" && runHeatSearch()} /></div>
+          {/* 검색 패널 (검색-우선) — 컴팩트 */}
+          <div className="bg-white border border-gray-200 rounded-xl p-3 space-y-2">
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-1.5">
+              <div><label className="block text-[11px] font-semibold text-gray-500 mb-0.5">판번호</label><input value={hHeatNo} onChange={e => setHHeatNo(e.target.value)} placeholder="쉼표" className={miniCls} onKeyDown={e => e.key === "Enter" && runHeatSearch()} /></div>
+              <div><label className="block text-[11px] font-semibold text-gray-500 mb-0.5">호선</label><VesselPicker value={hVessel} onChange={setHVessel} onEnter={runHeatSearch} options={vesselList} /></div>
+              <div><label className="block text-[11px] font-semibold text-gray-500 mb-0.5">재질</label><input value={hMaterial} onChange={e => setHMaterial(e.target.value)} placeholder="쉼표" className={miniCls} onKeyDown={e => e.key === "Enter" && runHeatSearch()} /></div>
+              <div><label className="block text-[11px] font-semibold text-gray-500 mb-0.5">두께</label><input value={hThk} onChange={e => setHThk(e.target.value)} placeholder="10,20" className={miniCls} onKeyDown={e => e.key === "Enter" && runHeatSearch()} /></div>
+              <div><label className="block text-[11px] font-semibold text-gray-500 mb-0.5">폭</label><input value={hWidth} onChange={e => setHWidth(e.target.value)} placeholder="쉼표" className={miniCls} onKeyDown={e => e.key === "Enter" && runHeatSearch()} /></div>
+              <div><label className="block text-[11px] font-semibold text-gray-500 mb-0.5">길이</label><input value={hLength} onChange={e => setHLength(e.target.value)} placeholder="쉼표" className={miniCls} onKeyDown={e => e.key === "Enter" && runHeatSearch()} /></div>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <button onClick={runHeatSearch} disabled={heatLoading} className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50">
-                <Search size={14} /> 조회
+            <div className="flex items-center gap-1.5 flex-wrap pt-0.5 border-t border-gray-100">
+              <button onClick={runHeatSearch} disabled={heatLoading} className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                <Search size={13} /> 조회
               </button>
-              <button onClick={runHeatSearchAll} disabled={heatLoading} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50">전체 보기</button>
-              <button onClick={resetHeatSearchFields} className="inline-flex items-center gap-1 px-3 py-2 text-sm text-gray-400 hover:text-gray-600"><X size={13} /> 조건 초기화</button>
+              <button onClick={runHeatSearchAll} disabled={heatLoading} className="px-2.5 py-1.5 text-xs border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50">전체 보기</button>
+              <button onClick={resetHeatSearchFields} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-400 hover:text-gray-600"><X size={12} /> 초기화</button>
               <button onClick={() => setHeatRegisterOpen(true)} title="판번호를 강재와 별개로 미리 등록 (사양 + 여러 판번호 일괄)"
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600"><Plus size={14} /> 판번호 등록</button>
-              <span className="text-xs text-gray-400 ml-auto">한 칸에 <b>쉼표로 여러 값</b>=OR · 칸끼리 AND · 판번호·호선·재질은 부분검색</span>
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs bg-orange-500 text-white rounded-lg hover:bg-orange-600"><Plus size={13} /> 판번호 등록</button>
+              <span className="text-[11px] text-gray-400 ml-auto">한 칸에 <b>쉼표=OR</b> · 칸끼리 AND · 판번호·호선·재질은 부분검색</span>
             </div>
           </div>
 
