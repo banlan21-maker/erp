@@ -54,7 +54,7 @@ export default function ShipmentDetailMain({ initial }: { initial: Shipment }) {
     const reason = prompt("출고 취소 사유를 입력하세요. (선택)");
     if (reason === null) return; // cancel
     const msg = keepSelection
-      ? "출고를 취소하고 자재를 선별목록에 그대로 둡니다.\n(바로 다시 출고장을 만들 수 있습니다 · 선별 라벨에 '(취소)' 표시)"
+      ? "출고를 취소하고 자재를 선별목록에 그대로 둡니다.\n(바로 다시 출고장을 만들 수 있습니다 · 선별목록에 '출고취소' 표시)"
       : "출고를 취소하고 선별까지 해제합니다.\n자재가 강재전체목록 입고 재고로 완전히 돌아갑니다.\n(다시 출고하려면 강재매칭/출고등록부터 선별해야 합니다)";
     if (!confirm(`${msg}\n\n진행할까요?`)) return;
     setCancelModal(false);
@@ -204,7 +204,7 @@ export default function ShipmentDetailMain({ initial }: { initial: Shipment }) {
                   <span className="text-sm font-bold text-purple-800">선별목록에 그대로 두기</span>
                   <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-600 text-white font-semibold">권장</span>
                 </div>
-                <p className="text-xs text-gray-600 mt-1.5">일정 변경·차량 문제 등으로 다시 출고할 자재. <b>선별목록에 남아 바로 출고장을 다시 만들 수 있습니다.</b> (선별 라벨에 &apos;(취소)&apos; 표시)</p>
+                <p className="text-xs text-gray-600 mt-1.5">일정 변경·차량 문제 등으로 다시 출고할 자재. <b>선별목록에 남아 바로 출고장을 다시 만들 수 있습니다.</b> (선별목록에 주황 &apos;출고취소&apos; 표시 — 원판만)</p>
               </button>
               <button onClick={() => doCancel(false)} disabled={cancelling}
                 className="w-full text-left border-2 border-gray-200 rounded-xl p-4 hover:border-gray-400 disabled:opacity-50">
