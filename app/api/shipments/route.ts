@@ -502,6 +502,7 @@ export async function POST(req: NextRequest) {
               // shipoutLabel 은 보존: 확정정보 "{라벨} 출고" 표시 + 강재매칭이 출고분을 작업에 귀속해 '출고'로 인식.
               shipoutMarkedAt: null,
               shipoutHeatNo:   null,
+              shipoutCancelledAt: null, // 이전 취소 표시 정리 (정상 출고 확정)
             },
           });
           if (flipped.count !== 1) {

@@ -76,19 +76,23 @@ export async function POST(
             await tx.steelPlan.update({
               where: { id: sp.id },
               // I7: shipoutLabel 은 유지 (사무실이 '원래 어느 선별 작업 자재였는지' 추적 가능하게).
-              // keepSelection=true(기본): shipoutMarkedAt/shipoutHeatNo 유지 → 선별목록에 그대로 남아 바로 재출고 가능
-              //   (일정변경·차량문제 등 대부분의 취소). 라벨에 '(취소)' 표시로 검토 필요를 알림.
+              //     ※ 라벨은 강재매칭 작업 귀속 키(완전일치 조회)라 절대 변형 금지 — '취소' 표시는 shipoutCancelledAt 로.
+              // keepSelection=true(기본): 선별 마킹 재생성 → 선별목록에 남아 바로 재출고 가능(일정변경·차량문제 등).
+              //   출고 확정 시 shipoutHeatNo 가 null 로 지워지므로 ShipmentItem.heatNo 스냅샷에서 복원 —
+              //   안 하면 재출고 때 판번호가 비어 FIFO 가 엉뚱한 WAITING 판번호를 소진한다.
+              //   단, 원래 선별된 적 없는 자재(현장 즉시출고·엑셀출고)는 마킹을 새로 만들지 않음(절단 풀에서 조용히 빠지는 것 방지).
               // keepSelection=false: 선별 해제 → 강재전체목록 입고 재고로 완전 복귀(자재를 잘못 골랐을 때).
               // N20: originStorageLocation 스냅샷이 있으면 storageLocation 로 복원 (원 위치 참고용, 물리 이동은 사용자 확인)
               data:  {
                 status: SteelPlanStatus.RECEIVED,
                 issuedAt: null,
-                ...(keepSelection
+                ...(keepSelection && (sp.shipoutLabel || item.originShipoutLabel || !item.adHocFromField)
                   ? {
                       shipoutMarkedAt: sp.shipoutMarkedAt ?? new Date(),
-                      ...(sp.shipoutLabel && !sp.shipoutLabel.includes("(취소)") ? { shipoutLabel: `${sp.shipoutLabel} (취소)` } : {}),
+                      shipoutHeatNo:   sp.shipoutHeatNo ?? item.heatNo ?? null,
+                      shipoutCancelledAt: new Date(),
                     }
-                  : { shipoutHeatNo: null, shipoutMarkedAt: null }),
+                  : { shipoutHeatNo: null, shipoutMarkedAt: null, shipoutCancelledAt: null }),
                 ...(item.originStorageLocation ? { storageLocation: item.originStorageLocation } : {}),
               },
             });

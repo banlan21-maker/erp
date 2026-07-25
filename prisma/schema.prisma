@@ -1311,6 +1311,8 @@ model SteelPlan {
   shipoutMarkedAt    DateTime? // 출고 확정(선별) 시각
   shipoutHeatNo      String?   // 출고 확정 시 입력한 판번호 (추적용)
   shipoutLabel       String?   // 확정정보 표시 라벨 (예: 매칭이름). null이면 호선코드로 대체
+  //   ※ 라벨은 강재매칭 작업 귀속 키(완전일치 조회)라 절대 변형 금지 — '취소' 표시는 아래 필드로.
+  shipoutCancelledAt DateTime? // 출고취소 후 선별 유지된 자재 표시 (재선별/재출고 확정 시 null 정리)
 
   // 외부 출고 (Shipment) 관계 — 한 SteelPlan 은 한 번 출고됨
   shipmentItems ShipmentItem[]  // 출고 이력 (ACTIVE 1건만 의미 있음 — application 강제)

@@ -31,6 +31,7 @@ interface Row {
   shipoutMarkedAt: string | null;
   heatNo: string | null;          // plate: shipoutHeatNo · remnant: heatNo
   shipoutLabel: string | null;    // plate 전용
+  shipoutCancelledAt: string | null; // plate 전용 — 출고취소 후 선별 유지된 자재(검토 필요)
   remnantNo: string | null;       // remnant 전용
   remnantType: string | null;     // remnant 전용 (REMNANT/SURPLUS/REGISTERED)
 }
@@ -76,8 +77,11 @@ const SelectionRow = memo(function SelectionRow({ row, inCart, checked, onToggle
           {kindLabelOf(row)}
         </span>
       </td>
-      <td className="px-3 py-1.5">
+      <td className="px-3 py-1.5 whitespace-nowrap">
         <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${isRemnant ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>{shipoutLabelOf(row)}</span>
+        {row.shipoutCancelledAt && (
+          <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-100 text-orange-700" title="출고취소 후 선별 유지 — 재출고 전 확인하세요">출고취소</span>
+        )}
       </td>
       <td className="px-3 py-1.5 font-medium">{row.vesselCode || "-"}{isRemnant && row.remnantNo && <span className="ml-1 text-[10px] text-gray-400 font-mono">{row.remnantNo}</span>}</td>
       <td className="px-3 py-1.5">{row.material}</td>
@@ -108,7 +112,7 @@ const COLUMNS: { key: string; label: string; align: "left" | "right" }[] = [
 ];
 
 /* 원판/잔재 응답 → 공통 Row 매핑 ─────────────────────────────────────────── */
-interface PlanApi { id: string; vesselCode: string; material: string; thickness: number; width: number; length: number; storageLocation: string | null; shipoutMarkedAt: string | null; shipoutHeatNo: string | null; shipoutLabel: string | null; }
+interface PlanApi { id: string; vesselCode: string; material: string; thickness: number; width: number; length: number; storageLocation: string | null; shipoutMarkedAt: string | null; shipoutHeatNo: string | null; shipoutLabel: string | null; shipoutCancelledAt: string | null; }
 interface RemnantApi {
   id: string; remnantNo: string; type: string; material: string; thickness: number; weight: number;
   width1: number | null; length1: number | null; location: string | null; heatNo: string | null;
@@ -123,6 +127,7 @@ const planToRow = (p: PlanApi): Row => ({
   weight: calcWeight(p.thickness, p.width, p.length),
   storageLocation: p.storageLocation,
   shipoutMarkedAt: p.shipoutMarkedAt, heatNo: p.shipoutHeatNo, shipoutLabel: p.shipoutLabel,
+  shipoutCancelledAt: p.shipoutCancelledAt ?? null,
   remnantNo: null, remnantType: null,
 });
 const remnantToRow = (r: RemnantApi): Row => ({
@@ -131,7 +136,7 @@ const remnantToRow = (r: RemnantApi): Row => ({
   material: r.material, thickness: r.thickness, width: r.width1 ?? 0, length: r.length1 ?? 0,
   weight: r.weight,
   storageLocation: r.location,
-  shipoutMarkedAt: r.shipoutMarkedAt, heatNo: r.heatNo, shipoutLabel: null,
+  shipoutMarkedAt: r.shipoutMarkedAt, heatNo: r.heatNo, shipoutLabel: null, shipoutCancelledAt: null,
   remnantNo: r.remnantNo, remnantType: r.type,
 });
 
