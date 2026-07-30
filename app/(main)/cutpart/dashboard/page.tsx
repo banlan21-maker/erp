@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FolderOpen, FileSpreadsheet, CheckCircle2, LayoutDashboard, TrendingUp } from "lucide-react";
+import { FolderOpen, FileSpreadsheet, CheckCircle2, LayoutDashboard, TrendingUp, Truck } from "lucide-react";
 import Link from "next/link";
 import { DashboardEquipmentProgress } from "@/components/dashboard-equipment-progress";
 
@@ -39,6 +39,31 @@ export default async function DashboardPage() {
     prisma.cuttingLog.groupBy({ by: ["projectId"], where: { isUrgent: false, status: "COMPLETED", endAt: { not: null } }, _max: { endAt: true } }),
     prisma.project.findMany({ select: { projectCode: true }, distinct: ["projectCode"] }),
   ]);
+
+  // ── 최근 2일 외부출고 (호선/블록별 장수 요약) ────────────────────────────
+  // 취소(CANCELLED)된 출고장은 제외. 원판·잔재 모두 1행=1장으로 집계.
+  const shipFrom = new Date(); shipFrom.setHours(0, 0, 0, 0); shipFrom.setDate(shipFrom.getDate() - 1); // 어제 00:00 ~ 오늘
+  const recentShipItems = await prisma.shipmentItem.findMany({
+    where: { vehicle: { shipment: { status: "ACTIVE", shippedAt: { gte: shipFrom } } } },
+    select: {
+      vesselCode: true, block: true, remnantId: true,
+      vehicle: { select: { shipment: { select: { shippedAt: true, shipmentNo: true } } } },
+    },
+  });
+  type ShipGroup = { vesselCode: string; block: string; plates: number; remnants: number; last: Date; shipmentNos: Set<string> };
+  const shipMap = new Map<string, ShipGroup>();
+  for (const it of recentShipItems) {
+    const block = it.block?.trim() || "-";
+    const key = `${it.vesselCode}|${block}`;
+    const at = it.vehicle?.shipment?.shippedAt ?? shipFrom;
+    const g = shipMap.get(key) ?? { vesselCode: it.vesselCode, block, plates: 0, remnants: 0, last: at, shipmentNos: new Set<string>() };
+    if (it.remnantId) g.remnants++; else g.plates++;
+    if (at > g.last) g.last = at;
+    if (it.vehicle?.shipment?.shipmentNo) g.shipmentNos.add(it.vehicle.shipment.shipmentNo);
+    shipMap.set(key, g);
+  }
+  const recentShipouts = [...shipMap.values()].sort((a, b) => b.last.getTime() - a.last.getTime());
+  const recentShipTotal = recentShipouts.reduce((s, g) => s + g.plates + g.remnants, 0);
   const totalVessels = allCodes.length;
   const totalProjects = allProjects.length;
 
@@ -152,6 +177,38 @@ export default async function DashboardPage() {
                 ))}
               </div>
             )}
+
+            {/* 최근 외부출고 — 어제~오늘, 호선/블록별 장수 요약 */}
+            <div className="mt-4 pt-3 border-t border-gray-100">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[11px] font-bold text-gray-400 flex items-center gap-1">
+                  <Truck size={12} className="text-purple-500" /> 최근 외부출고
+                  <span className="font-normal text-gray-300">(어제~오늘)</span>
+                </p>
+                <Link href="/cutpart/external-shipout?tab=shipments" className="text-[11px] text-purple-600 hover:underline">출고장 →</Link>
+              </div>
+              {recentShipouts.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-2">최근 2일간 외부출고가 없습니다.</p>
+              ) : (
+                <>
+                  <div className="space-y-1">
+                    {recentShipouts.map((g) => (
+                      <div key={`${g.vesselCode}|${g.block}`} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-50">
+                        <span className="text-xs font-bold text-gray-800 truncate">{g.vesselCode ? `[${g.vesselCode}]` : <span className="text-gray-400 font-normal">(호선없음)</span>}</span>
+                        <span className="text-xs text-gray-600 truncate flex-1">{g.block}</span>
+                        <span className="text-[10px] text-gray-400 shrink-0">{fmtKDate(g.last)}</span>
+                        <span className="text-xs font-semibold text-purple-700 tabular-nums shrink-0">
+                          {g.plates > 0 && `${g.plates}장`}
+                          {g.plates > 0 && g.remnants > 0 && " · "}
+                          {g.remnants > 0 && <span className="text-amber-700">잔재 {g.remnants}</span>}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-gray-400 text-right mt-1">합계 {recentShipTotal}장 · 출고장 {new Set(recentShipouts.flatMap(g => [...g.shipmentNos])).size}건</p>
+                </>
+              )}
+            </div>
           </CardContent>
         </Card>
 
