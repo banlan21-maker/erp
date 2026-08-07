@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from "react";
 import { X, Save, AlertTriangle, Edit2, RotateCcw, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { remnantWeight, isInvalidLShape } from "@/lib/remnant-area";
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -70,8 +71,9 @@ function sizeText(r: Remnant): string {
     return (r.width1 && r.length1) ? `${r.width1}×${r.length1}` : "-";
   }
   if (r.shape === "L_SHAPE") {
-    const full = (r.width1 && r.length1) ? `${r.width1}×${r.length1}` : "";
-    const cut  = (r.width2 && r.length2) ? `(절${r.width2}×${r.length2})` : "";
+    // 표기 순서: W1·W2 / L1·L2 (2026-07-31 확정)
+    const full = (r.width1 && r.length1) ? `W${r.width1}×L${r.length1}` : "";
+    const cut  = (r.width2 && r.length2) ? `(절단 W${r.width2}×L${r.length2})` : "";
     return full ? `${full} ${cut}`.trim() : "-";
   }
   if (r.shape === "IRREGULAR") {
@@ -99,7 +101,8 @@ function getDensity(material: string) {
   return DENSITY.default;
 }
 
-// 중량 자동계산 (mm 단위 입력 → kg)
+// 중량 자동계산 (mm 단위 입력 → kg) — L자형 기준식은 lib/remnant-area.ts 참조
+//   면적 = (W1×L1) − ((W1−W2)×L2)   (2026-07-31 확정)
 function calcWeight(
   shape: string,
   thickness: number,
@@ -107,21 +110,9 @@ function calcWeight(
   w1: number, l1: number,
   w2: number, l2: number
 ): number | null {
-  const d = getDensity(material);
-  if (!thickness || thickness <= 0) return null;
-  let area = 0;
-  if (shape === "RECTANGLE") {
-    if (!w1 || !l1) return null;
-    area = w1 * l1;
-  } else if (shape === "L_SHAPE") {
-    if (!w1 || !l1) return null;
-    area = w1 * l1 - (w2 || 0) * (l2 || 0);
-    if (area <= 0) return null;
-  } else {
-    return null; // 불규칙형: 직접 입력
-  }
-  const weightKg = area * thickness * d; // kg (d 단위: kg/mm³)
-  return Math.round(weightKg * 10) / 10; // kg, 소수점 1자리
+  if (shape === "IRREGULAR") return null; // 불규칙형: 직접 입력
+  if (shape === "L_SHAPE" && isInvalidLShape(w1, l1, w2, l2)) return null; // 형상 불가 → 계산 안 함
+  return remnantWeight(shape, thickness, w1, l1, w2, l2, getDensity(material));
 }
 
 
@@ -173,8 +164,11 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
   const cols: (keyof RemnantBulkRow)[] = useMemo(() => {
     const base: (keyof RemnantBulkRow)[] = ["remnantNo"];
     if (isSurplus) base.push("heatNo");
-    base.push("material", "thickness", "width1", "length1");
-    if (isLShape) base.push("width2", "length2");
+    // 순서: 폭 계열 먼저(W1·W2) → 길이 계열(L1·L2)  (2026-07-31 확정)
+    base.push("material", "thickness", "width1");
+    if (isLShape) base.push("width2");
+    base.push("length1");
+    if (isLShape) base.push("length2");
     base.push("weight", "location", "memo");
     return base;
   }, [isLShape, isSurplus]);
@@ -277,6 +271,11 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
       }
       if (!r.material.trim() || !r.thickness) {
         out.push({ ok: false, error: "재질/두께 누락" });
+        continue;
+      }
+      // L자형 형상 검증 — 잘린 치수가 전체 치수보다 클 수 없음 (음수/과대 중량 원천 차단)
+      if (isLShape && isInvalidLShape(Number(r.width1), Number(r.length1), Number(r.width2), Number(r.length2))) {
+        out.push({ ok: false, error: "W2는 W1보다, L2는 L1보다 클 수 없습니다" });
         continue;
       }
       const auto = autoWeightFor(r);
@@ -456,9 +455,9 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
               <col style={{ width: "7rem"  }} />  {/* 재질 */}
               <col style={{ width: "5.5rem" }} /> {/* 두께 */}
               <col style={{ width: "6rem" }} />   {/* W1 */}
+              {isLShape && <col style={{ width: "6rem" }} />}  {/* W2 */}
               <col style={{ width: "6rem" }} />   {/* L1 */}
-              {isLShape && <col style={{ width: "6rem" }} />}
-              {isLShape && <col style={{ width: "6rem" }} />}
+              {isLShape && <col style={{ width: "6rem" }} />}  {/* L2 */}
               <col style={{ width: "7rem" }} />   {/* 중량 */}
               <col style={{ width: "8rem" }} />   {/* 위치 */}
               <col />                              {/* 메모 (flex) */}
@@ -471,10 +470,10 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
                 {isSurplus && <th className="text-left pb-2 pr-2">판번호<span className="text-gray-300 font-normal"> (선택)</span></th>}
                 <th className="text-left pb-2 pr-2">재질 *</th>
                 <th className="text-left pb-2 pr-2">두께 *</th>
-                <th className="text-left pb-2 pr-2">W1 *</th>
-                <th className="text-left pb-2 pr-2">L1 *</th>
-                {isLShape && <th className="text-left pb-2 pr-2">W2</th>}
-                {isLShape && <th className="text-left pb-2 pr-2">L2</th>}
+                <th className="text-left pb-2 pr-2">W1 *<span className="text-gray-300 font-normal"> 폭</span></th>
+                {isLShape && <th className="text-left pb-2 pr-2">W2<span className="text-gray-300 font-normal"> 잘린폭</span></th>}
+                <th className="text-left pb-2 pr-2">L1 *<span className="text-gray-300 font-normal"> 길이</span></th>
+                {isLShape && <th className="text-left pb-2 pr-2">L2<span className="text-gray-300 font-normal"> 잘린길이</span></th>}
                 <th className="text-left pb-2 pr-2">중량(kg){!isIrregular && <span className="text-blue-400 font-normal"> · 자동</span>}</th>
                 <th className="text-left pb-2 pr-2">위치</th>
                 <th className="text-left pb-2 pr-2">메모</th>

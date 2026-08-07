@@ -948,29 +948,30 @@ function RemnantInputRow({
           <option value="L_SHAPE">L자형</option>
         </select>
       </div>
+      {/* 순서: 폭 계열(W1·W2) → 길이 계열(L1·L2) — 2026-07-31 확정 */}
       <div>
-        <label className="text-[10px] text-gray-500 font-semibold block mb-1">폭1 <span className="text-red-400">*</span></label>
+        <label className="text-[10px] text-gray-500 font-semibold block mb-1">폭1(W1) <span className="text-red-400">*</span></label>
         <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={item.width1}
           onChange={e => onChange("width1", e.target.value)} />
       </div>
+      {item.shape === "L_SHAPE" && (
+        <div>
+          <label className="text-[10px] text-gray-500 font-semibold block mb-1">폭2(W2)</label>
+          <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={item.width2}
+            onChange={e => onChange("width2", e.target.value)} />
+        </div>
+      )}
       <div>
-        <label className="text-[10px] text-gray-500 font-semibold block mb-1">길이1 <span className="text-red-400">*</span></label>
+        <label className="text-[10px] text-gray-500 font-semibold block mb-1">길이1(L1) <span className="text-red-400">*</span></label>
         <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={item.length1}
           onChange={e => onChange("length1", e.target.value)} />
       </div>
       {item.shape === "L_SHAPE" && (
-        <>
-          <div>
-            <label className="text-[10px] text-gray-500 font-semibold block mb-1">폭2</label>
-            <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={item.width2}
-              onChange={e => onChange("width2", e.target.value)} />
-          </div>
-          <div>
-            <label className="text-[10px] text-gray-500 font-semibold block mb-1">길이2</label>
-            <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={item.length2}
-              onChange={e => onChange("length2", e.target.value)} />
-          </div>
-        </>
+        <div>
+          <label className="text-[10px] text-gray-500 font-semibold block mb-1">길이2(L2)</label>
+          <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={item.length2}
+            onChange={e => onChange("length2", e.target.value)} />
+        </div>
       )}
       <div className="text-[10px] text-gray-500 self-end pb-1 bg-gray-50 border rounded px-2 py-1 space-x-2">
         {parentRemnantNo && <span className="text-orange-600 font-semibold">부모: {parentRemnantNo}</span>}

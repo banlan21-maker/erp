@@ -5,9 +5,9 @@
  *
  * 정규작업(isUrgent=false)과 돌발작업(isUrgent=true)을 구분하여 표시.
  * 탭별 상세 테이블 컬럼 구성이 다름:
- *  - 전체:   공통 컬럼 + 구분 + W1/L1/W2/L2
+ *  - 전체:   공통 컬럼 + 구분 + W1/W2/L1/L2
  *  - 정규:   기존 컬럼 (구분 제외) — Heat NO, 폭×길이, 수량, 작업시간, 특이사항 포함
- *  - 돌발:   W1/L1/W2/L2 + 요청자/부서
+ *  - 돌발:   W1/W2/L1/L2 + 요청자/부서
  *
  * Footer 합계: 수량 · 작업시간 · 강재중량 · 사용중량.
  */
@@ -61,7 +61,7 @@ interface CuttingLog {
   urgentRemnantNo:  string | null;
   // 블록
   block:       string | null;
-  // 통합 치수 (정규: 강재의 폭/길이, 돌발: 잔재의 W1/L1/W2/L2)
+  // 통합 치수 (정규: 강재의 폭/길이, 돌발: 잔재의 W1/W2/L1/L2)
   dimW1:       number | null;
   dimL1:       number | null;
   dimW2:       number | null;
@@ -243,8 +243,8 @@ export default function ReportsMain({
       "재질":         l.material ?? "",
       "두께(mm)":     l.thickness ?? "",
       "W1(mm)":       l.dimW1 ?? "",
-      "L1(mm)":       l.dimL1 ?? "",
       "W2(mm)":       l.dimW2 ?? "",
+      "L1(mm)":       l.dimL1 ?? "",
       "L2(mm)":       l.dimL2 ?? "",
       "수량(매)":     l.qty ?? "",
       "작업시간":     formatDuration(l),
@@ -593,7 +593,7 @@ const numCell = (v: number | null) =>
 const DashIfNull = ({ v }: { v: string | number | null }) =>
   v == null || v === "" ? <span className="text-gray-300">-</span> : <>{v}</>;
 
-// ─── 전체 탭: 구분 + W1/L1/W2/L2 + 강재/사용중량 ───────────────────────────────
+// ─── 전체 탭: 구분 + W1/W2/L1/L2 + 강재/사용중량 ───────────────────────────────
 function AllDetailTable({
   logs, totalQty, totalSteel, totalUse, totalDurationMs: totalMs,
 }: {
@@ -607,7 +607,7 @@ function AllDetailTable({
           {[
             ["구분", "center"], ["날짜", "left"], ["장비", "left"], ["작업자", "left"],
             ["호선/블록", "left"], ["도면번호", "left"], ["재질", "left"], ["두께", "right"],
-            ["W1", "right"], ["L1", "right"], ["W2", "right"], ["L2", "right"],
+            ["W1", "right"], ["W2", "right"], ["L1", "right"], ["L2", "right"],
             ["강재중량(kg)", "right"], ["사용중량(kg)", "right"],
           ].map(([l, a]) => (
             <th key={l} className={`px-3 py-1 text-gray-500 font-semibold text-${a} whitespace-nowrap`}>{l}</th>
@@ -643,8 +643,8 @@ function AllDetailTable({
             </td>
             <td className="px-3 py-1 text-right text-gray-700">{log.thickness ?? "-"}</td>
             <td className="px-3 py-1 text-right text-gray-700 font-mono"><DashIfNull v={log.dimW1} /></td>
-            <td className="px-3 py-1 text-right text-gray-700 font-mono"><DashIfNull v={log.dimL1} /></td>
             <td className="px-3 py-1 text-right text-gray-700 font-mono"><DashIfNull v={log.dimW2} /></td>
+            <td className="px-3 py-1 text-right text-gray-700 font-mono"><DashIfNull v={log.dimL1} /></td>
             <td className="px-3 py-1 text-right text-gray-700 font-mono"><DashIfNull v={log.dimL2} /></td>
             <td className="px-3 py-1 text-right text-gray-700">{numCell(log.steelWeight)}</td>
             <td className="px-3 py-1 text-right text-gray-700">{numCell(log.useWeight)}</td>

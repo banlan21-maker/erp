@@ -308,25 +308,26 @@ export default function UrgentRegisterForm({
                       <option value="L_SHAPE">L자형</option>
                     </select>
                   </div>
+                  {/* 순서: 폭 계열(W1·W2) → 길이 계열(L1·L2) — 2026-07-31 확정 */}
                   <div>
-                    <label className="text-[10px] text-gray-500 block mb-0.5">폭1 <span className="text-red-400">*</span></label>
+                    <label className="text-[10px] text-gray-500 block mb-0.5">폭1(W1) <span className="text-red-400">*</span></label>
                     <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={it.width1} onChange={e => updateGen(i, "width1", e.target.value)} />
                   </div>
+                  {it.shape === "L_SHAPE" && (
+                    <div>
+                      <label className="text-[10px] text-gray-500 block mb-0.5">폭2(W2)</label>
+                      <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={it.width2} onChange={e => updateGen(i, "width2", e.target.value)} />
+                    </div>
+                  )}
                   <div>
-                    <label className="text-[10px] text-gray-500 block mb-0.5">길이1 <span className="text-red-400">*</span></label>
+                    <label className="text-[10px] text-gray-500 block mb-0.5">길이1(L1) <span className="text-red-400">*</span></label>
                     <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={it.length1} onChange={e => updateGen(i, "length1", e.target.value)} />
                   </div>
                   {it.shape === "L_SHAPE" && (
-                    <>
-                      <div>
-                        <label className="text-[10px] text-gray-500 block mb-0.5">폭2</label>
-                        <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={it.width2} onChange={e => updateGen(i, "width2", e.target.value)} />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-gray-500 block mb-0.5">길이2</label>
-                        <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={it.length2} onChange={e => updateGen(i, "length2", e.target.value)} />
-                      </div>
-                    </>
+                    <div>
+                      <label className="text-[10px] text-gray-500 block mb-0.5">길이2(L2)</label>
+                      <input type="number" className="h-7 text-xs border rounded px-2 w-20 text-right" placeholder="mm" value={it.length2} onChange={e => updateGen(i, "length2", e.target.value)} />
+                    </div>
                   )}
                   <button type="button" onClick={() => setGenItems(arr => arr.filter((_, idx) => idx !== i))} className="text-xs text-red-500 hover:text-red-700 pb-1.5">삭제</button>
                 </div>

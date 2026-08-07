@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { remnantWeight, isInvalidLShape } from "@/lib/remnant-area";
 
 export const dynamic = "force-dynamic";
 
@@ -164,9 +165,10 @@ export async function POST(request: NextRequest) {
           let w2 = g.width2 ? Number(g.width2) : null;
           let l2 = g.length2 ? Number(g.length2) : null;
           if (shape === "L_SHAPE" && (!w2 || !l2)) { shape = "RECTANGLE"; w2 = null; l2 = null; }
-          const area = shape === "L_SHAPE" ? (w1 * l1 - (w2 ?? 0) * (l2 ?? 0)) : (w1 * l1);
-          if (area <= 0) { genFailed++; continue; }   // 잘못된 치수 (음수/0 면적) — 저장 거부
-          const weight = Math.round(parent.thickness * area * 7.85 / 1_000_000 * 10) / 10;
+          // 형상 불가(W2>W1 또는 L2>L1) 거부 + 면적식은 lib/remnant-area 단일 기준
+          if (shape === "L_SHAPE" && isInvalidLShape(w1, l1, w2, l2)) { genFailed++; continue; }
+          const weight = remnantWeight(shape, parent.thickness, w1, l1, w2, l2);
+          if (weight == null || weight <= 0) { genFailed++; continue; }   // 잘못된 치수 — 저장 거부
           const customNo = g.remnantNo?.toString().trim();
           const remnantNo = customNo || nextAutoNo();
           if (usedNos.has(remnantNo)) { genFailed++; continue; }   // 배치 내 잔재번호 중복

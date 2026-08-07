@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { remnantWeight } from "@/lib/remnant-area";
 
 // 강재매칭 — 저장된 사양을 잔재(여유원재/등록잔재/현장잔재)와 매칭.
 // GET /api/steel-match/[id]/remnants?type=SURPLUS|REGISTERED|REMNANT
@@ -68,8 +69,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       for (const r of ms) {
         if (seen.has(r.id)) continue;
         seen.add(r.id);
-        // 잔재는 저장 중량 사용 (불규칙형 면적식 부정확 방지). 없으면 사양으로 계산.
-        const weightCalc = r.weight || calcWeight(r.thickness, r.width1 ?? 0, r.length1 ?? 0);
+        // 잔재는 저장 중량 사용 (불규칙형 면적식 부정확 방지). 없으면 형상별로 계산(L자형은 W2/L2 반영).
+        const weightCalc = r.weight
+          || remnantWeight(r.shape, r.thickness, r.width1 ?? 0, r.length1 ?? 0, r.width2, r.length2)
+          || calcWeight(r.thickness, r.width1 ?? 0, r.length1 ?? 0);
         rows.push({ matched: true, spec: s, remnant: { ...r, weightCalc } });
         pushed = true;
       }

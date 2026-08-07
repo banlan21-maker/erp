@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
 import ReportsMain from "@/components/reports-main";
 import { calcPauseMs, calcNightOffMs } from "@/lib/cutting-time";
+import { lShapeArea } from "@/lib/remnant-area";
 
 export default async function ReportsPage({
   searchParams,
@@ -117,8 +118,8 @@ export default async function ReportsPage({
       const w2 = l.urgentWork?.remnant?.width2  ?? l.drawingList?.assignedRemnant?.width2  ?? null;
       const l2 = l.urgentWork?.remnant?.length2 ?? l.drawingList?.assignedRemnant?.length2 ?? null;
       if (l.thickness && w1 && l1) {
-        const area = w1 * l1 - (w2 ?? 0) * (l2 ?? 0);
-        return Math.round(l.thickness * area * 7.85 / 1_000_000 * 100) / 100;
+        // 면적식은 lib/remnant-area 단일 기준 — (W1×L1) − ((W1−W2)×L2)
+        return Math.round(lShapeArea(w1, l1, w2, l2) * l.thickness * 7.85 / 1_000_000 * 100) / 100;
       }
       return null;
     })(),

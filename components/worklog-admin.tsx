@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
 import { calcPauseMs as libCalcPauseMs, calcTotalMs as libCalcTotalMs } from "@/lib/cutting-time";
+import { steelWeightOf } from "@/lib/remnant-area";
 import {
   getCascadedFilteredRowsWithPredicates, getAllCascadedOptions, type TextPredicate,
   type ColumnAccessorMap, type ColFilters,
@@ -75,10 +76,9 @@ interface CuttingLog {
 }
 
 // ── 치수 헬퍼 ─────────────────────────────────────────────────────────────
-function calcSteelWeight(t: number, w1: number, l1: number, w2?: number | null, l2?: number | null): number {
-  const area = w1 * l1 - (w2 ?? 0) * (l2 ?? 0);
-  return Math.round(t * area * 7.85 / 1_000_000 * 10) / 10;
-}
+// L자형 면적식은 lib/remnant-area.ts 단일 기준 — (W1×L1) − ((W1−W2)×L2)
+const calcSteelWeight = (t: number, w1: number, l1: number, w2?: number | null, l2?: number | null): number =>
+  steelWeightOf(t, w1, l1, w2, l2);
 
 // ── 장비명 간소화 ─────────────────────────────────────────────────────────
 function eqShort(name: string): string {
