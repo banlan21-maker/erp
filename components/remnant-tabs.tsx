@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from "react";
 import { X, Save, AlertTriangle, Edit2, RotateCcw, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { remnantWeight, isInvalidLShape } from "@/lib/remnant-area";
+import { remnantWeight, isInvalidLShape, triangleWeight, triangleBoundingBox, isValidTriangle } from "@/lib/remnant-area";
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -26,6 +26,9 @@ export interface Remnant {
   length1: number | null;
   width2: number | null;
   length2: number | null;
+  sideA?: number | null;
+  sideB?: number | null;
+  sideC?: number | null;
   sourceProjectId: string | null;
   sourceProject: { id: string; projectCode: string; projectName: string } | null;
   sourceVesselName: string | null;
@@ -49,7 +52,7 @@ const TYPE_COLOR: Record<string, string>  = {
   SURPLUS:    "bg-green-100 text-green-700",
   REGISTERED: "bg-purple-100 text-purple-700",
 };
-const SHAPE_LABEL: Record<string, string> = { RECTANGLE: "사각형", L_SHAPE: "L자형", IRREGULAR: "불규칙형" };
+const SHAPE_LABEL: Record<string, string> = { RECTANGLE: "사각형", L_SHAPE: "L자형", TRIANGLE: "삼각형", IRREGULAR: "불규칙형" };
 const STATUS_LABEL: Record<string, string>= { IN_STOCK: "재고", IN_USE: "사용중", EXHAUSTED: "소진" };
 const STATUS_COLOR: Record<string, string>= {
   IN_STOCK:  "bg-emerald-100 text-emerald-700",
@@ -75,6 +78,11 @@ function sizeText(r: Remnant): string {
     const full = (r.width1 && r.length1) ? `W${r.width1}×L${r.length1}` : "";
     const cut  = (r.width2 && r.length2) ? `(절단 W${r.width2}×L${r.length2})` : "";
     return full ? `${full} ${cut}`.trim() : "-";
+  }
+  if (r.shape === "TRIANGLE") {
+    const box = (r.width1 && r.length1) ? `${r.width1}×${r.length1}` : "-";
+    const sides = [r.sideA, r.sideB, r.sideC].filter(Boolean);
+    return sides.length ? `${box} (변 ${sides.join("·")})` : box;
   }
   if (r.shape === "IRREGULAR") {
     return (r.width1 && r.length1) ? `최대 ${r.width1}×${r.length1}` : "-";
@@ -127,6 +135,9 @@ type RemnantBulkRow = {
   length1: string;
   width2: string;
   length2: string;
+  sideA: string;      // 삼각형 — 변1
+  sideB: string;      // 삼각형 — 변2
+  sideC: string;      // 삼각형 — 변3(빗변). 비우면 직각삼각형
   weight: string;
   location: string;
   memo: string;
@@ -135,6 +146,7 @@ type RemnantBulkRow = {
 const emptyRemnantBulkRow = (): RemnantBulkRow => ({
   remnantNo: "", heatNo: "", material: "", thickness: "",
   width1: "", length1: "", width2: "", length2: "",
+  sideA: "", sideB: "", sideC: "",
   weight: "", location: "", memo: "",
 });
 
@@ -157,6 +169,7 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
   const [results, setResults] = useState<BulkResult[] | null>(null);
 
   const isLShape    = shape === "L_SHAPE";
+  const isTriangle  = shape === "TRIANGLE";
   const isIrregular = shape === "IRREGULAR";
   const isSurplus   = type === "SURPLUS";
 
@@ -164,17 +177,27 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
   const cols: (keyof RemnantBulkRow)[] = useMemo(() => {
     const base: (keyof RemnantBulkRow)[] = ["remnantNo"];
     if (isSurplus) base.push("heatNo");
-    // 순서: 폭 계열 먼저(W1·W2) → 길이 계열(L1·L2)  (2026-07-31 확정)
-    base.push("material", "thickness", "width1");
-    if (isLShape) base.push("width2");
-    base.push("length1");
-    if (isLShape) base.push("length2");
+    base.push("material", "thickness");
+    if (isTriangle) {
+      // 삼각형: 실측 세 변만 입력. 폭·길이(width1/length1)는 저장 시 외접 사각형으로 자동 계산
+      base.push("sideA", "sideB", "sideC");
+    } else {
+      // 순서: 폭 계열 먼저(W1·W2) → 길이 계열(L1·L2)  (2026-07-31 확정)
+      base.push("width1");
+      if (isLShape) base.push("width2");
+      base.push("length1");
+      if (isLShape) base.push("length2");
+    }
     base.push("weight", "location", "memo");
     return base;
-  }, [isLShape, isSurplus]);
+  }, [isLShape, isTriangle, isSurplus]);
 
   // 행별 자동 중량
   const autoWeightFor = (r: RemnantBulkRow): number | null => {
+    if (isTriangle) {
+      return triangleWeight(Number(r.thickness), Number(r.sideA), Number(r.sideB),
+        r.sideC ? Number(r.sideC) : null, getDensity(r.material));
+    }
     return calcWeight(shape, Number(r.thickness), r.material,
       Number(r.width1), Number(r.length1),
       Number(r.width2), Number(r.length2));
@@ -183,9 +206,11 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
   // 형태 변경 시 W2/L2 초기화
   const handleShapeChange = (v: string) => {
     setShape(v);
-    if (v !== "L_SHAPE") {
-      setRows(prev => prev.map(r => ({ ...r, width2: "", length2: "" })));
-    }
+    setRows(prev => prev.map(r => ({
+      ...r,
+      ...(v !== "L_SHAPE"  ? { width2: "", length2: "" } : {}),
+      ...(v !== "TRIANGLE" ? { sideA: "", sideB: "", sideC: "" } : { width1: "", length1: "", width2: "", length2: "" }),
+    })));
   };
 
   const setCell = (idx: number, key: keyof RemnantBulkRow, val: string) =>
@@ -278,6 +303,15 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
         out.push({ ok: false, error: "W2는 W1보다, L2는 L1보다 클 수 없습니다" });
         continue;
       }
+      // 삼각형 형상 검증 — 삼각부등식(두 변의 합 > 나머지 한 변)
+      if (isTriangle && !isValidTriangle(Number(r.sideA), Number(r.sideB), r.sideC ? Number(r.sideC) : null)) {
+        out.push({ ok: false, error: "삼각형이 성립하지 않습니다 (두 변의 합이 나머지 한 변보다 커야 함)" });
+        continue;
+      }
+      // 삼각형은 폭·길이를 실측 변에서 '외접 사각형'으로 자동 산출 — 다른 화면은 이 값을 그대로 쓴다
+      const tri = isTriangle
+        ? triangleBoundingBox(Number(r.sideA), Number(r.sideB), r.sideC ? Number(r.sideC) : null)
+        : null;
       const auto = autoWeightFor(r);
       const weight = r.weight ? Number(r.weight) : auto;
       if (!weight || weight <= 0) {
@@ -292,10 +326,13 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
             remnantNo: r.remnantNo.trim() || null,
             type, shape,
             material: r.material, thickness: r.thickness, weight,
-            width1:  r.width1  || null,
-            length1: r.length1 || null,
-            width2:  r.width2  || null,
-            length2: r.length2 || null,
+            width1:  tri ? String(tri.width)  : (r.width1  || null),
+            length1: tri ? String(tri.length) : (r.length1 || null),
+            width2:  tri ? null : (r.width2  || null),
+            length2: tri ? null : (r.length2 || null),
+            sideA:   isTriangle ? (r.sideA || null) : null,
+            sideB:   isTriangle ? (r.sideB || null) : null,
+            sideC:   isTriangle ? (r.sideC || null) : null,
             heatNo:  isSurplus ? (r.heatNo.trim() || null) : null,
             sourceProjectId:  sourceMode === "project" ? sourceProjectId : null,
             sourceVesselName: sourceMode === "direct"  ? (sourceVesselDirect.trim() || null) : null,
@@ -389,6 +426,7 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
             ))}
           </div>
           {isIrregular && <p className="text-[11px] text-orange-500 mt-1">* 불규칙형은 각 행마다 중량을 직접 입력해주세요.</p>}
+          {isTriangle && <p className="text-[11px] text-indigo-600 mt-1">* 삼각형은 실측 <b>세 변</b>을 입력하세요. <b>변3(빗변)을 비우면 직각삼각형</b>(변1·변2가 두 직각변)으로 계산합니다. 목록의 폭·길이는 외접 사각형으로 자동 계산됩니다.</p>}
         </div>
         )}
 
@@ -454,10 +492,20 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
               {isSurplus && <col style={{ width: "7rem" }} />}  {/* 판번호 (SURPLUS) */}
               <col style={{ width: "7rem"  }} />  {/* 재질 */}
               <col style={{ width: "5.5rem" }} /> {/* 두께 */}
-              <col style={{ width: "6rem" }} />   {/* W1 */}
-              {isLShape && <col style={{ width: "6rem" }} />}  {/* W2 */}
-              <col style={{ width: "6rem" }} />   {/* L1 */}
-              {isLShape && <col style={{ width: "6rem" }} />}  {/* L2 */}
+              {isTriangle ? (
+                <>
+                  <col style={{ width: "6rem" }} />  {/* 변1 */}
+                  <col style={{ width: "6rem" }} />  {/* 변2 */}
+                  <col style={{ width: "6rem" }} />  {/* 변3 */}
+                </>
+              ) : (
+                <>
+                  <col style={{ width: "6rem" }} />   {/* W1 */}
+                  {isLShape && <col style={{ width: "6rem" }} />}  {/* W2 */}
+                  <col style={{ width: "6rem" }} />   {/* L1 */}
+                  {isLShape && <col style={{ width: "6rem" }} />}  {/* L2 */}
+                </>
+              )}
               <col style={{ width: "7rem" }} />   {/* 중량 */}
               <col style={{ width: "8rem" }} />   {/* 위치 */}
               <col />                              {/* 메모 (flex) */}
@@ -470,10 +518,20 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
                 {isSurplus && <th className="text-left pb-2 pr-2">판번호<span className="text-gray-300 font-normal"> (선택)</span></th>}
                 <th className="text-left pb-2 pr-2">재질 *</th>
                 <th className="text-left pb-2 pr-2">두께 *</th>
-                <th className="text-left pb-2 pr-2">W1 *<span className="text-gray-300 font-normal"> 폭</span></th>
-                {isLShape && <th className="text-left pb-2 pr-2">W2<span className="text-gray-300 font-normal"> 잘린폭</span></th>}
-                <th className="text-left pb-2 pr-2">L1 *<span className="text-gray-300 font-normal"> 길이</span></th>
-                {isLShape && <th className="text-left pb-2 pr-2">L2<span className="text-gray-300 font-normal"> 잘린길이</span></th>}
+                {isTriangle ? (
+                  <>
+                    <th className="text-left pb-2 pr-2">변1 *</th>
+                    <th className="text-left pb-2 pr-2">변2 *</th>
+                    <th className="text-left pb-2 pr-2">변3<span className="text-gray-300 font-normal"> 빗변</span></th>
+                  </>
+                ) : (
+                  <>
+                    <th className="text-left pb-2 pr-2">W1 *<span className="text-gray-300 font-normal"> 폭</span></th>
+                    {isLShape && <th className="text-left pb-2 pr-2">W2<span className="text-gray-300 font-normal"> 잘린폭</span></th>}
+                    <th className="text-left pb-2 pr-2">L1 *<span className="text-gray-300 font-normal"> 길이</span></th>
+                    {isLShape && <th className="text-left pb-2 pr-2">L2<span className="text-gray-300 font-normal"> 잘린길이</span></th>}
+                  </>
+                )}
                 <th className="text-left pb-2 pr-2">중량(kg){!isIrregular && <span className="text-blue-400 font-normal"> · 자동</span>}</th>
                 <th className="text-left pb-2 pr-2">위치</th>
                 <th className="text-left pb-2 pr-2">메모</th>

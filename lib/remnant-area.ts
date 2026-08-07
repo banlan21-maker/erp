@@ -57,6 +57,41 @@ export function lShapeArea(
 /** 사각형 면적(mm²) */
 export const rectArea = (w: number, l: number) => w * l;
 
+/* ── 삼각형 ────────────────────────────────────────────────────────────────
+ *  입력은 실측 '세 변'(a·b·c). c 를 비우면 직각삼각형으로 보고 a·b 를 두 직각변으로 계산.
+ *  줄자만으로 잴 수 있고 직각 여부를 판단할 필요가 없다(직각삼각형도 헤론과 같은 값).
+ */
+
+/** 세 변으로 삼각형이 성립하는가 (양수 + 삼각부등식) */
+export function isValidTriangle(a: number, b: number, c?: number | null): boolean {
+  if (!a || !b || a <= 0 || b <= 0) return false;
+  if (!c) return true;                       // 직각삼각형 모드 (두 직각변)
+  if (c <= 0) return false;
+  return a + b > c && b + c > a && c + a > b; // 삼각부등식
+}
+
+/** 삼각형 면적(mm²). c 있으면 헤론, 없으면 직각삼각형(a·b/2) */
+export function triangleArea(a: number, b: number, c?: number | null): number {
+  if (!c) return (a * b) / 2;
+  const s = (a + b + c) / 2;
+  const v = s * (s - a) * (s - b) * (s - c);
+  return v > 0 ? Math.sqrt(v) : 0;
+}
+
+/**
+ * 삼각형의 외접 사각형(폭·길이) — 다른 화면이 쓰는 width1/length1 에 저장할 값.
+ *  · 직각삼각형(c 없음): 두 직각변이 곧 외접 사각형
+ *  · 일반삼각형: 최장변을 길이로 두고, 그 변에 대한 높이(=2·면적/최장변)를 폭으로.
+ *    최장변에 내린 수선의 발은 항상 그 변 안에 떨어지므로 이 사각형이 정확한 외접이다.
+ */
+export function triangleBoundingBox(a: number, b: number, c?: number | null): { width: number; length: number } {
+  const r1 = (n: number) => Math.round(n * 10) / 10;
+  if (!c) return { width: r1(Math.min(a, b)), length: r1(Math.max(a, b)) };
+  const area = triangleArea(a, b, c);
+  const base = Math.max(a, b, c);
+  return { width: r1((2 * area) / base), length: r1(base) };
+}
+
 /**
  * 잔재 중량(kg, 소수 1자리). shape 에 따라 면적식을 고르고 두께·비중을 곱한다.
  * 계산 불가(필수값 없음/면적 0 이하)면 null.
@@ -70,6 +105,20 @@ export function remnantWeight(
 ): number | null {
   if (!thickness || thickness <= 0 || !w1 || !l1) return null;
   const area = shape === "L_SHAPE" ? lShapeArea(w1, l1, w2, l2) : rectArea(w1, l1);
+  if (area <= 0) return null;
+  return Math.round(area * thickness * density * 10) / 10;
+}
+
+/**
+ * 삼각형 잔재 중량(kg, 소수 1자리) — 실측 세 변으로 계산.
+ * c 를 비우면 직각삼각형(a·b 가 두 직각변).
+ */
+export function triangleWeight(
+  thickness: number, a: number, b: number, c?: number | null,
+  density: number = STEEL_DENSITY,
+): number | null {
+  if (!thickness || thickness <= 0 || !isValidTriangle(a, b, c)) return null;
+  const area = triangleArea(a, b, c);
   if (area <= 0) return null;
   return Math.round(area * thickness * density * 10) / 10;
 }

@@ -16,7 +16,7 @@ const fmtL = (v: number) => Math.round(v);
 
 const TYPE_LABEL: Record<string, string> = { SURPLUS: "여유원재", REGISTERED: "등록잔재", REMNANT: "현장잔재" };
 const STATUS_LABEL: Record<string, string> = { PENDING: "대기", IN_STOCK: "재고", EXHAUSTED: "소진" };
-const SHAPE_LABEL: Record<string, string> = { RECTANGLE: "사각형", L_SHAPE: "L자형", IRREGULAR: "불규칙형" };
+const SHAPE_LABEL: Record<string, string> = { RECTANGLE: "사각형", L_SHAPE: "L자형", TRIANGLE: "삼각형", IRREGULAR: "불규칙형" };
 
 interface Spec { vesselCode: string; material: string; thickness: number; width: number; length: number }
 interface RemRow {

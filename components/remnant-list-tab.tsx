@@ -28,7 +28,7 @@ const REMNANT_QS_KEY: Record<string, string> = {
 // 등록잔재 컬럼 레이아웃 기준 — 현장잔재/여유원재/등록잔재 3종 모두 동일하게 사용
 // typeFilter 로 종류를 고정. 행 클릭하면 DetailModal → 수정/잔여등록 가능
 
-const SHAPE_LABEL: Record<string, string>  = { RECTANGLE: "사각형", L_SHAPE: "L자형", IRREGULAR: "불규칙형" };
+const SHAPE_LABEL: Record<string, string>  = { RECTANGLE: "사각형", L_SHAPE: "L자형", TRIANGLE: "삼각형", IRREGULAR: "불규칙형" };
 const STATUS_LABEL: Record<string, string> = { IN_STOCK: "재고", EXHAUSTED: "소진" };
 const STATUS_COLOR: Record<string, string> = {
   IN_STOCK:  "bg-green-100 text-green-700",

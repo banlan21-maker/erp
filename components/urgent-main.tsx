@@ -492,6 +492,7 @@ const REMNANT_TYPE_LABEL: Record<string, { label: string; cls: string }> = {
 };
 const REMNANT_SHAPE_LABEL: Record<string, { label: string; cls: string }> = {
   RECTANGLE:  { label: "사각형",   cls: "bg-green-50 text-green-700" },
+  TRIANGLE:   { label: "삼각형",   cls: "bg-indigo-50 text-indigo-700" },
   L_SHAPE:    { label: "L자형",    cls: "bg-yellow-50 text-yellow-700" },
   IRREGULAR:  { label: "불규칙형", cls: "bg-orange-50 text-orange-700" },
 };
@@ -580,6 +581,7 @@ function RemnantPickerModal({
               {[
                 { value: "",           label: "형태 전체" },
                 { value: "RECTANGLE",  label: "사각형" },
+                { value: "TRIANGLE",   label: "삼각형" },
                 { value: "L_SHAPE",    label: "L자형" },
                 { value: "IRREGULAR",  label: "불규칙형" },
               ].map(opt => (

@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
       const ids = idsParam.split(",").filter(Boolean);
       const remnants = await prisma.remnant.findMany({
         where: { id: { in: ids } },
-        select: { id: true, remnantNo: true, type: true, shape: true, material: true, thickness: true, weight: true, width1: true, length1: true, width2: true, length2: true, status: true, reservedFor: true },
+        select: { id: true, remnantNo: true, type: true, shape: true, material: true, thickness: true, weight: true, width1: true, length1: true, width2: true, length2: true, sideA: true, sideB: true, sideC: true, status: true, reservedFor: true },
       });
       return NextResponse.json({ success: true, data: remnants });
     }
@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
     const {
       remnantNo: customNo,
       type, shape, material, thickness, weight,
-      width1, length1, width2, length2,
+      width1, length1, width2, length2, sideA, sideB, sideC,
       sourceProjectId, sourceVesselName, sourceBlock, heatNo,
       location, registeredBy, memo,
     } = body;
@@ -195,6 +195,10 @@ export async function POST(request: NextRequest) {
         length1:   length1   != null ? Number(length1) : null,
         width2:    width2    != null ? Number(width2)  : null,
         length2:   length2   != null ? Number(length2) : null,
+        // 삼각형 실측 세 변 (width1/length1 에는 이걸로 계산한 외접 사각형이 저장됨)
+        sideA:     sideA     != null ? Number(sideA)   : null,
+        sideB:     sideB     != null ? Number(sideB)   : null,
+        sideC:     sideC     != null ? Number(sideC)   : null,
         sourceProjectId: sourceProjectId || null,
         sourceVesselName: sourceVesselName?.trim() || null,
         sourceBlock: sourceBlock?.trim() || null,

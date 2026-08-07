@@ -60,6 +60,7 @@ enum RemnantType {
 enum RemnantShape {
   RECTANGLE // 사각형
   L_SHAPE // L자형
+  TRIANGLE // 삼각형 (세 변 입력 → 헤론 공식. 변3 비우면 직각삼각형)
   IRREGULAR // 불규칙형
 }
 
@@ -1233,6 +1234,12 @@ model Remnant {
   length1 Float? // L 또는 L1 (사각형·L자형 전체길이)
   width2  Float? // W2 (L자형 절단폭)
   length2 Float? // L2 (L자형 절단길이)
+  // 삼각형 전용 — 실측 세 변. sideC 가 비면 직각삼각형(sideA·sideB 가 두 직각변).
+  // width1/length1 에는 이 변들로 자동 계산한 '외접 사각형' 폭·길이가 저장된다
+  // (다른 화면은 폭·길이 의미 그대로 쓰므로 표시 로직을 바꿀 필요가 없다).
+  sideA   Float?
+  sideB   Float?
+  sideC   Float?
 
   // 발생 출처
   sourceProjectId  String?
