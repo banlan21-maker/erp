@@ -1,0 +1,20 @@
+
+# Caddy 설정 — NAS 배포 원본 백업 (2026-08-12 시점 실제 운영본)
+#
+# 실제 파일 위치: ~/erp_namhun/erp/cnc-erp/Caddyfile  (git 미추적 — NAS 로컬 파일)
+# 이 파일은 백업/복구용 사본. 새 서버 구축 시 위 경로에 `Caddyfile` 이름으로 복사할 것.
+#
+# 역할: HTTPS 종단(Let's Encrypt 인증서 자동 발급·갱신) + 리버스 프록시.
+#       도메인별로 뒤쪽 컨테이너에 요청을 넘긴다.
+#
+# 주의: `app`, `bom-converter` 는 컨테이너 이름이다. Caddy 가 이 이름을 DNS 로 찾으려면
+#       **같은 Docker 네트워크**에 있어야 한다. bom-converter 는 이 compose 프로젝트
+#       소속이 아니므로(별도 실행 컨테이너) 네트워크 연결이 끊기면 502 가 난다.
+
+kotecherp.duckdns.org {
+    reverse_proxy app:3000
+}
+
+kotechtool.duckdns.org {
+    reverse_proxy bom-converter:5000
+}

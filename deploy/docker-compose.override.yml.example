@@ -1,0 +1,36 @@
+# Caddy 서비스 정의 — NAS 배포 원본 백업 (2026-08-12 시점 실제 운영본)
+#
+# 실제 파일 위치: ~/erp_namhun/erp/cnc-erp/docker-compose.override.yml  (git 미추적)
+# 이 파일은 백업/복구용 사본. 새 서버 구축 시 위 경로에 `docker-compose.override.yml`
+# 이름으로 복사할 것.
+#
+# ── 왜 override 파일인가 ──────────────────────────────────────────────────
+# Docker Compose 는 docker-compose.yml + docker-compose.override.yml 을 자동 병합한다.
+# 덕분에 저장소의 docker-compose.yml 을 **원본 그대로** 둘 수 있고,
+# git-sync(git pull) 가 충돌 없이 동작한다. Caddy 정의를 본 파일에 직접 넣으면 안 된다.
+#
+# ── 포트가 8080/8443 인 이유 ──────────────────────────────────────────────
+# NAS 의 80/443 은 UGOS 자체 nginx 가 이미 점유하고 있어 Caddy 가 바인딩할 수 없다.
+# 그래서 8443 에 띄우고, 외부 443 트래픽은 iptables 로 8443 에 흘려보낸다.
+#   sudo iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 443 -j REDIRECT --to-ports 8443
+# (재부팅 시 소실되므로 root crontab 에 @reboot 로 등록되어 있음 — CLAUDE.md 참조)
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - '8080:80'
+      - '8443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      # caddy_data 에 Let's Encrypt 인증서가 저장된다. 이 볼륨이 사라지면 인증서를
+      # 새로 발급받는다(자동이지만 Let's Encrypt 발급 횟수 제한이 있으니 삭제 주의).
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  caddy_data:
+  caddy_config:

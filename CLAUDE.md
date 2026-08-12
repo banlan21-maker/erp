@@ -84,6 +84,20 @@ sudo iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 443 -j REDIRECT --to-p
 
 **항상 동작하는 우회 주소**: `https://kotecherp.duckdns.org:8443` · `http://59.4.248.240:5002`
 
+### Caddy — 실제 HTTPS 처리 주체
+`cnc-erp-caddy-1` 컨테이너가 **HTTPS 종단 + Let's Encrypt 인증서 자동발급·갱신 + 리버스 프록시**를 담당한다.
+도메인 2개를 서비스한다:
+
+| 도메인 | 뒷단 | 용도 |
+|---|---|---|
+| `kotecherp.duckdns.org` | `app:3000` | CNC 절단 ERP |
+| `kotechtool.duckdns.org` | `bom-converter:5000` | BOM 파일 변환기 |
+
+**설정 파일은 git 미추적 — NAS 에만 있다** (`Caddyfile`, `docker-compose.override.yml`).
+override 파일로 분리돼 있어 저장소 `docker-compose.yml` 은 원본 그대로이고 `git-sync` 가 충돌 없이 동작한다.
+**백업본과 복구 절차: [`deploy/README.md`](deploy/README.md)** — NAS 재설치 시 반드시 참조.
+⚠ 저장소 `docker-compose.yml` 에 Caddy 를 직접 넣지 말 것(pull 충돌 발생).
+
 ### 근본 해결 (미실시 — 사내에서만 할 것)
 UGOS nginx 의 443 리슨을 비우고 Caddy 를 `443:443` 으로 바꾸면 리디렉션이 불필요해진다.
 **단 443·9443 이 같은 nginx 프로세스라, 설정 실패 시 관리자 UI 까지 동시에 잃는다.**
