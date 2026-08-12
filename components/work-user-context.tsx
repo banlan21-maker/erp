@@ -6,6 +6,7 @@
  */
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { confirmLeaveIfUnsaved } from "@/lib/unsaved-guard";
 
 export interface WorkUser {
   id: string;
@@ -79,7 +80,15 @@ export function WorkUserPicker() {
       <span className="text-xs text-gray-500 whitespace-nowrap">현재 사용자</span>
       <select
         value={currentUserId ?? ""}
-        onChange={e => setCurrentUserId(e.target.value || null)}
+        // 작성 중인 일지가 있으면 확인 후 전환 — 확인 취소 시 select 값이 이미 바뀌었으므로 강제 복원
+        onChange={e => {
+          const next = e.target.value || null;
+          if (!confirmLeaveIfUnsaved("저장되지 않은 변경이 있습니다. 사용자를 바꾸면 입력 내용이 사라집니다. 계속할까요?")) {
+            e.target.value = currentUserId ?? "";
+            return;
+          }
+          setCurrentUserId(next);
+        }}
         className="px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg bg-white font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"
       >
         <option value="">— 선택 —</option>

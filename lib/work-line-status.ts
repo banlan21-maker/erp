@@ -12,8 +12,14 @@ const PARSE_RE = /^\[([x~!])\] ?/;
 const CODE: Record<string, LineStatus> = { x: "done", "~": "doing", "!": "important" };
 const TOKEN: Record<LineStatus, string> = { none: "", done: "[x] ", doing: "[~] ", important: "[!] " };
 
+// 사용자가 "[x] 도면확인" 처럼 대괄호로 시작하는 평문을 직접 입력하면, 저장 후 다시 읽을 때
+// 상태 토큰으로 오해석되어 글자가 사라지고 취소선이 붙는다. 상태가 '없음'인데 텍스트가
+// 토큰 모양이면 앞에 폭 없는 공백(ZWSP)을 붙여 이스케이프한다(화면상 차이 없음).
+const ESC = "\u200B";
+
 /** 한 줄(raw)에서 상태 토큰을 떼어 { status, text } 로 분리. 토큰 없으면 none. */
 export function parseLine(raw: string): { status: LineStatus; text: string } {
+  if (raw.startsWith(ESC)) return { status: "none", text: raw.slice(ESC.length) }; // 이스케이프된 평문
   const m = raw.match(PARSE_RE);
   if (m) return { status: CODE[m[1]], text: raw.slice(m[0].length) };
   return { status: "none", text: raw };
@@ -21,7 +27,8 @@ export function parseLine(raw: string): { status: LineStatus; text: string } {
 
 /** 상태 + 텍스트 → 저장용 줄 문자열. */
 export function serializeLine(status: LineStatus, text: string): string {
-  return status === "none" ? text : TOKEN[status] + text;
+  if (status === "none") return PARSE_RE.test(text) || text.startsWith(ESC) ? ESC + text : text;
+  return TOKEN[status] + text;
 }
 
 /** 표시 메타 — 상태별 라벨/점 색/텍스트 스타일. */

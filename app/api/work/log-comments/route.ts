@@ -15,11 +15,14 @@ const authorInclude = { author: { select: { id: true, name: true, color: true } 
 
 export async function GET(req: NextRequest) {
   try {
-    const date = new URL(req.url).searchParams.get("date");
+    const sp = new URL(req.url).searchParams;
+    const date = sp.get("date");
+    // targetUserId 지정 시 그 사람 일지에 달린 댓글만 (업무일지 화면 '내 일지 댓글')
+    const targetUserId = sp.get("targetUserId") ?? undefined;
     if (!isYmd(date)) return NextResponse.json({ success: false, error: "date(YYYY-MM-DD) 가 필요합니다." }, { status: 400 });
 
     const comments = await prisma.workLogComment.findMany({
-      where: { date: ymdToDate(date) },
+      where: { date: ymdToDate(date), ...(targetUserId ? { targetUserId } : {}) },
       include: authorInclude,
       orderBy: { createdAt: "asc" },
     });

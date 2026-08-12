@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ymdToDate, shiftYmd, monthRange, isYmd, isYearMonth } from "@/lib/work-date";
+import { ymdToDate, dateToYmd, shiftYmd, monthRange, isYmd, isYearMonth } from "@/lib/work-date";
 
 /**
  * GET /api/work/logs
@@ -45,16 +45,30 @@ export async function GET(req: NextRequest) {
     const date = sp.get("date");
     if (!isYmd(date)) return NextResponse.json({ success: false, error: "date(YYYY-MM-DD) 가 필요합니다." }, { status: 400 });
 
+    // 어제 칸 = '직전 근무일' 일지. 전날(D-1) 고정이 아니라 **가장 최근에 작성된 이전 일지**를 찾는다.
+    // (주말·연휴·휴가 다음 근무일에 진행중 업무 이어받기가 끊기던 문제 — 2026-08-12)
+    // 무한 소급 방지를 위해 14일 이내로 제한하고, 내용이 완전히 빈 행은 건너뛴다.
     const [log, prev] = await Promise.all([
       prisma.workLog.findUnique({ where: { userId_date: { userId, date: ymdToDate(date) } } }),
-      prisma.workLog.findUnique({ where: { userId_date: { userId, date: ymdToDate(shiftYmd(date, -1)) } } }),
+      prisma.workLog.findFirst({
+        where: {
+          userId,
+          date: { lt: ymdToDate(date), gte: ymdToDate(shiftYmd(date, -14)) },
+          NOT: { AND: [{ todayWork: "" }, { tomorrowPlan: "" }] },
+        },
+        orderBy: { date: "desc" },
+      }),
     ]);
     return NextResponse.json({
       success: true,
       data: {
         log,                                          // 그 날짜 일지 (없으면 null)
-        yesterdayWork: prev?.todayWork ?? "",         // 어제 칸 = 전일 오늘업무 (읽기전용)
-        prevTomorrowPlan: prev?.tomorrowPlan ?? "",   // 전일 내일계획 → 오늘 비어있으면 자동 이어받기용
+        yesterdayWork: prev?.todayWork ?? "",         // 어제 칸 = 직전 근무일 오늘업무
+        prevTomorrowPlan: prev?.tomorrowPlan ?? "",   // 직전 근무일 내일계획 → 자동 이어받기용
+        prevDate: prev ? dateToYmd(prev.date) : null, // 어제 칸이 실제로 어느 날짜인지 (저장 대상)
+        // 낙관적 잠금 기준 시각 — 저장 시 되돌려 보내 다른 탭/기기의 변경 덮어쓰기를 막는다
+        updatedAt: log?.updatedAt ?? null,
+        prevUpdatedAt: prev?.updatedAt ?? null,
       },
     });
   } catch (e) {
@@ -82,6 +96,23 @@ export async function PUT(req: NextRequest) {
 
     const exists = await prisma.workUser.findUnique({ where: { id: userId }, select: { id: true } });
     if (!exists) return NextResponse.json({ success: false, error: "선택한 사용자를 찾을 수 없습니다." }, { status: 400 });
+
+    // 낙관적 잠금 — 화면을 불러온 뒤 다른 탭/기기에서 같은 날짜가 저장되었으면 덮어쓰지 않는다.
+    // expectedUpdatedAt: ISO 문자열(= 불러올 때의 updatedAt) 또는 null(= 그때 행이 없었음).
+    // 아예 보내지 않으면 검사 생략(구버전 클라이언트 호환).
+    if (body?.expectedUpdatedAt !== undefined) {
+      const cur = await prisma.workLog.findUnique({
+        where: { userId_date: { userId, date: d } }, select: { updatedAt: true },
+      });
+      const expected = body.expectedUpdatedAt === null ? null : new Date(String(body.expectedUpdatedAt)).getTime();
+      const actual   = cur ? cur.updatedAt.getTime() : null;
+      if (expected !== actual) {
+        return NextResponse.json({
+          success: false, conflict: true,
+          error: "이 날짜 일지가 다른 탭·기기에서 변경되었습니다. 새로고침해 최신 내용을 확인한 뒤 다시 저장하세요.",
+        }, { status: 409 });
+      }
+    }
 
     let log;
     try {

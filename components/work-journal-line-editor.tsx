@@ -69,6 +69,8 @@ export default function WorkJournalLineEditor({
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, idx: number) => {
     const r = rows[idx];
+    // 한글 IME 조합 중 Enter 는 '조합 확정'이라 줄 분리에 쓰면 마지막 음절이 유실된다 → 무시
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.key === "Enter") {
       e.preventDefault();
       const nr: Row = { id: _seq++, status: "none", text: "" };
@@ -80,6 +82,29 @@ export default function WorkJournalLineEditor({
       if (prev) focusNext.current = prev.id;
       commit(rows.filter((_, i) => i !== idx));
     }
+  };
+
+  // 여러 줄 붙여넣기 — 단일행 input 이라 개행이 사라지던 문제. 개행 기준으로 줄을 나눠 삽입한다.
+  const onPaste = (e: React.ClipboardEvent<HTMLInputElement>, idx: number) => {
+    const text = e.clipboardData.getData("text");
+    if (!text.includes("\n") && !text.includes("\r")) return; // 한 줄이면 기본 동작
+    e.preventDefault();
+    const parts = text.split(/\r\n|\r|\n/).map((t) => t.replace(/\s+$/, ""));
+    const el = e.currentTarget;
+    const cur = rows[idx];
+    const before = cur.text.slice(0, el.selectionStart ?? cur.text.length);
+    const after  = cur.text.slice(el.selectionEnd ?? cur.text.length);
+    // 첫 줄은 커서 앞 텍스트에 이어붙이고, 마지막 줄 뒤에 기존 커서 뒤 텍스트를 붙인다
+    const merged = parts.map((t, i) =>
+      (i === 0 ? before + t : t) + (i === parts.length - 1 ? after : ""));
+    const newRows: Row[] = merged.map((text, i) => {
+      const parsed = parseLine(text);
+      return i === 0
+        ? { ...cur, status: parsed.status !== "none" ? parsed.status : cur.status, text: parsed.text }
+        : { id: _seq++, status: parsed.status, text: parsed.text };
+    });
+    focusNext.current = newRows[newRows.length - 1].id;
+    commit([...rows.slice(0, idx), ...newRows, ...rows.slice(idx + 1)]);
   };
 
   // @멘션 칩 — 포커스된 줄(없으면 마지막 줄)에 "@이름 " 추가
@@ -114,6 +139,7 @@ export default function WorkJournalLineEditor({
                 value={r.text}
                 onChange={(e) => setText(r.id, e.target.value)}
                 onKeyDown={(e) => onKeyDown(e, idx)}
+                onPaste={(e) => onPaste(e, idx)}
                 onFocus={() => { focusedId.current = r.id; }}
                 placeholder={idx === 0 ? placeholder : ""}
                 className={`flex-1 bg-transparent focus:outline-none py-0.5 ${meta.textClass} placeholder:text-gray-300 placeholder:no-underline`}

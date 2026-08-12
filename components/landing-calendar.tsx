@@ -27,6 +27,8 @@ const DAY_LABEL = ["일", "월", "화", "수", "목", "금", "토"];
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 const ymd  = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+// '오늘' 은 PC 시간대가 아니라 KST 기준 — 업무일지·대시보드(todayKst)와 어긋나지 않게 통일
+const todayKst = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
 
 /** ISO 8601 주차 — 월요일 시작. 1월 4일이 속한 주가 1주차. */
 function isoWeekNumber(d: Date): number {
@@ -53,7 +55,7 @@ interface CellInfo {
 function buildCells(year: number, month0: number): CellInfo[] {
   const first = new Date(year, month0, 1);
   const startOffset = first.getDay(); // 0=일 … 6=토
-  const todayStr = ymd(new Date());
+  const todayStr = todayKst();
 
   const cells: CellInfo[] = [];
   for (let i = 0; i < 42; i++) {
@@ -70,12 +72,21 @@ function buildCells(year: number, month0: number): CellInfo[] {
 
 /**
  * @param defaultRegistrar 있으면 신규 일정 등록 시 등록자 자동입력(입력칸 숨김). (업무 대시보드용)
- * @param onDaySelect 날짜 클릭 시 호출 (모달 열기와 함께 외부 선택 상태 동기화용)
+ * @param onDaySelect 날짜 클릭 시 호출 (외부 선택 상태 동기화용)
+ * @param selectedDate 외부에서 선택된 날짜 강조 표시
+ * @param dayClickOpensModal 기본 true(랜딩). false 면 날짜 클릭은 '선택'만 하고,
+ *        일정 등록/조회는 셀의 ＋ 버튼으로 연다. (업무 대시보드에서 날짜만 바꾸려는데
+ *        매번 일정 모달이 뜨던 문제 — 2026-08-12)
  */
-export default function LandingCalendar({ defaultRegistrar, onDaySelect }: { defaultRegistrar?: string; onDaySelect?: (ymd: string) => void } = {}) {
-  const now = new Date();
-  const [year,   setYear]   = useState(now.getFullYear());
-  const [month0, setMonth0] = useState(now.getMonth()); // 0-based
+export default function LandingCalendar({ defaultRegistrar, onDaySelect, selectedDate, dayClickOpensModal = true }: {
+  defaultRegistrar?: string;
+  onDaySelect?: (ymd: string) => void;
+  selectedDate?: string | null;
+  dayClickOpensModal?: boolean;
+} = {}) {
+  const [ty, tm] = todayKst().split("-").map(Number);
+  const [year,   setYear]   = useState(ty);
+  const [month0, setMonth0] = useState(tm - 1); // 0-based
 
   const cells = useMemo(() => buildCells(year, month0), [year, month0]);
   const rows  = useMemo(() => {
@@ -119,8 +130,8 @@ export default function LandingCalendar({ defaultRegistrar, onDaySelect }: { def
     else setMonth0(m => m + 1);
   };
   const goToday = () => {
-    const t = new Date();
-    setYear(t.getFullYear()); setMonth0(t.getMonth());
+    const [y, m] = todayKst().split("-").map(Number);
+    setYear(y); setMonth0(m - 1);
   };
 
   // 클릭한 날짜의 일정 보기/등록 모달
@@ -252,18 +263,33 @@ export default function LandingCalendar({ defaultRegistrar, onDaySelect }: { def
                 return (
                   <button
                     key={colIdx}
-                    onClick={() => { setOpenDate(c.yyyymmdd); setNewRegistrar(defaultRegistrar ?? ""); onDaySelect?.(c.yyyymmdd); }}
-                    className={`relative min-h-[68px] sm:min-h-[78px] px-1.5 sm:px-2 py-1 text-left border-l border-gray-100 first:border-l-0 hover:bg-blue-50/40 transition-colors ${c.inMonth ? "" : "bg-gray-50/50"}`}
+                    onClick={() => {
+                      onDaySelect?.(c.yyyymmdd);
+                      if (dayClickOpensModal) { setOpenDate(c.yyyymmdd); setNewRegistrar(defaultRegistrar ?? ""); }
+                    }}
+                    className={`group relative min-h-[68px] sm:min-h-[78px] px-1.5 sm:px-2 py-1 text-left border-l border-gray-100 first:border-l-0 hover:bg-blue-50/40 transition-colors ${c.inMonth ? "" : "bg-gray-50/50"} ${c.yyyymmdd === selectedDate ? "bg-blue-50 ring-2 ring-inset ring-blue-400" : ""}`}
                   >
                     <div className="flex items-center justify-between">
                       <span className={`text-xs sm:text-sm font-semibold ${txtColor} ${c.isToday ? "bg-blue-600 text-white rounded-full w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center" : ""}`}>
                         {c.date.getDate()}
                       </span>
-                      {list.length > 0 && (
-                        <span className="text-[9px] bg-amber-100 text-amber-700 rounded-full px-1.5 py-0.5 font-bold">
-                          {list.length}
-                        </span>
-                      )}
+                      <span className="flex items-center gap-0.5">
+                        {list.length > 0 && (
+                          <span className="text-[9px] bg-amber-100 text-amber-700 rounded-full px-1.5 py-0.5 font-bold">
+                            {list.length}
+                          </span>
+                        )}
+                        {/* 선택 전용 모드에서는 일정 모달을 ＋ 로 연다 (button 중첩 불가 → span) */}
+                        {!dayClickOpensModal && (
+                          <span
+                            role="button" tabIndex={-1} title="이 날 일정 보기·등록"
+                            onClick={ev => { ev.stopPropagation(); setOpenDate(c.yyyymmdd); setNewRegistrar(defaultRegistrar ?? ""); }}
+                            className="w-4 h-4 inline-flex items-center justify-center rounded text-gray-400 opacity-40 group-hover:opacity-100 hover:bg-blue-100 hover:text-blue-600 cursor-pointer"
+                          >
+                            <Plus size={11} />
+                          </span>
+                        )}
+                      </span>
                     </div>
                     {/* 일정 미리보기 최대 2건 */}
                     <div className="mt-0.5 space-y-0.5">

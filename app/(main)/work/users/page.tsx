@@ -46,11 +46,20 @@ export default function WorkUsersPage() {
     if (await patch(editId, { name: editName.trim(), dept: editDept.trim() || null })) setEditId(null);
   };
 
-  const remove = async (u: WorkUser) => {
-    if (!confirm(`'${u.name}' 사용자를 삭제하시겠습니까?\n이 사용자의 업무일지·작성글·멘션이 함께 삭제됩니다.`)) return;
-    const r = await fetch(`/api/work/users/${u.id}`, { method: "DELETE" });
+  // 삭제는 2단계 — 서버가 먼저 연결 데이터 건수를 세어 409 로 알려주고(needsForce),
+  // 그 내용을 보여준 뒤에만 강제 삭제(?force=1). 팀장 계정을 지우면 남의 일지에 남긴
+  // 지시 댓글까지 cascade 로 사라지므로 무심코 삭제되지 않게 한다.
+  const remove = async (u: WorkUser, force = false) => {
+    if (!force && !confirm(`'${u.name}' 사용자를 삭제하시겠습니까?`)) return;
+    const r = await fetch(`/api/work/users/${u.id}${force ? "?force=1" : ""}`, { method: "DELETE" });
     const d = await r.json();
-    if (!d.success) { alert(d.error ?? "삭제 실패"); return; }
+    if (!d.success) {
+      if (d.needsForce) {
+        if (confirm(`${d.error}\n\n그래도 완전히 삭제하시겠습니까? 되돌릴 수 없습니다.`)) await remove(u, true);
+        return;
+      }
+      alert(d.error ?? "삭제 실패"); return;
+    }
     if (currentUserId === u.id) setCurrentUserId(null);
     await reloadUsers();
   };

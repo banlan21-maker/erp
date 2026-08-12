@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Star, Trash2, Send, Users, NotebookPen, ChevronLeft, ChevronRight, MessageSquare } from "lucide-react";
+import { Star, Trash2, Send, Users, NotebookPen, ChevronLeft, ChevronRight, MessageSquare, Archive } from "lucide-react";
 import { useWorkUser, MentionText } from "@/components/work-user-context";
 import { JournalText } from "@/components/journal-text";
 import LandingCalendar from "@/components/landing-calendar";
@@ -15,6 +15,7 @@ const fmtDate = (ymd: string) => {
   const [y, m, d] = ymd.split("-");
   return `${y}.${m}.${d} (${WD[new Date(`${ymd}T00:00:00.000Z`).getUTCDay()]})`;
 };
+const MEMO_PREVIEW = 5;   // 중요 메모 기본 표시 건수
 const fmtShort = (ymd: string) => {
   const [, m, d] = ymd.split("-");
   return `${Number(m)}/${Number(d)}(${WD[new Date(`${ymd}T00:00:00.000Z`).getUTCDay()]})`;
@@ -37,6 +38,8 @@ export default function WorkDashboardPage() {
   const [comments, setComments] = useState<LogComment[]>([]); // 선택 날짜의 팀원 댓글 전체
   const [draft, setDraft] = useState<Record<string, string>>({}); // 팀원별 댓글 입력창
   const [cBusy, setCBusy] = useState(false);
+  const [tick, setTick] = useState(0); // 변경 후 재조회 트리거
+  const [showAllMemo, setShowAllMemo] = useState(false);
 
   const prevYmd     = shiftYmd(selectedDate, -1);
   const tomorrowYmd = shiftYmd(selectedDate, 1);
@@ -46,26 +49,37 @@ export default function WorkDashboardPage() {
     if (r.success) setImportantPosts(r.data);
   }, []);
 
-  // 당일 + 전날 팀 전체 일지 (전날 = 전날 한 일 표시용)
-  const loadTeamLogs = useCallback(async () => {
-    const prev = shiftYmd(selectedDate, -1);
-    const [r, rp] = await Promise.all([
-      fetch(`/api/work/logs?all=true&date=${selectedDate}`).then(r => r.json()).catch(() => ({})),
-      fetch(`/api/work/logs?all=true&date=${prev}`).then(r => r.json()).catch(() => ({})),
-    ]);
-    if (r.success)  setTeamLogs(r.data);
-    if (rp.success) setPrevLogs(rp.data);
-  }, [selectedDate]);
+  // 당일 + 전날 팀 전체 일지 — 날짜 연타 시 늦게 온 옛 응답이 화면을 덮지 않도록 stale 폐기
+  useEffect(() => {
+    const reqDate = selectedDate;
+    const ctrl = new AbortController();
+    (async () => {
+      const prev = shiftYmd(reqDate, -1);
+      const [r, rp] = await Promise.all([
+        fetch(`/api/work/logs?all=true&date=${reqDate}`, { signal: ctrl.signal }).then(r => r.json()).catch(() => ({})),
+        fetch(`/api/work/logs?all=true&date=${prev}`,    { signal: ctrl.signal }).then(r => r.json()).catch(() => ({})),
+      ]);
+      if (ctrl.signal.aborted || reqDate !== selectedDate) return;
+      if (r.success)  setTeamLogs(r.data);
+      if (rp.success) setPrevLogs(rp.data);
+    })();
+    return () => ctrl.abort();
+  }, [selectedDate, tick]);
 
-  // 선택 날짜의 팀원 일지 댓글 (팀원 카드별 스레드)
-  const loadComments = useCallback(async () => {
-    const r = await fetch(`/api/work/log-comments?date=${selectedDate}`).then(r => r.json()).catch(() => ({}));
-    if (r.success) setComments(r.data);
-  }, [selectedDate]);
+  // 선택 날짜의 팀원 일지 댓글 (팀원 카드별 스레드) — 동일 가드
+  useEffect(() => {
+    const reqDate = selectedDate;
+    const ctrl = new AbortController();
+    (async () => {
+      const r = await fetch(`/api/work/log-comments?date=${reqDate}`, { signal: ctrl.signal })
+        .then(r => r.json()).catch(() => ({}));
+      if (ctrl.signal.aborted || reqDate !== selectedDate) return;
+      if (r.success) setComments(r.data);
+    })();
+    return () => ctrl.abort();
+  }, [selectedDate, tick]);
 
   useEffect(() => { loadImportant(); }, [loadImportant]);
-  useEffect(() => { loadTeamLogs(); }, [loadTeamLogs]);
-  useEffect(() => { loadComments(); }, [loadComments]);
 
   const logByUser = useMemo(() => {
     const m = new Map<string, TeamLog>();
@@ -83,13 +97,16 @@ export default function WorkDashboardPage() {
     return m;
   }, [comments]);
   const teamRows = useMemo(() => {
-    const active = users.filter(u => u.active);
     const hasAny = (u: { id: string }) => {
       const t = logByUser.get(u.id), p = prevLogByUser.get(u.id);
-      return !!((t?.todayWork ?? "").trim() || (t?.tomorrowPlan ?? "").trim() || (p?.todayWork ?? "").trim());
+      return !!((t?.todayWork ?? "").trim() || (t?.tomorrowPlan ?? "").trim() || (p?.todayWork ?? "").trim()
+        || (commentsByUser.get(u.id)?.length ?? 0) > 0);
     };
-    return [...active.filter(hasAny), ...active.filter(u => !hasAny(u))];
-  }, [users, logByUser, prevLogByUser]);
+    const active = users.filter(u => u.active);
+    // 비활성(퇴사 등) 사용자도 그 날짜에 기록이 있으면 표시 — 과거 일지가 통째로 안 보이던 문제
+    const inactiveWithData = users.filter(u => !u.active && hasAny(u));
+    return [...active.filter(hasAny), ...inactiveWithData, ...active.filter(u => !hasAny(u))];
+  }, [users, logByUser, prevLogByUser, commentsByUser]);
 
   // 이 날 공유 내용 — 팀원 일지에서 @멘션이 들어간 줄 (작성자 → 소환 대상)
   const shared = useMemo(() => {
@@ -122,8 +139,23 @@ export default function WorkDashboardPage() {
     } finally { setBusy(false); }
   };
   const removePost = async (id: string) => {
+    if (!currentUserId) return;
     if (!confirm("삭제하시겠습니까?")) return;
-    await fetch(`/api/work/posts/${id}`, { method: "DELETE" });
+    const r = await fetch(`/api/work/posts/${id}?authorId=${currentUserId}`, { method: "DELETE" })
+      .then(res => res.json()).catch(() => ({}));
+    if (!r.success) { alert(r.error ?? "삭제 실패"); return; }
+    loadImportant();
+  };
+
+  // 보관 — 고정 해제(important=false). 글은 남고 상단 목록에서만 내려간다.
+  const archivePost = async (id: string) => {
+    if (!currentUserId) return;
+    if (!confirm("이 메모를 보관할까요? 상단 고정에서 내려갑니다. (내용은 삭제되지 않습니다)")) return;
+    const r = await fetch(`/api/work/posts/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ important: false, authorId: currentUserId }),
+    }).then(res => res.json()).catch(() => ({}));
+    if (!r.success) { alert(r.error ?? "보관 실패"); return; }
     loadImportant();
   };
 
@@ -140,7 +172,7 @@ export default function WorkDashboardPage() {
       const d = await r.json();
       if (!d.success) { alert(d.error ?? "댓글 등록 실패"); return; }
       setDraft(prev => ({ ...prev, [targetUserId]: "" }));
-      loadComments();
+      setTick(t => t + 1);
     } finally { setCBusy(false); }
   };
   const removeComment = async (id: string) => {
@@ -148,7 +180,7 @@ export default function WorkDashboardPage() {
     if (!confirm("댓글을 삭제하시겠습니까?")) return;
     const r = await fetch(`/api/work/log-comments/${id}?authorId=${currentUserId}`, { method: "DELETE" }).then(r => r.json()).catch(() => ({}));
     if (!r.success) { alert(r.error ?? "삭제 실패"); return; }
-    loadComments();
+    setTick(t => t + 1);
   };
 
   return (
@@ -186,6 +218,7 @@ export default function WorkDashboardPage() {
                     <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: u.color || "#6366f1" }} />
                     <span className="text-sm font-bold text-gray-800">{u.name}</span>
                     {u.dept && <span className="text-[11px] text-gray-400">{u.dept}</span>}
+                    {!u.active && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-500">비활성</span>}
                     {u.id === currentUserId && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600">나</span>}
                   </div>
                   {empty ? (
@@ -227,7 +260,7 @@ export default function WorkDashboardPage() {
                           <input
                             value={draft[u.id] ?? ""}
                             onChange={e => setDraft(prev => ({ ...prev, [u.id]: e.target.value }))}
-                            onKeyDown={e => { if (e.key === "Enter") addComment(u.id); }}
+                            onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) addComment(u.id); }}
                             placeholder={currentUserId ? "댓글 달기..." : "현재 사용자 선택 필요"}
                             disabled={!currentUserId}
                             className="flex-1 px-2 py-1 text-[11px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:bg-gray-50" />
@@ -245,7 +278,13 @@ export default function WorkDashboardPage() {
 
         {/* 오른쪽: 공유 달력(랜딩 동일) + 이 날 공유 내용 + 중요메모 */}
         <div className="space-y-4">
-          <LandingCalendar defaultRegistrar={currentUser?.name} onDaySelect={setSelectedDate} />
+          {/* 날짜 클릭 = 좌측 팀 일지 날짜 전환(선택). 일정 등록·조회는 셀의 ＋ 로 연다. */}
+          <LandingCalendar
+            defaultRegistrar={currentUser?.name}
+            onDaySelect={setSelectedDate}
+            selectedDate={selectedDate}
+            dayClickOpensModal={false}
+          />
 
           {/* 이 날 공유 내용 — 일지 @멘션 줄 */}
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -277,24 +316,36 @@ export default function WorkDashboardPage() {
             <div className="p-3 space-y-2">
               <div className="flex gap-1.5">
                 <input value={memo} onChange={e => setMemo(e.target.value)} placeholder={currentUserId ? "중요 메모 추가 (전체 고정)" : "현재 사용자를 먼저 선택하세요"}
-                  disabled={!currentUserId} onKeyDown={e => { if (e.key === "Enter") addMemo(); }}
+                  disabled={!currentUserId} onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) addMemo(); }}
                   className="flex-1 px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:bg-gray-100" />
                 <button onClick={addMemo} disabled={busy || !currentUserId} className="px-2.5 py-1.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50"><Send size={14} /></button>
               </div>
               {importantPosts.length === 0 ? (
                 <p className="text-xs text-gray-400 py-1 text-center">중요 메모가 없습니다.</p>
-              ) : importantPosts.map(p => (
+              ) : (showAllMemo ? importantPosts : importantPosts.slice(0, MEMO_PREVIEW)).map(p => (
                 <div key={p.id} className="text-xs border border-amber-100 bg-amber-50/40 rounded-lg px-2.5 py-1.5">
                   <div className="flex items-center justify-between">
                     <span className="font-semibold flex items-center gap-1" style={{ color: p.author.color || "#374151" }}>{p.author.name}</span>
                     <div className="flex items-center gap-1.5">
                       <span className="text-[10px] text-gray-400">{fmtTime(p.createdAt)}</span>
-                      <button onClick={() => removePost(p.id)} className="text-gray-300 hover:text-red-500"><Trash2 size={11} /></button>
+                      {p.author.id === currentUserId && (
+                        <>
+                          <button onClick={() => archivePost(p.id)} title="보관 (고정 해제 — 내용은 남음)" className="text-gray-300 hover:text-amber-600"><Archive size={11} /></button>
+                          <button onClick={() => removePost(p.id)} title="내가 쓴 메모 삭제" className="text-gray-300 hover:text-red-500"><Trash2 size={11} /></button>
+                        </>
+                      )}
                     </div>
                   </div>
                   <div className="text-gray-700 mt-0.5 whitespace-pre-wrap break-words"><MentionText content={p.content} /></div>
                 </div>
               ))}
+              {/* 메모 누적 시 화면 잠식 방지 — 기본 5건, 오래된 건은 작성자가 '보관' 으로 내린다 */}
+              {importantPosts.length > MEMO_PREVIEW && (
+                <button onClick={() => setShowAllMemo(v => !v)}
+                  className="w-full py-1 text-[11px] text-amber-700 hover:bg-amber-50 rounded">
+                  {showAllMemo ? "접기" : `+ ${importantPosts.length - MEMO_PREVIEW}건 더 보기`}
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -9,6 +9,7 @@ import {
   UtensilsCrossed, Archive, Zap, Gauge, CreditCard, Building2,
 } from "lucide-react";
 import type { ComponentType } from "react";
+import { confirmLeaveIfUnsaved } from "@/lib/unsaved-guard";
 
 export type ModuleType = "cnc" | "material" | "management" | "schedule" | "work";
 
@@ -129,6 +130,8 @@ export default function Sidebar({ mode, onModeChange, module }: SidebarProps) {
             href={href}
             title={isMini ? label : undefined}
             className={linkClass(href)}
+            // 작성 중 내용이 있는 화면(업무일지 등)에서 메뉴 이동 시 확인 — beforeunload 는 SPA 이동을 못 잡는다
+            onNavigate={(e) => { if (!confirmLeaveIfUnsaved()) e.preventDefault(); }}
           >
             <Icon size={18} className="flex-shrink-0" />
             {!isMini && <span>{label}</span>}
