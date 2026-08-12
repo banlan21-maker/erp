@@ -29,6 +29,14 @@ app/
 - **절단 파트**: 프로젝트·호선 관리, 도면·강재리스트, 스케줄, 작업일보, 잔재관리, 보고서
 - **구매/자재 파트**: 재고관리, 입출고, 월별 사용량
 - **관리 파트**: 인원관리, 장비관리, 거래처 관리
+- **제거됨(2026-08-12)**: **L/B 생산계획** — 스케줄 생성/확인 화면의 `L/B생성`·`L/B확인` 탭, `components/lb-plan-{manager,viewer}.tsx`, `/api/lb-*` 13개 route, Prisma `LbPlan`/`LbPlanVersion`/`LbProcessSetting`/`LbCalendarDay`+`LbHolidayType`. **미사용 확인 후 삭제 — 다시 만들지 말 것.**
+
+> **L/B 제거 관련 주의 (2026-08-12)**
+> - **1차 복구 수단 = DB 테이블 자체.** schema 에서 model 만 뺐고 **테이블은 drop 하지 않았다** — `LbPlan`(87) · `LbPlanVersion`(1) · `LbProcessSetting`(4) · `LbCalendarDay`(24) 가 운영 DB 에 그대로 있다. 되살리려면 schema 에 model 블록을 복원(`git show` 로 이 커밋 이전 `prisma/schema.prisma` 1120~1220행)하고 `prisma generate` 하면 된다.
+> - 정합성 문제 없음 — 이 테이블들을 만든 마이그레이션이 히스토리에 없다(`db push` 로 생성됐다). 따라서 `prisma migrate deploy` 는 아무 diff 도 보지 않는다.
+> - ⚠ **이 상태에서 `npx prisma db push` 를 실행하면 그 4개 테이블이 경고 없이 즉시 드롭된다.** 되돌릴 일이 없다고 확정되기 전까지 실행 금지.
+> - 보조 사본: 작업 PC 로컬에 `scripts/lb-module-backup-2026-08-12.json`(107KB, 생성기 `scripts/lb-backup.mjs`). 이 레포는 `scripts/*.json` 데이터 덤프를 추적하지 않는 관례라 **커밋되지 않는다** — 테이블을 실제로 drop 할 때는 이 파일을 NAS/외부에 한 벌 복사해 둘 것.
+> - "라싱브릿지"(개요 6행)와 호선코드 `LB4506`·`LB4508` 은 **회사 업무 도메인·실데이터**로 이 제거와 무관하다. 지우지 말 것.
 
 ## 배포 방법
 1. Claude가 코드 수정 → GitHub 푸시
