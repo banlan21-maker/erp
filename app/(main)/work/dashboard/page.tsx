@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Star, Trash2, Send, Users, NotebookPen, ChevronLeft, ChevronRight, MessageSquare, Archive } from "lucide-react";
+import { Star, Trash2, Send, Users, NotebookPen, ChevronLeft, ChevronRight, MessageSquare, Archive, CalendarDays } from "lucide-react";
 import { useWorkUser, MentionText } from "@/components/work-user-context";
 import { JournalText } from "@/components/journal-text";
-import LandingCalendar from "@/components/landing-calendar";
+import LandingCalendar, { type CalendarEvent } from "@/components/landing-calendar";
 import { parseMentions } from "@/lib/work-mentions";
 import { shiftYmd } from "@/lib/work-date";
 
@@ -40,6 +40,9 @@ export default function WorkDashboardPage() {
   const [cBusy, setCBusy] = useState(false);
   const [tick, setTick] = useState(0); // 변경 후 재조회 트리거
   const [showAllMemo, setShowAllMemo] = useState(false);
+  // 달력이 표시 중인 달의 일정 — 달력이 직접 통지한다(중복 조회 없이 항상 동기)
+  const [monthInfo, setMonthInfo] = useState<{ year: number; month: number; events: CalendarEvent[]; loading: boolean }>(
+    { year: 0, month: 0, events: [], loading: true });
 
   const prevYmd     = shiftYmd(selectedDate, -1);
   const tomorrowYmd = shiftYmd(selectedDate, 1);
@@ -107,6 +110,24 @@ export default function WorkDashboardPage() {
     const inactiveWithData = users.filter(u => !u.active && hasAny(u));
     return [...active.filter(hasAny), ...inactiveWithData, ...active.filter(u => !hasAny(u))];
   }, [users, logByUser, prevLogByUser, commentsByUser]);
+
+  // 그 달 일정 — 날짜별로 묶어 오름차순 (달력 아래 목록)
+  //   달을 넘기면 year/month 는 즉시 바뀌지만 events 는 fetch 가 끝날 때까지 이전 달 값이고,
+  //   fetch 가 실패하면 아예 갱신되지 않는다 → "9월 일정" 제목 아래 8월 목록이 남는다.
+  //   표시 중인 달의 날짜만 통과시켜 헤더와 본문이 어긋나지 않게 한다.
+  //   (prefix 끝 하이픈 필수 — 없으면 "2026-1" 이 10~12월을 오탐 매칭한다)
+  const monthEventsByDate = useMemo(() => {
+    const prefix = monthInfo.month ? `${monthInfo.year}-${String(monthInfo.month).padStart(2, "0")}-` : null;
+    const m = new Map<string, CalendarEvent[]>();
+    for (const e of monthInfo.events) {
+      if (prefix && !e.date.startsWith(prefix)) continue;
+      const a = m.get(e.date) ?? []; a.push(e); m.set(e.date, a);
+    }
+    return [...m.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  }, [monthInfo]);
+  // 헤더 배지도 필터된 건수를 써야 목록과 어긋나지 않는다
+  const monthEventCount = useMemo(
+    () => monthEventsByDate.reduce((n, [, l]) => n + l.length, 0), [monthEventsByDate]);
 
   // 이 날 공유 내용 — 팀원 일지에서 @멘션이 들어간 줄 (작성자 → 소환 대상)
   const shared = useMemo(() => {
@@ -190,124 +211,11 @@ export default function WorkDashboardPage() {
         <p className="text-sm text-gray-500 mt-0.5">팀원들의 업무일지·일정·공유 내용을 한곳에서 확인합니다. 공유는 각자 업무일지에 <b>@이름</b> 으로 남깁니다.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_460px] gap-4 items-start">
-        {/* 왼쪽: 팀원 업무일지 리스트 */}
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between gap-2">
-            <span className="text-sm font-bold text-gray-700 flex items-center gap-1.5"><Users size={15} className="text-indigo-500" /> 팀원 업무일지</span>
-            <div className="flex items-center gap-1">
-              <button onClick={() => setSelectedDate(prevYmd)} className="p-1 hover:bg-gray-200 rounded" title="이전 날"><ChevronLeft size={15} /></button>
-              <span className="text-xs font-semibold text-gray-600 min-w-[100px] text-center">{fmtDate(selectedDate)}</span>
-              <button onClick={() => setSelectedDate(tomorrowYmd)} className="p-1 hover:bg-gray-200 rounded" title="다음 날"><ChevronRight size={15} /></button>
-              {selectedDate !== todayKst() && <button onClick={() => setSelectedDate(todayKst())} className="ml-1 px-2 py-0.5 text-[11px] border border-gray-300 rounded hover:bg-white">오늘</button>}
-            </div>
-          </div>
-          <div className="divide-y divide-gray-100 max-h-[78vh] overflow-auto">
-            {teamRows.length === 0 ? (
-              <p className="py-12 text-center text-sm text-gray-400">등록된 사용자가 없습니다. [사용자 등록]에서 추가하세요.</p>
-            ) : teamRows.map(u => {
-              const log = logByUser.get(u.id);
-              const prev = (prevLogByUser.get(u.id)?.todayWork ?? "").trim(); // 전날 한 일
-              const today = (log?.todayWork ?? "").trim();                    // 당일 한 일
-              const tomorrow = (log?.tomorrowPlan ?? "").trim();              // 내일 계획
-              const empty = !prev && !today && !tomorrow;
-              return (
-                <div key={u.id} className="px-4 py-3">
-                  <div className={empty ? "opacity-60" : ""}>
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: u.color || "#6366f1" }} />
-                    <span className="text-sm font-bold text-gray-800">{u.name}</span>
-                    {u.dept && <span className="text-[11px] text-gray-400">{u.dept}</span>}
-                    {!u.active && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-500">비활성</span>}
-                    {u.id === currentUserId && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600">나</span>}
-                  </div>
-                  {empty ? (
-                    <p className="text-xs text-gray-400 pl-4">작성된 업무일지가 없습니다.</p>
-                  ) : (
-                    <div className="pl-4 space-y-1.5">
-                      {prev && <div><span className="text-[11px] font-semibold text-gray-400">전날 {fmtShort(prevYmd)}</span><div className="text-[11px] text-gray-600"><JournalText content={prev} /></div></div>}
-                      {today && <div><span className="text-[11px] font-semibold text-indigo-600">당일 {fmtShort(selectedDate)}</span><div className="text-[11px] text-gray-700"><JournalText content={today} /></div></div>}
-                      {tomorrow && <div><span className="text-[11px] font-semibold text-emerald-600">내일 {fmtShort(tomorrowYmd)}</span><div className="text-[11px] text-gray-600"><JournalText content={tomorrow} /></div></div>}
-                    </div>
-                  )}
-                  </div>
-
-                  {/* 일별 댓글 — 팀원 카드별 스레드 (선택 날짜 기준) */}
-                  {(() => {
-                    const cs = commentsByUser.get(u.id) ?? [];
-                    return (
-                      <div className="mt-2 pt-2 border-t border-gray-100 pl-4 space-y-1">
-                        {cs.length > 0 && (
-                          <div className="flex items-center gap-1 text-[10px] font-semibold text-gray-400">
-                            <MessageSquare size={11} className="text-indigo-400" /> 댓글 {cs.length}
-                          </div>
-                        )}
-                        {cs.map(c => (
-                          <div key={c.id} className="flex items-start justify-between gap-1.5 text-[11px]">
-                            <div className="min-w-0">
-                              <span className="font-semibold" style={{ color: c.author.color || "#374151" }}>{c.author.name}</span>
-                              <span className="text-gray-700 ml-1 break-words whitespace-pre-wrap">{c.content}</span>
-                            </div>
-                            <div className="flex items-center gap-1 shrink-0">
-                              <span className="text-[10px] text-gray-300">{fmtTime(c.createdAt)}</span>
-                              {c.authorId === currentUserId && (
-                                <button onClick={() => removeComment(c.id)} className="text-gray-300 hover:text-red-500" title="댓글 삭제"><Trash2 size={10} /></button>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                        <div className="flex gap-1 pt-0.5">
-                          <input
-                            value={draft[u.id] ?? ""}
-                            onChange={e => setDraft(prev => ({ ...prev, [u.id]: e.target.value }))}
-                            onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) addComment(u.id); }}
-                            placeholder={currentUserId ? "댓글 달기..." : "현재 사용자 선택 필요"}
-                            disabled={!currentUserId}
-                            className="flex-1 px-2 py-1 text-[11px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:bg-gray-50" />
-                          <button onClick={() => addComment(u.id)} disabled={!currentUserId || cBusy}
-                            className="px-2 py-1 bg-indigo-500 text-white rounded hover:bg-indigo-600 disabled:opacity-50"><Send size={11} /></button>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 오른쪽: 공유 달력(랜딩 동일) + 이 날 공유 내용 + 중요메모 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        {/* 왼쪽: 중요메모 → 팀원 업무일지 → 그날 공유 내용 */}
         <div className="space-y-4">
-          {/* 날짜 클릭 = 좌측 팀 일지 날짜 전환(선택). 일정 등록·조회는 셀의 ＋ 로 연다. */}
-          <LandingCalendar
-            defaultRegistrar={currentUser?.name}
-            onDaySelect={setSelectedDate}
-            selectedDate={selectedDate}
-            dayClickOpensModal={false}
-          />
 
-          {/* 이 날 공유 내용 — 일지 @멘션 줄 */}
-          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-            <div className="px-4 py-2.5 border-b border-gray-200 bg-gray-50 flex items-center gap-1.5">
-              <NotebookPen size={14} className="text-indigo-500" />
-              <span className="text-sm font-bold text-gray-700">{fmtDate(selectedDate)} 공유 내용</span>
-            </div>
-            <div className="p-3 space-y-1.5">
-              {shared.length === 0 ? (
-                <p className="text-xs text-gray-400 py-1 text-center">이 날 일지에서 @로 공유된 내용이 없습니다.</p>
-              ) : shared.map(s => (
-                <div key={s.key} className="text-xs border border-gray-100 rounded-lg px-2.5 py-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold" style={{ color: s.author.color || "#374151" }}>{s.author.name}</span>
-                    {s.to.length > 0 && <span className="text-[10px] text-indigo-500">→ {s.to.map(n => `@${n}`).join(" ")}</span>}
-                  </div>
-                  <div className="text-gray-700 mt-0.5"><JournalText content={s.line} /></div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* 중요 메모 (항상 고정) */}
+          {/* 중요 메모 — 팀 전체 공지 성격이라 업무일지 위 최상단 고정 */}
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
             <div className="px-4 py-2.5 border-b border-gray-200 bg-amber-50 flex items-center gap-1.5">
               <Star size={14} className="text-amber-500" fill="currentColor" />
@@ -346,6 +254,169 @@ export default function WorkDashboardPage() {
                   {showAllMemo ? "접기" : `+ ${importantPosts.length - MEMO_PREVIEW}건 더 보기`}
                 </button>
               )}
+            </div>
+          </div>
+
+          {/* 팀원 업무일지 */}
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between gap-2">
+              <span className="text-sm font-bold text-gray-700 flex items-center gap-1.5"><Users size={15} className="text-indigo-500" /> 팀원 업무일지</span>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setSelectedDate(prevYmd)} className="p-1 hover:bg-gray-200 rounded" title="이전 날"><ChevronLeft size={15} /></button>
+                <span className="text-xs font-semibold text-gray-600 min-w-[100px] text-center">{fmtDate(selectedDate)}</span>
+                <button onClick={() => setSelectedDate(tomorrowYmd)} className="p-1 hover:bg-gray-200 rounded" title="다음 날"><ChevronRight size={15} /></button>
+                {selectedDate !== todayKst() && <button onClick={() => setSelectedDate(todayKst())} className="ml-1 px-2 py-0.5 text-[11px] border border-gray-300 rounded hover:bg-white">오늘</button>}
+              </div>
+            </div>
+            {/* 위(중요메모)·아래(공유내용)와 한 컬럼을 나눠 쓰므로 78vh → 58vh 로 낮춘다 */}
+            <div className="divide-y divide-gray-100 max-h-[58vh] overflow-auto">
+              {teamRows.length === 0 ? (
+                <p className="py-12 text-center text-sm text-gray-400">등록된 사용자가 없습니다. [사용자 등록]에서 추가하세요.</p>
+              ) : teamRows.map(u => {
+                const log = logByUser.get(u.id);
+                const prev = (prevLogByUser.get(u.id)?.todayWork ?? "").trim(); // 전날 한 일
+                const today = (log?.todayWork ?? "").trim();                    // 당일 한 일
+                const tomorrow = (log?.tomorrowPlan ?? "").trim();              // 내일 계획
+                const empty = !prev && !today && !tomorrow;
+                return (
+                  <div key={u.id} className="px-4 py-3">
+                    <div className={empty ? "opacity-60" : ""}>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: u.color || "#6366f1" }} />
+                      <span className="text-sm font-bold text-gray-800">{u.name}</span>
+                      {u.dept && <span className="text-[11px] text-gray-400">{u.dept}</span>}
+                      {!u.active && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-500">비활성</span>}
+                      {u.id === currentUserId && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600">나</span>}
+                    </div>
+                    {empty ? (
+                      <p className="text-xs text-gray-400 pl-4">작성된 업무일지가 없습니다.</p>
+                    ) : (
+                      <div className="pl-4 space-y-1.5">
+                        {prev && <div><span className="text-[11px] font-semibold text-gray-400">전날 {fmtShort(prevYmd)}</span><div className="text-[11px] text-gray-600"><JournalText content={prev} /></div></div>}
+                        {today && <div><span className="text-[11px] font-semibold text-indigo-600">당일 {fmtShort(selectedDate)}</span><div className="text-[11px] text-gray-700"><JournalText content={today} /></div></div>}
+                        {tomorrow && <div><span className="text-[11px] font-semibold text-emerald-600">내일 {fmtShort(tomorrowYmd)}</span><div className="text-[11px] text-gray-600"><JournalText content={tomorrow} /></div></div>}
+                      </div>
+                    )}
+                    </div>
+
+                    {/* 일별 댓글 — 팀원 카드별 스레드 (선택 날짜 기준) */}
+                    {(() => {
+                      const cs = commentsByUser.get(u.id) ?? [];
+                      return (
+                        <div className="mt-2 pt-2 border-t border-gray-100 pl-4 space-y-1">
+                          {cs.length > 0 && (
+                            <div className="flex items-center gap-1 text-[10px] font-semibold text-gray-400">
+                              <MessageSquare size={11} className="text-indigo-400" /> 댓글 {cs.length}
+                            </div>
+                          )}
+                          {cs.map(c => (
+                            <div key={c.id} className="flex items-start justify-between gap-1.5 text-[11px]">
+                              <div className="min-w-0">
+                                <span className="font-semibold" style={{ color: c.author.color || "#374151" }}>{c.author.name}</span>
+                                <span className="text-gray-700 ml-1 break-words whitespace-pre-wrap">{c.content}</span>
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <span className="text-[10px] text-gray-300">{fmtTime(c.createdAt)}</span>
+                                {c.authorId === currentUserId && (
+                                  <button onClick={() => removeComment(c.id)} className="text-gray-300 hover:text-red-500" title="댓글 삭제"><Trash2 size={10} /></button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                          <div className="flex gap-1 pt-0.5">
+                            <input
+                              value={draft[u.id] ?? ""}
+                              onChange={e => setDraft(prev => ({ ...prev, [u.id]: e.target.value }))}
+                              onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) addComment(u.id); }}
+                              placeholder={currentUserId ? "댓글 달기..." : "현재 사용자 선택 필요"}
+                              disabled={!currentUserId}
+                              className="flex-1 px-2 py-1 text-[11px] border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:bg-gray-50" />
+                            <button onClick={() => addComment(u.id)} disabled={!currentUserId || cBusy}
+                              className="px-2 py-1 bg-indigo-500 text-white rounded hover:bg-indigo-600 disabled:opacity-50"><Send size={11} /></button>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 그 날 공유 내용 — 일지 @멘션 줄. 팀원 업무일지와 같은 '그날' 기준이라 바로 아래 둔다 */}
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-gray-200 bg-gray-50 flex items-center gap-1.5">
+              <NotebookPen size={14} className="text-indigo-500" />
+              <span className="text-sm font-bold text-gray-700">{fmtDate(selectedDate)} 공유 내용</span>
+              {shared.length > 0 && (
+                <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-bold">{shared.length}</span>
+              )}
+            </div>
+            <div className="p-3 space-y-1.5">
+              {shared.length === 0 ? (
+                <p className="text-xs text-gray-400 py-1 text-center">이 날 일지에서 @로 공유된 내용이 없습니다.</p>
+              ) : shared.map(s => (
+                <div key={s.key} className="text-xs border border-gray-100 rounded-lg px-2.5 py-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold" style={{ color: s.author.color || "#374151" }}>{s.author.name}</span>
+                    {s.to.length > 0 && <span className="text-[10px] text-indigo-500">→ {s.to.map(n => `@${n}`).join(" ")}</span>}
+                  </div>
+                  <div className="text-gray-700 mt-0.5"><JournalText content={s.line} /></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* 오른쪽: 공유 달력 + 그 달 일정 목록 */}
+        <div className="space-y-4">
+          {/* 날짜 클릭 = 좌측 팀 일지 날짜 전환(선택). 일정 등록·조회는 셀의 ＋ 로 연다. */}
+          <LandingCalendar
+            defaultRegistrar={currentUser?.name}
+            onDaySelect={setSelectedDate}
+            selectedDate={selectedDate}
+            dayClickOpensModal={false}
+            onMonthDataChange={setMonthInfo}
+          />
+
+          {/* 이번 달 일정 — 달력이 보여주는 달과 항상 같다(달 이동·등록·삭제 시 함께 갱신) */}
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-gray-200 bg-gray-50 flex items-center gap-1.5">
+              <CalendarDays size={14} className="text-blue-600" />
+              <span className="text-sm font-bold text-gray-700">
+                {monthInfo.month ? `${monthInfo.year}년 ${monthInfo.month}월 일정` : "이번 달 일정"}
+              </span>
+              {monthInfo.loading
+                ? <span className="ml-auto text-[10px] text-gray-400">불러오는 중…</span>
+                : monthEventCount > 0 && (
+                    <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold">{monthEventCount}건</span>
+                  )}
+            </div>
+            <div className="p-3 space-y-2 max-h-[42vh] overflow-auto">
+              {monthEventsByDate.length === 0 ? (
+                <p className="text-xs text-gray-400 py-2 text-center">
+                  {monthInfo.loading ? "불러오는 중…" : "이 달에 등록된 일정이 없습니다. 달력의 날짜 위 ＋ 로 등록하세요."}
+                </p>
+              ) : monthEventsByDate.map(([date, list]) => (
+                <div key={date} className={`rounded-lg border px-2.5 py-1.5 ${date === selectedDate ? "border-blue-300 bg-blue-50/50" : "border-gray-100"}`}>
+                  <button onClick={() => setSelectedDate(date)}
+                    className="w-full flex items-center gap-1.5 text-left mb-1 hover:opacity-70"
+                    title="이 날짜로 팀원 업무일지 보기">
+                    <span className={`text-[11px] font-bold ${date === todayKst() ? "text-blue-600" : "text-gray-600"}`}>{fmtShort(date)}</span>
+                    {date === todayKst() && <span className="text-[9px] px-1 py-0.5 rounded bg-blue-600 text-white font-bold">오늘</span>}
+                    <span className="text-[10px] text-gray-400">{list.length}건</span>
+                  </button>
+                  <div className="space-y-0.5">
+                    {list.map(e => (
+                      <div key={e.id} className="flex items-start gap-1.5 text-xs">
+                        <span className="mt-[5px] w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                        <span className="text-gray-700 whitespace-pre-wrap break-words flex-1">{e.content}</span>
+                        <span className="text-[10px] text-gray-400 shrink-0">{e.registrar}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>

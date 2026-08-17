@@ -11,10 +11,10 @@
  *   - 일정 있는 날은 점/내용 미리보기 표시
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, Plus, X, Trash2, Pencil, Check } from "lucide-react";
 
-interface CalendarEvent {
+export interface CalendarEvent {
   id:        string;
   date:      string; // YYYY-MM-DD
   registrar: string;
@@ -77,12 +77,17 @@ function buildCells(year: number, month0: number): CellInfo[] {
  * @param dayClickOpensModal 기본 true(랜딩). false 면 날짜 클릭은 '선택'만 하고,
  *        일정 등록/조회는 셀의 ＋ 버튼으로 연다. (업무 대시보드에서 날짜만 바꾸려는데
  *        매번 일정 모달이 뜨던 문제 — 2026-08-12)
+ * @param onMonthDataChange 표시 중인 달의 일정 목록을 부모에게 알린다(달력 아래 월간 목록용).
+ *        달 이동·등록·수정·삭제 시 모두 재통지되므로 부모가 따로 조회할 필요가 없다.
  */
-export default function LandingCalendar({ defaultRegistrar, onDaySelect, selectedDate, dayClickOpensModal = true }: {
+export default function LandingCalendar({
+  defaultRegistrar, onDaySelect, selectedDate, dayClickOpensModal = true, onMonthDataChange,
+}: {
   defaultRegistrar?: string;
   onDaySelect?: (ymd: string) => void;
   selectedDate?: string | null;
   dayClickOpensModal?: boolean;
+  onMonthDataChange?: (info: { year: number; month: number; events: CalendarEvent[]; loading: boolean }) => void;
 } = {}) {
   const [ty, tm] = todayKst().split("-").map(Number);
   const [year,   setYear]   = useState(ty);
@@ -109,6 +114,13 @@ export default function LandingCalendar({ defaultRegistrar, onDaySelect, selecte
   }, [year, month0]);
 
   useEffect(() => { load(); }, [load]);
+
+  // 부모 통지 — 콜백은 ref 로 잡아 의존성에서 빼고, 실제 데이터가 바뀔 때만 호출(재렌더 루프 방지)
+  const notifyRef = useRef(onMonthDataChange);
+  useEffect(() => { notifyRef.current = onMonthDataChange; });
+  useEffect(() => {
+    notifyRef.current?.({ year, month: month0 + 1, events, loading });
+  }, [events, year, month0, loading]);
 
   // 날짜별 이벤트 그룹
   const eventsByDate = useMemo(() => {
