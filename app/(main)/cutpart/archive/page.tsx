@@ -12,7 +12,7 @@ import {
 
 interface HeatRow {
   id: string; heatNo: string; status: string; archivedAt: string;
-  inVessel: string; inBlock: string; material: string; thickness: number; width: number; length: number; weight: number;
+  inVessel: string; material: string; thickness: number; width: number; length: number; weight: number;
   useVessel: string; useBlock: string; drawingNo: string; equipment: string; useDate: string | null;
   outVessel: string; outBlock: string; dest: string; outDate: string | null;
 }
@@ -26,6 +26,7 @@ const fmtT = (v: number) => parseFloat(v.toFixed(1));
 const fmtL = (v: number) => Math.round(v);
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const monthsAgoStr = (n: number) => { const d = new Date(); d.setMonth(d.getMonth() - n); return d.toISOString().slice(0, 10); };
+const heatStatusLabel = (s: string) => s === "CUT" ? "절단" : s === "SHIPPED" ? "외부출고" : s === "WAITING" ? "대기" : s;
 const planStatusLabel = (s: string) => s === "COMPLETED" ? "절단완료" : s === "SHIPPED_OUT" ? "외부출고" : s;
 
 export default function ArchivePage() {
@@ -55,7 +56,9 @@ type Basis = "terminal" | "useDate" | "outDate" | "archivedAt";
 const PAGE_SIZE = 50;
 
 /* ── 강재전체목록과 동일한 컬럼 필터·정렬·페이지네이션 (재사용 훅) ───────────── */
-function useColumnFilterTable<T>(rows: T[], accessors: ColumnAccessorMap<T>, pageSize = PAGE_SIZE) {
+// resetKey: 페이지를 1로 되돌릴 "조회 조건" 식별자. rows 참조 변화로 리셋하면
+// 복원 후 재조회 때마다 1페이지로 튕겨(7페이지에서 한 건 복원 → 1페이지) 다건 정리가 불가능하다.
+function useColumnFilterTable<T>(rows: T[], accessors: ColumnAccessorMap<T>, pageSize = PAGE_SIZE, resetKey = "") {
   const [filters, setFilters] = useState<Record<string, string[]>>({});
   const [predicates, setPredicates] = useState<Record<string, TextPredicate>>({});
   const [sortKey, setSortKey] = useState<string | null>(null);
@@ -81,7 +84,7 @@ function useColumnFilterTable<T>(rows: T[], accessors: ColumnAccessorMap<T>, pag
   }, [rows, filters, predicates, sortKey, sortDir, accessors]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  useEffect(() => { setPage(1); }, [filters, predicates, sortKey, sortDir, rows]);
+  useEffect(() => { setPage(1); }, [filters, predicates, sortKey, sortDir, resetKey]);
   useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
   const pageRows = useMemo(() => filtered.slice((page - 1) * pageSize, page * pageSize), [filtered, page, pageSize]);
 
@@ -180,13 +183,24 @@ function PlatesTab() {
   const [queried, setQueried] = useState(false);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
+  // 다중 선택 복원 — 예전엔 1건씩만 되고 복원할 때마다 1페이지로 튕겨, 사용자가 [전체 복원]으로 몰렸다
+  const [selHeat, setSelHeat] = useState<Set<string>>(new Set());
+  const [selPlan, setSelPlan] = useState<Set<string>>(new Set());
+  const [omitted, setOmitted] = useState({ heats: 0, plans: 0 });
+  const [loadErr, setLoadErr] = useState("");
+  // 조회 조건이 바뀌면 표는 옛 결과인데 새 조건 결과처럼 보인다 → 배지로 알린다
+  const [queriedKey, setQueriedKey] = useState("");
+  const curKey = `${basis}|${from}|${to}`;
 
   // 초기 진입: 실행 대상 수 + 현재 아카이브 총량 로드 — 리스트는 숨김
   //   총량을 항상 보여줘야 "기간 밖 아카이브분은 존재조차 안 보인다" 는 오해가 안 생긴다
   const loadCount = useCallback(async () => {
     const r = await fetch(`/api/cutpart/archive?months=${months}`).then(r => r.json()).catch(() => ({ success: false }));
-    if (r.success) setCounts({ eligibleHeats: r.eligibleHeats ?? 0, eligiblePlans: r.eligiblePlans ?? 0,
-                               archivedHeats: r.archivedHeats ?? 0, archivedPlans: r.archivedPlans ?? 0 });
+    if (r.success) {
+      setCounts({ eligibleHeats: r.eligibleHeats ?? 0, eligiblePlans: r.eligiblePlans ?? 0,
+                  archivedHeats: r.archivedHeats ?? 0, archivedPlans: r.archivedPlans ?? 0 });
+      setLoadErr("");
+    } else setLoadErr(r.error ?? "건수를 불러오지 못했습니다. 새로고침 후 다시 시도하세요.");
   }, [months]);
   useEffect(() => { loadCount(); }, [loadCount]);
 
@@ -200,52 +214,87 @@ function PlatesTab() {
       setRows(r.data ?? []); setPlans(r.plans ?? []); setQueried(true);
       setCounts({ eligibleHeats: r.eligibleHeats ?? 0, eligiblePlans: r.eligiblePlans ?? 0,
                   archivedHeats: r.archivedHeats ?? 0, archivedPlans: r.archivedPlans ?? 0 });
+      setOmitted({ heats: r.omitted?.heats ?? 0, plans: r.omitted?.plans ?? 0 });
+      setQueriedKey(`${basis}|${from}|${to}`);
+      setSelHeat(new Set()); setSelPlan(new Set());
+      setLoadErr("");
     }
     else alert(r.error ?? "조회 실패");
     setLoading(false);
   }, [from, to, basis, months]);
 
   const run = async () => {
+    if (busy) return;            // 연타 중복 실행 방지 — 확인창 전 재조회 구간까지 덮는다
+    setBusy(true);
+    try { await runInner(); } finally { setBusy(false); }
+  };
+  const runInner = async () => {
+    // 실행 직전에 최신 건수를 다시 확인한다 — 화면을 오래 켜두면 미리보기 숫자가 낡아,
+    // 확인창에 뜬 수보다 더 많이 아카이브되는 일이 생긴다.
+    const fresh = await fetch(`/api/cutpart/archive?months=${months}`).then(r => r.json()).catch(() => null);
+    if (fresh?.success) setCounts({ eligibleHeats: fresh.eligibleHeats ?? 0, eligiblePlans: fresh.eligiblePlans ?? 0,
+                                    archivedHeats: fresh.archivedHeats ?? 0, archivedPlans: fresh.archivedPlans ?? 0 });
+    const eh = fresh?.success ? (fresh.eligibleHeats ?? 0) : counts.eligibleHeats;
+    const ep = fresh?.success ? (fresh.eligiblePlans ?? 0) : counts.eligiblePlans;
+    if (eh + ep === 0) { alert("아카이브할 대상이 없습니다."); return; }
     // 판번호와 강재는 단위가 달라 합쳐 말하면 안 된다 — 예전엔 합계를 "판번호 N건"으로 표기해
     // 실행 후 알림과 숫자가 안 맞아 보였다(사용자가 "수량이 안 맞는다"고 느낀 원인 중 하나).
     if (!confirm(
       `완료·출고된 지 ${months}개월 이상인 자재를 아카이브(숨김)합니다.\n\n`
-      + `  · 판번호 ${counts.eligibleHeats.toLocaleString()}건\n`
-      + `  · 강재  ${counts.eligiblePlans.toLocaleString()}장\n\n`
+      + `  · 판번호 ${eh.toLocaleString()}건\n`
+      + `  · 강재  ${ep.toLocaleString()}장\n\n`
       + `※ 아래 조회기간과 무관합니다 — 기간칸은 이미 숨겨진 것을 되짚어 보는 조회 전용입니다.\n`
       + `강재전체목록·판번호리스트에서 숨겨지고, 여기서 조회·복원할 수 있습니다.`
     )) return;
-    setBusy(true);
-    try {
+    {
       const r = await fetch("/api/cutpart/archive", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "run", months }) }).then(r => r.json()).catch(() => ({ success: false, error: "네트워크 오류" }));
       if (!r.success) { alert(r.error ?? "실패"); return; }
       alert(`아카이브 완료 — 판번호 ${r.archivedHeats}건 · 강재 ${r.archivedPlans}장`
         + (r.ghostCleaned ? `\n(재고로 되살아났는데 숨겨져 있던 ${r.ghostCleaned}건은 자동 복원했습니다)` : ""));
       await loadCount();
       if (queried) await query();
-    } finally { setBusy(false); }
+    }
   };
   const restore = async (body: { heatIds?: string[]; planIds?: string[]; all?: boolean }, confirmMsg: string, notify = false) => {
+    if (busy) return;
     if (!confirm(confirmMsg)) return;
+    setBusy(true);
+    try {
     const r = await fetch("/api/cutpart/archive", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "restore", ...body }) }).then(r => r.json()).catch(() => ({ success: false, error: "네트워크 오류" }));
     if (!r.success) { alert(r.error ?? "복원 실패"); return; }
     if (notify) alert(`복원 완료 — 판번호 ${r.restoredHeats ?? 0}건 · 강재 ${r.restoredPlans ?? 0}장`);
     await loadCount();
     if (queried) await query();
+    } finally { setBusy(false); }
   };
   const restoreHeat = (id: string) => restore({ heatIds: [id] }, "이 판번호를 활성 목록으로 복원하시겠습니까?");
+  const restoreSelected = () => {
+    const hIds = selHeatVisible, pIds = selPlanVisible;
+    if (hIds.length + pIds.length === 0) return;
+    restore({ heatIds: hIds, planIds: pIds },
+      `선택한 판번호 ${hIds.length}건 · 강재 ${pIds.length}장을 활성 목록으로 복원하시겠습니까?`, true);
+  };
   const restorePlan = (id: string) => restore({ planIds: [id] }, "이 강재(사양단위)를 활성 목록으로 복원하시겠습니까?");
   // 전체 복원은 화면의 기간·필터와 무관하게 '전량'을 푼다 — 건수를 반드시 밝힌다
-  const restoreAll = () => restore({ all: true },
-    `아카이브된 자료를 전부 활성 목록으로 복원합니다.\n\n`
-    + `  · 판번호 ${counts.archivedHeats.toLocaleString()}건\n`
-    + `  · 강재  ${counts.archivedPlans.toLocaleString()}장\n\n`
-    + `※ 지금 화면에 보이는 기간·필터와 무관하게 전량이 복원됩니다.\n계속하시겠습니까?`, true);
+  const restoreAll = async () => {
+    // 실행 직전 최신 총량 재조회 — 낡은 숫자로 "전량 복원" 을 확인시키면 안 된다
+    const fresh = await fetch(`/api/cutpart/archive?months=${months}`).then(r => r.json()).catch(() => null);
+    const ah = fresh?.success ? (fresh.archivedHeats ?? 0) : counts.archivedHeats;
+    const ap = fresh?.success ? (fresh.archivedPlans ?? 0) : counts.archivedPlans;
+    if (fresh?.success) setCounts({ eligibleHeats: fresh.eligibleHeats ?? 0, eligiblePlans: fresh.eligiblePlans ?? 0,
+                                    archivedHeats: ah, archivedPlans: ap });
+    if (ah + ap === 0) { alert("복원할 아카이브 자료가 없습니다."); return; }
+    await restore({ all: true },
+      `아카이브된 자료를 전부 활성 목록으로 복원합니다.\n\n`
+      + `  · 판번호 ${ah.toLocaleString()}건\n`
+      + `  · 강재  ${ap.toLocaleString()}장\n\n`
+      + `※ 지금 화면에 보이는 기간·필터와 무관하게 전량이 복원됩니다.\n계속하시겠습니까?`, true);
+  };
 
   // accessors — 표시값과 동일한 문자열/숫자를 반환해야 필터·정렬이 화면과 일치
   const heatAccessors = useMemo<ColumnAccessorMap<HeatRow>>(() => ({
-    heatNo: r => r.heatNo,
-    inVessel: r => r.inVessel, inBlock: r => r.inBlock, material: r => r.material,
+    heatNo: r => r.heatNo, hStatus: r => heatStatusLabel(r.status), hArchivedAt: r => fmtDate(r.archivedAt),
+    inVessel: r => r.inVessel, material: r => r.material,
     thickness: r => fmtT(r.thickness), width: r => fmtL(r.width), length: r => fmtL(r.length), weight: r => r.weight,
     useVessel: r => r.useVessel, useBlock: r => r.useBlock, drawingNo: r => r.drawingNo, equipment: r => r.equipment, useDate: r => fmtDate(r.useDate),
     outVessel: r => r.outVessel, outBlock: r => r.outBlock, dest: r => r.dest, outDate: r => fmtDate(r.outDate),
@@ -268,9 +317,18 @@ function PlatesTab() {
     return plans.filter(r => `${r.vesselCode} ${r.material} ${r.reservedFor}`.toLowerCase().includes(q));
   }, [plans, search]);
 
-  const heatTable = useColumnFilterTable(searchedHeat, heatAccessors);
-  const planTable = useColumnFilterTable(searchedPlan, planAccessors);
+  // 조회 조건(기준일·기간)이나 검색어가 바뀔 때만 1페이지로. 같은 조건 재조회(복원 후)는 페이지 유지.
+  const tableKey = `${queriedKey}|${search}`;
+  const heatTable = useColumnFilterTable(searchedHeat, heatAccessors, PAGE_SIZE, tableKey);
+  const planTable = useColumnFilterTable(searchedPlan, planAccessors, PAGE_SIZE, tableKey);
   const active = mode === "heat" ? heatTable : planTable;
+
+  // 선택은 반드시 '지금 필터·검색을 통과한 행'으로 한정한다.
+  // Set 에 그대로 두면 필터를 좁힌 뒤 [선택 복원] 이 화면에 없는 행까지 복원한다 —
+  // '보이지 않는 것에 손대는' 바로 그 부류의 결함이라 교차로 잘라낸다.
+  const selHeatVisible = useMemo(() => heatTable.filtered.filter(r => selHeat.has(r.id)).map(r => r.id), [heatTable.filtered, selHeat]);
+  const selPlanVisible = useMemo(() => planTable.filtered.filter(r => selPlan.has(r.id)).map(r => r.id), [planTable.filtered, selPlan]);
+  const selTotal = selHeatVisible.length + selPlanVisible.length;
 
   const toggleBtn = (m: "heat" | "plan", label: string, count: number) => (
     <button onClick={() => setMode(m)}
@@ -281,6 +339,9 @@ function PlatesTab() {
 
   return (
     <div className="space-y-3">
+      {loadErr && (
+        <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">{loadErr}</div>
+      )}
       {/* 아카이브 실행 */}
       <div className="bg-white border border-gray-200 rounded-xl p-3 flex flex-wrap items-center gap-2">
         <span className="text-sm text-gray-600">완료·출고된 지</span>
@@ -313,6 +374,9 @@ function PlatesTab() {
         <button onClick={query} disabled={loading} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm bg-gray-800 text-white font-semibold rounded-lg hover:bg-gray-900 disabled:opacity-50">
           {loading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />} 조회
         </button>
+        {queried && queriedKey !== curKey && (
+          <span className="text-[11px] px-2 py-1 rounded-full bg-amber-100 text-amber-700 font-semibold">조건 변경됨 — [조회]를 다시 누르세요</span>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder={mode === "heat" ? "판번호·호선·재질·도면·도착지 검색" : "호선·재질·확정블록 검색"} className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg w-64" />
           <button onClick={query} disabled={loading} className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50" title="새로고침"><RefreshCw size={14} /></button>
@@ -327,6 +391,17 @@ function PlatesTab() {
             {toggleBtn("plan", "강재", plans.length)}
           </div>
           <span className="text-sm font-bold text-gray-700">{mode === "heat" ? "아카이브된 판번호" : "아카이브된 강재(사양단위)"} {queried && <span className="text-gray-400 font-normal">({active.filtered.length}건)</span>}</span>
+          {selTotal > 0 && (
+            <button onClick={restoreSelected} disabled={busy}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 disabled:opacity-50">
+              <Undo2 size={12} /> 선택 복원 (판번호 {selHeatVisible.length} · 강재 {selPlanVisible.length})
+            </button>
+          )}
+          {queried && (mode === "heat" ? omitted.heats : omitted.plans) > 0 && (
+            <span className="text-[11px] text-gray-400" title="선택한 기준일 값이 없는 행은 기간 판정이 불가능해 목록에서 빠집니다">
+              기준일 없음으로 제외 {(mode === "heat" ? omitted.heats : omitted.plans).toLocaleString()}건
+            </span>
+          )}
           {active.filterCount > 0 && (
             <button onClick={active.clearFilters} className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800">
               <XCircle size={12} /> 필터 {active.filterCount}개 초기화
@@ -341,32 +416,46 @@ function PlatesTab() {
               <table className="w-full text-xs whitespace-nowrap">
                 <thead className="text-gray-600">
                   <tr className="bg-gray-100 text-center border-b border-gray-200">
-                    {heatTable.renderTh("heatNo", "판번호", "border-r border-gray-200", 2)}
-                    <th colSpan={7} className="px-2 py-1 bg-sky-50 text-sky-700 border-r border-gray-200">입고정보</th>
+                    <th rowSpan={2} className="px-2 py-1.5 w-8">
+                      <input type="checkbox" aria-label="현재 페이지 전체 선택"
+                        ref={el => { if (el) el.indeterminate = heatTable.pageRows.some(r => selHeat.has(r.id)) && !heatTable.pageRows.every(r => selHeat.has(r.id)); }}
+                        checked={heatTable.pageRows.length > 0 && heatTable.pageRows.every(r => selHeat.has(r.id))}
+                        onChange={e => setSelHeat(prev => { const n = new Set(prev); heatTable.pageRows.forEach(r => e.target.checked ? n.add(r.id) : n.delete(r.id)); return n; })} />
+                    </th>
+                    {heatTable.renderTh("heatNo", "판번호", "", 2)}
+                    {heatTable.renderTh("hStatus", "상태", "border-r border-gray-200", 2)}
+                    <th colSpan={6} className="px-2 py-1 bg-sky-50 text-sky-700 border-r border-gray-200">입고정보</th>
                     <th colSpan={5} className="px-2 py-1 bg-amber-50 text-amber-700 border-r border-gray-200">사용정보 (절단)</th>
                     <th colSpan={4} className="px-2 py-1 bg-emerald-50 text-emerald-700 border-r border-gray-200">출고정보</th>
+                    {heatTable.renderTh("hArchivedAt", "아카이브일", "", 2)}
                     <th rowSpan={2} className="px-2 py-1.5">복원</th>
                   </tr>
                   <tr className="bg-gray-50 text-center border-b border-gray-200">
-                    {heatTable.renderTh("inVessel", "호선")}{heatTable.renderTh("inBlock", "블록")}{heatTable.renderTh("material", "재질")}{heatTable.renderTh("thickness", "두께")}{heatTable.renderTh("width", "폭")}{heatTable.renderTh("length", "길이")}{heatTable.renderTh("weight", "중량", "border-r border-gray-200")}
+                    {heatTable.renderTh("inVessel", "호선")}{heatTable.renderTh("material", "재질")}{heatTable.renderTh("thickness", "두께")}{heatTable.renderTh("width", "폭")}{heatTable.renderTh("length", "길이")}{heatTable.renderTh("weight", "중량", "border-r border-gray-200")}
                     {heatTable.renderTh("useVessel", "호선")}{heatTable.renderTh("useBlock", "블록")}{heatTable.renderTh("drawingNo", "도면번호")}{heatTable.renderTh("equipment", "절단장비")}{heatTable.renderTh("useDate", "사용일자", "border-r border-gray-200")}
                     {heatTable.renderTh("outVessel", "호선")}{heatTable.renderTh("outBlock", "블록")}{heatTable.renderTh("dest", "도착지")}{heatTable.renderTh("outDate", "출고일자", "border-r border-gray-200")}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {loading ? (
-                    <tr><td colSpan={18} className="py-10 text-center text-gray-400"><Loader2 className="animate-spin inline mr-2" size={16} /> 불러오는 중...</td></tr>
+                    <tr><td colSpan={20} className="py-10 text-center text-gray-400"><Loader2 className="animate-spin inline mr-2" size={16} /> 불러오는 중...</td></tr>
                   ) : !queried ? (
-                    <tr><td colSpan={18} className="py-12 text-center text-gray-400">기준일과 기간을 설정하고 <b className="text-gray-600">[조회]</b>를 누르면 해당 기간의 아카이브 판번호가 표시됩니다.</td></tr>
+                    <tr><td colSpan={20} className="py-12 text-center text-gray-400">기준일과 기간을 설정하고 <b className="text-gray-600">[조회]</b>를 누르면 해당 기간의 아카이브 판번호가 표시됩니다.</td></tr>
                   ) : heatTable.filtered.length === 0 ? (
-                    <tr><td colSpan={18} className="py-10 text-center text-gray-400">해당 기간·조건에 맞는 아카이브 판번호가 없습니다.</td></tr>
+                    <tr><td colSpan={20} className="py-10 text-center text-gray-400">해당 기간·조건에 맞는 아카이브 판번호가 없습니다.</td></tr>
                   ) : heatTable.pageRows.map(r => (
                     <tr key={r.id} className="hover:bg-gray-50 text-center">
-                      <td className="px-2 py-1.5 font-mono font-semibold border-r border-gray-100">{r.heatNo}</td>
-                      <td className="px-2 py-1.5">{r.inVessel}</td><td className="px-2 py-1.5">{r.inBlock || "-"}</td><td className="px-2 py-1.5">{r.material}</td>
+                      <td className="px-2 py-1.5">
+                        <input type="checkbox" checked={selHeat.has(r.id)} aria-label={`${r.heatNo} 선택`}
+                          onChange={e => setSelHeat(prev => { const n = new Set(prev); if (e.target.checked) n.add(r.id); else n.delete(r.id); return n; })} />
+                      </td>
+                      <td className="px-2 py-1.5 font-mono font-semibold">{r.heatNo}</td>
+                      <td className="px-2 py-1.5 border-r border-gray-100">{heatStatusLabel(r.status)}</td>
+                      <td className="px-2 py-1.5">{r.inVessel}</td><td className="px-2 py-1.5">{r.material}</td>
                       <td className="px-2 py-1.5 font-mono">{fmtT(r.thickness)}</td><td className="px-2 py-1.5 font-mono">{fmtL(r.width)}</td><td className="px-2 py-1.5 font-mono">{fmtL(r.length)}</td><td className="px-2 py-1.5 font-mono border-r border-gray-100">{r.weight}</td>
                       <td className="px-2 py-1.5">{r.useVessel || "-"}</td><td className="px-2 py-1.5">{r.useBlock || "-"}</td><td className="px-2 py-1.5 font-mono">{r.drawingNo || "-"}</td><td className="px-2 py-1.5">{r.equipment || "-"}</td><td className="px-2 py-1.5 border-r border-gray-100">{fmtDate(r.useDate) || "-"}</td>
                       <td className="px-2 py-1.5">{r.outVessel || "-"}</td><td className="px-2 py-1.5">{r.outBlock || "-"}</td><td className="px-2 py-1.5">{r.dest || "-"}</td><td className="px-2 py-1.5 border-r border-gray-100">{fmtDate(r.outDate) || "-"}</td>
+                      <td className="px-2 py-1.5">{fmtDate(r.archivedAt) || "-"}</td>
                       <td className="px-2 py-1.5"><button onClick={() => restoreHeat(r.id)} className="text-amber-600 hover:underline" title="복원"><Undo2 size={13} /></button></td>
                     </tr>
                   ))}
@@ -384,6 +473,12 @@ function PlatesTab() {
               <table className="w-full text-xs whitespace-nowrap">
                 <thead className="text-gray-600">
                   <tr className="bg-gray-50 text-center border-b border-gray-200">
+                    <th className="px-2 py-1.5 w-8">
+                      <input type="checkbox" aria-label="현재 페이지 전체 선택"
+                        ref={el => { if (el) el.indeterminate = planTable.pageRows.some(r => selPlan.has(r.id)) && !planTable.pageRows.every(r => selPlan.has(r.id)); }}
+                        checked={planTable.pageRows.length > 0 && planTable.pageRows.every(r => selPlan.has(r.id))}
+                        onChange={e => setSelPlan(prev => { const n = new Set(prev); planTable.pageRows.forEach(r => e.target.checked ? n.add(r.id) : n.delete(r.id)); return n; })} />
+                    </th>
                     {planTable.renderTh("vesselCode", "호선")}{planTable.renderTh("material", "재질")}{planTable.renderTh("thickness", "두께")}{planTable.renderTh("width", "폭")}{planTable.renderTh("length", "길이")}{planTable.renderTh("weight", "중량")}
                     {planTable.renderTh("status", "상태")}{planTable.renderTh("reservedFor", "확정블록")}{planTable.renderTh("receivedAt", "입고일")}{planTable.renderTh("issuedAt", "출고일")}{planTable.renderTh("archivedAt", "아카이브일")}
                     <th className="px-2 py-1.5">복원</th>
@@ -391,13 +486,17 @@ function PlatesTab() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {loading ? (
-                    <tr><td colSpan={12} className="py-10 text-center text-gray-400"><Loader2 className="animate-spin inline mr-2" size={16} /> 불러오는 중...</td></tr>
+                    <tr><td colSpan={13} className="py-10 text-center text-gray-400"><Loader2 className="animate-spin inline mr-2" size={16} /> 불러오는 중...</td></tr>
                   ) : !queried ? (
-                    <tr><td colSpan={12} className="py-12 text-center text-gray-400">기준일과 기간을 설정하고 <b className="text-gray-600">[조회]</b>를 누르면 해당 기간의 아카이브 강재가 표시됩니다.</td></tr>
+                    <tr><td colSpan={13} className="py-12 text-center text-gray-400">기준일과 기간을 설정하고 <b className="text-gray-600">[조회]</b>를 누르면 해당 기간의 아카이브 강재가 표시됩니다.</td></tr>
                   ) : planTable.filtered.length === 0 ? (
-                    <tr><td colSpan={12} className="py-10 text-center text-gray-400">해당 기간·조건에 맞는 아카이브 강재가 없습니다.</td></tr>
+                    <tr><td colSpan={13} className="py-10 text-center text-gray-400">해당 기간·조건에 맞는 아카이브 강재가 없습니다.</td></tr>
                   ) : planTable.pageRows.map(r => (
                     <tr key={r.id} className="hover:bg-gray-50 text-center">
+                      <td className="px-2 py-1.5">
+                        <input type="checkbox" checked={selPlan.has(r.id)} aria-label="선택"
+                          onChange={e => setSelPlan(prev => { const n = new Set(prev); if (e.target.checked) n.add(r.id); else n.delete(r.id); return n; })} />
+                      </td>
                       <td className="px-2 py-1.5">{r.vesselCode}</td><td className="px-2 py-1.5">{r.material}</td>
                       <td className="px-2 py-1.5 font-mono">{fmtT(r.thickness)}</td><td className="px-2 py-1.5 font-mono">{fmtL(r.width)}</td><td className="px-2 py-1.5 font-mono">{fmtL(r.length)}</td><td className="px-2 py-1.5 font-mono">{r.weight}</td>
                       <td className="px-2 py-1.5">{planStatusLabel(r.status)}</td><td className="px-2 py-1.5">{r.reservedFor || "-"}</td>

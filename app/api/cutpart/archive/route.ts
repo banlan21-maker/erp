@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
     const shipByHeat = new Map<string, (typeof shipItems)[number]>();
     for (const si of shipItems) if (si.steelPlanHeatId && !shipByHeat.has(si.steelPlanHeatId)) shipByHeat.set(si.steelPlanHeatId, si);
 
-    const data = heats.map(h => {
+    const data0 = heats.map(h => {
       const cut = cutByHeat.get(h.heatNo);
       const ship = shipByHeat.get(h.id);
       const dest = ship ? ((ship.vehicle?.deliverySnapshot as { name?: string } | null)?.name ?? "") : "";
@@ -123,22 +123,23 @@ export async function GET(req: NextRequest) {
       return {
         row: {
           id: h.id, heatNo: h.heatNo, status: h.status, archivedAt: h.archivedAt,
-          inVessel: h.vesselCode, inBlock: "", material: h.material, thickness: h.thickness, width: h.width, length: h.length, weight: calcW(h.thickness, h.width, h.length),
+          inVessel: h.vesselCode, material: h.material, thickness: h.thickness, width: h.width, length: h.length, weight: calcW(h.thickness, h.width, h.length),
           useVessel: cut?.project?.projectCode ?? "", useBlock: cut?.drawingList?.block ?? "", drawingNo: cut?.drawingNo ?? cut?.drawingList?.drawingNo ?? "", equipment: cut?.equipment?.name ?? "", useDate,
           outVessel: ship?.vesselCode ?? "", outBlock: ship?.block ?? "", dest, outDate,
         },
         basisDate,
       };
-    })
-      .filter(x => inRange(x.basisDate))
-      .map(x => x.row);
+    });
+    // 기준일(basis)이 없는 행은 기간 판정이 불가능해 목록에서 빠진다 — 몇 건인지 알려준다
+    const heatNoBasis = data0.filter(x => x.basisDate == null).length;
+    const data = data0.filter(x => inRange(x.basisDate)).map(x => x.row);
 
     // 강재(사양단위 SteelPlan) — 아카이브 대상은 status COMPLETED/SHIPPED_OUT
     const plansRaw = await prisma.steelPlan.findMany({
       where: { archivedAt: { not: null } },
       orderBy: { archivedAt: "desc" },
     });
-    const plans = plansRaw.map(p => {
+    const plans0 = plansRaw.map(p => {
       // 강재 기준일 — 판번호와 같은 4갈래를 지원해야 탭을 바꿔도 같은 잣대로 걸러진다.
       //   (예전엔 archivedAt 외 분기가 없어 '사용일자'·'출고일자'를 골라도 강재 탭 결과가 안 바뀌었다)
       //   강재에는 절단완료일 컬럼이 따로 없다 — COMPLETED 는 issuedAt 이 절단완료 시 기록되고,
@@ -158,11 +159,11 @@ export async function GET(req: NextRequest) {
         },
         basisDate,
       };
-    })
-      .filter(x => inRange(x.basisDate))
-      .map(x => x.row);
+    });
+    const planNoBasis = plans0.filter(x => x.basisDate == null).length;
+    const plans = plans0.filter(x => inRange(x.basisDate)).map(x => x.row);
 
-    return NextResponse.json({ success: true, data, plans, eligible });
+    return NextResponse.json({ success: true, data, plans, eligible, ...counts, omitted: { heats: heatNoBasis, plans: planNoBasis } });
   } catch (e) {
     return NextResponse.json({ success: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }

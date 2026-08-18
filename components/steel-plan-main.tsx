@@ -2769,7 +2769,11 @@ export default function SteelPlanMain() {
                   try {
                     const r = await fetch("/api/steel-plan/backfill-issued", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then(r => r.json());
                     if (!r.success) { alert(r.error ?? "처리 실패"); return; }
-                    alert(`${r.count}건의 출고일을 절단완료일로 채웠습니다.`);
+                    const skipped = Number(r.skipped ?? 0);
+                    alert(`${r.count}건의 출고일을 절단완료일로 채웠습니다.`
+                      + (skipped > 0
+                        ? `\n\n${skipped}건은 근거(같은 사양의 절단 판번호 절단일·작업일보 종료일)가 없어 건너뛰었습니다.\n추정치를 넣지 않고 비워 두므로 아카이브 대상에서도 제외됩니다.`
+                        : ""));
                     setMatchOpen(false);
                     loadPlan();
                   } finally { setMatchBusy(false); }
