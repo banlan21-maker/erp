@@ -165,7 +165,11 @@ function Pager({ page, totalPages, pageNums, total, pageSize, onPage }: {
 function PlatesTab() {
   const [rows, setRows] = useState<HeatRow[]>([]);
   const [plans, setPlans] = useState<PlanRow[]>([]);
-  const [eligible, setEligible] = useState(0);
+  // 판번호와 강재를 분리해 센다 — 합계를 "판번호 N건"으로 쓰던 표기가 수량 오해의 원인이었다.
+  // archived* 는 기간 밖까지 포함한 현재 아카이브 총량(화면에 상시 표시).
+  const [counts, setCounts] = useState({ eligibleHeats: 0, eligiblePlans: 0, archivedHeats: 0, archivedPlans: 0 });
+  const eligible = counts.eligibleHeats + counts.eligiblePlans;
+  const archivedTotal = counts.archivedHeats + counts.archivedPlans;
   const [months, setMonths] = useState(1);
   const [busy, setBusy] = useState(false);
 
@@ -177,10 +181,12 @@ function PlatesTab() {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
 
-  // 초기 진입: 실행 대상 수(eligible)만 로드 — 리스트는 숨김
+  // 초기 진입: 실행 대상 수 + 현재 아카이브 총량 로드 — 리스트는 숨김
+  //   총량을 항상 보여줘야 "기간 밖 아카이브분은 존재조차 안 보인다" 는 오해가 안 생긴다
   const loadCount = useCallback(async () => {
     const r = await fetch(`/api/cutpart/archive?months=${months}`).then(r => r.json()).catch(() => ({ success: false }));
-    if (r.success) setEligible(r.eligible);
+    if (r.success) setCounts({ eligibleHeats: r.eligibleHeats ?? 0, eligiblePlans: r.eligiblePlans ?? 0,
+                               archivedHeats: r.archivedHeats ?? 0, archivedPlans: r.archivedPlans ?? 0 });
   }, [months]);
   useEffect(() => { loadCount(); }, [loadCount]);
 
@@ -190,32 +196,51 @@ function PlatesTab() {
     setLoading(true);
     const qs = new URLSearchParams({ months: String(months), from, to, basis }).toString();
     const r = await fetch(`/api/cutpart/archive?${qs}`).then(r => r.json()).catch(() => ({ success: false }));
-    if (r.success) { setRows(r.data ?? []); setPlans(r.plans ?? []); setEligible(r.eligible); setQueried(true); }
+    if (r.success) {
+      setRows(r.data ?? []); setPlans(r.plans ?? []); setQueried(true);
+      setCounts({ eligibleHeats: r.eligibleHeats ?? 0, eligiblePlans: r.eligiblePlans ?? 0,
+                  archivedHeats: r.archivedHeats ?? 0, archivedPlans: r.archivedPlans ?? 0 });
+    }
     else alert(r.error ?? "조회 실패");
     setLoading(false);
   }, [from, to, basis, months]);
 
   const run = async () => {
-    if (!confirm(`완료·출고된 지 ${months}개월 이상인 판번호 ${eligible}건을 아카이브(숨김)하시겠습니까?\n(강재전체목록·판번호리스트에서 숨겨지고, 여기서 조회·복원 가능)`)) return;
+    // 판번호와 강재는 단위가 달라 합쳐 말하면 안 된다 — 예전엔 합계를 "판번호 N건"으로 표기해
+    // 실행 후 알림과 숫자가 안 맞아 보였다(사용자가 "수량이 안 맞는다"고 느낀 원인 중 하나).
+    if (!confirm(
+      `완료·출고된 지 ${months}개월 이상인 자재를 아카이브(숨김)합니다.\n\n`
+      + `  · 판번호 ${counts.eligibleHeats.toLocaleString()}건\n`
+      + `  · 강재  ${counts.eligiblePlans.toLocaleString()}장\n\n`
+      + `※ 아래 조회기간과 무관합니다 — 기간칸은 이미 숨겨진 것을 되짚어 보는 조회 전용입니다.\n`
+      + `강재전체목록·판번호리스트에서 숨겨지고, 여기서 조회·복원할 수 있습니다.`
+    )) return;
     setBusy(true);
     try {
-      const r = await fetch("/api/cutpart/archive", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "run", months }) }).then(r => r.json());
+      const r = await fetch("/api/cutpart/archive", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "run", months }) }).then(r => r.json()).catch(() => ({ success: false, error: "네트워크 오류" }));
       if (!r.success) { alert(r.error ?? "실패"); return; }
-      alert(`판번호 ${r.archivedHeats}건, 강재 ${r.archivedPlans}건 아카이브됨.`);
+      alert(`아카이브 완료 — 판번호 ${r.archivedHeats}건 · 강재 ${r.archivedPlans}장`
+        + (r.ghostCleaned ? `\n(재고로 되살아났는데 숨겨져 있던 ${r.ghostCleaned}건은 자동 복원했습니다)` : ""));
       await loadCount();
       if (queried) await query();
     } finally { setBusy(false); }
   };
-  const restore = async (body: { heatIds?: string[]; planIds?: string[]; all?: boolean }, confirmMsg: string) => {
+  const restore = async (body: { heatIds?: string[]; planIds?: string[]; all?: boolean }, confirmMsg: string, notify = false) => {
     if (!confirm(confirmMsg)) return;
-    const r = await fetch("/api/cutpart/archive", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "restore", ...body }) }).then(r => r.json());
+    const r = await fetch("/api/cutpart/archive", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "restore", ...body }) }).then(r => r.json()).catch(() => ({ success: false, error: "네트워크 오류" }));
     if (!r.success) { alert(r.error ?? "복원 실패"); return; }
+    if (notify) alert(`복원 완료 — 판번호 ${r.restoredHeats ?? 0}건 · 강재 ${r.restoredPlans ?? 0}장`);
     await loadCount();
     if (queried) await query();
   };
   const restoreHeat = (id: string) => restore({ heatIds: [id] }, "이 판번호를 활성 목록으로 복원하시겠습니까?");
   const restorePlan = (id: string) => restore({ planIds: [id] }, "이 강재(사양단위)를 활성 목록으로 복원하시겠습니까?");
-  const restoreAll = () => restore({ all: true }, "아카이브된 전체(판번호·강재)를 활성 목록으로 복원하시겠습니까?");
+  // 전체 복원은 화면의 기간·필터와 무관하게 '전량'을 푼다 — 건수를 반드시 밝힌다
+  const restoreAll = () => restore({ all: true },
+    `아카이브된 자료를 전부 활성 목록으로 복원합니다.\n\n`
+    + `  · 판번호 ${counts.archivedHeats.toLocaleString()}건\n`
+    + `  · 강재  ${counts.archivedPlans.toLocaleString()}장\n\n`
+    + `※ 지금 화면에 보이는 기간·필터와 무관하게 전량이 복원됩니다.\n계속하시겠습니까?`, true);
 
   // accessors — 표시값과 동일한 문자열/숫자를 반환해야 필터·정렬이 화면과 일치
   const heatAccessors = useMemo<ColumnAccessorMap<HeatRow>>(() => ({
@@ -264,14 +289,18 @@ function PlatesTab() {
         </select>
         <span className="text-sm text-gray-600">이상 →</span>
         <button onClick={run} disabled={busy || eligible === 0} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50">
-          {busy ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />} 아카이브 실행 ({eligible}건)
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />} 아카이브 실행 (판번호 {counts.eligibleHeats.toLocaleString()}건 · 강재 {counts.eligiblePlans.toLocaleString()}장)
         </button>
-        <button onClick={restoreAll} className="ml-auto inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50"><Undo2 size={14} /> 전체 복원</button>
+        <span className="ml-auto text-xs text-gray-500">
+          현재 숨김: <b className="text-gray-700">판번호 {counts.archivedHeats.toLocaleString()}건 · 강재 {counts.archivedPlans.toLocaleString()}장</b>
+        </span>
+        <button onClick={restoreAll} disabled={archivedTotal === 0} className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 disabled:opacity-40"><Undo2 size={14} /> 전체 복원</button>
       </div>
 
       {/* 기간 조회 */}
       <div className="bg-white border border-gray-200 rounded-xl p-3 flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold text-gray-700">기간 조회</span>
+        <span className="text-[11px] text-gray-400">이미 숨겨진 것을 되짚어 보는 <b>조회 전용</b> — 위 [아카이브 실행] 범위와 무관합니다</span>
         <select value={basis} onChange={e => setBasis(e.target.value as Basis)} className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg" title="기간 판정 기준일">
           <option value="archivedAt">아카이브일자</option>
           <option value="terminal">터미널일(사용/출고)</option>

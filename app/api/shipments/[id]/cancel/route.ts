@@ -86,6 +86,9 @@ export async function POST(
               data:  {
                 status: SteelPlanStatus.RECEIVED,
                 issuedAt: null,
+                // 숨김 해제 — 아카이브된 강재를 출고취소하면 재고로 되살아나는데,
+                // 도장이 남으면 강재전체목록·아카이브 어디에도 안 보이면서 소진만 되는 유령이 된다.
+                archivedAt: null,
                 ...(keepSelection && (sp.shipoutLabel || item.originShipoutLabel || !item.adHocFromField)
                   ? {
                       shipoutMarkedAt: sp.shipoutMarkedAt ?? new Date(),
@@ -131,7 +134,8 @@ export async function POST(
                 if (otherShipped === 0) {
                   await tx.steelPlanHeat.update({
                     where: { id: h.id },
-                    data:  { status: SteelPlanHeatStatus.WAITING, shippedAt: null },
+                    // archivedAt 동반 해제 — 위 원판과 같은 이유(숨겨진 대기 판번호 = 유령)
+                    data:  { status: SteelPlanHeatStatus.WAITING, shippedAt: null, archivedAt: null },
                   });
                 }
               }

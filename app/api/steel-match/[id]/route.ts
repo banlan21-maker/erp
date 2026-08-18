@@ -45,6 +45,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const plansRaw = await prisma.steelPlan.findMany({
       where: {
+        archivedAt: null, // 아카이브(숨김) 제외 — 강재전체목록과 같은 모집단이어야 매칭이 일치한다
         status: { in: statuses },
         ...(reservedNone ? { reservedFor: null, shipoutMarkedAt: null } : {}),
       },

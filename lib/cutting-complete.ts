@@ -354,7 +354,8 @@ export async function applyCuttingRestore(tx: Tx, log: RestoreLog): Promise<void
   if (log.consumedHeatId) {
     const r = await tx.steelPlanHeat.updateMany({
       where: { id: log.consumedHeatId, status: "CUT" },
-      data:  { status: "WAITING", cutAt: null },
+      // archivedAt 동반 해제 — 안 지우면 대기 상태인데 숨겨진 "유령 재고"가 된다(어느 목록에도 안 보이는데 소진은 됨)
+      data:  { status: "WAITING", cutAt: null, archivedAt: null },
     });
     if (r.count > 0) restoredHeat = true;
   }
@@ -388,7 +389,7 @@ export async function applyCuttingRestore(tx: Tx, log: RestoreLog): Promise<void
         select: { id: true },
       });
       if (referenced) {
-        await tx.steelPlanHeat.update({ where: { id: surplusHeat.id }, data: { status: "WAITING", cutAt: null } });
+        await tx.steelPlanHeat.update({ where: { id: surplusHeat.id }, data: { status: "WAITING", cutAt: null, archivedAt: null } });
       } else {
         await tx.steelPlanHeat.delete({ where: { id: surplusHeat.id } });
       }
@@ -402,7 +403,7 @@ export async function applyCuttingRestore(tx: Tx, log: RestoreLog): Promise<void
         select: { id: true },
       });
       if (one) {
-        await tx.steelPlanHeat.update({ where: { id: one.id }, data: { status: "WAITING", cutAt: null } });
+        await tx.steelPlanHeat.update({ where: { id: one.id }, data: { status: "WAITING", cutAt: null, archivedAt: null } });
       }
     }
   }
@@ -455,6 +456,7 @@ export async function applyCuttingRestore(tx: Tx, log: RestoreLog): Promise<void
         data: {
           status:           "RECEIVED",
           issuedAt:         null, // 절단완료 시 자동 기록된 출고일 초기화 (미투입 상태로 복원)
+          archivedAt:       null, // 숨김 해제 — 재고로 되살아난 강재가 아카이브에 갇히면 유령이 된다
           actualHeatNo:     null,
           actualVesselCode: null,
           actualDrawingNo:  null,

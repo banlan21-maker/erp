@@ -60,6 +60,7 @@ export async function POST() {
           actualHeatNo:     null,
           actualVesselCode: null,
           actualDrawingNo:  null,
+          archivedAt:       null, // 숨김 해제 — 재고로 되돌리면서 도장을 남기면 유령 재고가 된다
         },
       });
       revertedPlans = result.count;
@@ -73,7 +74,7 @@ export async function POST() {
     revertedSpecs.push(...noHeatPlanRecords);
     const noHeatPlans = await prisma.steelPlan.updateMany({
       where: { status: "COMPLETED", actualHeatNo: null },
-      data:  { status: "RECEIVED" },
+      data:  { status: "RECEIVED", archivedAt: null },
     });
 
     // ── SteelPlanHeat 동기화 ───────────────────────────────────────────────
@@ -91,7 +92,7 @@ export async function POST() {
     if (heatIdsToRevert.length > 0) {
       const result = await prisma.steelPlanHeat.updateMany({
         where: { id: { in: heatIdsToRevert } },
-        data:  { status: "WAITING", cutAt: null },
+        data:  { status: "WAITING", cutAt: null, archivedAt: null },
       });
       revertedHeats = result.count;
     }

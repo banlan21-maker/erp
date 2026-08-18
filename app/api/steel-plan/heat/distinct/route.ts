@@ -52,7 +52,10 @@ export async function GET(req: NextRequest) {
       }
     : {};
 
+  // 목록 본문(heat/route.ts:41)과 **같은 모집단**이어야 한다 — 빠뜨리면 아카이브된 호선·판번호가
+  // 필터 선택지에 남아 고르면 0건이 나온다("숨겼는데 왜 여기 있지?")
   const where = (excludeKey: string) => ({
+    archivedAt: null,
     ...searchWhere,
     ...buildCascadingWhere(BUILDERS, filters, excludeKey),
   });

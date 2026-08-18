@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
     //   판번호가 새로 생성된다(유령 판번호). 호선은 배지로 표시해 실물과 대조하게 한다.
     const list = await prisma.steelPlanHeat.findMany({
       where: {
+        archivedAt: null, // 아카이브(숨김) 제외 — CUT 도 후보에 포함되므로 명시 필요
         material,
         thickness: { gte: t - FLOAT_TOL, lte: t + FLOAT_TOL },
         width:     { gte: w - FLOAT_TOL, lte: w + FLOAT_TOL },

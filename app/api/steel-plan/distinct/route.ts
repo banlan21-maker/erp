@@ -85,7 +85,10 @@ export async function GET(req: NextRequest) {
     : {};
 
   // 2) cascading where 빌더 — 자기 자신 컬럼 제외 + search 조건 추가
+  //    목록 본문(steel-plan/route.ts:94)과 **같은 모집단**이어야 한다(위 62행 경량분기와도 일관).
+  //    빠뜨리면 아카이브된 값이 필터 선택지에 남아 고르면 0건이 나온다.
   const where = (excludeKey: string) => ({
+    archivedAt: null,
     ...searchWhere,
     ...buildCascadingWhere(BUILDERS, filters, excludeKey),
   });

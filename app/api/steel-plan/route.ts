@@ -267,6 +267,24 @@ export async function DELETE(req: NextRequest) {
   if (targets.length === 0) return NextResponse.json({ planCount: 0, heatCount: 0 });
   const ids = targets.map((t) => t.id);
 
+  // ⓪ 아카이브(숨김) 자재 포함 시 차단 — 화면에 안 보이는 자료가 조용히 영구 삭제되는 것을 막는다.
+  //    호선/배치 단위 삭제는 아카이브 여부를 안 보므로, 아카이브해 둔 과거 자료가 한 번에 사라질 수 있었다.
+  //    (판번호도 아래 deleteHeatWhere 로 같이 지워지므로 함께 센다)
+  if (!Array.isArray(body.ids)) {
+    const [arcPlans, arcHeats] = await Promise.all([
+      prisma.steelPlan.count({ where: { ...where, archivedAt: { not: null } } }),
+      deleteHeatWhere ? prisma.steelPlanHeat.count({ where: { ...deleteHeatWhere, archivedAt: { not: null } } }) : Promise.resolve(0),
+    ]);
+    if ((arcPlans + arcHeats) > 0 && body.forceArchived !== true) {
+      return NextResponse.json({
+        error: `아카이브(숨김) 자료가 포함되어 있습니다 — 강재 ${arcPlans}장 · 판번호 ${arcHeats}건.\n`
+             + `삭제하면 되돌릴 수 없습니다. 아카이브 메뉴에서 먼저 복원해 확인하거나, 그대로 삭제하려면 다시 확인하세요.`,
+        needsForceArchived: true,
+        archived: { plans: arcPlans, heats: arcHeats },
+      }, { status: 409 });
+    }
+  }
+
   // ① 절단완료 강재 포함 시 차단 — 작업일보에서 절단취소 먼저
   const completed = targets.filter((t) => t.status === "COMPLETED").length;
   if (completed > 0) {
