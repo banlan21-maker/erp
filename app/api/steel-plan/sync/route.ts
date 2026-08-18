@@ -24,13 +24,28 @@ import { syncDrawingListBySpecs } from "@/lib/sync-drawing-spec";
 
 export async function POST() {
   try {
-    // ── 현재 활성 작업일보의 heatNo 목록 (COMPLETED 상태) ──────────────────
-    // 이 목록에 있는 heatNo는 실제로 사용 중이므로 COMPLETED 상태가 정당함
+    // ── 현재 활성 작업일보의 '소진 근거' 수집 (COMPLETED 상태) ──────────────
+    // 이 목록에 있으면 실제로 사용 중이므로 COMPLETED/CUT 상태가 정당하다.
+    //
+    // ⚠ 예전에는 **작업일보의 heatNo 문자열만** 봤다. 그런데 그 문자열은 현장에서 손으로 적은
+    //   값이라 틀릴 수 있고(옆 호선 판번호 오기 등), 그때 실제로 소진한 판은 `consumedHeatId`
+    //   에 정확히 기록된다(스키마 주석: "절단완료 시 '실제로' 소진한 판번호 id").
+    //   문자열만 보면 → 손으로 교정해 둔 판번호가 [새로고침] 한 번에 대기로 되돌아가고
+    //   절단일(cutAt)까지 지워진다. 실제로 2026-08-18 교정한 B56848103 이 그렇게 취소됐다.
+    //   → consumedHeatId 로 연결된 판번호도 '근거 있음'으로 인정한다. (2026-08-18)
     const activeLogs = await prisma.cuttingLog.findMany({
-      where:  { status: "COMPLETED", heatNo: { not: "" } },
-      select: { heatNo: true },
+      where:  { status: "COMPLETED" },
+      select: { heatNo: true, consumedHeatId: true },
     });
-    const activeHeatNos = new Set(activeLogs.map(l => l.heatNo.trim()).filter(Boolean));
+    const activeHeatNos = new Set(activeLogs.map(l => (l.heatNo ?? "").trim()).filter(Boolean));
+    const consumedHeatIds = new Set(activeLogs.map(l => l.consumedHeatId).filter((x): x is string => !!x));
+    // consumedHeatId 로 지목된 판번호의 heatNo 도 '근거 있는 문자열'로 취급 (SteelPlan.actualHeatNo 대조용)
+    if (consumedHeatIds.size > 0) {
+      const consumed = await prisma.steelPlanHeat.findMany({
+        where: { id: { in: [...consumedHeatIds] } }, select: { heatNo: true },
+      });
+      for (const h of consumed) { const v = (h.heatNo ?? "").trim(); if (v) activeHeatNos.add(v); }
+    }
 
     // ── SteelPlan 동기화 ────────────────────────────────────────────────────
     // COMPLETED 상태인데 actualHeatNo가 활성 작업일보에 없으면 → RECEIVED 복원
@@ -93,8 +108,9 @@ export async function POST() {
       select: { id: true, heatNo: true },
     });
 
+    // consumedHeatId 로 정확히 지목된 판은 문자열이 안 맞아도 근거가 있다 → 되돌리지 않는다
     const heatIdsToRevert = cutHeats
-      .filter(h => !activeHeatNos.has(h.heatNo.trim()))
+      .filter(h => !consumedHeatIds.has(h.id) && !activeHeatNos.has(h.heatNo.trim()))
       .map(h => h.id);
 
     let revertedHeats = 0;

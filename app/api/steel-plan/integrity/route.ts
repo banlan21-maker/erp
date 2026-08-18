@@ -64,7 +64,7 @@ export async function GET() {
       prisma.cuttingLog.findMany({
         where: { status: "COMPLETED", isUrgent: false, heatNo: { not: "" } },
         select: {
-          id: true, heatNo: true, material: true, thickness: true, width: true, length: true,
+          id: true, heatNo: true, consumedHeatId: true, material: true, thickness: true, width: true, length: true,
           drawingNo: true, operator: true, endAt: true, startAt: true,
           project: { select: { projectCode: true } },
           drawingList: { select: { alternateVesselCode: true } },
@@ -151,8 +151,13 @@ export async function GET() {
     }
 
     // ── C. 판번호리스트=절단/외부 인데 근거(작업일보/출고) 없음 (유령) ─────────────
+    //   ⚠ heatNo 문자열은 현장 손입력이라 틀릴 수 있다(옆 호선 판번호 오기 등). 그때 실제 소진 판은
+    //     `consumedHeatId` 로 정확히 기록되므로, 그 링크가 있으면 '근거 있음'으로 인정한다.
+    //     (안 그러면 손 교정한 판이 영구히 '유령 절단'으로 뜬다 — 2026-08-18)
+    const consumedIds = new Set(cutLogs.map((l) => l.consumedHeatId).filter((x): x is string => !!x));
     const heatStaleCutAll = heats
       .filter((h) => {
+        if (consumedIds.has(h.id)) return false;
         const k = heatKey(h.vesselCode, h.material, h.thickness, h.width, h.length, h.heatNo);
         if (h.status === "CUT") return !cutLogByHeatKey.has(k) && !shipByHeatKey.has(k);
         if (h.status === "SHIPPED") return !shipByHeatKey.has(k);
