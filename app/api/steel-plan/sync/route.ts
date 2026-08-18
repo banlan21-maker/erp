@@ -66,14 +66,23 @@ export async function POST() {
       revertedPlans = result.count;
     }
 
-    // actualHeatNo가 null인데 COMPLETED인 이상한 케이스도 복원 + spec 수집
+    // actualHeatNo가 null인데 COMPLETED인 케이스 복원.
+    //
+    // ⚠ issuedAt 이 있으면 건드리지 않는다 — 2026-08-18 발견:
+    //   유령 확정 사후정리처럼 **손으로 절단완료 처리한 강재**는 status·issuedAt 만 세팅하고
+    //   actualHeatNo 는 비어 있다(소진 근거가 판번호가 아니라 사람 판단이라). 그런데 이 규칙이
+    //   그걸 무조건 RECEIVED 로 되돌려, 강재입고관리 [새로고침] 한 번에 교정이 조용히 취소됐다.
+    //   실제로 2026-07-21 교정한 4장 중 살아있던 1장(KYTS-1022/S70PS)이 이렇게 되돌아왔고,
+    //   정합성 진단 H 가 그걸 다시 잡아냈다. issuedAt = '절단완료 처리를 실제로 거쳤다'는 흔적이므로
+    //   그게 있으면 정상 완료로 보고 남긴다. 잘못된 건이면 진단 H·D 가 별도로 띄운다.
+    const noHeatWhere = { status: "COMPLETED" as const, actualHeatNo: null, issuedAt: null };
     const noHeatPlanRecords = await prisma.steelPlan.findMany({
-      where: { status: "COMPLETED", actualHeatNo: null },
+      where: noHeatWhere,
       select: { vesselCode: true, material: true, thickness: true, width: true, length: true },
     });
     revertedSpecs.push(...noHeatPlanRecords);
     const noHeatPlans = await prisma.steelPlan.updateMany({
-      where: { status: "COMPLETED", actualHeatNo: null },
+      where: noHeatWhere,
       data:  { status: "RECEIVED", archivedAt: null },
     });
 

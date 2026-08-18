@@ -6,11 +6,12 @@ import { useEffect, useState, type ReactNode } from "react";
 
 interface Report {
   generatedAt: string;
-  totals: { steelPlans: number; steelPlanHeats: number; completedCutLogs: number; activeShipItems: number };
+  totals: { steelPlans: number; steelPlanHeats: number; completedCutLogs: number; activeShipItems: number;
+            activeSteelPlans?: number; activeSteelPlanHeats?: number; archivedSteelPlans?: number; archivedSteelPlanHeats?: number };
   summary: {
     dupCutLogs: number; heatMissedFlip: number; heatStaleCut: number;
     specStatusMismatch: number; dupWaitingHeat: number;
-    orphanHeats: number; ghostReserved: number;
+    orphanHeats: number; ghostReserved: number; blockDoneReserved: number;
   };
   dupCutLogs: {
     heatNo: string; vesselCode: string; material: string; thickness: number | null; width: number | null; length: number | null;
@@ -38,12 +39,17 @@ interface Report {
   ghostReserved: {
     vesselCode: string; material: string; thickness: number | null; width: number | null; length: number | null; reservedFor: string | null; status: string;
   }[];
+  blockDoneReserved: {
+    vesselCode: string; material: string; thickness: number | null; width: number | null; length: number | null;
+    status: string; reservedFor: string | null; blockKey: string; drawingRows: number; hint: string;
+  }[];
 }
 
 const spec = (r: { material: string; thickness: number | null; width: number | null; length: number | null }) =>
   `${r.material} ${r.thickness}×${r.width}×${r.length}`;
 
 const CARDS: { key: keyof Report["summary"]; label: string; desc: string; tone: string }[] = [
+  { key: "blockDoneReserved",  label: "완료 블록 잔여 확정", desc: "블록 절단이 끝났는데 그 블록 확정 철판이 재고로 남음", tone: "text-red-600" },
   { key: "heatMissedFlip",     label: "판번호 전환 누락",   desc: "작업일보=절단인데 판번호리스트=재고", tone: "text-red-600" },
   { key: "specStatusMismatch", label: "사양 수량 불일치",   desc: "강재목록 vs 판번호리스트 상태 수량 차이", tone: "text-red-600" },
   { key: "dupCutLogs",         label: "판번호 중복 절단",   desc: "같은 판번호가 2건 이상 절단완료", tone: "text-orange-600" },
@@ -201,6 +207,24 @@ export default function IntegrityPage() {
                 <td className="px-2 py-1">{r.vesselCode}</td>
                 <td className="px-2 py-1">{spec(r)}</td>
                 <td className="px-2 py-1 text-center">{r.status === "WAITING" ? "재고" : r.status === "CUT" ? "절단" : r.status === "SHIPPED" ? "외부" : r.status}</td>
+              </tr>
+            )}
+          />
+
+          {/* H. 완료 블록 잔여 확정 — 현장이 가장 먼저 알아채는 유형 */}
+          <Section
+            title="⛔ 완료 블록 잔여 확정 (블록 절단이 끝났는데 확정 철판이 재고로 남음)"
+            count={data.summary.blockDoneReserved}
+            rows={data.blockDoneReserved}
+            head={<tr className="text-gray-500 text-left"><th className="px-2 py-1">호선</th><th className="px-2 py-1">사양</th><th className="px-2 py-1">확정 블록</th><th className="px-2 py-1 text-center">도면</th><th className="px-2 py-1 text-center">상태</th><th className="px-2 py-1">추정 원인</th></tr>}
+            render={(r, i) => (
+              <tr key={i} className="border-t border-gray-100">
+                <td className="px-2 py-1">{r.vesselCode}</td>
+                <td className="px-2 py-1">{spec(r)}</td>
+                <td className="px-2 py-1 font-mono text-gray-600">{r.blockKey}</td>
+                <td className="px-2 py-1 text-center text-gray-500">{r.drawingRows}행 전부 절단</td>
+                <td className="px-2 py-1 text-center">{r.status === "RECEIVED" ? "입고" : r.status === "ISSUED" ? "투입" : r.status === "REGISTERED" ? "등록" : r.status}</td>
+                <td className="px-2 py-1 text-gray-500">{r.hint}</td>
               </tr>
             )}
           />

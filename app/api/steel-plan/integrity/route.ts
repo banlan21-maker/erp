@@ -18,6 +18,13 @@ export const dynamic = "force-dynamic";
  *  C. heatStaleCut       판번호리스트는 절단/외부인데 근거 작업일보·출고가 없음 (유령 절단/출고)
  *  D. specStatusMismatch 사양 단위로 강재목록 vs 판번호리스트의 절단/외부/재고 "수량" 이 다름
  *  E. dupWaitingHeat     같은 판번호(사양)가 재고(WAITING) 상태로 2행 이상 (중복 등록)
+ *  F. orphanHeats         강재목록에 대응 사양이 없는 판번호
+ *  G. ghostReserved       reservedFor 인데 그 블록 도면이 존재 안 함
+ *  H. blockDoneReserved   ★ 블록 도면이 전부 절단(CUT)됐는데 그 블록에 확정된 철판이 아직 재고
+ *                         — 2026-07 S60PS 11장·2026-08 S70PS 1장이 이 유형. G·D 로는 안 잡힌다:
+ *                           G 는 '도면 존재 여부'만 보므로 도면이 있으면 통과하고,
+ *                           D 는 사양 총량 비교라 다른 블록 잔여와 상쇄되면 차이가 0으로 나온다.
+ *                         현장 표현 그대로의 판정이다 — "블록 절단이 끝났으면 그 블록 확정 철판은 남으면 안 된다".
  */
 
 import { NextResponse } from "next/server";
@@ -44,13 +51,13 @@ export async function GET() {
       prisma.steelPlan.findMany({
         select: {
           id: true, vesselCode: true, material: true, thickness: true, width: true, length: true,
-          status: true, actualHeatNo: true, reservedFor: true, shipoutMarkedAt: true,
+          status: true, actualHeatNo: true, reservedFor: true, shipoutMarkedAt: true, archivedAt: true,
         },
       }),
       prisma.steelPlanHeat.findMany({
         select: {
           id: true, vesselCode: true, material: true, thickness: true, width: true, length: true,
-          heatNo: true, status: true, autoCreatedFromShipment: true,
+          heatNo: true, status: true, autoCreatedFromShipment: true, archivedAt: true,
         },
       }),
       // 정규(비돌발) 절단완료 작업일보 — heatNo 있는 것만
@@ -75,7 +82,7 @@ export async function GET() {
         },
       }),
       // 도면 목록 (유령 확정 판정용) — 실존 블록 집합
-      prisma.drawingList.findMany({ select: { block: true, project: { select: { projectCode: true } } } }),
+      prisma.drawingList.findMany({ select: { block: true, status: true, material: true, thickness: true, width: true, length: true, project: { select: { projectCode: true } } } }),
     ]);
 
     // ── 작업일보 기준 "절단된 판번호" 집합 (진실의 근거) ────────────────────────
@@ -236,6 +243,59 @@ export async function GET() {
         reservedFor: p.reservedFor, status: p.status,
       }));
 
+    // ── H. 블록 도면이 전부 절단됐는데 그 블록 확정 철판이 아직 재고 (S60PS/S70PS 유형) ──────
+    //    "블록 절단이 끝났으면 그 블록에 확정된 철판은 남아 있으면 안 된다" 를 그대로 옮긴 판정.
+    const STOCK_ST = new Set(["REGISTERED", "RECEIVED", "ISSUED"]);
+    type BlkAgg = { total: number; cut: number; specs: Set<string> };
+    const blkAgg = new Map<string, BlkAgg>();       // "호선/블록" → 집계
+    const blkByName = new Map<string, string[]>();  // 블록명 → 해당 키들 (호선 없는 reservedFor 대응)
+    for (const d of draws) {
+      const b = (d.block ?? "").trim();
+      if (!b) continue;
+      const k = `${d.project?.projectCode ?? ""}/${b}`;
+      const e = blkAgg.get(k) ?? { total: 0, cut: 0, specs: new Set<string>() };
+      e.total++;
+      if (d.status === "CUT") e.cut++;
+      e.specs.add(specOf(d.material, d.thickness, d.width, d.length));
+      blkAgg.set(k, e);
+      const list = blkByName.get(b) ?? [];
+      if (!list.includes(k)) { list.push(k); blkByName.set(b, list); }
+    }
+    const isDone = (k: string) => { const e = blkAgg.get(k); return !!e && e.total > 0 && e.cut === e.total; };
+
+    const blockDoneReservedAll = plans
+      .filter((p) => p.reservedFor && STOCK_ST.has(p.status))
+      .map((p) => {
+        const rf = (p.reservedFor ?? "").trim();
+        // reservedFor 는 "호선/블록" 또는 "블록" 두 형태. 후자면 자기 호선 우선, 없으면 동명 블록 전체.
+        let keys: string[];
+        if (rf.includes("/")) keys = [rf];
+        else {
+          const own = `${vk(p.vesselCode)}/${rf}`;
+          keys = blkAgg.has(own) ? [own] : (blkByName.get(rf) ?? []);
+        }
+        if (keys.length === 0) return null;                 // 도면 없음 = G 가 다룬다
+        if (!keys.every(isDone)) return null;               // 하나라도 안 끝났으면 정상(보수적 판정)
+        const spec = specOf(p.material, p.thickness, p.width, p.length);
+        // 그 블록에 같은 사양 도면이 있으면 '소진 누락', 없으면 '확정 오배정' 쪽 의심
+        const specInBlock = keys.some((k) => blkAgg.get(k)?.specs.has(spec));
+        const agg = blkAgg.get(keys[0])!;
+        return {
+          vesselCode: p.vesselCode, material: up(p.material),
+          thickness: p.thickness, width: p.width, length: p.length,
+          status: p.status, reservedFor: p.reservedFor,
+          blockKey: keys.join(","), drawingRows: agg.total,
+          hint: specInBlock ? "소진 누락 의심 (같은 사양 도면 있음)" : "확정 오배정 의심 (같은 사양 도면 없음)",
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null)
+      .sort((a, b) => a.blockKey.localeCompare(b.blockKey));
+
+    // 아카이브(숨김) 분포 — 화면 목록은 아카이브를 제외하는데 이 진단은 전량을 세므로,
+    // 숫자가 달라 보이는 이유를 함께 보고한다(§16-6 감수 항목).
+    const archivedPlanCount = plans.filter((p) => p.archivedAt != null).length;
+    const archivedHeatCount = heats.filter((h) => h.archivedAt != null).length;
+
     return NextResponse.json({
       generatedAt: new Date().toISOString(),
       totals: {
@@ -243,6 +303,11 @@ export async function GET() {
         steelPlanHeats: heats.length,
         completedCutLogs: cutLogs.length,
         activeShipItems: shipItems.length,
+        // 활성/아카이브 분리 — 화면(강재전체목록·판번호리스트)은 활성만 보여준다
+        activeSteelPlans: plans.length - archivedPlanCount,
+        activeSteelPlanHeats: heats.length - archivedHeatCount,
+        archivedSteelPlans: archivedPlanCount,
+        archivedSteelPlanHeats: archivedHeatCount,
       },
       summary: {
         dupCutLogs: dupCutLogsAll.length,
@@ -252,6 +317,7 @@ export async function GET() {
         dupWaitingHeat: dupWaitingHeatAll.length,
         orphanHeats: orphanHeatsAll.length,
         ghostReserved: ghostReservedAll.length,
+        blockDoneReserved: blockDoneReservedAll.length,
       },
       dupCutLogs: dupCutLogsAll.slice(0, SAMPLE_CAP),
       heatMissedFlip: heatMissedFlipAll.slice(0, SAMPLE_CAP),
@@ -260,6 +326,7 @@ export async function GET() {
       dupWaitingHeat: dupWaitingHeatAll.slice(0, SAMPLE_CAP),
       orphanHeats: orphanHeatsAll.slice(0, SAMPLE_CAP),
       ghostReserved: ghostReservedAll.slice(0, SAMPLE_CAP),
+      blockDoneReserved: blockDoneReservedAll.slice(0, SAMPLE_CAP),
     });
   } catch (error) {
     console.error("[GET /api/steel-plan/integrity]", error);

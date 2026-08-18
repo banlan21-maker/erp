@@ -64,10 +64,11 @@ export default function AdminPage() {
 
 /* ── 강재↔판번호 정합성 진단 ─────────────────────────────── */
 interface IntegrityReport {
-  totals: { steelPlans: number; steelPlanHeats: number; completedCutLogs: number; activeShipItems: number };
+  totals: { steelPlans: number; steelPlanHeats: number; completedCutLogs: number; activeShipItems: number;
+            activeSteelPlans?: number; activeSteelPlanHeats?: number; archivedSteelPlans?: number; archivedSteelPlanHeats?: number };
   summary: {
     dupCutLogs: number; heatMissedFlip: number; heatStaleCut: number; specStatusMismatch: number; dupWaitingHeat: number;
-    orphanHeats: number; ghostReserved: number;
+    orphanHeats: number; ghostReserved: number; blockDoneReserved: number;
   };
 }
 function IntegrityCard() {
@@ -85,6 +86,8 @@ function IntegrityCard() {
   };
 
   const tiles: { key: keyof IntegrityReport["summary"]; label: string }[] = [
+    // H 는 "안전 정리 대상"(지워도 되는 값)이 아니다 — 실물이 걸린 결함이라 결함 그리드에 둔다
+    { key: "blockDoneReserved", label: "완료블록 잔여확정" },
     { key: "heatMissedFlip",     label: "전환누락" },
     { key: "specStatusMismatch", label: "사양 수량 불일치" },
     { key: "dupCutLogs",         label: "판번호 중복절단" },
@@ -112,8 +115,11 @@ function IntegrityCard() {
           <>
             <p className="text-xs text-gray-400">
               강재 {data.totals.steelPlans} · 판번호 {data.totals.steelPlanHeats} · 절단완료 작업일보 {data.totals.completedCutLogs} · 활성출고 {data.totals.activeShipItems}
+              {(data.totals.archivedSteelPlans ?? 0) + (data.totals.archivedSteelPlanHeats ?? 0) > 0 && (
+                <span className="ml-1 text-gray-400">(이 중 아카이브 강재 {data.totals.archivedSteelPlans} · 판번호 {data.totals.archivedSteelPlanHeats} — 화면 목록에는 안 보이는 분)</span>
+              )}
             </p>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
               {tiles.map(t => (
                 <div key={t.key} className="border border-gray-200 rounded-lg p-2.5 text-center">
                   <div className={`text-xl font-bold ${data.summary[t.key] > 0 ? "text-red-600" : "text-gray-300"}`}>{data.summary[t.key]}</div>
