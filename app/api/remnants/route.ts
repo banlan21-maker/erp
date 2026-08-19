@@ -43,6 +43,56 @@ function buildSourceFilter(sources: string[]) {
   return { OR: conditions };
 }
 
+/* ── 조건별 검색 (칸 안은 쉼표 = OR, 칸끼리는 AND) ───────────────────────────
+   강재전체목록·작업일보관리와 같은 규약:
+     · 숫자 칸(두께·폭·길이) = 완전일치 OR 목록
+     · 글자 칸(위치·확정정보) = 부분일치 OR 목록
+     · 폭/길이는 폭1·폭2(길이1·길이2) **어느 쪽이든** 맞으면 통과 (L자형 대응)          */
+const splitQ = (v: string | null) =>
+  (v ?? "").split(",").map(x => x.trim()).filter(Boolean);
+
+const numOrCond = (raw: string | null, fields: string[]) => {
+  const nums = splitQ(raw).map(Number).filter(n => !Number.isNaN(n));
+  if (!nums.length) return null;
+  return { OR: fields.map(f => ({ [f]: { in: nums } })) };
+};
+
+const textOrCond = (raw: string | null, fields: string[]) => {
+  const vals = splitQ(raw);
+  if (!vals.length) return null;
+  const conds = vals.flatMap(v =>
+    fields.map(f => ({ [f]: { contains: v, mode: "insensitive" as const } })));
+  return { OR: conds };
+};
+
+// 확정정보 = reservedFor(직접 확정) 또는 배정된 도면의 호선/블록
+const reservedCond = (raw: string | null) => {
+  const vals = splitQ(raw);
+  if (!vals.length) return null;
+  const conds = vals.flatMap(v => ([
+    { reservedFor: { contains: v, mode: "insensitive" as const } },
+    { assignedToLists: { some: { OR: [
+      { block: { contains: v, mode: "insensitive" as const } },
+      { project: { projectCode: { contains: v, mode: "insensitive" as const } } },
+    ] } } },
+  ]));
+  return { OR: conds };
+};
+
+// 상태 — 화면 표기(재고/확정/소진) 기준. 확정은 status 가 아니라 reservedFor 로 갈린다.
+//   재고 = IN_STOCK 이면서 미확정 / 확정 = 소진 아니면서 reservedFor 있음 / 소진 = EXHAUSTED
+const statusCond = (raw: string | null) => {
+  const vals = splitQ(raw).map(v => v.toUpperCase());
+  if (!vals.length) return null;
+  const conds: object[] = [];
+  const has = (...keys: string[]) => keys.some(k => vals.includes(k));
+  if (has("재고", "IN_STOCK"))  conds.push({ status: "IN_STOCK", reservedFor: null });
+  if (has("확정", "RESERVED"))  conds.push({ status: { not: "EXHAUSTED" }, NOT: { reservedFor: null } });
+  if (has("소진", "EXHAUSTED")) conds.push({ status: "EXHAUSTED" });
+  if (!conds.length) return null;
+  return conds.length === 1 ? conds[0] : { OR: conds };
+};
+
 // GET /api/remnants
 // page 파라미터 있음 → 페이지네이션 응답 { data, total, totalPages }
 // page 파라미터 없음 → 전체 목록 응답 { success, data } (하위 호환)
@@ -121,6 +171,18 @@ export async function GET(request: NextRequest) {
       ...(onlyAvailable ? { reservedFor: null } : {}),
       ...buildSourceFilter(sources),
     };
+
+    // 조건별 검색 — 각 조건은 자체 OR 를 갖고, 조건끼리는 AND.
+    // where 최상위 OR 는 free-text search 가 이미 쓰고 있어 AND 배열로 합류시킨다.
+    const andConds = [
+      numOrCond(sp.get("qThickness"), ["thickness"]),
+      numOrCond(sp.get("qWidth"),     ["width1", "width2"]),
+      numOrCond(sp.get("qLength"),    ["length1", "length2"]),
+      textOrCond(sp.get("qLocation"), ["location"]),
+      statusCond(sp.get("qStatus")),
+      reservedCond(sp.get("qReserved")),
+    ].filter(Boolean) as object[];
+    if (andConds.length) where.AND = andConds;
 
     const include = {
       sourceProject: { select: { id: true, projectCode: true, projectName: true } },

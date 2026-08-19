@@ -62,6 +62,19 @@ type RemnantRow = {
 
 const PAGE_SIZE = 50;
 
+// 조건별 검색 필드 — 컬럼에 보이는 내용 그대로 찾을 수 있게
+type CondQuery = { thickness: string; width: string; length: string; location: string; status: string; reserved: string };
+const EMPTY_COND: CondQuery = { thickness: "", width: "", length: "", location: "", status: "", reserved: "" };
+const condIsEmpty = (c: CondQuery) => Object.values(c).every(v => !v.trim());
+const COND_FIELDS: { key: keyof CondQuery; label: string; ph: string; w: string }[] = [
+  { key: "thickness", label: "두께",     ph: "12, 15",        w: "w-24" },
+  { key: "width",     label: "폭",       ph: "2450, 2500",    w: "w-28" },
+  { key: "length",    label: "길이",     ph: "11600",         w: "w-28" },
+  { key: "location",  label: "위치",     ph: "A동, 야적장",    w: "w-32" },
+  { key: "status",    label: "상태",     ph: "재고, 확정, 소진", w: "w-32" },
+  { key: "reserved",  label: "확정정보", ph: "1022, S50PS",   w: "w-36" },
+];
+
 type RemnantCol = {
   key: string;
   label: string;
@@ -132,6 +145,10 @@ export default function RemnantListTab({
   const [remnants,       setRemnants]       = useState<RemnantRow[]>([]);
   const [loading,        setLoading]        = useState(false);
   const [search,         setSearch]         = useState("");
+  // 조건별 검색 — 칸 안은 쉼표로 여러 값(OR), 칸끼리는 AND.
+  //   강재전체목록·작업일보관리와 같은 규약. [조회] 를 눌러야 서버로 나간다(타이핑마다 안 나감).
+  const [cond,     setCond]     = useState<CondQuery>(EMPTY_COND);   // 입력 중
+  const [appliedCond, setApplied] = useState<CondQuery>(EMPTY_COND); // 실제 조회에 쓰인 값
   const [filters,        setFilters]        = useState<Record<string, string[]>>({ status: ["IN_STOCK"] }); // 기본: 재고만
   const [distinctValues, setDistinctValues] = useState<Record<string, FilterValue[]>>({});
   const [openCol,        setOpenCol]        = useState<string | null>(null);
@@ -182,6 +199,13 @@ export default function RemnantListTab({
     if (cf.vessel?.length)      p.set("sources",     cf.vessel.join(","));
     if (cf.block?.length)       p.set("sourceBlocks",cf.block.join(","));
     if (cf.location?.length)    p.set("locations",   cf.location.join(","));
+    // 조건별 검색 (칸 안 쉼표 = OR, 칸끼리 AND)
+    if (appliedCond.thickness.trim()) p.set("qThickness", appliedCond.thickness.trim());
+    if (appliedCond.width.trim())     p.set("qWidth",     appliedCond.width.trim());
+    if (appliedCond.length.trim())    p.set("qLength",    appliedCond.length.trim());
+    if (appliedCond.location.trim())  p.set("qLocation",  appliedCond.location.trim());
+    if (appliedCond.status.trim())    p.set("qStatus",    appliedCond.status.trim());
+    if (appliedCond.reserved.trim())  p.set("qReserved",  appliedCond.reserved.trim());
 
     try {
       const res  = await fetch(`/api/remnants?${p}`);
@@ -192,10 +216,10 @@ export default function RemnantListTab({
         setTotalPages(data.totalPages ?? 1);
       }
     } finally { setLoading(false); }
-  }, [typeFilter, page, search, filters]);
+  }, [typeFilter, page, search, filters, appliedCond]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-  useEffect(() => { setPage(1); }, [filters, search]);
+  useEffect(() => { setPage(1); }, [filters, search, appliedCond]);
 
   // 컬럼별 distinct 키 매핑
   const getDistinctForCol = (col: string): FilterValue[] => {
@@ -289,6 +313,48 @@ export default function RemnantListTab({
         <Button variant="outline" size="sm" onClick={fetchData} className="text-xs shrink-0 ml-auto">
           <RefreshCw size={12} className="mr-1" /> 새로고침
         </Button>
+      </div>
+
+      {/* 조건별 검색 — 칸 안은 쉼표로 여러 값(OR), 칸끼리는 AND */}
+      <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-end gap-2 flex-wrap">
+        {COND_FIELDS.map(f => (
+          <label key={f.key} className="flex flex-col gap-1">
+            <span className="text-[11px] font-semibold text-gray-500">{f.label}</span>
+            <input
+              value={cond[f.key]}
+              onChange={e => setCond(c => ({ ...c, [f.key]: e.target.value }))}
+              onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) setApplied(cond); }}
+              placeholder={f.ph}
+              className={`${f.w} px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400`}
+            />
+          </label>
+        ))}
+        <button
+          onClick={() => setApplied(cond)}
+          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold bg-gray-800 text-white rounded-lg hover:bg-gray-900"
+        >
+          <Search size={12} /> 조회
+        </button>
+        {/* 전체리스트 보기 — 조건·컬럼필터·검색어를 모두 비운다.
+            기본 필터가 '재고만'이라 소진분이 안 보이던 것도 여기서 함께 풀린다. */}
+        <button
+          onClick={() => { setCond(EMPTY_COND); setApplied(EMPTY_COND); setFilters({}); setSearch(""); setPage(1); }}
+          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+        >
+          <Package size={12} /> 전체리스트 보기
+        </button>
+        {!condIsEmpty(appliedCond) && (
+          <button
+            onClick={() => { setCond(EMPTY_COND); setApplied(EMPTY_COND); }}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs border border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50"
+          >
+            <X size={12} /> 조건 해제
+          </button>
+        )}
+        <span className="text-[11px] text-gray-400 ml-auto">
+          한 칸에 <b className="text-gray-500">쉼표</b>로 여러 값 (예: 두께 <code>12, 15</code>) · 칸끼리는 모두 만족
+          {typeFilter === "SURPLUS" && <> · 폭·길이는 폭1/폭2 어느 쪽이든 일치</>}
+        </span>
       </div>
 
       {/* 테이블 */}
