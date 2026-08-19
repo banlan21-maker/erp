@@ -128,6 +128,12 @@ export async function GET() {
       })
       .sort((a, b) => b.count - a.count);
 
+    // 작업일보가 `consumedHeatId` 로 정확히 지목한 판번호 집합 — B·C 공통 근거.
+    //   heatNo 문자열은 현장 손입력이라 틀릴 수 있고(옆 호선 판번호 오기 등), 그때 실제 소진 판은
+    //   이 필드로 기록된다. 문자열만 보면 정상 처리분이 '전환 누락'·'유령'으로 오탐된다. (2026-08-19)
+    const consumedIds = new Set(cutLogs.map((l) => l.consumedHeatId).filter((x): x is string => !!x));
+    const consumedHeatById = new Map(heats.filter((h) => consumedIds.has(h.id)).map((h) => [h.id, h]));
+
     // ── B. 작업일보=절단 인데 판번호리스트=재고/없음 (전환 누락) ──────────────────
     const heatMissedFlipAll: {
       heatNo: string; vesselCode: string; material: string;
@@ -137,7 +143,12 @@ export async function GET() {
     for (const [k, logsForKey] of cutLogByHeatKey.entries()) {
       if (shipByHeatKey.has(k)) continue; // 출고된 건 아래 D/외부에서 다룸
       const pool = heatByKey.get(k) ?? [];
-      const anyCut = pool.some((h) => h.status === "CUT");
+      // 이 키의 로그 중 하나라도 consumedHeatId 로 CUT 판을 지목했다면 전환은 이미 됐다(문자열만 다를 뿐)
+      const consumedCut = logsForKey.some((l) => {
+        const h = l.consumedHeatId ? consumedHeatById.get(l.consumedHeatId) : undefined;
+        return h?.status === "CUT" || h?.status === "SHIPPED";
+      });
+      const anyCut = consumedCut || pool.some((h) => h.status === "CUT");
       if (!anyCut) {
         const l = logsForKey[0];
         const v = l.drawingList?.alternateVesselCode?.trim() || l.project?.projectCode || "";
@@ -154,7 +165,6 @@ export async function GET() {
     //   ⚠ heatNo 문자열은 현장 손입력이라 틀릴 수 있다(옆 호선 판번호 오기 등). 그때 실제 소진 판은
     //     `consumedHeatId` 로 정확히 기록되므로, 그 링크가 있으면 '근거 있음'으로 인정한다.
     //     (안 그러면 손 교정한 판이 영구히 '유령 절단'으로 뜬다 — 2026-08-18)
-    const consumedIds = new Set(cutLogs.map((l) => l.consumedHeatId).filter((x): x is string => !!x));
     const heatStaleCutAll = heats
       .filter((h) => {
         if (consumedIds.has(h.id)) return false;
