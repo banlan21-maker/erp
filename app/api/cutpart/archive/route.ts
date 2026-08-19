@@ -91,14 +91,25 @@ export async function GET(req: NextRequest) {
     const heatNos = [...new Set(heats.map(h => h.heatNo))];
     const heatIds = heats.map(h => h.id);
 
-    // 사용정보 — CuttingLog(COMPLETED) 를 판번호로 조인 (판번호당 첫 절단)
+    // 사용정보 — CuttingLog(COMPLETED) 조인.
+    //   ① `consumedHeatId`(실제 소진 판 id) 정확매칭 우선 ② 링크 없는 로그만 heatNo 문자열 폴백.
+    //   heatNo 문자열만 쓰면 동명 판번호(수입재 등)에서 형제 판에 남의 절단이력이 붙고,
+    //   손 교정으로 consumedHeatId 를 채운 판은 반대로 이력이 아예 안 붙는다. (2026-08-19)
     const cutLogs = await prisma.cuttingLog.findMany({
-      where: { status: "COMPLETED", heatNo: { in: heatNos } },
+      where: { status: "COMPLETED", OR: [{ heatNo: { in: heatNos } }, { consumedHeatId: { in: heatIds } }] },
       include: { equipment: { select: { name: true } }, project: { select: { projectCode: true } }, drawingList: { select: { block: true, drawingNo: true } } },
       orderBy: { endAt: "asc" },
     });
-    const cutByHeat = new Map<string, (typeof cutLogs)[number]>();
-    for (const c of cutLogs) if (!cutByHeat.has(c.heatNo)) cutByHeat.set(c.heatNo, c);
+    const cutByHeatId = new Map<string, (typeof cutLogs)[number]>();   // 정확매칭
+    const cutByHeatNo = new Map<string, (typeof cutLogs)[number]>();   // 폴백(링크 없는 로그만)
+    for (const c of cutLogs) {
+      if (c.consumedHeatId) {
+        // 정확히 지목된 로그는 그 판 전용 — 형제 판에 넘겨주지 않는다
+        if (!cutByHeatId.has(c.consumedHeatId)) cutByHeatId.set(c.consumedHeatId, c);
+        continue;
+      }
+      if (!cutByHeatNo.has(c.heatNo)) cutByHeatNo.set(c.heatNo, c);
+    }
 
     // 출고정보 — ShipmentItem 을 판번호(steelPlanHeatId) 로 조인
     const shipItems = await prisma.shipmentItem.findMany({
@@ -109,7 +120,7 @@ export async function GET(req: NextRequest) {
     for (const si of shipItems) if (si.steelPlanHeatId && !shipByHeat.has(si.steelPlanHeatId)) shipByHeat.set(si.steelPlanHeatId, si);
 
     const data0 = heats.map(h => {
-      const cut = cutByHeat.get(h.heatNo);
+      const cut = cutByHeatId.get(h.id) ?? cutByHeatNo.get(h.heatNo);
       const ship = shipByHeat.get(h.id);
       const dest = ship ? ((ship.vehicle?.deliverySnapshot as { name?: string } | null)?.name ?? "") : "";
       const useDate = cut?.endAt ?? null;
