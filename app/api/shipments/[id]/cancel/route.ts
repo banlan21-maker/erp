@@ -86,6 +86,7 @@ export async function POST(
               data:  {
                 status: SteelPlanStatus.RECEIVED,
                 issuedAt: null,
+                finishedAt: null, // 종료일 초기화 (아카이브 판정축)
                 // 숨김 해제 — 아카이브된 강재를 출고취소하면 재고로 되살아나는데,
                 // 도장이 남으면 강재전체목록·아카이브 어디에도 안 보이면서 소진만 되는 유령이 된다.
                 archivedAt: null,

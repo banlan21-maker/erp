@@ -24,10 +24,14 @@ const heatWhere = (cutoff: Date) => ({
     { status: "SHIPPED" as const, shippedAt: { not: null, lte: cutoff } },
   ],
 });
+// 강재 판정축 = `finishedAt`(절단완료일/외부출고일). **`issuedAt`(투입일)이 아니다.**
+//   절단완료 처리는 issuedAt 을 이미 값이 있으면 덮어쓰지 않아(cutting-complete.ts), 투입된 철판은
+//   투입일이 남는다. 그 축으로 판정하면 판번호(cutAt=절단완료일)보다 강재가 먼저 숨어 두 목록이
+//   어긋난다 — 실측 2개월 66건·3개월 106건. finishedAt 은 판번호와 같은 축이라 격차가 사라진다.
 const planWhere = (cutoff: Date) => ({
   archivedAt: null,
   status: { in: ["COMPLETED", "SHIPPED_OUT"] as ("COMPLETED" | "SHIPPED_OUT")[] },
-  issuedAt: { not: null, lte: cutoff },
+  finishedAt: { not: null, lte: cutoff },
 });
 
 // 유령 청소 대상 — 상태는 재고로 되돌아갔는데 숨김 도장이 남은 행.
@@ -155,13 +159,13 @@ export async function GET(req: NextRequest) {
       //   (예전엔 archivedAt 외 분기가 없어 '사용일자'·'출고일자'를 골라도 강재 탭 결과가 안 바뀌었다)
       //   강재에는 절단완료일 컬럼이 따로 없다 — COMPLETED 는 issuedAt 이 절단완료 시 기록되고,
       //   SHIPPED_OUT 은 issuedAt = shippedAt 이라 둘 다 issuedAt 이 해당 축이다.
-      const pUse = p.status === "COMPLETED"   ? p.issuedAt : null;
-      const pOut = p.status === "SHIPPED_OUT" ? p.issuedAt : null;
+      const pUse = p.status === "COMPLETED"   ? p.finishedAt : null;
+      const pOut = p.status === "SHIPPED_OUT" ? p.finishedAt : null;
       const basisDate =
         basis === "useDate"    ? pUse :
         basis === "outDate"    ? pOut :
         basis === "archivedAt" ? p.archivedAt :
-                                 (p.issuedAt ?? p.receivedAt ?? p.archivedAt);
+                                 (p.finishedAt ?? p.issuedAt ?? p.receivedAt ?? p.archivedAt);
       return {
         row: {
           id: p.id, vesselCode: p.vesselCode, material: p.material, thickness: p.thickness, width: p.width, length: p.length,

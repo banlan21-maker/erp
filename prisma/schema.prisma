@@ -1201,7 +1201,10 @@ model SteelPlan {
   status             SteelPlanStatus @default(REGISTERED)
   receivedAt         DateTime? // 입고 처리일
   selectionPrintedAt DateTime? // 선별지시서 출력일
-  issuedAt           DateTime? // 출고 처리일 (절단장 투입일)
+  issuedAt           DateTime? // 출고 처리일 (절단장 투입일) — ⚠ 절단완료 시 이미 값이 있으면 덮어쓰지 않는다
+  // 실제 종료일 = 절단완료일 또는 외부출고일. 판번호의 cutAt/shippedAt 과 **같은 축**이라
+  // 아카이브 판정은 이 값을 쓴다(issuedAt=투입일을 쓰면 두 목록이 서로 다른 잣대로 숨는다).
+  finishedAt         DateTime?
   // ⚠ "레거시(사용 안 함)" 아니다 — 절단완료마다 기록되고, 상태동기화(steel-plan/sync)가
   //   강재↔작업일보 짝을 찾는 **유일한 연결고리**다. 지우면 sync 가 오작동한다. (2026-08-18 주석 정정)
   actualHeatNo       String? // 절단완료 시 소진 근거로 기록된 판번호

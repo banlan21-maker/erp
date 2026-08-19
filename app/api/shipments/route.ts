@@ -497,6 +497,7 @@ export async function POST(req: NextRequest) {
             data:  {
               status:          SteelPlanStatus.SHIPPED_OUT,
               issuedAt:        shippedAt,
+              finishedAt:      shippedAt, // 아카이브 판정축 — 판번호 shippedAt 과 같은 값
               storageLocation: null,
               // 선별 마킹(선별목록 멤버십)만 정리 — 선별목록 쿼리가 shipoutMarkedAt 기준이라 출고분 제외 필요.
               // shipoutLabel 은 보존: 확정정보 "{라벨} 출고" 표시 + 강재매칭이 출고분을 작업에 귀속해 '출고'로 인식.

@@ -241,6 +241,9 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
           status:           "COMPLETED",
           // 입출고장 투입(출고)을 안 했으면 절단완료일로 출고일 자동 기록. 기존 투입일 있으면 보존.
           ...(targetPlan.issuedAt ? {} : { issuedAt: log.endAt ?? new Date() }),
+          // finishedAt 은 issuedAt 과 달리 **항상** 절단완료 시각으로 덮어쓴다 —
+          // 판번호 cutAt 과 같은 축이어야 아카이브가 두 목록에서 같이 숨는다.
+          finishedAt: log.endAt ?? new Date(),
           actualHeatNo:     log.heatNo?.trim() || null,
           actualVesselCode: effectiveVessel,
           actualDrawingNo:  log.drawingNo,
@@ -456,6 +459,7 @@ export async function applyCuttingRestore(tx: Tx, log: RestoreLog): Promise<void
         data: {
           status:           "RECEIVED",
           issuedAt:         null, // 절단완료 시 자동 기록된 출고일 초기화 (미투입 상태로 복원)
+          finishedAt:       null, // 종료일도 초기화 (아카이브 판정축)
           archivedAt:       null, // 숨김 해제 — 재고로 되살아난 강재가 아카이브에 갇히면 유령이 된다
           actualHeatNo:     null,
           actualVesselCode: null,
