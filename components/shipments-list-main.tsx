@@ -209,21 +209,21 @@ export default function ShipmentsListMain({ hideHeader = false }: { hideHeader?:
         <table className="w-full text-sm table-fixed min-w-[860px]">
           <thead className="bg-gray-50 text-xs text-gray-500">
             <tr>
-              <th className="px-2 py-2 w-[4%] text-center">
+              <th className="px-2 py-2 w-[3%] text-center">
                 <input type="checkbox" onChange={toggleAll}
                   checked={registerable.length > 0 && checked.size === registerable.length}
                   title="등록 가능한 건 전체 선택" />
               </th>
-              <th className="px-3 py-2 text-left   w-[9%]">출고일</th>
-              <th className="px-3 py-2 text-left   w-[15%]">출고장 번호</th>
-              <th className="px-3 py-2 text-center w-[8%]">상태</th>
-              <th className="px-3 py-2 text-left   w-[13%]">차량번호</th>
-              <th className="px-3 py-2 text-left   w-[18%]">호선</th>
-              <th className="px-3 py-2 text-right  w-[6%]">수량</th>
-              <th className="px-3 py-2 text-right  w-[10%]">중량(kg)</th>
+              <th className="px-2 py-2 text-left   w-[8%]">출고일</th>
+              <th className="px-2 py-2 text-left   w-[13%]">출고장 번호</th>
+              <th className="px-2 py-2 text-center w-[6%]">상태</th>
+              <th className="px-2 py-2 text-left   w-[11%]">차량번호</th>
+              <th className="px-2 py-2 text-left   w-[11%]">호선</th>
+              <th className="px-2 py-2 text-right  w-[5%]">수량</th>
+              <th className="px-2 py-2 text-right  w-[8%]">중량(kg)</th>
               <th className="px-3 py-2 text-left">납품처</th>
-              <th className="px-3 py-2 text-center w-[7%]">용차</th>
-              <th className="px-2 py-2 text-center w-[4%]"></th>
+              <th className="px-2 py-2 text-center w-[6%]">용차</th>
+              <th className="px-2 py-2 text-center w-[3%]"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -244,25 +244,25 @@ export default function ShipmentsListMain({ hideHeader = false }: { hideHeader?:
                       <span className="text-[10px] text-amber-600" title={`출발지 ${v.departure ?? "미상"} — 진교 출발분만 용차 등록`}>✕</span>
                     ) : null}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">{isFirstOfShipment ? ymdSlash(s.shippedAt) : ""}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="px-2 py-2 font-mono text-xs whitespace-nowrap">{isFirstOfShipment ? ymdSlash(s.shippedAt) : ""}</td>
+                  <td className="px-2 py-2 whitespace-nowrap">
                     {isFirstOfShipment && (
                       <Link href={`/cutpart/shipments/${s.id}`} className="font-mono text-xs font-bold text-purple-700 hover:underline">{s.shipmentNo}</Link>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-center">
+                  <td className="px-2 py-2 text-center">
                     {isFirstOfShipment && (s.status === "ACTIVE"
                       ? <span className="inline-flex items-center gap-1 text-[11px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full"><CheckCircle2 size={11} /> 활성</span>
                       : <span className="inline-flex items-center gap-1 text-[11px] bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full"><AlertCircle size={11} /> 취소</span>)}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">{v.vehicleNo || "-"}</td>
-                  <td className="px-3 py-2 text-xs text-gray-700 truncate" title={v.vessels}>{v.vessels || "-"}</td>
-                  <td className="px-3 py-2 text-right text-xs text-gray-600 tabular-nums">{v.items.length}</td>
-                  <td className="px-3 py-2 text-right text-xs text-gray-600 tabular-nums">{weightOf(v).toLocaleString()}</td>
+                  <td className="px-2 py-2 font-mono text-xs whitespace-nowrap">{v.vehicleNo || "-"}</td>
+                  <td className="px-2 py-2 text-xs text-gray-700 truncate" title={v.vessels}>{v.vessels || "-"}</td>
+                  <td className="px-2 py-2 text-right text-xs text-gray-600 tabular-nums">{v.items.length}</td>
+                  <td className="px-2 py-2 text-right text-xs text-gray-600 tabular-nums">{weightOf(v).toLocaleString()}</td>
                   <td className="px-3 py-2 text-xs text-gray-700 truncate" title={v.deliverySnapshot?.name ?? ""}>
                     {v.deliverySnapshot?.name ?? "-"}
                   </td>
-                  <td className="px-3 py-2 text-center">
+                  <td className="px-2 py-2 text-center">
                     {v.isCharter && (
                       <span className="inline-block text-[10px] font-bold bg-purple-600 text-white px-1.5 py-0.5 rounded"
                             title={v.charterCost != null ? `${won(v.charterCost)}원` : "금액 미정 — 대장에서 입력"}>
