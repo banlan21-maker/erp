@@ -483,7 +483,7 @@ export default function CharterUsageTab() {
                   </th>
                 );
               })}
-              <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-600">관리</th>
+              <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 sticky right-0 bg-gray-50 border-l border-gray-300 z-20">관리</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -522,15 +522,19 @@ export default function CharterUsageTab() {
                 <td className="px-2 py-1.5 border-r border-gray-100 text-center text-[10px] text-gray-400">저장 후 선택</td>
                 <td className="px-2 py-1.5 border-r border-gray-100"><Input type="number" value={editForm.cost} onChange={e => setE("cost", e.target.value)} className="h-7 text-xs w-24 text-right" /></td>
                 <td className="px-2 py-1.5 border-r border-gray-100"><Input value={editForm.memo} onChange={e => setE("memo", e.target.value)} className="h-7 text-xs w-32" /></td>
-                <td className="px-3 py-1.5 text-center">
-                  <div className="flex items-center justify-center gap-1.5">
-                    <button onClick={saveEdit} className="p-1 text-blue-600 hover:bg-blue-100 rounded" title="저장"><Save size={13} /></button>
-                    <button onClick={() => setEditId(null)} className="p-1 text-gray-500 hover:bg-gray-100 rounded" title="취소"><X size={13} /></button>
+                <td className="px-2 py-1.5 text-center sticky right-0 bg-blue-50 border-l border-gray-300 z-10">
+                  <div className="flex items-center justify-center gap-1">
+                    <button onClick={saveEdit}
+                      className="inline-flex items-center gap-0.5 px-2 py-1 text-[11px] font-semibold bg-blue-600 text-white rounded hover:bg-blue-700"
+                      title="저장"><Save size={12} /> 저장</button>
+                    <button onClick={() => setEditId(null)}
+                      className="inline-flex items-center gap-0.5 px-2 py-1 text-[11px] font-semibold border border-gray-300 text-gray-600 rounded hover:bg-gray-100"
+                      title="취소"><X size={12} /> 취소</button>
                   </div>
                 </td>
               </tr>
             ) : (
-              <tr key={l.id} className="hover:bg-gray-50/70 transition-colors">
+              <tr key={l.id} className="group hover:bg-gray-50/70 transition-colors">
                 <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100 font-mono whitespace-nowrap">
                   {l.date}
                   {l.shipmentVehicleId && (
@@ -569,7 +573,7 @@ export default function CharterUsageTab() {
                 </td>
                 <td className="px-3 py-2 text-xs text-purple-700 font-medium border-r border-gray-100 text-right">{won(l.cost)}</td>
                 <td className="px-3 py-2 text-xs text-gray-500 border-r border-gray-100 max-w-[160px] truncate" title={l.memo ?? ""}>{l.memo || <span className="text-gray-300">-</span>}</td>
-                <td className="px-3 py-2 text-center">
+                <td className="px-3 py-2 text-center sticky right-0 bg-white group-hover:bg-gray-50 border-l border-gray-200 z-10">
                   <div className="flex items-center justify-center gap-1.5">
                     <button onClick={() => openEdit(l)} className="p-1 text-gray-400 hover:text-blue-600 rounded" title="수정"><Pencil size={13} /></button>
                     <button onClick={() => deleteLog(l.id)} className="p-1 text-gray-300 hover:text-red-500 rounded" title="삭제"><Trash2 size={13} /></button>
