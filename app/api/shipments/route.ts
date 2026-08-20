@@ -25,6 +25,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { departureOf, vesselsOf } from "@/lib/charter-cost";
 import { ShipmentStatus, SteelPlanStatus, SteelPlanHeatStatus, Prisma } from "@prisma/client";
 import { nextShipmentNo, nextInvoiceNo } from "@/lib/shipment-numbering";
 import { normalizedHeatIds } from "@/lib/heat-lookup";
@@ -91,7 +92,8 @@ export async function GET(req: NextRequest) {
       include: {
         vehicles: {
           orderBy: { sequence: "asc" },
-          include: { items: true },
+          // 용차 여부 — 목록에서 배지로 표시하고 체크 상태를 잡는다
+          include: { items: true, charterUsage: { select: { id: true, cost: true } } },
         },
       },
     });
@@ -109,6 +111,11 @@ export async function GET(req: NextRequest) {
           invoicedAt: v.invoicedAt?.toISOString() ?? null,
           createdAt:  v.createdAt.toISOString(),
           updatedAt:  v.updatedAt.toISOString(),
+          // 목록에서 바로 쓸 수 있게 파생값을 같이 내려준다
+          departure:  departureOf(v.supplierSnapshot),   // '진교' 또는 공급자 상호
+          vessels:    vesselsOf(v.items),                // 호선 (여러 개면 쉼표)
+          isCharter:  !!v.charterUsage,
+          charterCost: v.charterUsage?.cost ?? null,
           items: v.items.map(it => ({
             ...it,
             createdAt: it.createdAt.toISOString(),

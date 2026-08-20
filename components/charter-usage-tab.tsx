@@ -7,11 +7,12 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Plus, Trash2, RefreshCw, X, Save, ChevronLeft, ChevronRight, FileText, Download, Filter, Pencil, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Trash2, RefreshCw, X, Save, ChevronLeft, ChevronRight, FileText, Download, Filter, Pencil, ArrowUp, ArrowDown, Coins } from "lucide-react";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ColumnFilterDropdown, { type FilterValue } from "./column-filter-dropdown";
+import CharterRateModal from "@/components/charter-rate-modal";
 import { getCascadedFilteredRowsWithPredicates, getAllCascadedOptions, type ColumnAccessorMap, type TextPredicate } from "@/lib/cascading-filters";
 
 interface CharterUsage {
@@ -28,6 +29,8 @@ interface CharterUsage {
   cost:        number | null;
   memo:        string | null;
   createdAt:   string;
+  // 외부출고관리 송장에서 자동 등록된 건이면 값이 있다. 수기 등록이면 null.
+  shipmentVehicleId: string | null;
 }
 
 const todayYMD = () => new Date().toISOString().split("T")[0];
@@ -229,6 +232,8 @@ export default function CharterUsageTab() {
   };
 
   /* 컬럼 필터 */
+  const [rateOpen, setRateOpen] = useState(false);
+
   const COLUMNS = useMemo(() => [
     { key: "date",        label: "날짜",       align: "left"   as const },
     { key: "driverName",  label: "운전자",     align: "left"   as const },
@@ -341,6 +346,7 @@ export default function CharterUsageTab() {
   /* ── 렌더 ── */
   return (
     <div className="space-y-4">
+      {rateOpen && <CharterRateModal onClose={() => setRateOpen(false)} />}
       {/* 용차 운전자 자동완성 datalist — 등록·수정 행에서 공통 참조 */}
       <datalist id="charter-driver-suggestions">
         {charterDrivers.map(d => <option key={d.id} value={d.name} />)}
@@ -371,6 +377,11 @@ export default function CharterUsageTab() {
             className="h-8 text-xs text-emerald-700 border-emerald-300 hover:bg-emerald-50"
             title="해당 월 전체를 엑셀로 다운로드">
             <Download size={12} className="mr-1" /> 월별 엑셀
+          </Button>
+          <Button onClick={() => setRateOpen(true)} variant="outline" size="sm"
+            className="h-8 text-xs text-amber-700 border-amber-300 hover:bg-amber-50"
+            title="출고장에서 용차 등록 시 쓰는 금액표">
+            <Coins size={12} className="mr-1" /> 단가표
           </Button>
           <Button onClick={openForm} className="h-8 text-xs bg-blue-600 hover:bg-blue-700">
             <Plus size={13} className="mr-1" /> 용차사용 등록
@@ -475,7 +486,13 @@ export default function CharterUsageTab() {
               </tr>
             ) : (
               <tr key={l.id} className="hover:bg-gray-50/70 transition-colors">
-                <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100 font-mono">{l.date}</td>
+                <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100 font-mono whitespace-nowrap">
+                  {l.date}
+                  {l.shipmentVehicleId && (
+                    <span className="ml-1 px-1 py-px rounded bg-purple-100 text-purple-700 text-[9px] font-sans font-bold align-middle"
+                          title="외부출고관리에서 자동 등록된 건입니다. 여기서 수정할 수 있습니다.">자동</span>
+                  )}
+                </td>
                 <td className="px-3 py-2 text-xs font-medium text-gray-800 border-r border-gray-100">{l.driverName}</td>
                 <td className="px-3 py-2 text-xs text-gray-600 border-r border-gray-100 font-mono">{l.driverPhone || <span className="text-gray-300">-</span>}</td>
                 <td className="px-3 py-2 text-xs text-gray-600 border-r border-gray-100 font-mono">{l.vehicleNo || <span className="text-gray-300">-</span>}</td>

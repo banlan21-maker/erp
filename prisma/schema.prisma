@@ -1076,7 +1076,46 @@ model CharterUsage {
   cost        Int? // 용차비용 (원)
   memo        String? // 비고
 
+  // 외부출고관리 송장에서 자동 등록된 경우 그 차량(송장). 수기 등록이면 null.
+  //   · 중복 등록 방지(@unique) — 같은 송장을 두 번 용차등록해도 한 건만 남는다
+  //   · 출고장 취소 시 어느 대장 행을 정리해야 하는지 찾는 열쇠
+  //   자동 등록분도 대장에서 자유롭게 수정할 수 있다(금액·비고 등).
+  shipmentVehicleId String?          @unique
+  shipmentVehicle   ShipmentVehicle? @relation(fields: [shipmentVehicleId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt @default(now())
+
+  @@index([date])
+}
+
+// 용차 단가 — 납품처별 기본단가 (진교 출발 기준)
+//   지역이 아니라 납품처마다 단가를 둔다. 실측상 같은 밀양이어도 표의 구간과 안 맞고
+//   납품처별로 굳어진 단가가 있어서, 주소로 지역을 추정하는 것보다 정확하다.
+model CharterRate {
+  id           String   @id @default(cuid())
+  deliveryName String   @unique // 납품처 상호 — 출고 송장의 납품처 스냅샷 이름과 맞춘다
+  region       String? // 구간 표기 (고성/거제/통영 …) — 표시용, 계산에는 안 쓴다
+  baseCost     Int // 기본단가 (원)
+  memo         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// 용차 할증 — 실은 철판의 '최대 폭' 구간별.
+//   단가표에는 폭과 길이가 나란히 적혀 있으나, 과거 실적 역산 결과 실제로는 폭으로만
+//   발동했다(길이 15,000 초과 2건이 모두 할증 0원). 정확도 95%(132/139).
+model CharterSurcharge {
+  id        String   @id @default(cuid())
+  minWidth  Int // 이 폭 이상 (mm)
+  maxWidth  Int? // 이 폭 이하 (null = 무제한)
+  amount    Int // 할증액 (원)
+  label     String? // 표기 (예: "3101-3400")
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sortOrder])
 }
 
 // 운송 운전자 마스터 (일반차량/용차 운전자 풀)
@@ -1327,6 +1366,9 @@ model ShipmentVehicle {
   receiverName  String?   // 인수(입고)자
 
   items ShipmentItem[]
+
+  // 용차 사용대장 자동등록분 (있으면 이 송장이 용차로 나갔다는 뜻)
+  charterUsage CharterUsage?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
