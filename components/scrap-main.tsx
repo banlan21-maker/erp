@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Archive, PackagePlus, Package, Zap, Layers, Boxes } from "lucide-react";
 import { RemnantRegisterTab } from "@/components/remnant-tabs";
 import RemnantListTab from "@/components/remnant-list-tab";
+import type { PickerRemnant } from "@/components/urgent-remnant-picker";
 import UrgentRegisterForm from "@/components/urgent-register-form";
 
 interface ProjectOption {
@@ -12,16 +13,8 @@ interface ProjectOption {
   projectName: string;
 }
 
-interface RemnantOption {
-  id: string;
-  remnantNo: string;
-  type: string;
-  material: string;
-  thickness: number;
-  weight: number;
-  heatNo: string | null;
-  needsConsult: boolean;
-}
+// 돌발등록의 사용 강재 후보 — 선택 모달이 쓰는 컬럼과 같아야 한다.
+type RemnantOption = PickerRemnant;
 
 type TabKey = "register" | "remnant" | "surplus" | "registered" | "urgent";
 

@@ -678,6 +678,10 @@ model CncSchedule {
 model UrgentWork {
   id       String @id @default(cuid())
   urgentNo String @unique // URG-2026-001 자동채번
+  // 한 번의 돌발 요청으로 여러 도면을 등록할 때 묶는 키(= 그 묶음 첫 건의 urgentNo).
+  // 작업일보는 UrgentWork 1건 = 절단 1건으로 다루므로 도면마다 행을 만들되,
+  // "같은 요청에서 나왔다"는 사실은 이 값으로 남긴다. 단건 등록이면 자기 urgentNo.
+  batchNo  String?
   title    String // 작업명
   urgency  String @default("URGENT") // URGENT / FLEXIBLE / PRECUT
 
@@ -709,6 +713,8 @@ model UrgentWork {
   updatedAt DateTime @updatedAt
 
   cuttingLogs CuttingLog[]
+
+  @@index([batchNo])
 }
 
 // ── 잔재 모델 ──────────────────────────────────────────────
