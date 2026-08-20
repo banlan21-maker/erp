@@ -53,6 +53,72 @@ export async function PATCH(
       return NextResponse.json({ success: true, data: updated });
     }
 
+    // ── 사용 강재 지정 (action=assign) ─────────────────────────────────────
+    //   4종(정규강재·여유원재·등록잔재·현장잔재) 중 무엇으로 자를지 도면행에 지정한다.
+    //   remnantId = null  → 정규강재 사용 (강재입출고 재고에서 확정 시 선점)
+    //   remnantId = <id>  → 그 잔재를 사용 (정규 재고는 건드리지 않음)
+    //
+    //   예전에는 강재리스트 **엑셀 업로드 미리보기에서만** 지정할 수 있어, 이미 등록된 도면행에는
+    //   나중에 잔재를 붙일 방법이 없었다(행 삭제 후 재업로드해야 했다). (2026-08-19 신설)
+    if (body.action === "assign") {
+      const remnantId: string | null = body.remnantId ? String(body.remnantId) : null;
+      const current = await prisma.drawingList.findUnique({
+        where: { id },
+        include: { project: { select: { projectCode: true } } },
+      });
+      if (!current) return NextResponse.json({ success: false, error: "도면을 찾을 수 없습니다." }, { status: 404 });
+
+      // 절단완료는 변경 불가, 확정 상태는 선점이 걸려 있으므로 확정취소 먼저
+      if (current.status === "CUT") {
+        return NextResponse.json({ success: false, error: "절단완료된 도면은 사용 강재를 바꿀 수 없습니다.\n먼저 작업일보에서 절단취소하세요." }, { status: 409 });
+      }
+      if (current.status === "WAITING") {
+        return NextResponse.json({ success: false, error: "확정된 도면은 사용 강재를 바꿀 수 없습니다.\n[확정취소] 후 다시 지정하세요." }, { status: 409 });
+      }
+
+      const projectCode = current.project.projectCode;
+      const oldBlock = current.block ?? "UNKNOWN";
+      const oldFmt   = `${projectCode}/${oldBlock}`;
+
+      // 새로 붙일 잔재 검증 — 재고이고 아직 아무도 선점/선별하지 않았어야 한다
+      if (remnantId) {
+        const rem = await prisma.remnant.findUnique({ where: { id: remnantId } });
+        if (!rem) return NextResponse.json({ success: false, error: "잔재를 찾을 수 없습니다." }, { status: 404 });
+        if (rem.status !== "IN_STOCK") {
+          return NextResponse.json({ success: false, error: `이미 소진된 잔재입니다(${rem.remnantNo}).` }, { status: 409 });
+        }
+        if (rem.shipoutMarkedAt) {
+          return NextResponse.json({ success: false, error: `외부출고로 선별된 잔재입니다(${rem.remnantNo}). 선별을 해제한 뒤 사용하세요.` }, { status: 409 });
+        }
+        if (rem.reservedFor && rem.reservedFor !== oldFmt && rem.reservedFor !== oldBlock && rem.id !== current.assignedRemnantId) {
+          return NextResponse.json({ success: false, error: `다른 곳에 이미 확정된 잔재입니다(${rem.remnantNo} → ${rem.reservedFor}).` }, { status: 409 });
+        }
+      }
+
+      // 기존에 붙어 있던 잔재의 확정표시 정리 (미확정 상태라 보통 비어 있지만 방어적으로)
+      if (current.assignedRemnantId && current.assignedRemnantId !== remnantId) {
+        await prisma.remnant.updateMany({
+          where: { id: current.assignedRemnantId, reservedFor: { in: [oldFmt, oldBlock] } },
+          data:  { reservedFor: null },
+        });
+      }
+
+      const updated = await prisma.drawingList.update({ where: { id }, data: { assignedRemnantId: remnantId } });
+
+      // 정규강재로 되돌린 경우엔 재고 판정을 다시 돌려 상태(미입고/입고/경고)를 바로잡는다.
+      //   (잔재사용 행은 sync 대상에서 제외되므로 붙일 때는 sync 불필요)
+      if (!remnantId) {
+        await syncDrawingListBySpecs([{
+          vesselCode: current.alternateVesselCode?.trim() || projectCode,
+          material:   current.material,
+          thickness:  current.thickness,
+          width:      current.width,
+          length:     current.length,
+        }]);
+      }
+      return NextResponse.json({ success: true, data: updated });
+    }
+
     // ── 필드 수정 ──────────────────────────────────────────────────────────
     const { block, drawingNo, heatNo, material, thickness, width, length, qty, steelWeight, useWeight, alternateVesselCode } = body;
 

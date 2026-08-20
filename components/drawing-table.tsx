@@ -4,8 +4,9 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { DrawingList } from "@prisma/client";
 import * as XLSX from "xlsx";
-import { Pencil, Trash2, Check, X, Filter, XCircle, Plus, CalendarCheck, ArrowUp, ArrowDown, ArrowUpDown, Download } from "lucide-react";
+import { Pencil, Trash2, Check, X, Filter, XCircle, Plus, CalendarCheck, ArrowUp, ArrowDown, ArrowUpDown, Download, Layers } from "lucide-react";
 import DrawingEditModal from "@/components/drawing-edit-modal";
+import SteelPickModal from "@/components/steel-pick-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ColumnFilterDropdown from "@/components/column-filter-dropdown";
@@ -281,6 +282,8 @@ export default function DrawingTable({
   const [clearing, setClearing] = useState(false);
   // 잔재 사용 행 수정용 모달 (원재 행은 기존 inline editing 유지)
   const [modalEditDrawing, setModalEditDrawing] = useState<DrawingList | null>(null);
+  // 사용 강재 선택(4종) — 확정 전 도면행에 정규강재/여유원재/등록잔재/현장잔재 중 하나를 지정
+  const [pickDrawingId, setPickDrawingId] = useState<string | null>(null);
 
   // 잔재 상세 (SSR include 우선 — page.tsx 가 prisma include 로 함께 fetch).
   // 구버전 호환: SSR 미 include 시 클라이언트 fallback fetch.
@@ -809,6 +812,16 @@ export default function DrawingTable({
                     <td className="px-2 py-2">
                       <div className="flex gap-1 justify-center items-center">
                         <button
+                          onClick={() => setPickDrawingId(d.id)}
+                          disabled={status === "CUT" || status === "WAITING"}
+                          className="p-1 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                          title={status === "CUT" ? "절단 완료 항목은 사용 강재를 바꿀 수 없습니다"
+                            : status === "WAITING" ? "확정된 항목입니다 — [확정취소] 후 변경하세요"
+                            : "사용 강재 선택 (정규강재·여유원재·등록잔재·현장잔재)"}
+                        >
+                          <Layers size={13} />
+                        </button>
+                        <button
                           onClick={() => setModalEditDrawing(d)}
                           disabled={status === "CUT"}
                           className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded disabled:opacity-30 disabled:cursor-not-allowed"
@@ -1150,6 +1163,16 @@ export default function DrawingTable({
                     <td className="px-2 py-2">
                       <div className="flex gap-1 justify-end items-center">
                         <button
+                          onClick={() => setPickDrawingId(d.id)}
+                          disabled={status === "CUT" || status === "WAITING"}
+                          className="p-1 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                          title={status === "CUT" ? "절단 완료 항목은 사용 강재를 바꿀 수 없습니다"
+                            : status === "WAITING" ? "확정된 항목입니다 — [확정취소] 후 변경하세요"
+                            : "사용 강재 선택 (정규강재·여유원재·등록잔재·현장잔재)"}
+                        >
+                          <Layers size={13} />
+                        </button>
+                        <button
                           onClick={() => startEdit(d)}
                           disabled={status === "CUT"}
                           className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded disabled:opacity-30 disabled:cursor-not-allowed"
@@ -1198,6 +1221,14 @@ export default function DrawingTable({
       {renderUseList("REMNANT", remnantUseDrawings)}
 
       {/* 잔재 사용 행 수정 모달 (원재 행은 inline editing 사용) */}
+      {pickDrawingId && (
+        <SteelPickModal
+          drawingId={pickDrawingId}
+          onClose={() => setPickDrawingId(null)}
+          onSaved={() => router.refresh()}
+        />
+      )}
+
       {modalEditDrawing && (
         <DrawingEditModal
           drawing={{
