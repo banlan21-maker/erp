@@ -154,6 +154,12 @@ export default function FieldWorklog({
   const selWorker = workers.find(w => w.id === s1.operatorId);
   const selDrawing    = drawings.find(d => d.id === drawingId);
   const isRemnantDraw = !!selDrawing?.assignedRemnantId;
+  // 잔재 종류별 배지 — 전에는 3종 모두 "등록잔재사용"으로 떠 현장이 헷갈렸다. (2026-08-19)
+  const REMNANT_BADGE: Record<string, { label: string; cls: string }> = {
+    SURPLUS:    { label: "여유원재사용", cls: "bg-purple-600" },
+    REGISTERED: { label: "등록잔재사용", cls: "bg-orange-600" },
+    REMNANT:    { label: "현장잔재사용", cls: "bg-teal-600" },
+  };
   const isSurplusDraw = selDrawing?.assignedRemnant?.type === "SURPLUS";   // 여유원재 사용 절단 — 실물 판번호 입력 필요
 
   const refreshLogs = useCallback(async () => {
@@ -1132,9 +1138,10 @@ export default function FieldWorklog({
                     >
                       <div className="flex items-center gap-2">
                         <p className="font-mono font-semibold text-sm">{d.drawingNo ?? "(번호없음)"}</p>
-                        {d.assignedRemnantId && (
-                          <span className="text-xs px-1.5 py-0.5 rounded bg-orange-600 text-white font-medium">등록잔재사용</span>
-                        )}
+                        {d.assignedRemnantId && (() => {
+                          const b = REMNANT_BADGE[d.assignedRemnant?.type ?? ""] ?? { label: "잔재사용", cls: "bg-gray-600" };
+                          return <span className={`text-xs px-1.5 py-0.5 rounded ${b.cls} text-white font-medium`}>{b.label}</span>;
+                        })()}
                       </div>
                       <p className="text-xs text-gray-400 mt-0.5">
                         {d.material} {d.thickness}t × {d.width} × {d.length}
@@ -1157,7 +1164,7 @@ export default function FieldWorklog({
               {/* Heat NO — 등록잔재/현장잔재 사용 행은 판번호 불필요, 여유원재는 실물 판번호 입력 */}
               {isRemnantDraw && !isSurplusDraw && (
                 <div className="bg-orange-950 border border-orange-700 rounded-xl px-3 py-2.5 text-xs text-orange-300">
-                  등록잔재 사용 절단 — 판번호 없이 작업 시작 가능합니다.
+                  {selDrawing?.assignedRemnant?.type === "REMNANT" ? "현장잔재" : "등록잔재"} 사용 절단 — 판번호 없이 작업 시작 가능합니다.
                 </div>
               )}
               {isSurplusDraw && (

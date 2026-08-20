@@ -88,7 +88,18 @@ export async function PATCH(
     const altVesselChanged = (current.alternateVesselCode ?? null) !== newAltVessel;
 
     // 블록·스펙·대체호선이 바뀐 경우 → WAITING 이면 기존 SteelPlan 예약 해제
-    if ((blockChanged || specChanged || altVesselChanged) && current.status === "WAITING") {
+    //   ⚠ 잔재사용 행(assignedRemnantId)은 애초에 SteelPlan 을 잡은 적이 없다(reserve-bulk 가 제외).
+    //     그런데도 해제 로직을 돌리면 **같은 블록·같은 규격으로 확정돼 있던 남의 정규 강재 1장**이
+    //     조용히 풀린다. 잔재 행은 건너뛰고, 자기 잔재의 확정표시만 새 블록으로 옮긴다. (2026-08-19)
+    if (current.assignedRemnantId) {
+      if (blockChanged && current.status === "WAITING") {
+        const newFmt = `${projectCode}/${newBlock ?? "UNKNOWN"}`;
+        await prisma.remnant.updateMany({
+          where: { id: current.assignedRemnantId, reservedFor: { in: [`${projectCode}/${current.block ?? "UNKNOWN"}`, current.block ?? "UNKNOWN"] } },
+          data:  { reservedFor: newFmt },
+        });
+      }
+    } else if ((blockChanged || specChanged || altVesselChanged) && current.status === "WAITING") {
       const oldVessel = current.alternateVesselCode?.trim() || projectCode;
       const oldBlock  = current.block ?? "UNKNOWN";
       const oldFmt    = `${projectCode}/${oldBlock}`;
@@ -193,6 +204,23 @@ export async function DELETE(
     const effectiveVessel = current.alternateVesselCode?.trim() || projectCode;
     const oldBlock        = current.block ?? "UNKNOWN";
     const oldFmt          = `${projectCode}/${oldBlock}`;
+
+    // ⚠ 잔재사용 행은 SteelPlan 을 잡은 적이 없다 → 해제하면 남의 정규 강재가 풀린다.
+    //   대신 자기 잔재의 확정표시(reservedFor)만 풀어준다. (2026-08-19)
+    if (current.assignedRemnantId) {
+      await prisma.remnant.updateMany({
+        where: { id: current.assignedRemnantId, reservedFor: { in: [oldFmt, oldBlock] } },
+        data:  { reservedFor: null },
+      });
+      await syncDrawingListBySpecs([{
+        vesselCode: effectiveVessel,
+        material:   current.material,
+        thickness:  current.thickness,
+        width:      current.width,
+        length:     current.length,
+      }]);
+      return NextResponse.json({ success: true });
+    }
 
     const toRelease = await prisma.steelPlan.findFirst({
       where: {

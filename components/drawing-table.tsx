@@ -59,6 +59,23 @@ function calcSteelWeight(t: number | string, w: number | string, l: number | str
   return Math.round(Number(t) * Number(w) * Number(l) * 7.85 / 1_000_000 * 10) / 10;
 }
 
+// 잔재 사용 행의 강재중량 — **잔재 실치수** 기준. (2026-08-19)
+//   같은 줄의 폭1·길이1 컬럼은 잔재 실치수를 보여주는데 중량만 도면 치수로 계산해,
+//   화면에 2000×6000 이 찍힌 줄의 중량이 1500×3000 값으로 나오고 보고서·작업일보관리와도 어긋났다.
+//   L자형은 (W1×L1 − (W1−W2)×L2), 그 외는 W1×L1. 잔재 정보가 없으면 도면 치수로 폴백.
+function calcRemnantWeight(
+  d: { thickness: number; width: number; length: number },
+  rem?: { shape?: string | null; width1?: number | null; width2?: number | null; length1?: number | null; length2?: number | null } | null,
+): number {
+  const w1 = rem?.width1 ?? null, l1 = rem?.length1 ?? null;
+  if (w1 == null || l1 == null) return calcSteelWeight(d.thickness, d.width, d.length);
+  const w2 = rem?.width2 ?? null, l2 = rem?.length2 ?? null;
+  const area = rem?.shape === "L_SHAPE" && w2 != null && l2 != null
+    ? w1 * l1 - (w1 - w2) * l2
+    : w1 * l1;
+  return Math.round(Number(d.thickness) * area * 7.85 / 1_000_000 * 10) / 10;
+}
+
 function StatusBadge({ status }: { status: string }) {
   const s = status as DrawingStatusType;
   return (
@@ -786,7 +803,7 @@ export default function DrawingTable({
                     {kind !== "SURPLUS" && (
                       <td className="px-2 py-2 text-right text-gray-700">{rem?.length2?.toLocaleString() ?? "-"}</td>
                     )}
-                    <td className="px-2 py-2 text-right font-semibold text-gray-700">{calcSteelWeight(d.thickness, d.width, d.length).toFixed(1)}</td>
+                    <td className="px-2 py-2 text-right font-semibold text-gray-700">{calcRemnantWeight(d, rem).toFixed(1)}</td>
                     <td className="px-2 py-2 text-right text-gray-500">{d.useWeight != null ? d.useWeight.toFixed(1) : "-"}</td>
                     <td className="px-2 py-2 text-center font-mono text-blue-600">{d.heatNo ?? <span className="text-gray-300">-</span>}</td>
                     <td className="px-2 py-2">
@@ -816,7 +833,7 @@ export default function DrawingTable({
             <tfoot className={`${C.foot} border-t`}>
               <tr>
                 <td colSpan={kind === "SURPLUS" ? 8 : 10} className={`px-2 py-2 text-xs ${C.noCol} font-medium`}>합계 ({list.length}행)</td>
-                <td className={`px-2 py-2 text-right text-xs font-bold ${C.noCol}`}>{list.reduce((s, d) => s + calcSteelWeight(d.thickness, d.width, d.length), 0).toFixed(1)}kg</td>
+                <td className={`px-2 py-2 text-right text-xs font-bold ${C.noCol}`}>{list.reduce((s, d) => s + calcRemnantWeight(d, assignedRemnantDetails[d.assignedRemnantId ?? ""]), 0).toFixed(1)}kg</td>
                 <td className={`px-2 py-2 text-right text-xs font-bold ${C.noCol}`}>{list.reduce((s, d) => s + (d.useWeight ?? 0), 0).toFixed(1)}kg</td>
                 <td />
                 <td />
