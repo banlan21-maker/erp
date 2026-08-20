@@ -132,6 +132,27 @@ export async function PATCH(
       });
       if (!log) throw new Error("기록 조회 실패");   // throw → 트랜잭션 롤백
 
+      // 중복 완료 가드 — 같은 도면 행에 이미 완료된 작업일보가 있으면 거절한다.
+      //   등록 단계에서만 막고 완료 단계는 한 번도 검사하지 않아, 어떤 이유로든
+      //   진행중 2건이 만들어지면 둘 다 조용히 완료됐다(2026-06 중복 6건이 전부 이 경로로 완성).
+      //   행 정확 일치로만 본다 — 같은 도면번호의 다른 행은 두 장 자르는 정상 작업이다.
+      if (log.drawingListId && !log.isUrgent) {
+        const sibling = await tx.cuttingLog.findFirst({
+          where: { drawingListId: log.drawingListId, status: "COMPLETED", id: { not: log.id } },
+          select: { operator: true, endAt: true, equipment: { select: { name: true } } },
+        });
+        if (sibling) {
+          const when = sibling.endAt
+            ? new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(sibling.endAt)
+            : "";
+          throw new Error(
+            `이 도면은 이미 절단완료로 등록돼 있습니다.\n` +
+            `(${when} ${sibling.equipment?.name ?? "?"} · ${sibling.operator})\n\n` +
+            `중복 완료를 막았습니다. 이 작업이 별개 철판이면 강재리스트에서 별도 행으로 등록하세요.`,
+          );
+        }
+      }
+
       // 발생예정 잔재 가드 — 원판 미절단이면 그 잔재로 완료 처리할 수 없다.
       // throw → 트랜잭션 롤백(위 CAS 로 이미 COMPLETED 로 바꾼 것도 함께 되돌아간다).
       const notReady = await remnantNotReadyMessage(tx, log.drawingListId);

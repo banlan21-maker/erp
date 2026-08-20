@@ -254,6 +254,38 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ── 이 도면 행이 이미 절단완료됐는지 확인 (중복 완료 방지) ─────────────────
+    // 위 가드는 '지금 자르는 중'만 본다. 이미 끝난 도면에 또 등록하는 것은 서버가 막지
+    // 않았고, 실제 방어는 "완료된 도면은 현장 목록에서 사라진다" 뿐이었다 —
+    // 갱신 안 된 다른 태블릿이나 사무실 [추가] 버튼으로는 그대로 뚫렸다.
+    // 2026-06 중복 6건 중 CNR001(먼저 끝내고 15분 뒤 재등록)이 이 경로였다.
+    //
+    // ★ 행(drawingListId) 정확 일치로만 본다.
+    //   같은 도면번호라도 행이 다르면 철판을 두 장 자르는 정상 작업이다
+    //   (강재리스트에 2행으로 등록된 경우 — 예: a36-20-2304 가 2행).
+    //   위 진행중 가드처럼 projectId+drawingNo 까지 넓히면 그 정상 작업이 막힌다.
+    if (drawingListId && isUrgent !== true) {
+      const doneLog = await prisma.cuttingLog.findFirst({
+        where: { drawingListId, status: "COMPLETED" },
+        orderBy: { endAt: "desc" },
+        select: { operator: true, endAt: true, heatNo: true, equipment: { select: { name: true } } },
+      });
+      if (doneLog) {
+        const when = doneLog.endAt
+          ? new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(doneLog.endAt)
+          : "";
+        const who = `${doneLog.equipment?.name ?? "?"} · ${doneLog.operator}`;
+        return NextResponse.json({
+          success: false,
+          error:
+            `이 도면은 이미 절단완료로 등록돼 있습니다.\n` +
+            `(${when} ${who}${doneLog.heatNo ? " · 판번호 " + doneLog.heatNo : ""})\n\n` +
+            `한 도면을 철판 두 장으로 자른 것이면 강재리스트에서 별도 행으로 등록한 뒤 그 행에 작업하세요.\n` +
+            `잘못 등록된 것이면 기존 기록을 삭제하고 다시 등록하세요.`,
+        }, { status: 409 });
+      }
+    }
+
     // ── 작업 생성 ─────────────────────────────────────────────────────────────
     const baseData = {
       equipmentId,
