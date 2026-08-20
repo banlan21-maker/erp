@@ -65,7 +65,27 @@ export async function POST(
             } else if (rem) {
               restoreFailures.push(`잔재 ${rem.remnantNo} 상태가 소진이 아니라 복원 불가 (현재: ${rem.status})`);
             }
-            continue; // 잔재는 SteelPlan/Heat 처리 없음
+            // 여유원재 출고 시 함께 소진했던 판번호 복원 (원판 갈래와 대칭).
+            // 등록잔재·현장잔재는 판번호를 소진하지 않으므로 steelPlanHeatId 가 비어 있어 그냥 지나간다.
+            if (item.steelPlanHeatId) {
+              const h = await tx.steelPlanHeat.findUnique({ where: { id: item.steelPlanHeatId } });
+              if (h && h.status === SteelPlanHeatStatus.SHIPPED) {
+                const otherShipped = await tx.shipmentItem.count({
+                  where: {
+                    steelPlanHeatId: h.id,
+                    NOT: { vehicle: { shipmentId: id } },
+                    vehicle: { shipment: { status: ShipmentStatus.ACTIVE } },
+                  },
+                });
+                if (otherShipped === 0) {
+                  await tx.steelPlanHeat.update({
+                    where: { id: h.id },
+                    data:  { status: SteelPlanHeatStatus.WAITING, shippedAt: null, archivedAt: null },
+                  });
+                }
+              }
+            }
+            continue; // 잔재는 SteelPlan 처리 없음
           }
 
           // ── 원판 복원 ──

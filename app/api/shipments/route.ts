@@ -228,15 +228,20 @@ export async function POST(req: NextRequest) {
 
     // ── 잔재(Remnant) 검증 ──────────────────────────────────────────────────
     const remNoMap = new Map<string, string>(); // remnantId → 잔재번호 (거래명세표 스냅샷용)
+    // remnantId → { 종류, 기재 판번호 } — 여유원재 출고 시 판번호 재고를 함께 소진하기 위해 필요
+    const remMetaMap = new Map<string, { type: string; heatNo: string | null }>();
     if (allRemnantIds.length > 0) {
       const rems = await prisma.remnant.findMany({
         where: { id: { in: allRemnantIds } },
-        select: { id: true, status: true, remnantNo: true, reservedFor: true },
+        select: { id: true, status: true, remnantNo: true, reservedFor: true, type: true, heatNo: true },
       });
       if (rems.length !== allRemnantIds.length) {
         return NextResponse.json({ success: false, error: "존재하지 않는 잔재가 포함되어 있습니다." }, { status: 400 });
       }
-      for (const r of rems) remNoMap.set(r.id, r.remnantNo);
+      for (const r of rems) {
+        remNoMap.set(r.id, r.remnantNo);
+        remMetaMap.set(r.id, { type: r.type, heatNo: r.heatNo });
+      }
       // 출고 가능 상태(IN_STOCK)만 — PENDING(미절단)/EXHAUSTED(이미 소진) 차단.
       // (출고원천을 IN_STOCK 으로 고정해야 출고취소 시 IN_STOCK 복원이 정합)
       const notInStock = rems.filter(r => r.status !== "IN_STOCK");
@@ -339,6 +344,48 @@ export async function POST(req: NextRequest) {
             });
             if (exhaust.count !== 1) {
               throw new Error(`잔재(${item.remnantId})가 이미 출고/소진되어 처리할 수 없습니다. 새로고침 후 다시 시도하세요.`);
+            }
+
+            // ── 여유원재 출고 → 판번호 재고도 함께 소진 (원판 갈래와 대칭) ──────────
+            //   여유원재는 '입고했지만 미사용 판재' = 실물 원판 1장이라 판번호리스트에 재고 1장이
+            //   대응한다. 이걸 안 없애면 사외로 나간 철판의 판번호가 창고에 '대기'로 남아,
+            //   나중에 절단완료가 그 판번호를 다시 소진하는 유령이 된다(원판 갈래 주석과 같은 이유).
+            //   등록잔재·현장잔재는 자투리라 판번호 재고 1장에 대응하지 않으므로 대상이 아니다
+            //   (그쪽 heatNo 는 '어느 원판에서 나왔나' 라는 이력일 뿐이다).
+            const remMeta = remMetaMap.get(item.remnantId!);
+            if (remMeta?.type === "SURPLUS") {
+              const surHeatNo = (remHeatNo ?? remMeta.heatNo?.trim().toUpperCase()) || null;
+              const spec = {
+                material: item.material, thickness: item.thickness,
+                width: item.width, length: item.length,
+                status: SteelPlanHeatStatus.WAITING,
+              };
+              // ① 기재된 판번호로 정확 매칭 → ② 같은 호선 같은 사양 FIFO → ③ 호선 무관 FIFO (R12)
+              //    셋 다 없으면 그냥 통과 — 진짜 판번호 미상인 여유원재가 있다(실측 9장 공란).
+              const hit =
+                (surHeatNo
+                  ? await tx.steelPlanHeat.findFirst({
+                      where: { ...spec, heatNo: { equals: surHeatNo, mode: "insensitive" } },
+                      orderBy: { createdAt: "asc" },
+                    })
+                  : null)
+                ?? await tx.steelPlanHeat.findFirst({
+                     where: { ...spec, vesselCode: item.vesselCode }, orderBy: { createdAt: "asc" },
+                   })
+                ?? await tx.steelPlanHeat.findFirst({ where: spec, orderBy: { createdAt: "asc" } });
+              if (hit) {
+                const moved = await tx.steelPlanHeat.updateMany({
+                  where: { id: hit.id, status: SteelPlanHeatStatus.WAITING },
+                  data:  { status: SteelPlanHeatStatus.SHIPPED, shippedAt },
+                });
+                // 어느 판을 소진했는지 명세 항목에 남긴다 — 출고취소가 되돌릴 근거
+                if (moved.count === 1) {
+                  await tx.shipmentItem.updateMany({
+                    where: { vehicleId: vehicle.id, remnantId: item.remnantId!, steelPlanHeatId: null },
+                    data:  { steelPlanHeatId: hit.id, heatNo: hit.heatNo },
+                  });
+                }
+              }
             }
             continue;
           }
