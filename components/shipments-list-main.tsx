@@ -206,32 +206,31 @@ export default function ShipmentsListMain({ hideHeader = false }: { hideHeader?:
       </p>
 
       <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
-        <table className="w-full text-sm table-fixed min-w-[1100px]">
+        <table className="w-full text-sm table-fixed min-w-[860px]">
           <thead className="bg-gray-50 text-xs text-gray-500">
             <tr>
-              <th className="px-2 py-2 w-10 text-center">
+              <th className="px-2 py-2 w-[4%] text-center">
                 <input type="checkbox" onChange={toggleAll}
                   checked={registerable.length > 0 && checked.size === registerable.length}
                   title="등록 가능한 건 전체 선택" />
               </th>
-              <th className="px-3 py-2 text-left   w-24">출고일</th>
-              <th className="px-3 py-2 text-left   w-36">출고장 번호</th>
-              <th className="px-3 py-2 text-center w-20">상태</th>
-              <th className="px-3 py-2 text-left   w-32">차량번호</th>
-              <th className="px-3 py-2 text-left   w-40">호선</th>
-              <th className="px-3 py-2 text-right  w-16">수량</th>
-              <th className="px-3 py-2 text-right  w-24">중량(kg)</th>
-              <th className="px-3 py-2 text-left   w-56">송장 / 납품처</th>
-              <th className="px-3 py-2 text-center w-16">용차</th>
-              <th className="px-3 py-2 text-left">비고</th>
-              <th className="px-2 py-2 text-center w-10"></th>
+              <th className="px-3 py-2 text-left   w-[9%]">출고일</th>
+              <th className="px-3 py-2 text-left   w-[15%]">출고장 번호</th>
+              <th className="px-3 py-2 text-center w-[8%]">상태</th>
+              <th className="px-3 py-2 text-left   w-[13%]">차량번호</th>
+              <th className="px-3 py-2 text-left   w-[18%]">호선</th>
+              <th className="px-3 py-2 text-right  w-[6%]">수량</th>
+              <th className="px-3 py-2 text-right  w-[10%]">중량(kg)</th>
+              <th className="px-3 py-2 text-left">납품처</th>
+              <th className="px-3 py-2 text-center w-[7%]">용차</th>
+              <th className="px-2 py-2 text-center w-[4%]"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
-              <tr><td colSpan={12} className="py-12 text-center text-gray-400">불러오는 중…</td></tr>
+              <tr><td colSpan={11} className="py-12 text-center text-gray-400">불러오는 중…</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={12} className="py-12 text-center text-gray-400">해당 기간 출고 이력이 없습니다.</td></tr>
+              <tr><td colSpan={11} className="py-12 text-center text-gray-400">해당 기간 출고 이력이 없습니다.</td></tr>
             ) : rows.map(({ key, s, v, isFirstOfShipment }) => {
               const selectable = canRegister({ key, s, v, isFirstOfShipment }) || v.isCharter;
               const jingyo = v.departure === "진교";
@@ -260,9 +259,7 @@ export default function ShipmentsListMain({ hideHeader = false }: { hideHeader?:
                   <td className="px-3 py-2 text-xs text-gray-700 truncate" title={v.vessels}>{v.vessels || "-"}</td>
                   <td className="px-3 py-2 text-right text-xs text-gray-600 tabular-nums">{v.items.length}</td>
                   <td className="px-3 py-2 text-right text-xs text-gray-600 tabular-nums">{weightOf(v).toLocaleString()}</td>
-                  <td className="px-3 py-2 text-xs text-gray-600 truncate" title={`${v.invoiceNo ?? ""} → ${v.deliverySnapshot?.name ?? ""}`}>
-                    <span className="font-mono text-purple-600">{v.invoiceNo}</span>
-                    <span className="text-gray-400 mx-1">→</span>
+                  <td className="px-3 py-2 text-xs text-gray-700 truncate" title={v.deliverySnapshot?.name ?? ""}>
                     {v.deliverySnapshot?.name ?? "-"}
                   </td>
                   <td className="px-3 py-2 text-center">
@@ -273,7 +270,6 @@ export default function ShipmentsListMain({ hideHeader = false }: { hideHeader?:
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-xs text-gray-500 truncate" title={s.memo ?? ""}>{isFirstOfShipment ? (s.memo ?? "") : ""}</td>
                   <td className="px-2 py-1 text-center">
                     {isFirstOfShipment && s.status === "CANCELLED" && (
                       <button onClick={() => handleDelete(s)} title="취소된 출고장 영구삭제"
