@@ -51,6 +51,8 @@ interface Row {
 }
 
 const ymdSlash = (iso: string) => iso.slice(0, 10).replace(/-/g, ".");
+/** 그 차에 실린 자재 중량 합계 (kg) */
+const weightOf = (v: ShipmentVehicle) => Math.round(v.items.reduce((s, i) => s + (i.weight ?? 0), 0));
 const won = (n: number | null) => (n == null ? "" : n.toLocaleString());
 
 export default function ShipmentsListMain({ hideHeader = false }: { hideHeader?: boolean } = {}) {
@@ -204,25 +206,25 @@ export default function ShipmentsListMain({ hideHeader = false }: { hideHeader?:
       </p>
 
       <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm table-fixed min-w-[1100px]">
           <thead className="bg-gray-50 text-xs text-gray-500">
             <tr>
-              <th className="px-2 py-2.5 w-9 text-center">
+              <th className="px-2 py-2 w-10 text-center">
                 <input type="checkbox" onChange={toggleAll}
                   checked={registerable.length > 0 && checked.size === registerable.length}
                   title="등록 가능한 건 전체 선택" />
               </th>
-              <th className="px-3 py-2.5 text-left">출고일</th>
-              <th className="px-3 py-2.5 text-left">출고장 번호</th>
-              <th className="px-3 py-2.5 text-center">상태</th>
-              <th className="px-3 py-2.5 text-center">용차</th>
-              <th className="px-3 py-2.5 text-left">출발지</th>
-              <th className="px-3 py-2.5 text-left">차량번호</th>
-              <th className="px-3 py-2.5 text-left">호선</th>
-              <th className="px-3 py-2.5 text-right">자재</th>
-              <th className="px-3 py-2.5 text-left">송장 / 납품처</th>
-              <th className="px-3 py-2.5 text-left">비고</th>
-              <th className="px-2 py-2.5 text-center w-10"></th>
+              <th className="px-3 py-2 text-left   w-24">출고일</th>
+              <th className="px-3 py-2 text-left   w-36">출고장 번호</th>
+              <th className="px-3 py-2 text-center w-20">상태</th>
+              <th className="px-3 py-2 text-left   w-32">차량번호</th>
+              <th className="px-3 py-2 text-left   w-40">호선</th>
+              <th className="px-3 py-2 text-right  w-16">수량</th>
+              <th className="px-3 py-2 text-right  w-24">중량(kg)</th>
+              <th className="px-3 py-2 text-left   w-56">송장 / 납품처</th>
+              <th className="px-3 py-2 text-center w-16">용차</th>
+              <th className="px-3 py-2 text-left">비고</th>
+              <th className="px-2 py-2 text-center w-10"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -236,20 +238,32 @@ export default function ShipmentsListMain({ hideHeader = false }: { hideHeader?:
               return (
                 <tr key={key} className={`hover:bg-gray-50/60 ${v.isCharter ? "bg-purple-50/40" : ""}`}>
                   <td className="px-2 py-2 text-center">
-                    {selectable && (
+                    {selectable ? (
                       <input type="checkbox" checked={checked.has(key)} onChange={() => toggle(key)} />
-                    )}
+                    ) : !jingyo && s.status === "ACTIVE" ? (
+                      // 진교 출발이 아니면 용차 자동등록 대상이 아니다 — 왜 못 고르는지 알 수 있게 표시
+                      <span className="text-[10px] text-amber-600" title={`출발지 ${v.departure ?? "미상"} — 진교 출발분만 용차 등록`}>✕</span>
+                    ) : null}
                   </td>
-                  <td className="px-3 py-2 font-mono">{isFirstOfShipment ? ymdSlash(s.shippedAt) : ""}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">{isFirstOfShipment ? ymdSlash(s.shippedAt) : ""}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
                     {isFirstOfShipment && (
-                      <Link href={`/cutpart/shipments/${s.id}`} className="font-mono font-bold text-purple-700 hover:underline">{s.shipmentNo}</Link>
+                      <Link href={`/cutpart/shipments/${s.id}`} className="font-mono text-xs font-bold text-purple-700 hover:underline">{s.shipmentNo}</Link>
                     )}
                   </td>
                   <td className="px-3 py-2 text-center">
                     {isFirstOfShipment && (s.status === "ACTIVE"
-                      ? <span className="inline-flex items-center gap-1 text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full"><CheckCircle2 size={11} /> 활성</span>
-                      : <span className="inline-flex items-center gap-1 text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full"><AlertCircle size={11} /> 취소</span>)}
+                      ? <span className="inline-flex items-center gap-1 text-[11px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full"><CheckCircle2 size={11} /> 활성</span>
+                      : <span className="inline-flex items-center gap-1 text-[11px] bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full"><AlertCircle size={11} /> 취소</span>)}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">{v.vehicleNo || "-"}</td>
+                  <td className="px-3 py-2 text-xs text-gray-700 truncate" title={v.vessels}>{v.vessels || "-"}</td>
+                  <td className="px-3 py-2 text-right text-xs text-gray-600 tabular-nums">{v.items.length}</td>
+                  <td className="px-3 py-2 text-right text-xs text-gray-600 tabular-nums">{weightOf(v).toLocaleString()}</td>
+                  <td className="px-3 py-2 text-xs text-gray-600 truncate" title={`${v.invoiceNo ?? ""} → ${v.deliverySnapshot?.name ?? ""}`}>
+                    <span className="font-mono text-purple-600">{v.invoiceNo}</span>
+                    <span className="text-gray-400 mx-1">→</span>
+                    {v.deliverySnapshot?.name ?? "-"}
                   </td>
                   <td className="px-3 py-2 text-center">
                     {v.isCharter && (
@@ -259,18 +273,7 @@ export default function ShipmentsListMain({ hideHeader = false }: { hideHeader?:
                       </span>
                     )}
                   </td>
-                  <td className={`px-3 py-2 text-xs ${jingyo ? "text-gray-700" : "text-amber-700 font-semibold"}`}>
-                    {v.departure ?? "-"}
-                  </td>
-                  <td className="px-3 py-2 font-mono text-xs">{v.vehicleNo || "-"}</td>
-                  <td className="px-3 py-2 text-xs text-gray-700">{v.vessels || "-"}</td>
-                  <td className="px-3 py-2 text-right text-xs text-gray-600">{v.items.length}건</td>
-                  <td className="px-3 py-2 text-xs text-gray-600">
-                    <span className="font-mono text-purple-600">{v.invoiceNo}</span>
-                    <span className="text-gray-400 mx-1">→</span>
-                    {v.deliverySnapshot?.name ?? "-"}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-gray-500 truncate max-w-[180px]">{isFirstOfShipment ? (s.memo ?? "") : ""}</td>
+                  <td className="px-3 py-2 text-xs text-gray-500 truncate" title={s.memo ?? ""}>{isFirstOfShipment ? (s.memo ?? "") : ""}</td>
                   <td className="px-2 py-1 text-center">
                     {isFirstOfShipment && s.status === "CANCELLED" && (
                       <button onClick={() => handleDelete(s)} title="취소된 출고장 영구삭제"

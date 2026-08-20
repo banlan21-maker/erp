@@ -44,6 +44,11 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // 등록을 누른 시각 (한국시간 HH:MM) — 서버가 UTC 라 그냥 쓰면 9시간 밀린다
+    const nowHM = new Intl.DateTimeFormat("ko-KR", {
+      timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false,
+    }).format(new Date()).replace(/[^0-9:]/g, "");
+
     const created: string[] = [];
     const skipped: { no: string; why: string }[] = [];
 
@@ -68,6 +73,7 @@ export async function POST(req: NextRequest) {
       })();
 
       const calc = await computeCharterCost(prisma, delivery, v.items.map(i => i.width));
+      const weight = v.items.reduce((s, i) => s + (i.weight ?? 0), 0);
 
       await prisma.charterUsage.create({
         data: {
@@ -78,7 +84,10 @@ export async function POST(req: NextRequest) {
           items: itemsSummary(v.items),
           departure: REQUIRED_DEPARTURE,
           destination: delivery,
-          departTime: null,          // 출고에 시각이 없다 — 대장에서도 안 쓴다
+          // 출고일에는 시각이 없다(전부 00:00). 대신 이 등록을 누른 시각을 출발시간으로 넣는다 —
+          // 실무상 출고 처리와 출발이 붙어 있어 그게 가장 가까운 값이다. 대장에서 고칠 수 있다.
+          departTime: nowHM,
+          weight: weight > 0 ? Math.round(weight) : null,
           cost: calc.cost,
           memo: `[자동] ${label} · ${calc.note}`,
           shipmentVehicleId: v.id,

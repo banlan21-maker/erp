@@ -22,6 +22,7 @@ export async function PATCH(
     if (body.waypoint     !== undefined) data.waypoint    = body.waypoint?.trim()    || null;
     if (body.destination  !== undefined) data.destination = body.destination?.trim() || null;
     if (body.departTime   !== undefined) data.departTime  = body.departTime || null;
+    if (body.weight       !== undefined) data.weight      = body.weight != null && body.weight !== "" ? Number(body.weight) : null;
     if (body.cost         !== undefined) data.cost        = body.cost != null && body.cost !== "" ? Number(body.cost) : null;
     if (body.memo         !== undefined) data.memo        = body.memo?.trim() || null;
 

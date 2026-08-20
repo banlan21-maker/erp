@@ -31,6 +31,7 @@ interface CharterUsage {
   createdAt:   string;
   // 외부출고관리 송장에서 자동 등록된 건이면 값이 있다. 수기 등록이면 null.
   shipmentVehicleId: string | null;
+  weight: number | null;   // 적재 중량 (kg)
   // 켜져 있는 추가항목 코드 (쉼표구분) — 가변/슬라이드·합짐
   extras: string | null;
 }
@@ -45,6 +46,7 @@ const FORM_INIT = {
   driverPhone: "",
   vehicleNo:   "",
   items:       "",
+  weight:      "",
   departure:   "",
   waypoint:    "",
   destination: "",
@@ -214,6 +216,7 @@ export default function CharterUsageTab() {
       waypoint:    l.waypoint ?? "",
       destination: l.destination ?? "",
       departTime:  l.departTime ?? "",
+      weight:      l.weight != null ? String(l.weight) : "",
       cost:        l.cost != null ? String(l.cost) : "",
       memo:        l.memo ?? "",
     });
@@ -271,6 +274,7 @@ export default function CharterUsageTab() {
     { key: "driverPhone", label: "전화번호",   align: "left"   as const },
     { key: "vehicleNo",   label: "차량번호",   align: "left"   as const },
     { key: "items",       label: "출고품목",   align: "left"   as const },
+    { key: "weight",      label: "중량(kg)",   align: "right"  as const },
     { key: "departure",   label: "출발지",     align: "left"   as const },
     { key: "destination", label: "도착지",     align: "left"   as const },
     { key: "departTime",  label: "출발시간",   align: "center" as const },
@@ -286,6 +290,7 @@ export default function CharterUsageTab() {
       case "driverPhone": return l.driverPhone ?? "";
       case "vehicleNo":   return l.vehicleNo ?? "";
       case "items":       return l.items ?? "";
+      case "weight":      return l.weight != null ? String(l.weight) : "";
       case "departure":   return l.departure ?? "";
       case "destination": return l.destination ?? "";
       case "departTime":  return l.departTime ?? "";
@@ -353,9 +358,9 @@ export default function CharterUsageTab() {
     if (!d.success) { alert("데이터 조회 실패"); return; }
     const all: CharterUsage[] = d.data;
 
-    const header = ["날짜", "운전자", "전화번호", "차량번호", "출고품목", "출발지", "경유지", "도착지", "출발시간", "추가항목", "용차비용", "비고"];
+    const header = ["날짜", "운전자", "전화번호", "차량번호", "출고품목", "중량(kg)", "출발지", "경유지", "도착지", "출발시간", "추가항목", "용차비용", "비고"];
     const toRow = (l: CharterUsage) => [
-      l.date, l.driverName, l.driverPhone ?? "", l.vehicleNo ?? "", l.items ?? "",
+      l.date, l.driverName, l.driverPhone ?? "", l.vehicleNo ?? "", l.items ?? "", l.weight ?? "",
       l.departure ?? "", l.waypoint ?? "", l.destination ?? "", l.departTime ?? "",
       (l.extras ?? "").split(",").map(c => c.trim()).filter(Boolean)
         .map(c => extraDefs.find(d => d.code === c)?.label ?? c).join(", "),
@@ -367,12 +372,14 @@ export default function CharterUsageTab() {
       header,
       ...all.map(toRow),
       [],
-      ["합계", "", "", "", "", "", "", "", "", "",
+      ["합계", "", "", "", "",
+        all.reduce((s, l) => s + (l.weight ?? 0), 0),
+        "", "", "", "", "",
         all.reduce((s, l) => s + (l.cost ?? 0), 0), ""],
     ]);
     ws["!cols"] = [
-      { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 24 },
-      { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 10 }, { wch: 16 }, { wch: 12 }, { wch: 30 },
+      { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 26 }, { wch: 11 },
+      { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 12 }, { wch: 26 },
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, `${year}-${String(month).padStart(2, "0")}`);
@@ -496,6 +503,7 @@ export default function CharterUsageTab() {
                 <td className="px-2 py-1.5 border-r border-gray-100"><Input value={editForm.driverPhone} onChange={e => setE("driverPhone", e.target.value)} className="h-7 text-xs w-28" /></td>
                 <td className="px-2 py-1.5 border-r border-gray-100"><Input value={editForm.vehicleNo} onChange={e => setE("vehicleNo", e.target.value)} className="h-7 text-xs w-24" /></td>
                 <td className="px-2 py-1.5 border-r border-gray-100"><Input value={editForm.items} onChange={e => setE("items", e.target.value)} className="h-7 text-xs w-32" /></td>
+                <td className="px-2 py-1.5 border-r border-gray-100"><Input type="number" value={editForm.weight} onChange={e => setE("weight", e.target.value)} className="h-7 text-xs w-20 text-right" /></td>
                 <td className="px-2 py-1.5 border-r border-gray-100 align-top">
                   <div className="space-y-1">
                     <Input value={editForm.departure} onChange={e => setE("departure", e.target.value)} className="h-7 text-xs w-24" placeholder="출발지" />
@@ -534,6 +542,7 @@ export default function CharterUsageTab() {
                 <td className="px-3 py-2 text-xs text-gray-600 border-r border-gray-100 font-mono">{l.driverPhone || <span className="text-gray-300">-</span>}</td>
                 <td className="px-3 py-2 text-xs text-gray-600 border-r border-gray-100 font-mono">{l.vehicleNo || <span className="text-gray-300">-</span>}</td>
                 <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100 max-w-[160px] truncate" title={l.items ?? ""}>{l.items || <span className="text-gray-300">-</span>}</td>
+                <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100 text-right tabular-nums">{l.weight != null ? l.weight.toLocaleString() : <span className="text-gray-300">-</span>}</td>
                 <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100">
                   {l.departure || <span className="text-gray-300">-</span>}
                   {l.waypoint && <div className="text-[10px] text-purple-600 mt-0.5">↳ 경유: {l.waypoint}</div>}

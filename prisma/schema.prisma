@@ -1076,6 +1076,8 @@ model CharterUsage {
   cost        Int? // 용차비용 (원)
   memo        String? // 비고
 
+  weight      Float? // 적재 중량 (kg) — 자동등록 시 그 차에 실린 자재 합계
+
   // 선택된 추가항목 코드 (쉼표구분, 예: "SLIDE,JOIN1"). 대장에서 버튼으로 켜고 끈다.
   //   켜면 그 금액이 cost 에 즉시 더해지고, 끄면 빠진다 — CharterExtra 참조.
   extras      String?
