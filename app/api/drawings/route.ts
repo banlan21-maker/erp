@@ -343,11 +343,42 @@ export async function POST(request: NextRequest) {
       };
     });
 
+    // ── 지정한 잔재 검증 ──────────────────────────────────────────────────
+    //   [강재선택] 모달과 같은 규칙으로 막는다(app/api/drawings/[id]/route.ts action=assign).
+    //   전에는 검사가 없어서, 미리보기를 띄운 뒤 [등록]을 누르기까지 사이에 남이 그 잔재를
+    //   가져가도 그대로 붙었다. 대량 업로드는 이 시간차가 길다.
+    //   문제 있는 행은 '잔재만' 떼고 정규강재 행으로 등록한다 — 100행 중 1행 때문에
+    //   전체를 되돌리면 현장이 더 곤란하다. 대신 어떤 행이 왜 빠졌는지 경고로 남긴다.
+    if (assignmentMap.size > 0) {
+      const ids = [...new Set([...assignmentMap.values()])];
+      const rems = await prisma.remnant.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, remnantNo: true, status: true, shipoutMarkedAt: true, reservedFor: true },
+      });
+      const byId = new Map(rems.map(r => [r.id, r]));
+      for (const [rowIdx, remId] of [...assignmentMap.entries()]) {
+        const r = byId.get(remId);
+        const rowNo = rowIdx + 1;
+        const blockCode = rowsToInsert[rowIdx]?.block ?? "UNKNOWN";
+        const mineFmt   = `${project.projectCode}/${blockCode}`;
+        let reason: string | null = null;
+        if (!r)                                          reason = "존재하지 않는 잔재";
+        else if (r.status === "EXHAUSTED")               reason = `이미 소진된 잔재(${r.remnantNo})`;
+        else if (r.shipoutMarkedAt)                      reason = `외부출고로 선별된 잔재(${r.remnantNo})`;
+        else if (r.reservedFor && r.reservedFor !== mineFmt && r.reservedFor !== blockCode)
+                                                         reason = `다른 곳에 확정된 잔재(${r.remnantNo} → ${r.reservedFor})`;
+        if (reason) {
+          assignmentMap.delete(rowIdx);
+          result.errors.push(`${rowNo}행: ${reason} — 잔재 지정을 빼고 정규강재로 등록했습니다.`);
+        }
+      }
+    }
+
     // 잔재 연결 또는 잔재 지정이 필요한 경우 개별 create로 ID 추적
     let createdCount = 0;
     const createdRows: Array<{ id: string; thickness: number; material: string; block: string | null; drawingNo: string | null }> = [];
 
-    const needIndividual = remnantsData.length > 0 || assignmentsData.length > 0;
+    const needIndividual = remnantsData.length > 0 || assignmentMap.size > 0;
     if (needIndividual) {
       for (let rowIdx = 0; rowIdx < rowsToInsert.length; rowIdx++) {
         const row = rowsToInsert[rowIdx];
