@@ -77,15 +77,25 @@ export async function PATCH(
  * 정규강재가 확정된 상태에서 보호받는 것과 같은 규칙을 잔재에도 건다.
  */
 async function assignedDrawingBlock(id: string): Promise<string | null> {
-  const rows = await prisma.drawingList.findMany({
-    where: { assignedRemnantId: id, status: { not: "CUT" } },
-    select: { block: true, drawingNo: true, status: true, project: { select: { projectCode: true } } },
-    take: 5,
-  });
-  if (rows.length === 0) return null;
-  const where = rows
-    .map(r => `${r.project?.projectCode ?? "?"}/${r.block ?? "-"} ${r.drawingNo ?? ""}`.trim())
-    .join(", ");
+  const [rows, works] = await Promise.all([
+    prisma.drawingList.findMany({
+      where: { assignedRemnantId: id, status: { not: "CUT" } },
+      select: { block: true, drawingNo: true, status: true, project: { select: { projectCode: true } } },
+      take: 5,
+    }),
+    // 돌발작업도 잔재를 확정해 둔다 — 도면과 같은 근거다. 여기서 안 막으면 잔재만 사라지고
+    // 돌발은 남아, 절단완료를 찍어도 소진될 강재가 없어 아무것도 안 줄어든다.
+    prisma.urgentWork.findMany({
+      where: { remnantId: id, status: { not: "COMPLETED" } },
+      select: { urgentNo: true, title: true },
+      take: 5,
+    }),
+  ]);
+  if (rows.length === 0 && works.length === 0) return null;
+  const where = [
+    ...rows.map(r => `${r.project?.projectCode ?? "?"}/${r.block ?? "-"} ${r.drawingNo ?? ""}`.trim()),
+    ...works.map(w => `돌발 ${w.urgentNo} (${w.title})`),
+  ].join(", ");
   return `이 잔재를 사용하기로 확정해 둔 도면이 있습니다 — ${where}${rows.length >= 5 ? " 외" : ""}.
 ` +
          `해당 도면에서 [확정취소] 하거나 다른 강재로 바꾼 뒤에 처리하세요.`;

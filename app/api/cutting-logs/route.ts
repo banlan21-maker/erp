@@ -157,6 +157,21 @@ export async function POST(request: NextRequest) {
     if (!isUrgent && !isRemnantDraw && !heatNo?.trim()) {
       return NextResponse.json({ success: false, error: "Heat NO는 필수입니다." }, { status: 400 });
     }
+    // 돌발 중복 착수 가드 — 같은 돌발작업을 두 장비가 동시에 잡으면 잔재 1장이 두 번 소진된다.
+    //   현장 목록이 진행중 건까지 보여주므로(작업명이 같아 구분이 어렵다) 서버에서 막는다.
+    if (isUrgent && urgentWorkId) {
+      const running = await prisma.cuttingLog.findFirst({
+        where: { urgentWorkId, status: { in: ["STARTED", "PAUSED"] } },
+        select: { id: true, operator: true, equipment: { select: { name: true } } },
+      });
+      if (running) {
+        return NextResponse.json({
+          success: false,
+          error: `이 돌발작업은 이미 ${running.equipment?.name ?? "다른 장비"}에서 ${running.operator} 님이 작업 중입니다.`,
+        }, { status: 409 });
+      }
+    }
+
     // 발생예정 잔재 가드 — 원판이 안 잘렸으면 그 잔재로는 자를 수 없다(확정은 이미 허용됨).
     const notReady = await remnantNotReadyMessage(prisma, drawingListId);
     if (notReady) return NextResponse.json({ success: false, error: notReady }, { status: 409 });

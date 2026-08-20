@@ -28,6 +28,8 @@ interface CuttingLog {
   status: "STARTED" | "PAUSED" | "COMPLETED";
   startAt: string; endAt: string | null; memo: string | null;
   isUrgent?: boolean; urgentWorkId?: string | null;
+  // 진행중·완료 카드에서 '어느 돌발인지' 를 보여주기 위해 받는다. GET /api/cutting-logs 가 이미 include 한다.
+  urgentWork?: { urgentNo: string; title: string; drawingNo?: string | null; remnant?: { remnantNo: string } | null } | null;
   pauses?: CuttingPause[];
 }
 
@@ -40,8 +42,9 @@ interface UrgentWork {
   dueDate: string | null;
   destination: string | null;
   materialMemo: string | null;
+  drawingNo: string | null;      // 무엇을 자를지 — 한 요청의 여러 건을 구분하는 1차 식별자
   status: string;
-  remnant: { id: string; remnantNo: string; material: string; thickness: number; weight: number; needsConsult: boolean } | null;
+  remnant: { id: string; remnantNo: string; material: string; thickness: number; weight: number; needsConsult: boolean; heatNo?: string | null } | null;
 }
 
 interface Remnant {
@@ -590,9 +593,19 @@ export default function FieldWorklog({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className={`w-3 h-3 rounded-full ${urgentOngoing.status === "PAUSED" ? "bg-yellow-400" : "bg-orange-500 animate-pulse"}`} />
-                  <span className={`font-bold text-base ${urgentOngoing.status === "PAUSED" ? "text-yellow-300" : "text-orange-300"}`}>
-                    {urgentOngoing.status === "PAUSED" ? "⚡ 돌발 중단됨" : "⚡ 돌발 진행중"}
-                  </span>
+                  <div className="min-w-0">
+                    <span className={`font-bold text-base ${urgentOngoing.status === "PAUSED" ? "text-yellow-300" : "text-orange-300"}`}>
+                      {urgentOngoing.status === "PAUSED" ? "⚡ 돌발 중단됨" : "⚡ 돌발 진행중"}
+                    </span>
+                    {/* 어느 건인지 — 한 요청으로 여러 건이 등록되면 작업명이 전부 같아 이게 없으면 구분이 안 된다 */}
+                    {urgentOngoing.urgentWork && (
+                      <p className="text-xs text-gray-400 truncate">
+                        <span className="font-mono">{urgentOngoing.urgentWork.urgentNo}</span>
+                        {urgentOngoing.urgentWork.drawingNo ? " · 도면 " + urgentOngoing.urgentWork.drawingNo : ""}
+                        {urgentOngoing.urgentWork.remnant ? " · " + urgentOngoing.urgentWork.remnant.remnantNo : ""}
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <span className={`font-mono text-lg font-bold ${urgentOngoing.status === "PAUSED" ? "text-yellow-300" : "text-orange-300"}`}>
                   <LiveTimer startAt={urgentOngoing.startAt} />
@@ -712,7 +725,14 @@ export default function FieldWorklog({
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="space-y-1 min-w-0">
-                          <p className="font-semibold text-white text-sm leading-tight">{w.title}</p>
+                          <p className="font-semibold text-white text-sm leading-tight">
+                            {w.title}
+                            {w.status === "IN_PROGRESS" && (
+                              <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-amber-600 text-white align-middle">진행중</span>
+                            )}
+                          </p>
+                          {/* 도면번호 — 같은 요청으로 등록된 여러 건은 이것으로 구분한다 */}
+                          {w.drawingNo && <p className="text-xs text-blue-300 font-mono font-bold">도면 {w.drawingNo}</p>}
                           <p className="text-xs text-gray-500 font-mono">{w.urgentNo}</p>
                           {w.materialMemo && <p className="text-xs text-gray-400">재질: {w.materialMemo}</p>}
                           {w.destination && <p className="text-xs text-gray-400">→ {w.destination}</p>}
@@ -726,6 +746,7 @@ export default function FieldWorklog({
                         <p className={`mt-2 text-xs flex items-center gap-1 ${w.remnant.needsConsult ? "text-purple-400" : "text-gray-500"}`}>
                           {w.remnant.needsConsult && <AlertTriangle size={11} />}
                           잔재: {w.remnant.remnantNo} ({w.remnant.material} {w.remnant.thickness}t)
+                          {w.remnant.heatNo ? ` · 판번호 ${w.remnant.heatNo}` : ""}
                         </p>
                       )}
                     </button>
@@ -804,7 +825,15 @@ export default function FieldWorklog({
                   <div key={log.id} className="px-4 py-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="space-y-1">
-                        <p className="text-xs font-semibold text-orange-300 flex items-center gap-1"><Zap size={11} /> 돌발</p>
+                        <p className="text-xs font-semibold text-orange-300 flex items-center gap-1">
+                          <Zap size={11} /> 돌발
+                          {log.urgentWork && (
+                            <span className="font-mono text-gray-400 font-normal">
+                              {log.urgentWork.urgentNo}
+                              {log.urgentWork.drawingNo ? " · " + log.urgentWork.drawingNo : ""}
+                            </span>
+                          )}
+                        </p>
                         <p className="text-xs text-gray-500">
                           {log.operator} · {fmtTime(log.startAt)} ~ {log.endAt ? fmtTime(log.endAt) : "-"}
                           {log.endAt && <span className="text-green-500 ml-1">{fmtDuration(log.startAt, log.endAt)}</span>}

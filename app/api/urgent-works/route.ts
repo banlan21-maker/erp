@@ -5,8 +5,13 @@ import { remnantWeight, isInvalidLShape } from "@/lib/remnant-area";
 
 export const dynamic = "force-dynamic";
 
+/** 사용자에게 409 로 돌려줄 충돌 — 트랜잭션 안에서 던져 전체를 되돌린다. */
+class ConflictError extends Error {}
+
 // 돌발번호 자동채번: D-YYMMDD-NN (한국시간 기준 당일 순번, 예: D-260615-01)
-async function generateUrgentNo(): Promise<string> {
+type Db = typeof prisma | Prisma.TransactionClient;
+
+async function generateUrgentNo(db: Db = prisma): Promise<string> {
   // Docker 컨테이너가 UTC 여도 한국 달력 날짜로 발번
   const kstFull = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
@@ -14,7 +19,7 @@ async function generateUrgentNo(): Promise<string> {
   const yymmdd = kstFull.slice(2).replace(/-/g, "");   // "260615"
   const prefix = `D-${yymmdd}-`;
 
-  const rows = await prisma.urgentWork.findMany({
+  const rows = await db.urgentWork.findMany({
     where: { urgentNo: { startsWith: prefix } },
     select: { urgentNo: true },
   });
@@ -44,6 +49,7 @@ export async function GET(request: NextRequest) {
         remnant: {
           select: {
             id: true, remnantNo: true, material: true, thickness: true, weight: true, needsConsult: true,
+            heatNo: true,   // 현장 카드에 판번호를 띄워 돌발 절단의 판번호 추적을 잇는다
             width1: true, length1: true, width2: true, length2: true,
           },
         },
@@ -77,13 +83,14 @@ export async function GET(request: NextRequest) {
  * 현장잔재(REMNANT)는 자투리의 자투리라 대상이 아니다.
  */
 async function createGeneratedRemnants(
+  db: Db,
   remnantId: string,
   genList: Array<{ remnantNo?: string; shape?: string; width1?: number | string; length1?: number | string; width2?: number | string; length2?: number | string }>,
   registeredBy: string | null,
 ): Promise<{ created: number; failed: number }> {
   let created = 0, failed = 0;
   if (!remnantId || genList.length === 0) return { created, failed };
-  const parent = await prisma.remnant.findUnique({
+  const parent = await db.remnant.findUnique({
     where: { id: remnantId },
     select: {
       type: true, material: true, thickness: true, heatNo: true,
@@ -95,7 +102,7 @@ async function createGeneratedRemnants(
   const year = new Date().getFullYear();
   const prefix = `REM-${year}-`;
   // 숫자 최댓값 기반 채번 (문자열 정렬은 100/1000 자리에서 깨짐) + 배치 내 중복 방지
-  const existing = await prisma.remnant.findMany({
+  const existing = await db.remnant.findMany({
     where: { remnantNo: { startsWith: prefix } },
     select: { remnantNo: true },
   });
@@ -118,7 +125,9 @@ async function createGeneratedRemnants(
     let shape: "RECTANGLE" | "L_SHAPE" = g.shape === "L_SHAPE" ? "L_SHAPE" : "RECTANGLE";
     let w2 = g.width2 ? Number(g.width2) : null;
     let l2 = g.length2 ? Number(g.length2) : null;
-    if (shape === "L_SHAPE" && (!w2 || !l2)) { shape = "RECTANGLE"; w2 = null; l2 = null; }
+    // L자형인데 잘려나간 폭2·길이2 가 비면 실패로 돌린다.
+    // 전에는 조용히 사각형으로 바꿨는데, 잘려나간 부분을 빼지 않아 중량이 과대 계산됐다.
+    if (shape === "L_SHAPE" && (!w2 || !l2)) { failed++; continue; }
     // 형상 불가(W2>W1 또는 L2>L1) 거부 + 면적식은 lib/remnant-area 단일 기준
     if (shape === "L_SHAPE" && isInvalidLShape(w1, l1, w2, l2)) { failed++; continue; }
     const weight = remnantWeight(shape, parent.thickness, w1, l1, w2, l2);
@@ -128,7 +137,7 @@ async function createGeneratedRemnants(
     if (usedNos.has(remnantNo)) { failed++; continue; }
     usedNos.add(remnantNo);
     try {
-      await prisma.remnant.create({
+      await db.remnant.create({
         data: {
           remnantNo, type: "REGISTERED", shape,
           material: parent.material, thickness: parent.thickness, weight,
@@ -139,7 +148,8 @@ async function createGeneratedRemnants(
           parentRemnantId:  remnantId,
           heatNo:           parent.heatNo,      // 부모(원재/등록잔재) 판번호 이어받음
           registeredBy:     registeredBy || "돌발",
-          status: "IN_STOCK",
+          // 발생예정 — 사용 강재를 아직 안 잘랐으므로 실물이 없다. 절단완료 시 승격(lib/cutting-complete.ts).
+          status: "PENDING",
         },
       });
       created++;
@@ -224,68 +234,100 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const createdWorks: unknown[] = [];
-    let batchNo: string | null = null;
-    let genCreated = 0, genFailed = 0, genRequested = 0;
+    // 여러 건을 한 트랜잭션으로 — 중간에 실패하면 전부 취소한다.
+    //   전에는 건마다 따로 커밋해서, 3건 중 2건째가 깨지면 1건이 잔재 확정표시까지 찍은 채
+    //   남았다. 화면에는 등록번호 없이 실패만 떠서 담당자가 다시 누르면, 이번엔 저장직전
+    //   재확인이 "이미 다른 곳에 확정됐다"며 통째로 막는다 — 자기가 만든 유령이 재시도를
+    //   막는 상황이라 손으로 지우기 전엔 영영 등록이 안 됐다.
+    const result = await prisma.$transaction(async (tx) => {
+      const works: Array<{ urgentNo: string; [k: string]: unknown }> = [];
+      let batch: string | null = null;
+      let gCreated = 0, gFailed = 0, gRequested = 0;
 
-    for (const item of items) {
-      const urgentNo = await generateUrgentNo();
-      if (!batchNo) batchNo = urgentNo;      // 묶음의 첫 건 번호를 묶음 키로 쓴다
+      for (const item of items) {
+        const urgentNo = await generateUrgentNo(tx);
+        if (!batch) batch = urgentNo;      // 묶음의 첫 건 번호를 묶음 키로 쓴다
 
-      const work = await prisma.urgentWork.create({
-        data: {
-          urgentNo,
-          batchNo,
-          title:        title.trim(),
-          urgency:      urgency      || "URGENT",
-          requester:    requester    || null,
-          department:   department   || null,
-          projectId:    projectId    || null,
-          vesselName:   vesselName   || null,
-          requestDate:  requestDate  ? new Date(requestDate) : new Date(),
-          dueDate:      dueDate      ? new Date(dueDate)     : null,
-          materialMemo: item.materialMemo ?? materialMemo ?? null,
-          drawingNo:    item.drawingNo || null,
-          destination:  destination  || null,
-          useWeight:    item.useWeight != null && item.useWeight !== "" ? Number(item.useWeight) : null,
-          remnantId:    item.remnantId || null,
-          status:       status       || "PENDING",
-          registeredBy: registeredBy || null,
-          memo:         memo         || null,
-        },
-        include: {
-          project: { select: { id: true, projectCode: true, projectName: true } },
-          remnant: { select: { id: true, remnantNo: true, material: true, thickness: true, needsConsult: true } },
-        },
-      });
-      createdWorks.push(work);
-
-      // 사용 예정 잔재의 확정정보(reservedFor)에 돌발번호 기록 — 강재전체목록 확정정보와 동일 역할.
-      // 이미 다른 작업에 선점된 잔재는 덮어쓰지 않음 (선점 보호)
-      if (item.remnantId) {
-        await prisma.remnant.updateMany({
-          where: { id: item.remnantId, reservedFor: null },
-          data:  { reservedFor: urgentNo },
+        const work = await tx.urgentWork.create({
+          data: {
+            urgentNo,
+            batchNo: batch,
+            title:        title.trim(),
+            urgency:      urgency      || "URGENT",
+            requester:    requester    || null,
+            department:   department   || null,
+            projectId:    projectId    || null,
+            vesselName:   vesselName   || null,
+            requestDate:  requestDate  ? new Date(requestDate) : new Date(),
+            dueDate:      dueDate      ? new Date(dueDate)     : null,
+            materialMemo: item.materialMemo ?? materialMemo ?? null,
+            drawingNo:    item.drawingNo || null,
+            destination:  destination  || null,
+            useWeight:    item.useWeight != null && item.useWeight !== "" ? Number(item.useWeight) : null,
+            remnantId:    item.remnantId || null,
+            status:       status       || "PENDING",
+            registeredBy: registeredBy || null,
+            memo:         memo         || null,
+          },
+          include: {
+            project: { select: { id: true, projectCode: true, projectName: true } },
+            remnant: { select: { id: true, remnantNo: true, material: true, thickness: true, needsConsult: true } },
+          },
         });
-      }
+        works.push(work as unknown as { urgentNo: string });
 
-      const genList = Array.isArray(item.generatedRemnants) ? item.generatedRemnants : [];
-      genRequested += genList.length;
-      if (item.remnantId && genList.length > 0) {
-        const r = await createGeneratedRemnants(item.remnantId, genList, registeredBy || null);
-        genCreated += r.created;
-        genFailed  += r.failed;
+        // 사용 예정 잔재의 확정정보(reservedFor)에 돌발번호 기록 — 강재전체목록 확정정보와 동일 역할.
+        //   where 에 reservedFor:null·shipoutMarkedAt:null 을 걸어 선점·출고선별을 보호하고,
+        //   갱신이 0건이면(= 그 사이 남이 가져감) 거기서 멈춰 트랜잭션 전체를 되돌린다.
+        //   단건 경로도 이 검사를 그대로 지난다 — 예전에는 무검증으로 통과해, 외부출고로
+        //   선별해 둔 잔재가 돌발에 확정되면서 선별목록에서 소리 없이 사라졌다.
+        if (item.remnantId) {
+          const marked = await tx.remnant.updateMany({
+            where: { id: item.remnantId, reservedFor: null, shipoutMarkedAt: null, status: "IN_STOCK" },
+            data:  { reservedFor: urgentNo },
+          });
+          if (marked.count !== 1) {
+            const r = await tx.remnant.findUnique({
+              where: { id: item.remnantId },
+              select: { remnantNo: true, status: true, reservedFor: true, shipoutMarkedAt: true },
+            });
+            const why = !r ? "없어진 강재입니다"
+                      : r.status !== "IN_STOCK" ? "재고 상태가 아닙니다"
+                      : r.reservedFor ? `다른 곳에 확정됐습니다(${r.reservedFor})`
+                      : "외부출고로 선별됐습니다";
+            throw new ConflictError(`${r?.remnantNo ?? item.remnantId} 는 지금 쓸 수 없습니다 — ${why}.\n목록을 새로고침한 뒤 다시 선택하세요.`);
+          }
+        }
+
+        const genList = Array.isArray(item.generatedRemnants) ? item.generatedRemnants : [];
+        gRequested += genList.length;
+        if (item.remnantId && genList.length > 0) {
+          const g = await createGeneratedRemnants(tx, item.remnantId, genList, registeredBy || null);
+          gCreated += g.created;
+          gFailed  += g.failed;
+        }
       }
-    }
+      return { works, batch, gCreated, gFailed, gRequested };
+    }, { maxWait: 5000, timeout: 30000 });
 
     return NextResponse.json({
       success: true,
-      data: multi ? createdWorks : createdWorks[0],
-      count: createdWorks.length,
-      batchNo,
-      generated: { requested: genRequested, created: genCreated, failed: genFailed },
+      data: multi ? result.works : result.works[0],
+      count: result.works.length,
+      batchNo: result.batch,
+      generated: { requested: result.gRequested, created: result.gCreated, failed: result.gFailed },
     }, { status: 201 });
   } catch (error) {
+    if (error instanceof ConflictError) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 409 });
+    }
+    // 돌발번호 동시 채번 충돌 — 사용자에게는 영문 원문 대신 다시 시도하라고 안내한다
+    if (typeof error === "object" && error !== null && (error as { code?: string }).code === "P2002") {
+      return NextResponse.json(
+        { success: false, error: "돌발번호가 다른 등록과 겹쳤습니다. 잠시 후 다시 시도해 주세요." },
+        { status: 409 },
+      );
+    }
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }

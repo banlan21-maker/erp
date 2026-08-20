@@ -180,13 +180,15 @@ interface UrgentWorkRow {
   requester: string | null;
   department: string | null;
   vesselName: string | null;
+  drawingNo: string | null;      // 무엇을 잘랐는지 — 한 요청으로 등록된 여러 건의 1차 식별자
+  batchNo: string | null;        // 같은 요청에서 나온 묶음 키 (묶음 첫 건의 돌발번호)
   useWeight: number | null;
   status: string;
   createdAt: string;
   project: { id: string; projectCode: string; projectName: string } | null;
   remnant: {
     id: string; remnantNo: string; material: string; thickness: number;
-    weight: number;
+    weight: number; heatNo?: string | null;
     width1: number | null; length1: number | null;
     width2: number | null; length2: number | null;
   } | null;
@@ -198,6 +200,7 @@ const URGENT_COLS = [
   { key: "status",       label: "상태",          align: "center" as const, filterable: true  },
   { key: "urgentNo",     label: "돌발번호",      align: "left"   as const, filterable: true  },
   { key: "title",        label: "작업명",        align: "left"   as const, filterable: true  },
+  { key: "drawingNo",    label: "도면번호",      align: "left"   as const, filterable: true  },
   { key: "requester",    label: "요청자",        align: "left"   as const, filterable: true  },
   { key: "department",   label: "요청부서",      align: "left"   as const, filterable: true  },
   { key: "vessel",       label: "연관호선/블록", align: "left"   as const, filterable: true  },
@@ -267,7 +270,16 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
     fetchData();
   };
   const handleDeleteUrgent = async (id: string, title: string) => {
-    if (!confirm(`돌발등록 "${title}" 전체를 삭제할까요? (연결된 작업로그도 함께 삭제)`)) return;
+    // 한 요청으로 여러 도면을 등록하면 작업명이 같은 행이 여러 개 생긴다.
+    // 예전 문구("전체를 삭제할까요?")는 형제까지 지워지는 것처럼 읽혔다 — 실제로는 이 1건만 지운다.
+    const target = works.find(w => w.id === id);
+    const siblings = target?.batchNo
+      ? works.filter(w => w.batchNo === target.batchNo && w.id !== id).length
+      : 0;
+    const msg = `돌발작업 "${title}" (${target?.urgentNo ?? ""}${target?.drawingNo ? " · 도면 " + target.drawingNo : ""}) 1건을 삭제할까요?`
+      + " (연결된 작업로그도 함께 삭제)"
+      + (siblings > 0 ? `\n\n같은 요청으로 등록된 다른 ${siblings}건은 그대로 남습니다.` : "");
+    if (!confirm(msg)) return;
     await fetch(`/api/urgent-works/${id}`, { method: "DELETE" });
     fetchData();
   };
@@ -318,6 +330,7 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
     status:       r => r.statusLabel,
     urgentNo:     r => r.w.urgentNo,
     title:        r => r.w.title,
+    drawingNo:    r => r.w.drawingNo ?? "",
     requester:    r => r.w.requester ?? "",
     department:   r => r.w.department ?? "",
     vessel:       r => r.w.project ? `[${r.w.project.projectCode}] ${r.w.project.projectName}` : (r.w.vesselName ?? ""),
@@ -470,8 +483,17 @@ function UrgentWorkTab({ equipment, workers }: { equipment: Equipment[]; workers
                     <td className="px-3 py-1 text-center">
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${r.statusCls}`}>{r.statusLabel}</span>
                     </td>
-                    <td className="px-3 py-1 font-mono text-[11px] text-orange-700">{r.w.urgentNo}</td>
+                    <td className="px-3 py-1 font-mono text-[11px] text-orange-700 whitespace-nowrap">
+                      {r.w.urgentNo}
+                      {r.w.batchNo && r.w.batchNo !== r.w.urgentNo && (
+                        <span className="ml-1 px-1 py-px rounded bg-orange-50 border border-orange-200 text-[9px] font-sans"
+                              title={`같은 요청(${r.w.batchNo})으로 등록된 묶음입니다`}>
+                          묶음 {r.w.batchNo}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-3 py-1 font-semibold text-gray-900 max-w-[160px] truncate">{r.w.title}</td>
+                    <td className="px-3 py-1 font-mono text-[11px] font-bold text-blue-700">{r.w.drawingNo ?? "-"}</td>
                     <td className="px-3 py-1 text-gray-600">{r.w.requester ?? "-"}</td>
                     <td className="px-3 py-1 text-gray-500">{r.w.department ?? "-"}</td>
                     <td className="px-3 py-1 text-gray-600 whitespace-nowrap text-[11px]">

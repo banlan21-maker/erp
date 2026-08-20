@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { X, Search, Check, Package } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { X, Search, Check, Package, RotateCw } from "lucide-react";
 
 /**
  * 돌발작업 사용 강재 선택 모달.
@@ -41,45 +41,96 @@ const TABS: { key: string; label: string }[] = [
 
 const num = (v: number | null) => (v == null ? "-" : v.toLocaleString());
 
+const SHAPE_LABEL: Record<string, string> = {
+  RECTANGLE: "사각형", L_SHAPE: "L자형", TRIANGLE: "삼각형", IRREGULAR: "불규칙",
+};
+
 export default function UrgentRemnantPicker({
   remnants,
   usedIds,
+  currentId,
+  tab,
+  setTab,
+  q,
+  setQ,
   onPick,
   onClose,
+  onRefresh,
 }: {
   remnants: PickerRemnant[];
-  usedIds: string[];          // 이미 이 요청의 다른 행에서 고른 것 — 중복 선택 방지
+  usedIds: string[];             // 이미 이 요청의 다른 행에서 고른 것 — 중복 선택 방지
+  currentId?: string | null;     // 지금 편집 중인 행이 이미 고른 것 — 자기 것은 다시 고를 수 있어야 한다
+  tab: string;                   // 탭·검색어는 부모가 들고 있다 — 여러 행을 연속으로 채울 때 매번 다시 고르지 않도록
+  setTab: (v: string) => void;
+  q: string;
+  setQ: (v: string) => void;
   onPick: (r: PickerRemnant) => void;
   onClose: () => void;
+  onRefresh?: () => void;        // 후보 목록 다시 읽기
 }) {
-  const [tab, setTab] = useState("SURPLUS");
-  const [q, setQ] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
 
-  const used = useMemo(() => new Set(usedIds), [usedIds]);
+  // Esc 로 닫기 + 열려 있는 동안 배경 스크롤 잠금 + 검색창 자동 포커스.
+  // 현장은 태블릿이라 모달 뒤가 같이 밀리면 닫았을 때 엉뚱한 위치로 간다.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    searchRef.current?.focus();
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [onClose]);
+
+  // 자기 행이 이미 고른 것은 '이미 선택됨' 에서 뺀다 — [변경] 눌렀을 때 자기 강재가 잠기면 안 된다
+  const used = useMemo(() => new Set(usedIds.filter(id => id !== currentId)), [usedIds, currentId]);
 
   // 쉼표 = OR. 한 토큰이 잔재번호·재질·판번호·위치·치수 어디에든 걸리면 통과.
-  const rows = useMemo(() => {
-    const terms = q.split(",").map(t => t.trim().toLowerCase()).filter(Boolean);
-    return remnants
+  const match = (r: PickerRemnant, terms: string[]) => {
+    if (terms.length === 0) return true;
+    const hay = [
+      r.remnantNo, r.material, r.heatNo ?? "", r.location ?? "",
+      SHAPE_LABEL[r.shape] ?? r.shape,
+      String(r.thickness),
+      String(r.width1 ?? ""), String(r.length1 ?? ""),
+      String(r.width2 ?? ""), String(r.length2 ?? ""),
+    ].join(" ").toLowerCase();
+    return terms.some(t => hay.includes(t));
+  };
+
+  const terms = useMemo(
+    () => q.split(",").map(t => t.trim().toLowerCase()).filter(Boolean), [q]);
+
+  // 검색 결과는 종류를 가리지 않고 센다 — 잔재번호·판번호만 들고 오는 것이 실제 사용법이라,
+  // 종류를 모르면 기본 탭에서 0건만 보고 "없어졌다" 고 오해하게 된다. 탭 뱃지도 검색 기준으로 센다.
+  const hitsByType = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const r of remnants) {
+      if (used.has(r.id) || !match(r, terms)) continue;
+      m[r.type] = (m[r.type] ?? 0) + 1;
+    }
+    return m;
+  }, [remnants, terms, used]);
+
+  const rows = useMemo(() => remnants
       .filter(r => r.type === tab)
-      .filter(r => {
-        if (terms.length === 0) return true;
-        const hay = [
-          r.remnantNo, r.material, r.heatNo ?? "", r.location ?? "",
-          String(r.thickness), num(r.width1), num(r.length1),
-          String(r.width1 ?? ""), String(r.length1 ?? ""),
-          String(r.width2 ?? ""), String(r.length2 ?? ""),
-        ].join(" ").toLowerCase();
-        return terms.some(t => hay.includes(t));
-      })
-      .sort((a, b) => a.thickness - b.thickness || (a.width1 ?? 0) - (b.width1 ?? 0));
-  }, [remnants, tab, q]);
+      .filter(r => match(r, terms))
+      .sort((a, b) => a.thickness - b.thickness || (a.width1 ?? 0) - (b.width1 ?? 0)),
+    [remnants, tab, terms]);
+
+  // 지금 탭에는 없는데 다른 탭에 있으면 그리로 안내한다
+  const elsewhere = terms.length > 0 && rows.length === 0
+    ? TABS.filter(t => t.key !== tab && (hitsByType[t.key] ?? 0) > 0)
+    : [];
 
   const showW2 = tab !== "SURPLUS";   // 등록잔재·현장잔재는 L자형이 있어 폭2·길이2를 같이 본다
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col"
+      <div role="dialog" aria-modal="true" aria-label="사용 강재 선택"
+           className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col"
            onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
           <h3 className="font-bold text-gray-900 flex items-center gap-2">
@@ -91,7 +142,7 @@ export default function UrgentRemnantPicker({
         <div className="px-5 pt-3 flex items-center gap-3 flex-wrap">
           <div className="flex border border-gray-200 rounded-lg overflow-hidden">
             {TABS.map(t => {
-              const n = remnants.filter(r => r.type === t.key && !used.has(r.id)).length;
+              const n = hitsByType[t.key] ?? 0;
               return (
                 <button key={t.key} type="button" onClick={() => setTab(t.key)}
                   className={`px-3 py-1.5 text-xs font-semibold ${tab === t.key ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
@@ -102,7 +153,7 @@ export default function UrgentRemnantPicker({
           </div>
           <div className="relative flex-1 min-w-[220px]">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input value={q} onChange={e => setQ(e.target.value)}
+            <input ref={searchRef} value={q} onChange={e => setQ(e.target.value)}
               placeholder="재질·두께·폭·길이·위치·판번호·잔재번호 검색 (쉼표로 여러 조건)"
               className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" />
           </div>
@@ -110,18 +161,28 @@ export default function UrgentRemnantPicker({
 
         <div className="flex-1 overflow-auto px-5 py-3">
           {rows.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-10">
-              {q ? "검색 조건에 맞는 강재가 없습니다." : "고를 수 있는 강재가 없습니다."}
-              <br />
-              <span className="text-xs text-gray-400">
+            <div className="text-sm text-gray-500 text-center py-10">
+              {q ? "이 종류에는 검색 조건에 맞는 강재가 없습니다." : "고를 수 있는 강재가 없습니다."}
+              {elsewhere.length > 0 && (
+                <p className="mt-2 text-blue-600">
+                  {elsewhere.map(t => (
+                    <button key={t.key} type="button" onClick={() => setTab(t.key)}
+                      className="underline font-semibold mx-1">
+                      {t.label}에 {hitsByType[t.key]}건 있습니다 →
+                    </button>
+                  ))}
+                </p>
+              )}
+              <p className="text-xs text-gray-400 mt-2">
                 재고 상태이고 다른 곳에 확정되지 않은 것만 나옵니다.
-              </span>
-            </p>
+              </p>
+            </div>
           ) : (
             <table className="w-full text-xs">
               <thead className="bg-gray-50 text-gray-500 sticky top-0">
                 <tr>
                   <th className="px-2 py-2 text-left font-semibold">잔재번호</th>
+                  <th className="px-2 py-2 text-left font-semibold">형태</th>
                   <th className="px-2 py-2 text-left font-semibold">재질</th>
                   <th className="px-2 py-2 text-right font-semibold">두께</th>
                   <th className="px-2 py-2 text-right font-semibold">폭1</th>
@@ -140,6 +201,7 @@ export default function UrgentRemnantPicker({
                   return (
                     <tr key={r.id} className={taken ? "bg-gray-50 opacity-50" : "hover:bg-blue-50"}>
                       <td className="px-2 py-1.5 font-mono font-semibold text-blue-700">{r.remnantNo}</td>
+                      <td className="px-2 py-1.5 text-gray-500">{SHAPE_LABEL[r.shape] ?? r.shape}</td>
                       <td className="px-2 py-1.5">{r.material}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{r.thickness}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{num(r.width1)}</td>
@@ -169,8 +231,17 @@ export default function UrgentRemnantPicker({
 
         <div className="px-5 py-3 border-t border-gray-200 flex justify-between items-center">
           <span className="text-xs text-gray-500">{rows.length}건</span>
-          <button type="button" onClick={onClose}
-            className="px-4 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">닫기</button>
+          <div className="flex gap-2">
+            {/* 후보는 페이지를 연 시점의 목록이다 — 그 사이 남이 가져갔거나 새로 등록된 것을 반영한다 */}
+            {onRefresh && (
+              <button type="button" onClick={onRefresh}
+                className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+                <RotateCw size={13} /> 목록 새로고침
+              </button>
+            )}
+            <button type="button" onClick={onClose}
+              className="px-4 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">닫기</button>
+          </div>
         </div>
       </div>
     </div>

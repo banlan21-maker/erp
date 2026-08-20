@@ -63,6 +63,9 @@ export default function UrgentRegisterForm({
 
   const [items, setItems] = useState<WorkItem[]>([newItem()]);
   const [pickFor, setPickFor] = useState<string | null>(null);   // 강재선택 모달을 연 행 key
+  // 탭·검색어는 여기 둔다 — 여러 행을 연속으로 채울 때 행마다 다시 고르게 하면 태블릿에서 부담이 크다
+  const [pickTab, setPickTab] = useState("SURPLUS");
+  const [pickQ,   setPickQ]   = useState("");
 
   const upd = (key: string, patch: Partial<WorkItem>) =>
     setItems(arr => arr.map(it => (it.key === key ? { ...it, ...patch } : it)));
@@ -80,6 +83,30 @@ export default function UrgentRegisterForm({
     // 사용 강재를 특정하지 않은 돌발 절단은 막는다 — 실물 없는 작업이 현장에 내려간다.
     const blank = items.findIndex(it => !it.remnant);
     if (blank >= 0) { setError(`${blank + 1}번째 작업의 사용 강재를 선택해주세요. 잔재관리 목록에 있는 강재만 쓸 수 있습니다.`); return; }
+
+    // 발생 등록잔재 — 적다 만 줄은 예전엔 조용히 사라져 "등록됐다" 는 배너만 뜨고 잔재는 없었다.
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (it.remnant?.type === "REMNANT") continue;
+      for (const g of it.gen) {
+        const touched = g.remnantNo || g.width1 || g.length1 || g.width2 || g.length2;
+        if (!touched) continue;
+        if (!g.width1 || !g.length1) {
+          setError(`${i + 1}번째 작업의 발생 잔재에 폭1·길이1을 입력하세요.\n적다 만 줄은 등록되지 않습니다.`);
+          return;
+        }
+        // L자형인데 잘려나간 부분을 안 적으면 중량이 사각형 기준으로 과대 계산된다
+        if (g.shape === "L_SHAPE" && (!g.width2 || !g.length2)) {
+          setError(`${i + 1}번째 작업의 발생 잔재가 L자형인데 폭2·길이2가 비어 있습니다.\n잘려나간 부분을 적어야 중량이 맞습니다.`);
+          return;
+        }
+      }
+    }
+
+    // 도면번호가 없으면 같은 요청으로 만든 여러 건이 작업일보에서 구분되지 않는다
+    if (items.length > 1 && items.some(it => !it.drawingNo.trim())) {
+      if (!confirm("도면번호가 비어 있는 작업이 있습니다.\n작업명이 모두 같아 현장에서 어느 것을 자를지 구분하기 어렵습니다.\n\n그래도 등록할까요?")) return;
+    }
 
     setSaving(true);
     try {
@@ -108,7 +135,12 @@ export default function UrgentRegisterForm({
         }),
       });
       const data = await res.json();
-      if (!data.success) { setError(data.error); return; }
+      if (!data.success) {
+        setError(data.error);
+        // 409 는 "그 사이 남이 가져갔다" 는 뜻 — 목록을 안 갱신하면 같은 강재를 또 고르고 또 409 다.
+        if (res.status === 409) router.refresh();
+        return;
+      }
       if (data.generated && data.generated.failed > 0) {
         alert(`발생 등록잔재 ${data.generated.created}건 등록, ${data.generated.failed}건 실패 (잔재번호 중복 또는 치수 오류). 잔재관리에서 확인해 주세요.`);
       }
@@ -365,8 +397,14 @@ export default function UrgentRegisterForm({
         <UrgentRemnantPicker
           remnants={remnants}
           usedIds={usedIds}
+          currentId={items.find(it => it.key === pickFor)?.remnant?.id ?? null}
+          tab={pickTab}
+          setTab={setPickTab}
+          q={pickQ}
+          setQ={setPickQ}
           onPick={r => upd(pickFor, { remnant: r })}
           onClose={() => setPickFor(null)}
+          onRefresh={() => router.refresh()}
         />
       )}
     </div>

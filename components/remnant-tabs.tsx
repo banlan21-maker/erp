@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { X, Save, AlertTriangle, Edit2, RotateCcw, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -166,6 +167,7 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
   const [rows, setRows] = useState<RemnantBulkRow[]>([emptyRemnantBulkRow()]);
   const [submitting, setSubmitting] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
+  const router = useRouter();
   const [results, setResults] = useState<BulkResult[] | null>(null);
 
   const isLShape    = shape === "L_SHAPE";
@@ -357,6 +359,9 @@ function RemnantBulkForm({ projects }: { projects: ProjectOption[] }) {
     const successCount = out.filter(o => o.ok).length;
     if (successCount > 0) {
       setRows([emptyRemnantBulkRow()]);
+      // 서버에서 한 번 렌더된 후보 목록을 다시 읽는다 — 안 하면 방금 등록한 잔재가
+      // 돌발등록 탭의 강재 선택 목록에 브라우저를 새로고침할 때까지 안 나온다.
+      router.refresh();
     }
   };
 

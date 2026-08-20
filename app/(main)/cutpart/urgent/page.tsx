@@ -11,7 +11,8 @@ export default async function UrgentPage() {
       select: { id: true, projectCode: true, projectName: true },
     }),
     prisma.remnant.findMany({
-      where: { status: "IN_STOCK", reservedFor: null },   // 이미 확정(선점)된 잔재는 선택 목록에서 제외
+      // 이미 확정(선점)됐거나 외부출고로 선별된 잔재는 선택 목록에서 제외 (잔재관리 쪽과 같은 조건)
+      where: { status: "IN_STOCK", reservedFor: null, shipoutMarkedAt: null },
       orderBy: { remnantNo: "asc" },
       select: { id: true, remnantNo: true, type: true, shape: true, material: true, thickness: true, width1: true, length1: true, weight: true, location: true, needsConsult: true },
     }),

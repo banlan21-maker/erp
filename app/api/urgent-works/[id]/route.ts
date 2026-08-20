@@ -66,6 +66,17 @@ export async function PATCH(
       }
     }
 
+    // 절단 없이 손으로 '완료' 처리한 경우 — 잔재의 확정표시(돌발번호)를 풀어 준다.
+    //   절단으로 완료됐으면 그 잔재는 이미 소진(EXHAUSTED)이라 여기 안 걸린다.
+    //   안 풀어주면 실물은 야적장에 있는데 재고인 채로 영영 후보에서 빠진다 —
+    //   손으로 되돌릴 화면도 없어 시스템에서만 잠긴 강재가 된다.
+    if (updated.status === "COMPLETED" && updated.remnantId) {
+      await prisma.remnant.updateMany({
+        where: { id: updated.remnantId, status: "IN_STOCK", reservedFor: updated.urgentNo },
+        data:  { reservedFor: null },
+      });
+    }
+
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : String(error) }, { status: 500 });

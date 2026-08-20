@@ -295,6 +295,13 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
         where: { id: uw.remnantId },
         data:  { status: "EXHAUSTED" },
       });
+      // 돌발 등록 때 미리 적어 둔 발생 등록잔재를 발생예정 → 재고로 승격.
+      // 도면 흐름(drawingListId 기준)과 같은 대칭을 돌발에도 건다 — 사용 강재를 실제로
+      // 잘라야 자투리가 실물로 생긴다. 돌발 발생잔재는 parentRemnantId 로 매달려 있다.
+      await tx.remnant.updateMany({
+        where: { parentRemnantId: uw.remnantId, type: "REGISTERED", status: "PENDING" },
+        data:  { status: "IN_STOCK" },
+      });
     }
   }
 
@@ -517,6 +524,13 @@ export async function applyCuttingRestore(tx: Tx, log: RestoreLog): Promise<void
       await tx.remnant.updateMany({
         where: { id: uw.remnantId, status: "EXHAUSTED" },
         data:  { status: "IN_STOCK" },
+      });
+      // 승격의 역방향 — 사용 강재를 다시 안 자른 셈이므로 자투리도 아직 없다.
+      // 이미 남이 쓴(EXHAUSTED)·확정한·출고선별한 것은 건드리지 않는다(도면 흐름과 동일).
+      await tx.remnant.updateMany({
+        where: { parentRemnantId: uw.remnantId, type: "REGISTERED",
+                 status: "IN_STOCK", reservedFor: null, shipoutMarkedAt: null },
+        data:  { status: "PENDING" },
       });
     }
     // I9: 로그 삭제로 돌발작업이 다시 필요해지면 UrgentWork.status 를 PENDING 으로 복원.
