@@ -78,7 +78,8 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
           data:  { status: "EXHAUSTED" },
         });
       }
-      // 이 도면에서 발생한 등록잔재에 원판 판번호 전파 (원재 → 등록잔재 판번호 연속)
+      // 이 도면에서 발생한 등록잔재에 원판 판번호 전파 (원재 → 등록잔재 판번호 연속).
+      // 여기서는 작업일보에 적힌 글자를 넣는다 — 아래에서 '실제 소진한 판'이 확정되면 덮어쓴다.
       if (log.heatNo?.trim()) {
         await tx.remnant.updateMany({
           where: { drawingListId: target.id, type: "REGISTERED" },
@@ -163,6 +164,24 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
     // 실제 소진한 판 id 를 로그에 기록 — 복원 시 그 판을 정확히 되돌리기 위함(selectedHeatId 는 '의도', consumedHeatId 는 '실제').
     if (consumedHeatId) {
       await tx.cuttingLog.update({ where: { id: log.id }, data: { consumedHeatId } });
+
+      // 등록잔재 판번호를 '실제 소진한 판' 기준으로 교정한다.
+      //   위에서 작업일보 손입력 글자로 한 번 넣었지만, 손입력은 옆 호선 오기가 있다(§15).
+      //   자동동기화(steel-plan/sync)와 정합성 진단은 2026-08-18 부터 consumedHeatId 를 근거로
+      //   쓰는데 잔재 판번호만 그 개선에서 빠져 있었다 — 오기를 나중에 교정해도 잔재에는
+      //   틀린 번호가 남았다. 잔재 판번호는 밀시트 역추적 근거라 같은 기준을 써야 한다.
+      if (targetDrawing) {
+        const consumed = await tx.steelPlanHeat.findUnique({
+          where: { id: consumedHeatId }, select: { heatNo: true },
+        });
+        const realHeatNo = consumed?.heatNo?.trim();
+        if (realHeatNo) {
+          await tx.remnant.updateMany({
+            where: { drawingListId: targetDrawing.id, type: "REGISTERED" },
+            data:  { heatNo: realHeatNo },
+          });
+        }
+      }
     }
   }
 
