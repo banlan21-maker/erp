@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
         },
         include: {
           project:         { select: { id: true, projectCode: true, projectName: true } },
-          assignedRemnant: { select: { width1: true, length1: true, width2: true, length2: true } },
+          assignedRemnant: { select: { type: true, remnantNo: true, width1: true, length1: true, width2: true, length2: true } },
         },
         orderBy: [{ projectId: "asc" }, { createdAt: "asc" }],
       });

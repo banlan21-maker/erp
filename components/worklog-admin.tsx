@@ -38,8 +38,15 @@ interface Drawing {
   qty: number;
   useWeight: number | null;
   status: string;
-  assignedRemnant: { width1: number | null; length1: number | null; width2: number | null; length2: number | null } | null;
+  assignedRemnant: { type: string; remnantNo: string | null; width1: number | null; length1: number | null; width2: number | null; length2: number | null } | null;
 }
+
+/** 잔재 사용 도면 표기 — 현장작업일보(components/field-worklog.tsx)의 REMNANT_BADGE 와 같은 어휘를 쓴다. */
+const ADMIN_REMNANT_BADGE: Record<string, { label: string; cls: string }> = {
+  SURPLUS:    { label: "여유원재", cls: "bg-sky-50 text-sky-700 border-sky-300" },
+  REGISTERED: { label: "등록잔재", cls: "bg-amber-50 text-amber-700 border-amber-300" },
+  REMNANT:    { label: "현장잔재", cls: "bg-orange-50 text-orange-700 border-orange-300" },
+};
 
 interface CuttingPause {
   reason: string; reasonText: string | null;
@@ -1287,8 +1294,21 @@ export default function WorklogAdmin({
                         <td className="px-3 py-1 text-gray-600 font-mono text-[11px]">{d.project?.projectCode ?? "-"}</td>
                         {/* 블록 */}
                         <td className="px-3 py-1 text-gray-600">{d.block ?? "-"}</td>
-                        {/* 도면번호 */}
-                        <td className="px-3 py-1 font-mono text-[11px] font-bold text-gray-800">{d.drawingNo ?? "-"}</td>
+                        {/* 도면번호 — 잔재 사용 행은 어떤 강재를 쓰는지 배지로 (현장작업일보와 동일 표기) */}
+                        <td className="px-3 py-1 font-mono text-[11px] font-bold text-gray-800">
+                          {d.drawingNo ?? "-"}
+                          {d.assignedRemnant && (() => {
+                            const b = ADMIN_REMNANT_BADGE[d.assignedRemnant.type] ?? { label: "잔재", cls: "bg-gray-100 text-gray-700 border-gray-300" };
+                            return (
+                              <span
+                                className={`ml-1 px-1 py-px rounded border text-[9px] font-sans font-normal align-middle ${b.cls}`}
+                                title={d.assignedRemnant.remnantNo ?? undefined}
+                              >
+                                {b.label}
+                              </span>
+                            );
+                          })()}
+                        </td>
                         {/* 재질 */}
                         <td className="px-3 py-1 text-gray-600">{d.material}</td>
                         {/* 두께 */}
