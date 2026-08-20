@@ -356,6 +356,27 @@ export default function DrawingTable({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selecting, setSelecting] = useState(false);
 
+  // 확정 결과 요약 — 서버는 몇 장 잡고 몇 장 못 잡았는지 세어 주는데 화면이 안 보여줘서
+  // 부분 입고 상태에서 '조용히 일부만' 확정되는 것을 사용자가 알 수 없었다. 확정취소와 대칭.
+  const reserveSummary = (d: { confirmed?: number; skipped?: number; remnantConfirmed?: number; remnantSkipped?: number }) => {
+    const c = d.confirmed ?? 0, s = d.skipped ?? 0;
+    const rc = d.remnantConfirmed ?? 0, rs = d.remnantSkipped ?? 0;
+    if (c === 0 && rc === 0) {
+      return s > 0
+        ? `확정된 강재가 없습니다.\n\n필요한 ${s}장이 모두 미입고이거나 이미 다른 블록에 확정돼 있습니다.\n강재입출고에서 입고를 먼저 잡으세요.`
+        : `확정할 대상이 없습니다.\n\n이미 전부 확정됐거나, [경고] 상태 행뿐입니다.`;
+    }
+    const parts: string[] = [];
+    if (c > 0)  parts.push(`강재 ${c}장 확정`);
+    if (rc > 0) parts.push(`잔재 ${rc}건 확정`);
+    let msg = parts.join(" · ");
+    const notes: string[] = [];
+    if (s > 0)  notes.push(`${s}장은 쓸 수 있는 강재가 없어 못 잡았습니다 (미입고이거나 이미 다른 블록에 확정).`);
+    if (rs > 0) notes.push(`잔재 ${rs}건은 외부출고로 선별 중이라 제외했습니다. 선별을 해제한 뒤 다시 확정하세요.`);
+    if (notes.length) msg += `\n\n${notes.map(n => `· ${n}`).join("\n")}`;
+    return msg;
+  };
+
   const bulkReserve = async () => {
     setBulkReserving(true);
     try {
@@ -366,6 +387,7 @@ export default function DrawingTable({
       });
       const data = await res.json();
       if (!data.success) { alert(data.error ?? "일괄 확정 실패"); return; }
+      alert(reserveSummary(data.data ?? {}));
       await loadAvailability();
       window.location.reload();
     } catch { alert("서버 오류"); } finally { setBulkReserving(false); }
@@ -418,6 +440,7 @@ export default function DrawingTable({
       });
       const data = await res.json();
       if (!data.success) { alert(data.error ?? "선택 확정 실패"); return; }
+      alert(reserveSummary(data.data ?? {}));
       window.location.reload();
     } catch { alert("서버 오류"); } finally { setSelecting(false); }
   };

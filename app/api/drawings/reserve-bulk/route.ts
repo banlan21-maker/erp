@@ -130,7 +130,16 @@ export async function POST(request: NextRequest) {
     // (현장작업일보가 ACTIVE 블록만 노출하므로, 완료블록에 강재 추가 후 작업 가능하게)
     await syncProjectStatus(projectId);
 
-    return NextResponse.json({ success: true, data: { confirmed, skipped } });
+    // 잔재 쪽 결과도 함께 — 화면이 '조용히 일부만' 되지 않도록 알려줄 근거.
+    //   remnantSkipped = 잔재를 쓰기로 지정했지만 그 잔재가 외부출고 선별 중이라 확정 못 한 행.
+    return NextResponse.json({
+      success: true,
+      data: {
+        confirmed, skipped,
+        remnantConfirmed: promotedRemnantRowIds.length,
+        remnantSkipped:   assignedRowIds.length - promotedRemnantRowIds.length,
+      },
+    });
   } catch (error) {
     console.error("[POST /api/drawings/reserve-bulk]", error);
     return NextResponse.json({ success: false, error: "일괄 확정 중 오류가 발생했습니다." }, { status: 500 });
