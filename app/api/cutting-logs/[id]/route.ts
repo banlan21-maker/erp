@@ -36,6 +36,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { applyCuttingComplete, applyCuttingRestore } from "@/lib/cutting-complete";
+import { remnantNotReadyMessage } from "@/lib/remnant-ready-guard";
 
 // ─── PATCH ─────────────────────────────────────────────────────────────────────
 // action="complete" → 절단 종료 (강재 상태 자동 동기화)
@@ -130,6 +131,11 @@ export async function PATCH(
         include: { equipment: { select: { name: true } } },
       });
       if (!log) throw new Error("기록 조회 실패");   // throw → 트랜잭션 롤백
+
+      // 발생예정 잔재 가드 — 원판 미절단이면 그 잔재로 완료 처리할 수 없다.
+      // throw → 트랜잭션 롤백(위 CAS 로 이미 COMPLETED 로 바꾼 것도 함께 되돌아간다).
+      const notReady = await remnantNotReadyMessage(tx, log.drawingListId);
+      if (notReady) throw new Error(notReady);
 
       // 완료 부작용(도면 CUT / 강재 소진 / 판번호 / 잔재 EXHAUSTED / sync) — 공용 헬퍼로 위임
       await applyCuttingComplete(tx, log);

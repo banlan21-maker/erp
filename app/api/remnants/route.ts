@@ -89,6 +89,8 @@ const statusCond = (raw: string | null) => {
   if (has("재고", "IN_STOCK"))  conds.push({ status: "IN_STOCK", reservedFor: null });
   if (has("확정", "RESERVED"))  conds.push({ status: { not: "EXHAUSTED" }, NOT: { reservedFor: null } });
   if (has("소진", "EXHAUSTED")) conds.push({ status: "EXHAUSTED" });
+  // 발생예정 = 원판 미절단. 실물이 없어 어디서도 고를 수 없다(후보 조회는 전부 IN_STOCK 조건).
+  if (has("발생예정", "예정", "PENDING")) conds.push({ status: "PENDING" });
   if (!conds.length) return null;
   return conds.length === 1 ? conds[0] : { OR: conds };
 };
@@ -194,7 +196,12 @@ export async function GET(request: NextRequest) {
     // ── page 파라미터 있음 → 페이지네이션 ──────────────────────────────────
     if (pageParam !== null) {
       const page = Math.max(1, parseInt(pageParam || "1"));
-      const [total, data] = await Promise.all([
+      // pendingCount — 상태 필터와 무관하게 이 종류의 '발생예정'(원판 미절단) 건수.
+      //   기본 필터가 '재고만'이라 발생예정이 목록에서 빠진다. 합계 중량을 실물 기준으로
+      //   유지하면서도 예정분이 있다는 사실은 알려야 해서 별도로 센다.
+      const pendingWhere = { ...where, status: "PENDING" as const };
+      delete (pendingWhere as { AND?: unknown }).AND;
+      const [total, data, pendingCount] = await Promise.all([
         prisma.remnant.count({ where }),
         prisma.remnant.findMany({
           where,
@@ -203,8 +210,9 @@ export async function GET(request: NextRequest) {
           skip: (page - 1) * PAGE_SIZE,
           take: PAGE_SIZE,
         }),
+        prisma.remnant.count({ where: pendingWhere }),
       ]);
-      return NextResponse.json({ data, total, page, totalPages: Math.ceil(total / PAGE_SIZE) });
+      return NextResponse.json({ data, total, page, totalPages: Math.ceil(total / PAGE_SIZE), pendingCount });
     }
 
     // ── page 없음 → 전체 반환 (하위 호환) ───────────────────────────────────

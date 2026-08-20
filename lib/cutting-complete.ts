@@ -85,6 +85,12 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
           data:  { heatNo: log.heatNo.trim() },
         });
       }
+      // 발생예정 → 재고 승격. 원판을 실제로 잘라야 자투리가 실물로 생긴다.
+      // 판번호 유무와 무관하게 승격한다 — 잔재로 자른 도면은 원판 판번호가 없어도 자투리는 나온다.
+      await tx.remnant.updateMany({
+        where: { drawingListId: target.id, type: "REGISTERED", status: "PENDING" },
+        data:  { status: "IN_STOCK" },
+      });
     }
   }
 
@@ -327,6 +333,14 @@ export async function applyCuttingRestore(tx: Tx, log: RestoreLog): Promise<void
       await tx.remnant.updateMany({
         where: { drawingListId: log.drawingListId, type: "REGISTERED" },
         data:  { heatNo: null },
+      });
+      // 승격의 역방향 — 원판 절단이 취소됐으므로 자투리도 아직 없다 → 발생예정으로 되돌린다.
+      // 단 이미 남이 쓴(EXHAUSTED)·확정한(reservedFor)·출고선별한 잔재는 건드리지 않는다.
+      // 되돌리면 그쪽 작업이 근거를 잃는다. 그런 건은 정합성 진단에서 잡는 편이 안전하다.
+      await tx.remnant.updateMany({
+        where: { drawingListId: log.drawingListId, type: "REGISTERED",
+                 status: "IN_STOCK", reservedFor: null, shipoutMarkedAt: null },
+        data:  { status: "PENDING" },
       });
       const effectiveVessel = drawing.alternateVesselCode?.trim() || drawing.project.projectCode;
       drawingSyncSpec = {

@@ -427,7 +427,11 @@ export async function POST(request: NextRequest) {
           drawingListId: dlRow.id,
           parentRemnantId,
           registeredBy: "system",
-          status: "IN_STOCK",
+          // 발생예정 — 원판이 아직 안 잘렸으므로 실물이 없다.
+          // 원판 절단완료 시 IN_STOCK 으로 승격된다(lib/cutting-complete.ts).
+          // 후보 조회는 전부 status=IN_STOCK 을 거치므로,
+          // 이것만으로 돌발·[강재선택]·출고선별·출고장에서 모두 제외된다.
+          status: "PENDING",
         },
       });
     }

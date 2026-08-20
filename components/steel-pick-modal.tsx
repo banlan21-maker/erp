@@ -22,6 +22,7 @@ interface Opt {
   weight: number; heatNo: string | null; location: string | null;
   sourceVessel: string | null; sourceBlock: string | null;
   fits: boolean; reason: string; isCurrent: boolean;
+  pending: boolean; parentDrawing: string | null;   // 발생예정 = 원판 미절단, 실물 없음
 }
 interface Payload {
   drawing: { id: string; block: string | null; drawingNo: string | null; status: string;
@@ -193,6 +194,12 @@ export default function SteelPickModal({
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-mono text-xs font-semibold text-blue-700">{o.remnantNo}</span>
                               {o.isCurrent && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-600 text-white font-bold">현재 지정됨</span>}
+                              {o.pending && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-800 border border-yellow-300 font-bold whitespace-nowrap"
+                                      title={o.parentDrawing ? `원판 도면 [${o.parentDrawing}] 절단 후 사용 가능` : "원판 절단 후 사용 가능"}>
+                                  발생예정{o.parentDrawing ? ` · ${o.parentDrawing} 절단 후` : ""}
+                                </span>
+                              )}
                               {!o.fits && (
                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 inline-flex items-center gap-0.5">
                                   <AlertTriangle size={9} /> {o.reason}

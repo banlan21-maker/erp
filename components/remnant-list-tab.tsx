@@ -29,8 +29,9 @@ const REMNANT_QS_KEY: Record<string, string> = {
 // typeFilter 로 종류를 고정. 행 클릭하면 DetailModal → 수정/잔여등록 가능
 
 const SHAPE_LABEL: Record<string, string>  = { RECTANGLE: "사각형", L_SHAPE: "L자형", TRIANGLE: "삼각형", IRREGULAR: "불규칙형" };
-const STATUS_LABEL: Record<string, string> = { IN_STOCK: "재고", EXHAUSTED: "소진" };
+const STATUS_LABEL: Record<string, string> = { PENDING: "발생예정", IN_STOCK: "재고", EXHAUSTED: "소진" };
 const STATUS_COLOR: Record<string, string> = {
+  PENDING:   "bg-yellow-100 text-yellow-800",
   IN_STOCK:  "bg-green-100 text-green-700",
   EXHAUSTED: "bg-gray-100 text-gray-500",
 };
@@ -38,6 +39,8 @@ const STATUS_COLOR: Record<string, string> = {
 // reservedFor 우선 (확정), 그 외엔 status 기준
 function remnantDisplayStatus(r: { status: string; reservedFor: string | null }): { label: string; cls: string; reservedFor?: string } {
   if (r.status === "EXHAUSTED") return { label: "소진", cls: "bg-gray-100 text-gray-500" };
+  // 발생예정 — 원판이 아직 안 잘려 실물이 없다. 확정보다 먼저 본다(확정될 수 없는 상태).
+  if (r.status === "PENDING")   return { label: "발생예정", cls: "bg-yellow-100 text-yellow-800" };
   if (r.reservedFor)            return { label: "확정", cls: "bg-blue-100 text-blue-700", reservedFor: r.reservedFor };
   if (r.status === "IN_STOCK")  return { label: "재고", cls: "bg-green-100 text-green-700" };
   return { label: STATUS_LABEL[r.status] ?? r.status, cls: STATUS_COLOR[r.status] ?? "bg-gray-100 text-gray-500" };
@@ -71,7 +74,7 @@ const COND_FIELDS: { key: keyof CondQuery; label: string; ph: string; w: string 
   { key: "width",     label: "폭",       ph: "2450, 2500",    w: "w-28" },
   { key: "length",    label: "길이",     ph: "11600",         w: "w-28" },
   { key: "location",  label: "위치",     ph: "A동, 야적장",    w: "w-32" },
-  { key: "status",    label: "상태",     ph: "재고, 확정, 소진", w: "w-32" },
+  { key: "status",    label: "상태",     ph: "재고, 확정, 소진, 발생예정", w: "w-32" },
   { key: "reserved",  label: "확정정보", ph: "1022, S50PS",   w: "w-36" },
 ];
 
@@ -163,6 +166,7 @@ export default function RemnantListTab({
   const [page,           setPage]           = useState(1);
   const [total,          setTotal]          = useState(0);
   const [totalPages,     setTotalPages]     = useState(1);
+  const [pendingCount,   setPendingCount]   = useState(0);   // 발생예정(원판 미절단) 건수 — 기본 필터에서 빠지므로 따로 알린다
 
   // 행 클릭 모달
   const [detailItem, setDetailItem] = useState<RemnantRow | null>(null);
@@ -214,6 +218,7 @@ export default function RemnantListTab({
         setRemnants(data.data);
         setTotal(data.total ?? data.data.length);
         setTotalPages(data.totalPages ?? 1);
+        setPendingCount(data.pendingCount ?? 0);
       }
     } finally { setLoading(false); }
   }, [typeFilter, page, search, filters, appliedCond]);
@@ -343,6 +348,17 @@ export default function RemnantListTab({
         >
           <Package size={12} /> 전체리스트 보기
         </button>
+        {/* 발생예정 — 원판이 아직 안 잘려 실물이 없는 잔재. 기본 필터('재고만')에서 빠지고
+            중량 합계에도 안 들어간다. 있다는 사실만 알리고, 누르면 그것만 보여준다. */}
+        {pendingCount > 0 && (
+          <button
+            onClick={() => { setFilters({ status: ["PENDING"] }); setPage(1); }}
+            title="원판이 아직 절단되지 않아 실물이 없는 잔재입니다. 도면에 미리 확정해 둘 수는 있지만, 원판을 먼저 잘라야 절단할 수 있습니다."
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold border border-yellow-300 bg-yellow-50 text-yellow-800 rounded-lg hover:bg-yellow-100"
+          >
+            발생예정 {pendingCount}건
+          </button>
+        )}
         {!condIsEmpty(appliedCond) && (
           <button
             onClick={() => { setCond(EMPTY_COND); setApplied(EMPTY_COND); }}

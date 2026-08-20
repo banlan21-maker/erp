@@ -46,18 +46,23 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     ]);
 
     // ── ②③④ 잔재 후보 ──────────────────────────────────────────────────
+    // 발생예정(PENDING)도 후보에 넣는다. "A 자르면 A-1 나오니 B 도면에 미리 잡아두자" 는
+    // 정당한 계획 업무다. 실물이 없다는 제약은 확정이 아니라 '절단' 단계에서 막는다
+    // (app/api/cutting-logs — 원판 미절단 잔재로는 절단 시작/완료 불가).
     const remnants = await prisma.remnant.findMany({
       where: {
-        status: "IN_STOCK",
+        status: { in: ["IN_STOCK", "PENDING"] },
         shipoutMarkedAt: null,
         OR: [{ reservedFor: null }, ...(d.assignedRemnantId ? [{ id: d.assignedRemnantId }] : [])],
       },
       select: {
         id: true, remnantNo: true, type: true, shape: true, material: true, thickness: true,
         width1: true, width2: true, length1: true, length2: true, weight: true,
-        heatNo: true, location: true, reservedFor: true,
+        heatNo: true, location: true, reservedFor: true, status: true,
         sourceBlock: true, sourceVesselName: true,
         sourceProject: { select: { projectCode: true } },
+        // 발생예정이면 어느 원판 도면을 먼저 잘라야 하는지 보여준다
+        drawingList: { select: { drawingNo: true, block: true, status: true } },
       },
     });
 
@@ -77,9 +82,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         sourceVessel: r.sourceProject?.projectCode ?? r.sourceVesselName ?? null,
         area: (r.width1 ?? 0) * (r.length1 ?? 0),
         isCurrent: r.id === d.assignedRemnantId,
+        pending: r.status === "PENDING",
+        // 발생예정이면 선행 원판 도면 — 그걸 먼저 절단해야 이 잔재로 자를 수 있다
+        parentDrawing: r.status === "PENDING" && r.drawingList
+          ? `${r.drawingList.block ?? "-"} ${r.drawingList.drawingNo ?? ""}`.trim()
+          : null,
         ...j,
       };
-    }).sort((a, b) => (a.fits === b.fits ? a.area - b.area : a.fits ? -1 : 1));
+    }).sort((a, b) => {
+      if (a.fits !== b.fits)       return a.fits ? -1 : 1;      // 사양 맞는 것 먼저
+      if (a.pending !== b.pending) return a.pending ? 1 : -1;   // 실물 있는 것 먼저
+      return a.area - b.area;                                    // 작은 판부터 (큰 판 아끼기)
+    });
 
     const byType = (t: string) => rows.filter(r => r.type === t);
 

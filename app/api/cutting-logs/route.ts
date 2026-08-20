@@ -30,6 +30,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { applyCuttingComplete } from "@/lib/cutting-complete";
+import { remnantNotReadyMessage } from "@/lib/remnant-ready-guard";
 
 // ─── GET ───────────────────────────────────────────────────────────────────────
 // 쿼리 파라미터:
@@ -156,6 +157,9 @@ export async function POST(request: NextRequest) {
     if (!isUrgent && !isRemnantDraw && !heatNo?.trim()) {
       return NextResponse.json({ success: false, error: "Heat NO는 필수입니다." }, { status: 400 });
     }
+    // 발생예정 잔재 가드 — 원판이 안 잘렸으면 그 잔재로는 자를 수 없다(확정은 이미 허용됨).
+    const notReady = await remnantNotReadyMessage(prisma, drawingListId);
+    if (notReady) return NextResponse.json({ success: false, error: notReady }, { status: 409 });
     if (!operator?.trim()) {
       return NextResponse.json({ success: false, error: "작업자명은 필수입니다." }, { status: 400 });
     }

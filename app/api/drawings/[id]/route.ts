@@ -84,7 +84,9 @@ export async function PATCH(
       if (remnantId) {
         const rem = await prisma.remnant.findUnique({ where: { id: remnantId } });
         if (!rem) return NextResponse.json({ success: false, error: "잔재를 찾을 수 없습니다." }, { status: 404 });
-        if (rem.status !== "IN_STOCK") {
+        // 발생예정(PENDING)도 허용 — "A 자르면 A-1 나오니 B 에 미리 잡아두자" 는 정당한 계획.
+        // 실물 없음 제약은 절단 단계에서 막는다(lib/remnant-ready-guard.ts).
+        if (rem.status !== "IN_STOCK" && rem.status !== "PENDING") {
           return NextResponse.json({ success: false, error: `이미 소진된 잔재입니다(${rem.remnantNo}).` }, { status: 409 });
         }
         if (rem.shipoutMarkedAt) {
