@@ -1076,6 +1076,10 @@ model CharterUsage {
   cost        Int? // 용차비용 (원)
   memo        String? // 비고
 
+  // 선택된 추가항목 코드 (쉼표구분, 예: "SLIDE,JOIN1"). 대장에서 버튼으로 켜고 끈다.
+  //   켜면 그 금액이 cost 에 즉시 더해지고, 끄면 빠진다 — CharterExtra 참조.
+  extras      String?
+
   // 외부출고관리 송장에서 자동 등록된 경우 그 차량(송장). 수기 등록이면 null.
   //   · 중복 등록 방지(@unique) — 같은 송장을 두 번 용차등록해도 한 건만 남는다
   //   · 출고장 취소 시 어느 대장 행을 정리해야 하는지 찾는 열쇠
@@ -1100,6 +1104,21 @@ model CharterRate {
   memo         String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+// 용차 추가항목 — 자재 치수만으로는 판정할 수 없어 사람이 고르는 가산 금액.
+//   가변기·슬라이드(혼합), 합짐(동지역/타지역) 같은 것.
+//   대장에서 버튼으로 켜고 끄면 그 자리에서 비용에 더해지거나 빠진다.
+model CharterExtra {
+  id        String   @id @default(cuid())
+  code      String   @unique // 내부 코드 (SLIDE / JOIN1 / JOIN2 …)
+  label     String // 버튼에 보이는 이름
+  amount    Int // 가산 금액 (원)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sortOrder])
 }
 
 // 용차 할증 — 실은 철판의 '최대 폭' 구간별.

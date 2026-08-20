@@ -31,7 +31,11 @@ interface CharterUsage {
   createdAt:   string;
   // 외부출고관리 송장에서 자동 등록된 건이면 값이 있다. 수기 등록이면 null.
   shipmentVehicleId: string | null;
+  // 켜져 있는 추가항목 코드 (쉼표구분) — 가변/슬라이드·합짐
+  extras: string | null;
 }
+
+interface CharterExtraDef { id: string; code: string; label: string; amount: number }
 
 const todayYMD = () => new Date().toISOString().split("T")[0];
 
@@ -233,6 +237,33 @@ export default function CharterUsageTab() {
 
   /* 컬럼 필터 */
   const [rateOpen, setRateOpen] = useState(false);
+  const [extraDefs, setExtraDefs] = useState<CharterExtraDef[]>([]);
+  const [extraBusy, setExtraBusy] = useState<string | null>(null);
+
+  // 추가항목 정의(가변/슬라이드·합짐) — 단가표에서 바꾸면 여기 버튼도 따라 바뀐다
+  const loadExtraDefs = useCallback(async () => {
+    const r = await fetch("/api/charter-rate");
+    const j = await r.json();
+    if (j.success) setExtraDefs(j.data.extras ?? []);
+  }, []);
+  useEffect(() => { loadExtraDefs(); }, [loadExtraDefs]);
+
+  // 추가항목 토글 — 누르면 그 금액이 비용에 바로 더해지거나 빠진다
+  const toggleExtra = async (rowId: string, code: string) => {
+    setExtraBusy(`${rowId}|${code}`);
+    try {
+      const r = await fetch("/api/charter-usage/extra", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: rowId, code }),
+      });
+      const j = await r.json();
+      if (!j.success) { alert(j.error ?? "처리 실패"); return; }
+      await load();
+    } finally { setExtraBusy(null); }
+  };
+
+  const hasExtra = (l: CharterUsage, code: string) =>
+    (l.extras ?? "").split(",").map(s => s.trim()).includes(code);
 
   const COLUMNS = useMemo(() => [
     { key: "date",        label: "날짜",       align: "left"   as const },
@@ -243,6 +274,7 @@ export default function CharterUsageTab() {
     { key: "departure",   label: "출발지",     align: "left"   as const },
     { key: "destination", label: "도착지",     align: "left"   as const },
     { key: "departTime",  label: "출발시간",   align: "center" as const },
+    { key: "extras",      label: "추가항목",   align: "center" as const },
     { key: "cost",        label: "용차비용",   align: "right"  as const },
     { key: "memo",        label: "비고",       align: "left"   as const },
   ], []);
@@ -257,6 +289,8 @@ export default function CharterUsageTab() {
       case "departure":   return l.departure ?? "";
       case "destination": return l.destination ?? "";
       case "departTime":  return l.departTime ?? "";
+      case "extras":      return (l.extras ?? "").split(",").map(c => c.trim()).filter(Boolean)
+                              .map(c => extraDefs.find(d => d.code === c)?.label ?? c).join(", ");
       case "cost":        return l.cost != null ? String(l.cost) : "";
       case "memo":        return l.memo ?? "";
       default: return "";
@@ -319,10 +353,12 @@ export default function CharterUsageTab() {
     if (!d.success) { alert("데이터 조회 실패"); return; }
     const all: CharterUsage[] = d.data;
 
-    const header = ["날짜", "운전자", "전화번호", "차량번호", "출고품목", "출발지", "경유지", "도착지", "출발시간", "용차비용", "비고"];
+    const header = ["날짜", "운전자", "전화번호", "차량번호", "출고품목", "출발지", "경유지", "도착지", "출발시간", "추가항목", "용차비용", "비고"];
     const toRow = (l: CharterUsage) => [
       l.date, l.driverName, l.driverPhone ?? "", l.vehicleNo ?? "", l.items ?? "",
       l.departure ?? "", l.waypoint ?? "", l.destination ?? "", l.departTime ?? "",
+      (l.extras ?? "").split(",").map(c => c.trim()).filter(Boolean)
+        .map(c => extraDefs.find(d => d.code === c)?.label ?? c).join(", "),
       l.cost ?? 0, l.memo ?? "",
     ];
 
@@ -331,12 +367,12 @@ export default function CharterUsageTab() {
       header,
       ...all.map(toRow),
       [],
-      ["합계", "", "", "", "", "", "", "", "",
+      ["합계", "", "", "", "", "", "", "", "", "",
         all.reduce((s, l) => s + (l.cost ?? 0), 0), ""],
     ]);
     ws["!cols"] = [
       { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 24 },
-      { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 30 },
+      { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 10 }, { wch: 16 }, { wch: 12 }, { wch: 30 },
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, `${year}-${String(month).padStart(2, "0")}`);
@@ -445,11 +481,11 @@ export default function CharterUsageTab() {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
-              <tr><td colSpan={11} className="px-3 py-12 text-center text-gray-400 text-sm">
+              <tr><td colSpan={12} className="px-3 py-12 text-center text-gray-400 text-sm">
                 <RefreshCw size={16} className="animate-spin inline mr-2" />불러오는 중...
               </td></tr>
             ) : filteredLogs.length === 0 ? (
-              <tr><td colSpan={11} className="px-3 py-12 text-center text-gray-400 text-sm">
+              <tr><td colSpan={12} className="px-3 py-12 text-center text-gray-400 text-sm">
                 <FileText size={32} className="mx-auto mb-2 text-gray-300" />
                 {logs.length === 0 ? "등록된 용차사용 내역이 없습니다." : "필터 조건에 맞는 결과가 없습니다."}
               </td></tr>
@@ -475,6 +511,7 @@ export default function CharterUsageTab() {
                 </td>
                 <td className="px-2 py-1.5 border-r border-gray-100 align-top"><Input value={editForm.destination} onChange={e => setE("destination", e.target.value)} className="h-7 text-xs w-24" placeholder="도착지" /></td>
                 <td className="px-2 py-1.5 border-r border-gray-100"><Input type="time" value={editForm.departTime} onChange={e => setE("departTime", e.target.value)} className="h-7 text-xs w-20" /></td>
+                <td className="px-2 py-1.5 border-r border-gray-100 text-center text-[10px] text-gray-400">저장 후 선택</td>
                 <td className="px-2 py-1.5 border-r border-gray-100"><Input type="number" value={editForm.cost} onChange={e => setE("cost", e.target.value)} className="h-7 text-xs w-24 text-right" /></td>
                 <td className="px-2 py-1.5 border-r border-gray-100"><Input value={editForm.memo} onChange={e => setE("memo", e.target.value)} className="h-7 text-xs w-32" /></td>
                 <td className="px-3 py-1.5 text-center">
@@ -503,6 +540,24 @@ export default function CharterUsageTab() {
                 </td>
                 <td className="px-3 py-2 text-xs text-gray-700 border-r border-gray-100">{l.destination || <span className="text-gray-300">-</span>}</td>
                 <td className="px-3 py-2 text-xs text-gray-600 text-center border-r border-gray-100 font-mono">{l.departTime || <span className="text-gray-300">-</span>}</td>
+                {/* 추가항목 — 누르면 그 금액이 용차비용에 바로 더해지고, 다시 누르면 빠진다 */}
+                <td className="px-2 py-1.5 border-r border-gray-100 text-center whitespace-nowrap">
+                  {extraDefs.map(d => {
+                    const on = hasExtra(l, d.code);
+                    const busy = extraBusy === `${l.id}|${d.code}`;
+                    return (
+                      <button key={d.code} type="button" disabled={busy}
+                        onClick={() => toggleExtra(l.id, d.code)}
+                        title={`${d.label} ${d.amount.toLocaleString()}원 ${on ? "— 누르면 해제" : "— 누르면 적용"}`}
+                        className={`mr-0.5 px-1.5 py-0.5 rounded border text-[10px] font-semibold transition disabled:opacity-40 ${
+                          on ? "bg-amber-500 border-amber-500 text-white"
+                             : "bg-white border-gray-300 text-gray-500 hover:border-amber-400 hover:text-amber-600"
+                        }`}>
+                        {d.label}
+                      </button>
+                    );
+                  })}
+                </td>
                 <td className="px-3 py-2 text-xs text-purple-700 font-medium border-r border-gray-100 text-right">{won(l.cost)}</td>
                 <td className="px-3 py-2 text-xs text-gray-500 border-r border-gray-100 max-w-[160px] truncate" title={l.memo ?? ""}>{l.memo || <span className="text-gray-300">-</span>}</td>
                 <td className="px-3 py-2 text-center">

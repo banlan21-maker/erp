@@ -66,14 +66,20 @@ export function departureOf(supplierSnapshot: unknown): string | null {
   return name.includes("진교") ? "진교" : name;
 }
 
-/** 출고품목 요약 — 대장의 '출고품목' 칸에 넣는다. */
+/**
+ * 출고품목 요약 — 대장의 '출고품목' 칸에 넣는다.
+ * 그 차에 무엇이 실렸는지가 한눈에 들어와야 하므로 호선/블록을 앞세운다.
+ *   예) "KYTS-1023 B70PS,S81PS · 13건 25,605kg"
+ * 실측상 326대 중 317대에 블록이 들어 있다.
+ */
 export function itemsSummary(items: { vesselCode: string | null; block?: string | null; weight: number | null; remnantNo?: string | null }[]): string {
   const vessels = [...new Set(items.map(i => (i.vesselCode ?? "").trim()).filter(Boolean))];
   const blocks = [...new Set(items.map(i => (i.block ?? "").trim()).filter(Boolean))];
   const weight = items.reduce((s, i) => s + (i.weight ?? 0), 0);
   const hasRemnant = items.some(i => i.remnantNo);
   const head = [vessels.join(","), blocks.join(",")].filter(Boolean).join(" ");
-  return `${head}${head ? " · " : ""}${items.length}건 ${Math.round(weight).toLocaleString()}kg${hasRemnant ? " (잔재포함)" : ""}`;
+  const tail = `${items.length}건 ${Math.round(weight).toLocaleString()}kg${hasRemnant ? " (잔재포함)" : ""}`;
+  return head ? `${head} · ${tail}` : tail;
 }
 
 /** 호선 목록 — 목록 화면 표시용. 1개 이상이면 쉼표로. */

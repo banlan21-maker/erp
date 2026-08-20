@@ -15,22 +15,25 @@ import { Input } from "@/components/ui/input";
 
 interface Rate { id: string; deliveryName: string; region: string | null; baseCost: number; memo: string | null }
 interface Surcharge { id: string; minWidth: number; maxWidth: number | null; amount: number; label: string | null }
+interface Extra { id: string; code: string; label: string; amount: number }
 
 const cell = "h-8 text-xs";
 
 export default function CharterRateModal({ onClose }: { onClose: () => void }) {
   const [rates, setRates] = useState<Rate[]>([]);
   const [surs, setSurs] = useState<Surcharge[]>([]);
+  const [extras, setExtras] = useState<Extra[]>([]);
   const [loading, setLoading] = useState(true);
   const [newRate, setNewRate] = useState({ deliveryName: "", region: "", baseCost: "" });
   const [newSur, setNewSur] = useState({ minWidth: "", maxWidth: "", amount: "" });
+  const [newExtra, setNewExtra] = useState({ label: "", amount: "" });
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const r = await fetch("/api/charter-rate");
       const j = await r.json();
-      if (j.success) { setRates(j.data.rates); setSurs(j.data.surcharges); }
+      if (j.success) { setRates(j.data.rates); setSurs(j.data.surcharges); setExtras(j.data.extras ?? []); }
     } finally { setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -43,7 +46,19 @@ export default function CharterRateModal({ onClose }: { onClose: () => void }) {
     return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
   }, [onClose]);
 
-  const patch = async (kind: "rate" | "surcharge", id: string, field: string, value: string) => {
+  const addExtra = async () => {
+    if (!newExtra.label.trim() || !newExtra.amount) { alert("이름과 금액을 입력하세요."); return; }
+    const r = await fetch("/api/charter-rate", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "extra", ...newExtra }),
+    });
+    const j = await r.json();
+    if (!j.success) { alert(j.error ?? "등록 실패"); return; }
+    setNewExtra({ label: "", amount: "" });
+    load();
+  };
+
+  const patch = async (kind: "rate" | "surcharge" | "extra", id: string, field: string, value: string) => {
     const r = await fetch("/api/charter-rate", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ kind, id, [field]: value }),
@@ -76,7 +91,7 @@ export default function CharterRateModal({ onClose }: { onClose: () => void }) {
     load();
   };
 
-  const del = async (kind: "rate" | "surcharge", id: string, label: string) => {
+  const del = async (kind: "rate" | "surcharge" | "extra", id: string, label: string) => {
     if (!confirm(`'${label}' 을(를) 삭제할까요?`)) return;
     const r = await fetch(`/api/charter-rate?kind=${kind}&id=${id}`, { method: "DELETE" });
     const j = await r.json();
@@ -197,7 +212,51 @@ export default function CharterRateModal({ onClose }: { onClose: () => void }) {
             </div>
             <p className="text-[11px] text-gray-400 mt-1">
               과거 실적을 역산한 결과 할증은 길이가 아니라 폭으로 발동했습니다(정확도 95%).
-              가변기·슬라이드(150,000)와 합짐(50,000/30,000)은 실린 자재만으로 판정할 수 없어 자동계산에 넣지 않았습니다 — 대장에서 더하세요.
+              가변기·슬라이드와 합짐은 실린 자재만으로 판정할 수 없어 아래 <b>추가항목</b>으로 뺐습니다 — 대장에서 버튼으로 고릅니다.
+            </p>
+          </div>
+
+          {/* 추가항목 — 대장에서 버튼으로 켜고 끄는 가산 금액 */}
+          <div>
+            <h4 className="text-sm font-bold text-gray-800 mb-2">
+              추가항목 <span className="text-xs font-normal text-gray-400">용차사용대장에서 버튼으로 선택 — 누르면 금액이 바로 더해집니다</span>
+            </h4>
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 text-gray-500">
+                  <tr>
+                    <th className="px-2 py-2 text-left font-semibold">이름 (버튼에 표시)</th>
+                    <th className="px-2 py-2 text-right font-semibold w-32">금액(원)</th>
+                    <th className="px-2 py-2 w-10"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {extras.map(x => (
+                    <tr key={x.id} className="hover:bg-gray-50">
+                      <td className="px-2 py-1"><Input defaultValue={x.label} className={cell}
+                        onBlur={e => e.target.value !== x.label && patch("extra", x.id, "label", e.target.value)} /></td>
+                      <td className="px-2 py-1"><Input type="number" defaultValue={x.amount} className={`${cell} text-right`}
+                        onBlur={e => Number(e.target.value) !== x.amount && patch("extra", x.id, "amount", e.target.value)} /></td>
+                      <td className="px-2 py-1 text-center">
+                        <button onClick={() => del("extra", x.id, x.label)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 size={13} /></button>
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="bg-blue-50/40">
+                    <td className="px-2 py-1"><Input value={newExtra.label} placeholder="예: 야간할증" className={cell}
+                      onChange={e => setNewExtra(p => ({ ...p, label: e.target.value }))} /></td>
+                    <td className="px-2 py-1"><Input type="number" value={newExtra.amount} placeholder="0" className={`${cell} text-right`}
+                      onChange={e => setNewExtra(p => ({ ...p, amount: e.target.value }))} /></td>
+                    <td className="px-2 py-1 text-center">
+                      <Button size="sm" onClick={addExtra} className="h-7 text-xs"><Plus size={12} /></Button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1">
+              이름을 바꾸면 대장의 버튼 이름도 함께 바뀝니다. 금액을 바꿔도 <b>이미 등록된 대장 금액은 그대로</b>입니다 —
+              다시 계산하지 않고, 그 뒤로 누르는 것부터 새 금액이 적용됩니다.
             </p>
           </div>
         </div>
