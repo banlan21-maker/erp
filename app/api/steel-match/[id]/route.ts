@@ -145,7 +145,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body.name !== undefined) { const n = String(body.name).trim(); if (n) data.name = n; }
     if (body.statuses !== undefined) data.statuses = String(body.statuses) || "ALL";
     if (body.reservedFilter !== undefined) data.reservedFilter = body.reservedFilter === "NONE" ? "NONE" : "ANY";
-    const job = await prisma.steelMatchJob.update({ where: { id }, data });
+
+    // 이름을 바꾸면 이미 붙은 귀속 라벨도 함께 옮긴다.
+    //   선별·출고 귀속은 id 가 아니라 '이름'(shipoutLabel = job.name)으로 걸려 있어서,
+    //   이름만 바꾸면 그 작업의 선별/출고분이 전부 남의 것이 되고 목록은 미선별로 되돌아간다.
+    //   강재(SteelPlan)와 잔재(Remnant) 양쪽 다 옮겨야 한다.
+    const prev = await prisma.steelMatchJob.findUnique({ where: { id }, select: { name: true } });
+    const renaming = !!(data.name && prev && data.name !== prev.name);
+
+    const job = await prisma.$transaction(async (tx) => {
+      const updated = await tx.steelMatchJob.update({ where: { id }, data });
+      if (renaming) {
+        await tx.steelPlan.updateMany({ where: { shipoutLabel: prev!.name }, data: { shipoutLabel: data.name! } });
+        await tx.remnant.updateMany({ where: { shipoutLabel: prev!.name }, data: { shipoutLabel: data.name! } });
+      }
+      return updated;
+    }, { maxWait: 5000, timeout: 20000 });
+
     return NextResponse.json({ success: true, data: { id: job.id } });
   } catch (e) {
     return NextResponse.json({ success: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
