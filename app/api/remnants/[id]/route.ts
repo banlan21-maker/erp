@@ -28,6 +28,13 @@ export async function PATCH(
       location, status, registeredBy, memo,
     } = body;
 
+    // 수정으로 소진 처리하는 것도 삭제와 같다 — 확정해 둔 도면이 있으면 막는다.
+    // (치수·재질 변경까지 막지는 않는다. 그건 오기 교정이 잦아 막으면 실무가 더 곤란하다.)
+    if (status === "EXHAUSTED") {
+      const blocked = await assignedDrawingBlock(id);
+      if (blocked) return NextResponse.json({ success: false, error: blocked }, { status: 409 });
+    }
+
     const updated = await prisma.remnant.update({
       where: { id },
       data: {
@@ -60,6 +67,30 @@ export async function PATCH(
   }
 }
 
+/**
+ * 이 잔재를 쓰기로 확정해 둔 도면이 있으면 그 안내 문구를, 없으면 null 을 돌려준다.
+ *
+ * 전에는 확인 없이 소진/삭제해서, 도면은 '확정'인 채 잔재만 사라졌다. 그 상태로 절단완료를
+ * 찍으면 이미 소진된 잔재를 다시 소진 처리하고(조용히 통과) 실물 없이 장부만 돈다.
+ * 물리삭제(force)는 더 나쁘다 — 도면의 잔재 연결이 null 로 끊겨 '확정된 정규강재 행'으로
+ * 둔갑하는데 실제로 확정해 둔 철판이 없어 절단완료 때 아무것도 안 줄어든다.
+ * 정규강재가 확정된 상태에서 보호받는 것과 같은 규칙을 잔재에도 건다.
+ */
+async function assignedDrawingBlock(id: string): Promise<string | null> {
+  const rows = await prisma.drawingList.findMany({
+    where: { assignedRemnantId: id, status: { not: "CUT" } },
+    select: { block: true, drawingNo: true, status: true, project: { select: { projectCode: true } } },
+    take: 5,
+  });
+  if (rows.length === 0) return null;
+  const where = rows
+    .map(r => `${r.project?.projectCode ?? "?"}/${r.block ?? "-"} ${r.drawingNo ?? ""}`.trim())
+    .join(", ");
+  return `이 잔재를 사용하기로 확정해 둔 도면이 있습니다 — ${where}${rows.length >= 5 ? " 외" : ""}.
+` +
+         `해당 도면에서 [확정취소] 하거나 다른 강재로 바꾼 뒤에 처리하세요.`;
+}
+
 // POST /api/remnants/[id]/reregister — 잔여분 재등록 (기존 소진 + 새 잔재 생성)
 // 이 route는 PATCH로 처리: action = "exhaust_and_reregister"
 // 실제로는 별도 action 파라미터로 분기
@@ -74,6 +105,9 @@ export async function DELETE(
   try {
     const { id } = await params;
     const force = new URL(request.url).searchParams.get("force") === "true";
+
+    const blocked = await assignedDrawingBlock(id);
+    if (blocked) return NextResponse.json({ success: false, error: blocked }, { status: 409 });
 
     if (force) {
       await prisma.remnant.delete({ where: { id } });
