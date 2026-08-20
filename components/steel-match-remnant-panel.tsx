@@ -158,7 +158,8 @@ td{padding:1px 2px;border:1px solid #aaa;text-align:center;font-size:16pt;white-
     try {
       const r = await fetch("/api/remnants/shipout", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "mark", ids }),
+        // 라벨(=매칭이름)로 이 작업에 귀속시킨다 — 없으면 다른 작업 목록까지 덮는다
+        body: JSON.stringify({ action: "mark", ids, label: jobName }),
       });
       const d = await r.json();
       if (!d.success) { win?.close(); alert(d.error ?? "선별 확정 실패"); return; }

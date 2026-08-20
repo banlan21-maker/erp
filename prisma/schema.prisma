@@ -1178,6 +1178,11 @@ model Remnant {
   // 외부 출고 선별 — 선별목록(출고 예약 풀)에 추가되면 마킹. status 는 그대로 두고
   // 마킹만 (되돌리기 가능). 정식 출고(Shipment) 확정 시 마킹 정리 + status=EXHAUSTED.
   shipoutMarkedAt DateTime?
+  // 어느 강재매칭 작업에서 선별·출고했는지 (= SteelMatchJob.name). 원판의 shipoutLabel 과 같은 역할.
+  //   이게 없던 시절에는 출고된 잔재가 전역 풀로 취급돼, 다른 호선·다른 작업에서 나간 잔재가
+  //   치수만 같으면 남의 매칭 목록을 '출고'로 덮었다(실측: 1023 목록에 1022 잔재 2건).
+  //   출고 확정 후에도 남긴다 — 커버리지 계산이 이 값으로 작업 귀속을 판정한다.
+  shipoutLabel    String?
   shipmentItems   ShipmentItem[] // 외부 출고 이력 (ACTIVE 1건만 의미 있음 — application 강제)
 
   // 레거시 필드 (미사용, 데이터 보존용)
@@ -1191,6 +1196,8 @@ model Remnant {
 
   urgentWorks     UrgentWork[]
   assignedToLists DrawingList[] @relation("AssignedRemnant")
+
+  @@index([shipoutLabel])
 }
 
 // ==========================================

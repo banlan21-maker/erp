@@ -15,22 +15,39 @@ export async function GET() {
     // 라벨(=매칭이름)으로 작업별 출고/선별 강재를 묶어 처리수 계산.
     //  · 출고(SHIPPED_OUT) 강재도 포함 — 선별 후 출고돼도 선별수에서 빠지지 않게.
     const sel = { vesselCode: true, material: true, thickness: true, width: true, length: true, shipoutLabel: true } as const;
-    const remSel = { material: true, thickness: true, width1: true, length1: true } as const;
+    const remSel = { material: true, thickness: true, width1: true, length1: true, shipoutLabel: true } as const;
     const [markedAll, shippedAll, markedRemRows, shippedRemItems] = await Promise.all([
       prisma.steelPlan.findMany({ where: { shipoutMarkedAt: { not: null }, shipoutLabel: { not: null } }, select: sel }),
       prisma.steelPlan.findMany({ where: { status: "SHIPPED_OUT", shipoutLabel: { not: null } }, select: sel }),
-      // 잔재는 호선·작업 무관 전역 풀 (잔재 모델 자체가 작업 라벨이 없음) — 모든 작업에 공통 적용.
+      // 잔재도 강재처럼 라벨(=매칭이름)로 작업에 귀속시킨다. 전에는 전역 풀이라 다른 호선·다른
+      // 작업에서 나간 잔재가 치수만 같으면 남의 목록을 '출고'로 덮었다.
       // 절단 미확정(reservedFor null) 선별 잔재만 (절단확정 잔재는 출고 선별 아님 — 강재와 대칭).
-      prisma.remnant.findMany({ where: { shipoutMarkedAt: { not: null }, status: { not: "EXHAUSTED" }, reservedFor: null }, select: remSel }),
+      prisma.remnant.findMany({
+        where: { shipoutMarkedAt: { not: null }, status: { not: "EXHAUSTED" }, reservedFor: null, shipoutLabel: { not: null } },
+        select: remSel,
+      }),
       prisma.shipmentItem.findMany({
-        where: { remnantId: { not: null }, vehicle: { shipment: { status: "ACTIVE" } } },
+        where: { remnantId: { not: null }, vehicle: { shipment: { status: "ACTIVE" } },
+                 remnant: { shipoutLabel: { not: null } } },
         select: { remnant: { select: remSel } },
       }),
     ]);
     const toRem = (r: { material: string; thickness: number; width1: number | null; length1: number | null }): MatchRemnant =>
       ({ material: r.material, thickness: r.thickness, width: r.width1 ?? -1, length: r.length1 ?? -1 });
-    const markedRemnants  = markedRemRows.map(toRem);
-    const shippedRemnants = shippedRemItems.map(it => it.remnant).filter((r): r is NonNullable<typeof r> => !!r).map(toRem);
+    // 라벨별로 묶어 둔다 — 작업마다 자기 라벨 잔재만 쓴다
+    const groupRemByLabel = (rows: { shipoutLabel: string | null; material: string; thickness: number; width1: number | null; length1: number | null }[]) => {
+      const m = new Map<string, MatchRemnant[]>();
+      for (const r of rows) {
+        if (!r.shipoutLabel) continue;
+        let arr = m.get(r.shipoutLabel);
+        if (!arr) { arr = []; m.set(r.shipoutLabel, arr); }
+        arr.push(toRem(r));
+      }
+      return m;
+    };
+    const markedRemByLabel  = groupRemByLabel(markedRemRows);
+    const shippedRemByLabel = groupRemByLabel(
+      shippedRemItems.map(it => it.remnant).filter((r): r is NonNullable<typeof r> => !!r));
     const groupByLabel = (rows: (MarkedPlate & { shipoutLabel: string | null })[]) => {
       const m = new Map<string, MarkedPlate[]>();
       for (const p of rows) {
@@ -51,7 +68,8 @@ export async function GET() {
         const cov = computeCoverage(specs, {
           shippedPlates: shippedByLabel.get(j.name) ?? [],
           markedPlates:  markedByLabel.get(j.name) ?? [],
-          shippedRemnants, markedRemnants,
+          shippedRemnants: shippedRemByLabel.get(j.name) ?? [],
+          markedRemnants:  markedRemByLabel.get(j.name) ?? [],
         });
         const selectedCount = cov.filter(c => c !== null).length;          // 처리(선별+출고)
         const shippedCount  = cov.filter(c => c?.state === "shipped").length; // 그중 출고

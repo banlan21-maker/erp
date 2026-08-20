@@ -1,0 +1,11 @@
+import "dotenv/config";
+import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+const p = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
+const marked = await p.remnant.count({ where: { shipoutMarkedAt: { not: null } } });
+const withLabel = await p.remnant.count({ where: { NOT: { shipoutLabel: null } } });
+const shipItems = await p.shipmentItem.count({ where: { remnantId: { not: null }, vehicle: { shipment: { status: "ACTIVE" } } } });
+const shipLabeled = await p.shipmentItem.count({ where: { remnantId: { not: null }, vehicle: { shipment: { status: "ACTIVE" } }, remnant: { NOT: { shipoutLabel: null } } } });
+console.log(`선별 마킹 잔재 ${marked}건 · 라벨 보유 ${withLabel}건`);
+console.log(`외부출고 잔재 ${shipItems}건 · 라벨 보유 ${shipLabeled}건 (기존분은 라벨 없음 = 어느 목록에도 안 잡힘)`);
+await p.$disconnect();

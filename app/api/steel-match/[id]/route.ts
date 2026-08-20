@@ -96,10 +96,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       prisma.steelPlan.findMany({ where: { shipoutMarkedAt: { not: null }, shipoutLabel: job.name }, select: specSel }),
       // 선별 잔재(선별목록 멤버) — shipoutMarkedAt 마킹 + 미소진 + 절단 미확정(reservedFor null).
       //   절단용으로 블록확정(reservedFor)된 잔재는 출고 선별이 아니므로 제외 (강재 markedPlates 와 대칭).
-      prisma.remnant.findMany({ where: { shipoutMarkedAt: { not: null }, status: { not: "EXHAUSTED" }, reservedFor: null }, select: remSel }),
+      //   ★ shipoutLabel 로 이 작업 것만 — 없으면 다른 작업에서 선별한 잔재가 치수만 같아도 덮는다.
+      prisma.remnant.findMany({
+        where: { shipoutMarkedAt: { not: null }, status: { not: "EXHAUSTED" }, reservedFor: null, shipoutLabel: job.name },
+        select: remSel,
+      }),
       // 외부출고 잔재 — ACTIVE 출고장의 ShipmentItem(remnantId). 절단소진(ShipmentItem 없음)은 제외.
+      //   ★ 여기도 이 작업 라벨로 귀속. 출고 확정 시 shipoutMarkedAt 은 지워도 라벨은 남긴다.
       prisma.shipmentItem.findMany({
-        where: { remnantId: { not: null }, vehicle: { shipment: { status: "ACTIVE" } } },
+        where: { remnantId: { not: null }, vehicle: { shipment: { status: "ACTIVE" } },
+                 remnant: { shipoutLabel: job.name } },
         select: { remnant: { select: remSel } },
       }),
     ]);
