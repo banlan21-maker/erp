@@ -201,6 +201,17 @@ export async function POST(request: NextRequest) {
     // 다중 모드에서는 사용 강재를 반드시 특정해야 한다 —
     // 잔재관리 목록에 실재하는 강재로만 돌발 절단이 이뤄지도록.
     if (multi) {
+      // 필수값 — 누가 왜 시켰는지가 안 남으면 대장으로서 쓸모가 없다.
+      //   단건 경로(기존 돌발관리 화면)는 예전 규칙을 유지한다 — 그쪽은 작업명만 받는다.
+      const need: [unknown, string][] = [
+        [urgency, "긴급도"], [requester, "요청자"], [department, "요청부서"], [registeredBy, "등록자"],
+      ];
+      for (const [v, name] of need) {
+        if (typeof v !== "string" || !v.trim()) {
+          return NextResponse.json({ success: false, error: name + " 는(은) 필수입니다." }, { status: 400 });
+        }
+      }
+
       const missing = items.findIndex(it => !it.remnantId);
       if (missing >= 0) {
         return NextResponse.json(

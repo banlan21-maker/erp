@@ -40,7 +40,8 @@ const TYPE_CLS: Record<string, string> = {
 };
 
 const INIT = {
-  title: "", urgency: "URGENT",
+  // 긴급도는 기본값을 두지 않는다 — 눌러서 고르게 해야 실제 판단이 담긴다
+  title: "", urgency: "",
   requester: "", department: "",
   projectId: "", vesselName: "",
   dueDate: "", destination: "",
@@ -79,7 +80,17 @@ export default function UrgentRegisterForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!form.title.trim()) { setError("작업명을 입력해주세요."); return; }
+    // 필수값 — 나중에 누가 왜 시켰는지 추적이 안 되면 대장으로서 쓸모가 없다
+    const required: [string, string][] = [
+      [form.urgency, "긴급도를 선택해주세요."],
+      [form.title, "작업명을 입력해주세요."],
+      [form.registeredBy, "등록자를 입력해주세요."],
+      [form.requester, "요청자를 입력해주세요."],
+      [form.department, "요청부서를 입력해주세요."],
+    ];
+    for (const [v, msg] of required) {
+      if (!v.trim()) { setError(msg); return; }
+    }
     // 사용 강재를 특정하지 않은 돌발 절단은 막는다 — 실물 없는 작업이 현장에 내려간다.
     const blank = items.findIndex(it => !it.remnant);
     if (blank >= 0) { setError(`${blank + 1}번째 작업의 사용 강재를 선택해주세요. 잔재관리 목록에 있는 강재만 쓸 수 있습니다.`); return; }
@@ -183,73 +194,76 @@ export default function UrgentRegisterForm({
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* ── 요청 공통 정보 — 도면이 여러 장이어도 한 벌 ────────────────── */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h3 className="text-sm font-bold text-gray-800 flex items-center gap-1.5 mb-4">
-            <Zap size={14} className="text-amber-500" /> 요청 정보
-            <span className="text-xs font-normal text-gray-400">— 아래 작업 전체에 공통으로 적용됩니다</span>
-          </h3>
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          {/* 제목줄 오른쪽에 긴급도 — 버튼이 크면 자리만 먹는다. 작게 붙여 한 줄을 아낀다 */}
+          <div className="flex items-center gap-2 flex-wrap mb-3">
+            <h3 className="text-sm font-bold text-gray-800 flex items-center gap-1.5">
+              <Zap size={14} className="text-amber-500" /> 요청 정보
+              <span className="text-xs font-normal text-gray-400">— 아래 작업 전체에 공통으로 적용됩니다</span>
+            </h3>
+            <div className="ml-auto flex items-center gap-1.5">
+              <span className="text-xs font-semibold text-gray-600">긴급도 <span className="text-red-500">*</span></span>
+              {URGENCY_OPTIONS.map(o => (
+                <button key={o.value} type="button" onClick={() => set("urgency", o.value)}
+                  title={o.desc}
+                  className={`px-2 py-1 rounded-md border text-xs font-bold transition ${
+                    form.urgency === o.value ? o.color : "border-gray-200 bg-white text-gray-400 hover:border-gray-300"
+                  }`}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            <div className="md:col-span-2">
+          {/* 1줄 — 전부 필수 */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+            <div>
               <label className={label}>작업명 <span className="text-red-500">*</span></label>
               <Input value={form.title} onChange={e => set("title", e.target.value)}
                 placeholder="예: 발전기실 보강판 절단" />
             </div>
             <div>
-              <label className={label}>요청자</label>
+              <label className={label}>등록자 <span className="text-red-500">*</span></label>
+              <Input value={form.registeredBy} onChange={e => set("registeredBy", e.target.value)} placeholder="이름" />
+            </div>
+            <div>
+              <label className={label}>요청자 <span className="text-red-500">*</span></label>
               <Input value={form.requester} onChange={e => set("requester", e.target.value)} placeholder="이름" />
             </div>
             <div>
-              <label className={label}>요청부서</label>
+              <label className={label}>요청부서 <span className="text-red-500">*</span></label>
               <Input value={form.department} onChange={e => set("department", e.target.value)} placeholder="예: 의장부" />
             </div>
+          </div>
 
-            <div>
+          {/* 2줄 — 짧은 항목은 좁게 두고 남는 폭을 메모에 준다 */}
+          <div className="grid grid-cols-2 md:grid-cols-12 gap-3">
+            <div className="md:col-span-2">
               <label className={label}>납기일</label>
               <Input type="date" value={form.dueDate} onChange={e => set("dueDate", e.target.value)} />
             </div>
-            <div>
+            <div className="md:col-span-2">
               <label className={label}>연관 호선/블록</label>
               <select value={form.projectId}
                 onChange={e => { set("projectId", e.target.value); if (e.target.value) set("vesselName", ""); }}
                 className="w-full h-9 px-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400">
-                <option value="">선택 안 함 (직접 입력)</option>
-                {projects.map(p => (
-                  <option key={p.id} value={p.id}>{p.projectCode} · {p.projectName}</option>
+                <option value="">선택 안 함</option>
+                {projects.map(pr => (
+                  <option key={pr.id} value={pr.id}>{pr.projectCode} · {pr.projectName}</option>
                 ))}
               </select>
             </div>
-            <div>
-              <label className={label}>호선명 직접 입력</label>
+            <div className="md:col-span-2">
+              <label className={label}>호선 직접입력</label>
               <Input value={form.vesselName} onChange={e => set("vesselName", e.target.value)}
                 disabled={!!form.projectId}
                 placeholder={form.projectId ? "위에서 선택됨" : "목록에 없는 호선"} />
             </div>
-            <div>
+            <div className="md:col-span-2">
               <label className={label}>도착지</label>
-              <Input value={form.destination} onChange={e => set("destination", e.target.value)} placeholder="예: 1도크 야드" />
+              <Input value={form.destination} onChange={e => set("destination", e.target.value)} placeholder="예: 1도크" />
             </div>
-
-            <div className="md:col-span-3 lg:col-span-4">
-              <label className={label}>긴급도</label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {URGENCY_OPTIONS.map(o => (
-                  <button key={o.value} type="button" onClick={() => set("urgency", o.value)}
-                    className={`px-3 py-2 rounded-lg border-2 text-left transition ${
-                      form.urgency === o.value ? o.color : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
-                    }`}>
-                    <div className="text-sm font-bold">{o.label}</div>
-                    <div className="text-[11px] opacity-70">{o.desc}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className={label}>등록자</label>
-              <Input value={form.registeredBy} onChange={e => set("registeredBy", e.target.value)} placeholder="이름" />
-            </div>
-            <div className="md:col-span-2 lg:col-span-3">
+            <div className="md:col-span-4">
               <label className={label}>메모</label>
               <Input value={form.memo} onChange={e => set("memo", e.target.value)} placeholder="특이사항" />
             </div>
