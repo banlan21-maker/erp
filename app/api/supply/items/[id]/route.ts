@@ -49,6 +49,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
               itemId:        Number(id),
               qty:           diff,
               stockQtyAfter: 0,
+              kind:          "ADJUST",   // 통계의 '매입' 에서 빠진다
               receivedBy:    "재고조정",
               memo:          "수동 재고 조정",
             },
@@ -63,6 +64,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
               itemId:        Number(id),
               qty:           Math.abs(diff),
               stockQtyAfter: 0,
+              kind:          "ADJUST",   // 통계의 '사용' 에서 빠진다
               usedBy:        "재고조정",
               memo:          "수동 재고 조정",
             },

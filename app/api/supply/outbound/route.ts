@@ -47,13 +47,15 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { itemId, qty, usedBy, memo, usedAt } = body;
 
-    if (!itemId || !qty || !usedBy) {
+    const user = typeof usedBy === "string" ? usedBy.trim() : "";
+    if (!itemId || !qty || !user) {
       return NextResponse.json({ success: false, error: "필수 값이 누락되었습니다." }, { status: 400 });
     }
 
     const nQty = Number(qty);
-    if (nQty <= 0) {
-      return NextResponse.json({ success: false, error: "수량은 1 이상이어야 합니다." }, { status: 400 });
+    // 소수·문자는 여기서 막는다 — 전에는 1.5 나 오타가 통과해 영문 시스템 오류로 튕겼다
+    if (!Number.isInteger(nQty) || nQty <= 0) {
+      return NextResponse.json({ success: false, error: "수량은 1 이상의 정수여야 합니다." }, { status: 400 });
     }
 
     const usedDate = usedAt ? new Date(usedAt) : new Date();
@@ -61,18 +63,21 @@ export async function POST(request: Request) {
     // 트랜잭션 처리: 출고 이력 추가 + 재고 수량 차감
     // 백데이트 대응: 이력 기록 후 시간순으로 stockQtyAfter 재계산
     const result = await prisma.$transaction(async (tx) => {
-      // 1. 재고 체크 (현재 라이브 재고 기준)
       const currentItem = await tx.supplyItem.findUnique({ where: { id: Number(itemId) } });
       if (!currentItem) throw new Error("품목을 찾을 수 없습니다.");
-      if (currentItem.stockQty < nQty) {
-        throw new Error(`재고가 부족합니다. (현재 재고: ${currentItem.stockQty})`);
-      }
 
-      // 2. 재고 차감
-      await tx.supplyItem.update({
-        where: { id: Number(itemId) },
+      // 재고 확인과 차감을 한 문장으로 — 전에는 읽고 나서 따로 뺐다.
+      //   두 사람이 동시에 출고하면 둘 다 차감 전 재고를 보고 검사를 통과해
+      //   재고가 음수가 됐다(10개에서 8개씩 두 건 → -6). 뒤에 도는 재계산도
+      //   '컬럼과 이력이 둘 다 -6' 이라 정합으로 보고 넘어간다.
+      //   조건부 갱신으로 바꾸면 늦게 온 쪽만 0건 갱신 → 재고 부족으로 거절된다.
+      const taken = await tx.supplyItem.updateMany({
+        where: { id: Number(itemId), stockQty: { gte: nQty } },
         data:  { stockQty: { decrement: nQty } },
       });
+      if (taken.count !== 1) {
+        throw new Error(`재고가 부족합니다. (현재 재고: ${currentItem.stockQty})`);
+      }
 
       // 3. 출고 이력 insert — stockQtyAfter는 임시값 (이후 recompute에서 확정)
       const outbound = await tx.supplyOutbound.create({
@@ -80,7 +85,7 @@ export async function POST(request: Request) {
           itemId:        Number(itemId),
           qty:           nQty,
           stockQtyAfter: 0,
-          usedBy,
+          usedBy:        user,
           memo,
           usedAt:        usedDate,
         },

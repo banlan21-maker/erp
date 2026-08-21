@@ -594,6 +594,16 @@ model SupplyItem {
   outbounds SupplyOutbound[]
 }
 
+/// 입출고 이력의 성격 — 통계에서 '실제 매입·사용' 과 '재고 맞추기' 를 갈라야 한다.
+///   NORMAL  실제 매입(입고) / 실제 사용(출고)   ← 월별 통계에 잡힌다
+///   ADJUST  실물과 안 맞아 손으로 맞춘 조정      ← 통계에서 뺀다
+///   INITIAL 품목 등록 시 초기재고               ← 통계에서 뺀다
+enum SupplyMoveKind {
+  NORMAL
+  ADJUST
+  INITIAL
+}
+
 model SupplyInbound {
   id            Int        @id @default(autoincrement())
   itemId        Int
@@ -602,12 +612,14 @@ model SupplyInbound {
   vendor        Vendor?    @relation(fields: [vendorId], references: [id])
   qty           Int // 입고 수량
   stockQtyAfter Int? // 입고 후 총재고 스냅샷
+  kind          SupplyMoveKind @default(NORMAL) // 성격 — 조정·초기재고는 통계에서 뺀다
   receivedBy    String // 입고 담당자
   receivedAt    DateTime   @default(now()) // 입고 일시
   memo          String? // 비고
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  @@index([kind])
 }
 
 model SupplyOutbound {
@@ -616,12 +628,14 @@ model SupplyOutbound {
   item          SupplyItem @relation(fields: [itemId], references: [id])
   qty           Int // 출고 수량
   stockQtyAfter Int? // 출고 후 총재고 스냅샷
+  kind          SupplyMoveKind @default(NORMAL) // 성격 — 조정·초기재고는 통계에서 뺀다
   usedBy        String // 사용자
   usedAt        DateTime   @default(now()) // 출고 일시
   memo          String? // 비고
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  @@index([kind])
 }
 
 model Vendor {

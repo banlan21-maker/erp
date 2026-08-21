@@ -58,6 +58,7 @@ export async function POST(request: Request) {
             itemId:        created.id,
             qty:           initialQty,
             stockQtyAfter: initialQty,
+            kind:          "INITIAL",   // 통계의 '매입' 에서 빠진다
             receivedBy:    "초기재고",
             memo:          "품목 등록 시 초기재고",
           },

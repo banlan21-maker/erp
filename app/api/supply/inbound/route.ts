@@ -54,13 +54,15 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { itemId, vendorId, qty, receivedBy, memo, receivedAt } = body;
 
-    if (!itemId || !vendorId || !qty || !receivedBy) {
+    const recv = typeof receivedBy === "string" ? receivedBy.trim() : "";
+    if (!itemId || !vendorId || !qty || !recv) {
       return NextResponse.json({ success: false, error: "필수 값이 누락되었습니다." }, { status: 400 });
     }
 
     const nQty = Number(qty);
-    if (nQty <= 0) {
-      return NextResponse.json({ success: false, error: "수량은 1 이상이어야 합니다." }, { status: 400 });
+    // 소수·문자는 여기서 막는다 — 전에는 1.5 나 오타가 통과해 영문 시스템 오류로 튕겼다
+    if (!Number.isInteger(nQty) || nQty <= 0) {
+      return NextResponse.json({ success: false, error: "수량은 1 이상의 정수여야 합니다." }, { status: 400 });
     }
 
     const receivedDate = receivedAt ? new Date(receivedAt) : new Date();
@@ -81,7 +83,7 @@ export async function POST(request: Request) {
           vendorId:      Number(vendorId),
           qty:           nQty,
           stockQtyAfter: 0,
-          receivedBy,
+          receivedBy:    recv,
           memo,
           receivedAt:    receivedDate,
         },

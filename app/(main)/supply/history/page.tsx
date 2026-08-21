@@ -98,7 +98,13 @@ function InOutModal({
   onDone: () => void;
   onToggleFavorite: (vendor: any, e: React.MouseEvent) => void;
 }) {
-  const todayStr = () => new Date().toISOString().slice(0, 10);
+  // toISOString() 은 세계표준시라 한국시간 0~9시에 열면 '어제' 가 찍힌다.
+  // 매월 1일 오전에 등록하면 전월 매입으로 잡혀 월별 집계·거래처 대사가 어긋난다.
+  const todayStr = () => {
+    const d = new Date();
+    const p2 = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+  };
   const [formData, setFormData] = useState({
     itemId: "", vendorId: "", qty: "", person: "", memo: "", date: todayStr(),
   });
@@ -157,15 +163,32 @@ function InOutModal({
     try {
       const url = isIn ? "/api/supply/inbound" : "/api/supply/outbound";
       let hasWarning = false;
+      let done = 0;
+      // 서버는 한 건씩 처리하고 성공한 건은 그 자리에서 확정된다.
+      //   전에는 중간에 실패하면 오류만 띄우고 장바구니를 그대로 뒀다.
+      //   담당자가 실패로 알고 문제 행만 지운 뒤 다시 누르면 앞의 성공 건이 한 번 더 들어갔다.
+      //   → 성공한 건은 즉시 장바구니에서 빼고, 실패 시 몇 건이 이미 처리됐는지 알려준다.
       for (const c of cart) {
         const payload = isIn
           ? { itemId: c.itemId, vendorId: c.vendorId, qty: c.qty, receivedBy: c.person, memo: c.memo, receivedAt: c.date }
           : { itemId: c.itemId, qty: c.qty, usedBy: c.person, memo: c.memo, usedAt: c.date };
         const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
         const data = await res.json();
-        if (!data.success) { setError(`[${c.itemName}] ${data.error}`); setSubmitting(false); return; }
+        if (!data.success) {
+          // 이미 처리된 앞 건들을 장바구니에서 제거 — 다시 눌러도 중복되지 않는다
+          setCart(prev => prev.slice(done));
+          setError(
+            `[${c.itemName}] ${data.error}` +
+            (done > 0 ? `\n앞의 ${done}건은 이미 처리되었습니다. 남은 ${cart.length - done}건만 장바구니에 남겨 두었습니다.` : ""),
+          );
+          setSubmitting(false);
+          onDone();   // 이미 반영된 건이 목록·재고에 보이도록 새로고침
+          return;
+        }
+        done++;
         if (!isIn && data.data?.isWarning) hasWarning = true;
       }
+      setCart([]);
       if (hasWarning) window.alert("⚠️ [경보] 일부 품목 재고가 발주 기준점 이하로 떨어졌습니다!");
       else alert(`${isIn ? "입고" : "출고"} ${cart.length}건 처리가 완료되었습니다.`);
       onDone();

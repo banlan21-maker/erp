@@ -11,12 +11,11 @@
  *   - POST /api/supply/outbound (insert 후)
  *   - 재고 수동조정 PATCH      (insert 후)
  *
- * Legacy 데이터 자동 보정:
- *   품목 등록 시 초기재고가 history에 기록되지 않은 과거 품목은
- *   Σ(inbound) - Σ(outbound) < stockQty 형태로 드리프트가 존재.
- *   첫 recompute 실행 시 이 드리프트를 감지하여 "자동 생성" 보정
- *   레코드(초기재고)를 이력의 맨 앞에 삽입해 invariant를 복구.
- *   이후 수동조정·입출고가 항상 정합하게 동작.
+ * 재고 컬럼과 이력이 어긋나면:
+ *   이력을 진실로 보고 stockQty 를 맞춘다. 보정 레코드를 만들지 않는다.
+ *   (2026-08-21 이전에는 차액만큼 '초기재고 / 자동 보정' 이력을 자동 생성했는데,
+ *    그것이 월별 매입·사용 통계에 섞이고 재고가 틀어진 원인을 덮었다.)
+ *   차이가 있으면 console.warn 으로 남긴다 — 조용히 덮지 않는다.
  *
  * 주의: 동일 타임스탬프 이벤트는 createdAt을 2차 정렬키로 사용 (삽입 순서 보존).
  */
@@ -40,50 +39,24 @@ export async function recomputeStockHistory(tx: Tx, itemId: number): Promise<num
     }),
   ]);
 
-  // ── Legacy 드리프트 자동 보정 ──────────────────────────────────────────
-  // 기존 이력의 net total과 item.stockQty가 불일치하면 초기재고 보정 레코드 삽입
+  // ── 재고 컬럼과 이력의 차이(drift) ────────────────────────────────────
+  //   전에는 차이를 발견하면 그만큼 '초기재고 / 자동 보정' 입고·출고 레코드를 이력 맨 앞에
+  //   자동으로 만들어 넣었다. 그 레코드가 실제 매입·사용과 구분 없이 월별 통계에 합산됐고,
+  //   무엇보다 **재고가 왜 틀어졌는지가 영구히 덮여** 재발해도 알 수 없었다.
+  //   (실측 2026-08-21: 그렇게 만들어진 보정 7건이 남아 있었다)
+  //
+  //   이제 만들지 않는다. 아래 walkthrough 가 이력 기준으로 stockQty 를 다시 맞추고,
+  //   차이가 있었다는 사실은 로그로 남긴다 — 조용히 덮는 것보다 알리는 편이 낫다.
   const recordSum =
     inbounds.reduce((s, r) => s + r.qty, 0) -
     outbounds.reduce((s, r) => s + r.qty, 0);
   const drift = item.stockQty - recordSum;
-
   if (drift !== 0) {
-    // 기존 이력의 최초 시점 직전을 보정 레코드 일시로 사용
-    const allTimes = [
-      ...inbounds.map((r) => r.receivedAt.getTime()),
-      ...outbounds.map((r) => r.usedAt.getTime()),
-    ];
-    const earliest = allTimes.length > 0
-      ? new Date(Math.min(...allTimes) - 1000)
-      : item.createdAt;
-
-    if (drift > 0) {
-      const created = await tx.supplyInbound.create({
-        data: {
-          itemId,
-          qty:           drift,
-          stockQtyAfter: 0,
-          receivedBy:    "초기재고",
-          memo:          "자동 보정 — 기존 품목 초기재고 누락분",
-          receivedAt:    earliest,
-        },
-        select: { id: true, qty: true, receivedAt: true, createdAt: true },
-      });
-      inbounds = [...inbounds, created];
-    } else {
-      const created = await tx.supplyOutbound.create({
-        data: {
-          itemId,
-          qty:           Math.abs(drift),
-          stockQtyAfter: 0,
-          usedBy:        "초기재고보정",
-          memo:          "자동 보정 — 기존 품목 초기재고 차이분(음수)",
-          usedAt:        earliest,
-        },
-        select: { id: true, qty: true, usedAt: true, createdAt: true },
-      });
-      outbounds = [...outbounds, created];
-    }
+    console.warn(
+      `[supply] 재고 불일치 — 품목 #${itemId} ${item.name}: ` +
+      `재고컬럼 ${item.stockQty} vs 이력합계 ${recordSum} (차이 ${drift}). ` +
+      `이력 기준으로 재고를 맞춥니다. 원인 확인 필요.`,
+    );
   }
 
   type Event =
@@ -122,8 +95,7 @@ export async function recomputeStockHistory(tx: Tx, itemId: number): Promise<num
     }
   }
 
-  // 최종 running은 item.stockQty와 일치해야 함 (보정 덕분에)
-  // 만약 여전히 차이가 있으면 안전하게 sync
+  // 이력 기준 최종 잔고로 재고 컬럼을 맞춘다 — 이력이 진실
   if (running !== item.stockQty) {
     await tx.supplyItem.update({
       where: { id: itemId },

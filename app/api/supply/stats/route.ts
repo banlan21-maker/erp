@@ -28,18 +28,18 @@ export async function GET(request: Request) {
 
     const [currentIns, prevIns, currentOuts, prevOuts] = await Promise.all([
       prisma.supplyInbound.findMany({
-        where: { receivedAt: { gte: currentStart, lt: currentEnd }, item: { category: "CONSUMABLE" } },
+        where: { receivedAt: { gte: currentStart, lt: currentEnd }, kind: "NORMAL", item: { category: "CONSUMABLE" } },
         include: { item: true },
       }),
       prisma.supplyInbound.findMany({
-        where: { receivedAt: { gte: prevStart, lt: prevEnd }, item: { category: "CONSUMABLE" } },
+        where: { receivedAt: { gte: prevStart, lt: prevEnd }, kind: "NORMAL", item: { category: "CONSUMABLE" } },
       }),
       prisma.supplyOutbound.findMany({
-        where: { usedAt: { gte: currentStart, lt: currentEnd }, item: { category: "CONSUMABLE" } },
+        where: { usedAt: { gte: currentStart, lt: currentEnd }, kind: "NORMAL", item: { category: "CONSUMABLE" } },
         include: { item: true },
       }),
       prisma.supplyOutbound.findMany({
-        where: { usedAt: { gte: prevStart, lt: prevEnd }, item: { category: "CONSUMABLE" } },
+        where: { usedAt: { gte: prevStart, lt: prevEnd }, kind: "NORMAL", item: { category: "CONSUMABLE" } },
       }),
     ]);
 

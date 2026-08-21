@@ -21,6 +21,9 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+# 시간대 고정 — 없으면 UTC 로 돈다. 월별 집계 경계를 서버 로컬시간으로 계산하는 곳이 있어
+# (자재 통계·대시보드·입출고 조회) 매월 1일 오전 9시 이전 건이 전월로 밀린다.
+ENV TZ=Asia/Seoul
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
