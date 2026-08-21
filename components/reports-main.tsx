@@ -91,6 +91,16 @@ function formatTime(iso: string) {
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
+/** 작업일 — yy.mm.dd (표가 좁아 연도 4자리를 다 쓸 필요가 없다) */
+function formatDateShort(iso: string) {
+  const d = new Date(iso);
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  return `${p2(d.getFullYear() % 100)}.${p2(d.getMonth() + 1)}.${p2(d.getDate())}`;
+}
+/** 중량 — 소수점 버리고 반올림. kg 단위에서 소수는 의미가 없다 */
+function kg(v: number | null | undefined) {
+  return v == null ? "" : String(Math.round(v));
+}
 // 총가동시간 = (endAt - startAt) - 야간이월
 function totalSpanMs(start: string, end: string | null, nightOffMs = 0) {
   if (!end) return 0;
@@ -100,19 +110,19 @@ function totalSpanMs(start: string, end: string | null, nightOffMs = 0) {
 function durationMs(start: string, end: string | null, pauseMs = 0, nightOffMs = 0) {
   return Math.max(0, totalSpanMs(start, end, nightOffMs) - pauseMs);
 }
+/** 소요시간 — hh:mm. '3h 5m' 처럼 단위가 섞이면 표에서 자릿수가 안 맞는다 */
 function formatDurationMs(ms: number) {
   if (ms <= 0) return "-";
   const h = Math.floor(ms / 3600000);
   const m = Math.floor((ms % 3600000) / 60000);
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 function formatDuration(log: CuttingLog) {
   return formatDurationMs(durationMs(log.startAt, log.endAt, log.pauseMs, log.nightOffMs));
 }
+/** 중단시간 — 다른 시간 칸과 같은 hh:mm 형식으로 맞춘다 */
 function formatPauseMin(ms: number) {
-  if (ms <= 0) return "-";
-  const m = Math.round(ms / 60000);
-  return `${m}분`;
+  return formatDurationMs(ms);
 }
 function locationLabel(log: CuttingLog) {
   if (log.project) return `[${log.project.projectCode}] ${log.project.projectName}`;
@@ -629,7 +639,7 @@ function AllDetailTable({
                 </span>
               )}
             </td>
-            <td className="px-3 py-1 text-gray-500 whitespace-nowrap">{formatDate(log.startAt)}</td>
+            <td className="px-3 py-1 text-gray-500 whitespace-nowrap">{formatDateShort(log.startAt)}</td>
             <td className="px-3 py-1 font-medium text-gray-800 whitespace-nowrap">{eqShort(log.equipment.name)}</td>
             <td className="px-3 py-1 text-gray-700">{log.operator}</td>
             <td className="px-3 py-1 text-gray-600 text-[11px] whitespace-nowrap">
@@ -667,12 +677,12 @@ const NORMAL_COLS = [
   { key: "dimW2",       label: "폭2",          align: "right"  as const, getVal: (l: CuttingLog) => l.dimW2 != null ? String(l.dimW2) : "" },
   { key: "dimL1",       label: "길이1",        align: "right"  as const, getVal: (l: CuttingLog) => l.dimL1 != null ? String(l.dimL1) : "" },
   { key: "dimL2",       label: "길이2",        align: "right"  as const, getVal: (l: CuttingLog) => l.dimL2 != null ? String(l.dimL2) : "" },
-  { key: "steelWeight", label: "철판중량(kg)",  align: "right"  as const, getVal: (l: CuttingLog) => l.steelWeight != null ? String(l.steelWeight) : "" },
-  { key: "useWeight",   label: "사용중량(kg)",  align: "right"  as const, getVal: (l: CuttingLog) => l.useWeight != null ? String(l.useWeight) : "" },
+  { key: "steelWeight", label: "철판중량(kg)",  align: "right"  as const, getVal: (l: CuttingLog) => kg(l.steelWeight) },
+  { key: "useWeight",   label: "사용중량(kg)",  align: "right"  as const, getVal: (l: CuttingLog) => kg(l.useWeight) },
   { key: "heatNo",      label: "Heat NO",     align: "left"   as const, getVal: (l: CuttingLog) => l.heatNo ?? "" },
   { key: "operator",    label: "작업자",       align: "left"   as const, getVal: (l: CuttingLog) => l.operator },
   { key: "equipment",   label: "장비",         align: "left"   as const, getVal: (l: CuttingLog) => eqShort(l.equipment.name) },
-  { key: "workDate",    label: "작업일",       align: "left"   as const, getVal: (l: CuttingLog) => formatDate(l.startAt) },
+  { key: "workDate",    label: "작업일",       align: "left"   as const, getVal: (l: CuttingLog) => formatDateShort(l.startAt) },
   { key: "totalTime",   label: "총가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(totalSpanMs(l.startAt, l.endAt, l.nightOffMs)) },
   { key: "pauseTime",   label: "중단시간",     align: "center" as const, getVal: (l: CuttingLog) => formatPauseMin(l.pauseMs) },
   { key: "activeTime",  label: "실가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(durationMs(l.startAt, l.endAt, l.pauseMs, l.nightOffMs)) },
@@ -692,9 +702,9 @@ const URGENT_COLS = [
   { key: "dimW2",         label: "폭2",          align: "right"  as const, getVal: (l: CuttingLog) => l.dimW2 != null ? String(l.dimW2) : "" },
   { key: "dimL1",         label: "길이1",        align: "right"  as const, getVal: (l: CuttingLog) => l.dimL1 != null ? String(l.dimL1) : "" },
   { key: "dimL2",         label: "길이2",        align: "right"  as const, getVal: (l: CuttingLog) => l.dimL2 != null ? String(l.dimL2) : "" },
-  { key: "steelWeight",   label: "중량(kg)",     align: "right"  as const, getVal: (l: CuttingLog) => l.steelWeight != null ? String(l.steelWeight) : "" },
-  { key: "useWeight",     label: "사용중량(kg)", align: "right"  as const, getVal: (l: CuttingLog) => l.useWeight != null ? String(l.useWeight) : "" },
-  { key: "workDate",      label: "작업일",       align: "left"   as const, getVal: (l: CuttingLog) => formatDate(l.startAt) },
+  { key: "steelWeight",   label: "중량(kg)",     align: "right"  as const, getVal: (l: CuttingLog) => kg(l.steelWeight) },
+  { key: "useWeight",     label: "사용중량(kg)", align: "right"  as const, getVal: (l: CuttingLog) => kg(l.useWeight) },
+  { key: "workDate",      label: "작업일",       align: "left"   as const, getVal: (l: CuttingLog) => formatDateShort(l.startAt) },
   { key: "totalTime",     label: "총가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(totalSpanMs(l.startAt, l.endAt, l.nightOffMs)) },
   { key: "pauseTime",     label: "중단시간",     align: "center" as const, getVal: (l: CuttingLog) => formatPauseMin(l.pauseMs) },
   { key: "activeTime",    label: "실가동시간",   align: "center" as const, getVal: (l: CuttingLog) => formatDurationMs(durationMs(l.startAt, l.endAt, l.pauseMs, l.nightOffMs)) },
@@ -926,7 +936,7 @@ function NormalDetailTable({ logs }: { logs: CuttingLog[] }) {
             <td className="px-3 py-1 font-mono text-blue-700">{log.heatNo || "-"}</td>
             <td className="px-3 py-1 text-gray-700">{log.operator}</td>
             <td className="px-3 py-1 font-medium text-gray-800 whitespace-nowrap">{eqShort(log.equipment.name)}</td>
-            <td className="px-3 py-1 text-gray-500 whitespace-nowrap font-mono text-[11px]">{formatDate(log.startAt)}</td>
+            <td className="px-3 py-1 text-gray-500 whitespace-nowrap font-mono text-[11px]">{formatDateShort(log.startAt)}</td>
             <td className="px-3 py-1 text-center text-gray-500 whitespace-nowrap">{formatDurationMs(totMs)}</td>
             <td className="px-3 py-1 text-center text-orange-500 whitespace-nowrap">{formatPauseMin(log.pauseMs)}</td>
             <td className="px-3 py-1 text-center text-green-700 font-semibold whitespace-nowrap">{formatDurationMs(actMs)}</td>
@@ -1040,7 +1050,7 @@ function UrgentDetailTable({ logs }: { logs: CuttingLog[] }) {
               <td className="px-3 py-1 text-right tabular-nums text-gray-400">{log.dimL2?.toLocaleString() ?? "-"}</td>
               <td className="px-3 py-1 text-right text-gray-700">{numCell(log.steelWeight)}</td>
               <td className="px-3 py-1 text-right text-gray-700">{numCell(log.useWeight)}</td>
-              <td className="px-3 py-1 text-gray-500 whitespace-nowrap font-mono text-[11px]">{formatDate(log.startAt)}</td>
+              <td className="px-3 py-1 text-gray-500 whitespace-nowrap font-mono text-[11px]">{formatDateShort(log.startAt)}</td>
               <td className="px-3 py-1 text-center text-gray-500 whitespace-nowrap">{formatDurationMs(totMs)}</td>
               <td className="px-3 py-1 text-center text-orange-500 whitespace-nowrap">{formatPauseMin(log.pauseMs)}</td>
               <td className="px-3 py-1 text-center text-green-700 font-semibold whitespace-nowrap">{formatDurationMs(actMs)}</td>

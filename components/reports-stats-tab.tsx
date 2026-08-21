@@ -27,7 +27,8 @@ interface CuttingLog {
   endAt:       string | null;
   qty:         number | null;
   steelWeight: number | null;
-  pauseMs:     number;
+  pauseMs:     number;   // 일반 중단 합 (퇴근/야간이월 제외)
+  nightOffMs:  number;   // 퇴근/야간이월 — 총가동시간에서 빠진다
   pauses:      { reason: string; pausedAt: string; resumedAt: string | null }[];
 }
 
@@ -40,7 +41,10 @@ const REASON_LABEL: Record<string, string> = {
   OTHER:             "기타",
 };
 
-const REASON_ORDER = ["EQUIPMENT_FAILURE", "DRAWING_CHANGE", "CONSUMABLE", "WORK_EXTENSION", "OTHER"];
+// 미가동 원인 — 퇴근/야간이월(WORK_EXTENSION)은 뺀다.
+//   "오늘 다 못 자르고 퇴근 → 다음날 이어서" 는 장비가 못 돈 시간이 아니라 근무 밖 시간이다.
+//   가동률 계산에서도 총가동시간 자체에서 빠진다(lib/cutting-time.ts).
+const REASON_ORDER = ["EQUIPMENT_FAILURE", "DRAWING_CHANGE", "CONSUMABLE", "OTHER"];
 
 // 원인별 고정 색상
 const REASON_COLOR: Record<string, string> = {
@@ -68,6 +72,15 @@ function eqShort(name: string): string {
 function dateOnly(iso: string): string {
   return iso.slice(0, 10);
 }
+
+/** ms → hh:mm (상세 리스트와 같은 형식) */
+function hhmm(ms: number): string {
+  if (ms <= 0) return "00:00";
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+const pct = (v: number) => `${v.toFixed(1)}%`;
 
 export default function ReportsStatsTab({
   logs,
@@ -123,6 +136,67 @@ export default function ReportsStatsTab({
     });
   }, [logs, dates, equipments]);
 
+  // 3-a. 일자별 전체 합산 — 그날 몇 kg 잘랐나 (일 capa)
+  //      장비별 선만 있으면 "그날 총량" 이 안 보인다. 합산선을 따로 둔다.
+  const dailyTotal = useMemo(() => dates.map(date => {
+    let weight = 0, sheets = 0;
+    for (const l of logs) {
+      if (!l.endAt || dateOnly(l.startAt) !== date) continue;
+      weight += l.steelWeight ?? 0;
+      sheets += 1;
+    }
+    return { date, weight: Math.round(weight), sheets };
+  }), [logs, dates]);
+
+  // 3-b. 기간 capa 요약
+  const capa = useMemo(() => {
+    const totalWeight = dailyTotal.reduce((s, d) => s + d.weight, 0);
+    const totalSheets = dailyTotal.reduce((s, d) => s + d.sheets, 0);
+    const days = dailyTotal.filter(d => d.sheets > 0).length;
+    const best = dailyTotal.reduce<{ date: string; weight: number } | null>(
+      (b, d) => (b == null || d.weight > b.weight ? { date: d.date, weight: d.weight } : b), null);
+    return {
+      totalWeight, totalSheets, days,
+      avgPerDay: days > 0 ? Math.round(totalWeight / days) : 0,
+      best,
+    };
+  }, [dailyTotal]);
+
+  // 3-c. 가동률 — 실가동 / 총가동
+  //   총가동 = (종료 - 시작) - 퇴근/야간이월      ← 근무 밖 시간은 애초에 빠진다
+  //   실가동 = 총가동 - 중단(장비고장·도면변경·소모품교체·기타)
+  //   즉 "장비를 붙잡고 있던 시간 중 실제로 자른 비율".
+  const uptime = useMemo(() => {
+    const per = new Map<string, { totalMs: number; activeMs: number; pauseMs: number }>();
+    let allTotal = 0, allActive = 0, allPause = 0;
+    for (const l of logs) {
+      if (!l.endAt) continue;
+      const span = new Date(l.endAt).getTime() - new Date(l.startAt).getTime();
+      const totalMs = Math.max(0, span - (l.nightOffMs ?? 0));
+      const pauseMs = l.pauseMs ?? 0;
+      const activeMs = Math.max(0, totalMs - pauseMs);
+      const eq = eqShort(l.equipment.name);
+      const cur = per.get(eq) ?? { totalMs: 0, activeMs: 0, pauseMs: 0 };
+      cur.totalMs += totalMs; cur.activeMs += activeMs; cur.pauseMs += pauseMs;
+      per.set(eq, cur);
+      allTotal += totalMs; allActive += activeMs; allPause += pauseMs;
+    }
+    const rows = [...per.entries()]
+      .map(([equipment, v]) => ({
+        equipment,
+        ...v,
+        rate: v.totalMs > 0 ? (v.activeMs / v.totalMs) * 100 : 0,
+      }))
+      .sort((a, b) => a.equipment.localeCompare(b.equipment));
+    return {
+      rows,
+      all: {
+        totalMs: allTotal, activeMs: allActive, pauseMs: allPause,
+        rate: allTotal > 0 ? (allActive / allTotal) * 100 : 0,
+      },
+    };
+  }, [logs]);
+
   // 3. 장비별 원인별 미가동시간(분)
   const pauseData = useMemo(() => {
     return equipments.map(eq => {
@@ -132,6 +206,7 @@ export default function ReportsStatsTab({
         if (eqShort(l.equipment.name) !== eq) continue;
         for (const p of l.pauses) {
           if (!p.resumedAt) continue;
+          if (p.reason === "WORK_EXTENSION") continue;   // 퇴근/야간이월은 미가동이 아니다
           const dur = (new Date(p.resumedAt).getTime() - new Date(p.pausedAt).getTime()) / 60000;
           const label = REASON_LABEL[p.reason] ?? p.reason;
           row[label] = ((row[label] as number) ?? 0) + dur;
@@ -216,6 +291,100 @@ export default function ReportsStatsTab({
             </p>
           </div>
 
+          {/* 기간 요약 — 얼마나 잘랐고 얼마나 돌았나 */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+            {[
+              { label: "총 절단중량", value: `${capa.totalWeight.toLocaleString()} kg` },
+              { label: "총 절단장수", value: `${capa.totalSheets.toLocaleString()} 매` },
+              { label: "작업일수",    value: `${capa.days} 일` },
+              { label: "일평균 capa", value: `${capa.avgPerDay.toLocaleString()} kg` },
+              { label: "전체 가동률", value: pct(uptime.all.rate), strong: true },
+            ].map(c => (
+              <div key={c.label}
+                className={`rounded-lg border px-3 py-2 ${c.strong ? "border-blue-300 bg-blue-50" : "border-gray-200 bg-gray-50"}`}>
+                <div className="text-[11px] text-gray-500">{c.label}</div>
+                <div className={`text-base font-bold ${c.strong ? "text-blue-700" : "text-gray-800"}`}>{c.value}</div>
+              </div>
+            ))}
+          </div>
+          {capa.best && (
+            <p className="text-[11px] text-gray-500 -mt-4">
+              최다 절단일 {capa.best.date} · {capa.best.weight.toLocaleString()} kg
+            </p>
+          )}
+
+          {/* 차트 0: 일자별 전체 절단 중량 (일 capa) */}
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 mb-2">
+              일자별 절단 중량 (kg) — 전체 장비 합산
+            </h4>
+            <div style={{ width: "100%", height: 240 }}>
+              <ResponsiveContainer>
+                <BarChart data={dailyTotal} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="date" fontSize={11} />
+                  <YAxis fontSize={11} />
+                  <Tooltip formatter={(v, n) => n === "weight" ? [`${Number(v).toLocaleString()} kg`, "절단중량"] : [`${v}매`, "절단장수"]} />
+                  <Bar dataKey="weight" fill="#2563eb" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* 가동률 — 장비별 + 전체 */}
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 mb-2">
+              가동률 <span className="text-xs font-normal text-gray-400">
+                실가동 ÷ 총가동 · 총가동에서 퇴근/야간이월은 이미 빠져 있습니다
+              </span>
+            </h4>
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 text-gray-500">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold">장비</th>
+                    <th className="px-3 py-2 text-right font-semibold">총가동</th>
+                    <th className="px-3 py-2 text-right font-semibold">중단</th>
+                    <th className="px-3 py-2 text-right font-semibold">실가동</th>
+                    <th className="px-3 py-2 text-right font-semibold w-40">가동률</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {uptime.rows.map(r => (
+                    <tr key={r.equipment}>
+                      <td className="px-3 py-1.5 font-semibold text-gray-800">{r.equipment}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{hhmm(r.totalMs)}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-red-600">{hhmm(r.pauseMs)}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{hhmm(r.activeMs)}</td>
+                      <td className="px-3 py-1.5">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-2 bg-gray-100 rounded overflow-hidden">
+                            <div className="h-full bg-blue-500" style={{ width: `${Math.min(100, r.rate)}%` }} />
+                          </div>
+                          <span className="tabular-nums font-semibold text-gray-700 w-12 text-right">{pct(r.rate)}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="bg-blue-50 font-bold">
+                    <td className="px-3 py-2 text-gray-800">전체</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{hhmm(uptime.all.totalMs)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-red-600">{hhmm(uptime.all.pauseMs)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{hhmm(uptime.all.activeMs)}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-2 bg-white rounded overflow-hidden">
+                          <div className="h-full bg-blue-600" style={{ width: `${Math.min(100, uptime.all.rate)}%` }} />
+                        </div>
+                        <span className="tabular-nums text-blue-700 w-12 text-right">{pct(uptime.all.rate)}</span>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           {/* 차트 1: 장비별 절단 중량 */}
           <div>
             <h4 className="text-sm font-semibold text-gray-700 mb-2">
@@ -277,7 +446,7 @@ export default function ReportsStatsTab({
           {/* 차트 3: 장비별 원인별 미가동시간 */}
           <div>
             <h4 className="text-sm font-semibold text-gray-700 mb-2">
-              장비별 원인별 미가동시간 (분) — 누적
+              장비별 원인별 미가동시간 (분) — 누적 <span className="text-xs font-normal text-gray-400">퇴근/야간이월 제외</span>
             </h4>
             <div style={{ width: "100%", height: 260 }}>
               <ResponsiveContainer>
