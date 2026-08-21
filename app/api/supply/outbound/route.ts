@@ -21,7 +21,7 @@ export async function GET(request: Request) {
     }
 
     if (search) {
-      where.item = { name: { contains: search } };
+      where.item = { name: { contains: search, mode: "insensitive" } };
     }
     
     if (subCategory && subCategory !== "all") {

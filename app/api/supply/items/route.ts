@@ -34,6 +34,10 @@ export async function POST(request: Request) {
     }
 
     const initialQty = Number(stockQty) || 0;
+    // 초기재고에 음수를 넣으면 이력 없는 음수 재고 품목이 생긴다
+    if (initialQty < 0) {
+      return NextResponse.json({ success: false, error: "초기 재고는 0 이상이어야 합니다." }, { status: 400 });
+    }
 
     // 품목 등록 + 초기재고 이력 자동 생성 (initialQty > 0인 경우)
     // 히스토리의 첫 행으로 "초기재고"가 기록되어야 이후 입출고 내역의 재고 추적이 자연스러움

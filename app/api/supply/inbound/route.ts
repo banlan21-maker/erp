@@ -22,7 +22,7 @@ export async function GET(request: Request) {
     }
 
     if (search) {
-      where.item = { name: { contains: search } };
+      where.item = { name: { contains: search, mode: "insensitive" } };
     }
     
     // 서브카테고리 필터가 있다면 AND 조건으로 추가

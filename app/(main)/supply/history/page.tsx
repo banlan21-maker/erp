@@ -428,6 +428,40 @@ function HistoryContent() {
     fetchFilters();
   }, []);
 
+  // 이력 한 줄 수정·삭제 — 잘못 입력한 것을 고칠 수 없어 '재고 조정' 으로 덮던 것이
+  // 통계 오염의 뿌리였다. 고치거나 지우면 재고와 스냅샷이 시간순으로 다시 계산된다.
+  const editRow = async (row: { id: number; qty: number }, kind: "inbound" | "outbound") => {
+    const v = window.prompt("수량을 입력하세요 (1 이상의 정수)", String(row.qty));
+    if (v == null) return;
+    const n = Number(v);
+    if (!Number.isInteger(n) || n <= 0) { window.alert("수량은 1 이상의 정수여야 합니다."); return; }
+    if (n === row.qty) return;
+    const res = await fetch(`/api/supply/${kind}/${row.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ qty: n }),
+    });
+    const j = await res.json();
+    if (!j.success) { window.alert(j.error ?? "수정 실패"); return; }
+    fetchHistory();
+  };
+
+  const removeRow = async (row: { id: number; qty: number }, kind: "inbound" | "outbound") => {
+    if (!window.confirm(`이 ${kind === "inbound" ? "입고" : "출고"} 이력(${row.qty})을 삭제할까요?\n재고가 그만큼 되돌아갑니다.`)) return;
+    const res = await fetch(`/api/supply/${kind}/${row.id}`, { method: "DELETE" });
+    const j = await res.json();
+    if (!j.success) { window.alert(j.error ?? "삭제 실패"); return; }
+    fetchHistory();
+  };
+
+  const rowActions = (row: { id: number; qty: number }, kind: "inbound" | "outbound") => (
+    <span className="inline-flex gap-1">
+      <button onClick={() => editRow(row, kind)} title="수량 수정"
+        className="px-1.5 py-0.5 rounded border border-gray-200 text-[11px] text-gray-500 hover:bg-gray-50 hover:text-blue-600">수정</button>
+      <button onClick={() => removeRow(row, kind)} title="이력 삭제 (재고 되돌림)"
+        className="px-1.5 py-0.5 rounded border border-gray-200 text-[11px] text-gray-400 hover:bg-red-50 hover:text-red-600">삭제</button>
+    </span>
+  );
+
   const fetchHistory = async () => {
     setLoading(true);
     try {
@@ -473,8 +507,8 @@ function HistoryContent() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   };
 
-  const inboundCols = 12;
-  const outboundCols = 10;
+  const inboundCols = 13;
+  const outboundCols = 11;
 
   return (
     <div className="space-y-6">
@@ -561,13 +595,14 @@ function HistoryContent() {
                     <th className="px-4 py-3 font-semibold">세부분류</th>
                     <th className="px-4 py-3 font-semibold">품명</th>
                     <th className="px-4 py-3 font-semibold">거래처</th>
-                    <th className="px-4 py-3 font-semibold text-right">현재재고</th>
+                    <th className="px-4 py-3 font-semibold text-right">이전재고</th>
                     <th className="px-4 py-3 font-semibold text-right">입고수량</th>
                     <th className="px-4 py-3 font-semibold text-right">입고후재고</th>
                     <th className="px-4 py-3 font-semibold text-center">단위</th>
                     <th className="px-4 py-3 font-semibold">보관위치</th>
                     <th className="px-4 py-3 font-semibold">담당자</th>
                     <th className="px-4 py-3 font-semibold">메모</th>
+                    <th className="px-4 py-3 font-semibold text-center">관리</th>
                   </>
                 ) : (
                   <>
@@ -576,11 +611,12 @@ function HistoryContent() {
                     <th className="px-4 py-3 font-semibold">세부분류</th>
                     <th className="px-4 py-3 font-semibold">품명</th>
                     <th className="px-4 py-3 font-semibold">수령인</th>
-                    <th className="px-4 py-3 font-semibold text-right">현재재고</th>
+                    <th className="px-4 py-3 font-semibold text-right">이전재고</th>
                     <th className="px-4 py-3 font-semibold text-right">출고수량</th>
                     <th className="px-4 py-3 font-semibold text-right">출고후재고</th>
                     <th className="px-4 py-3 font-semibold text-center">단위</th>
                     <th className="px-4 py-3 font-semibold">메모</th>
+                    <th className="px-4 py-3 font-semibold text-center">관리</th>
                   </>
                 )}
               </tr>
@@ -630,6 +666,7 @@ function HistoryContent() {
                           <td className="px-4 py-3 text-xs text-gray-500">{row.item?.location || "-"}</td>
                           <td className="px-4 py-3 text-xs text-gray-600">{row.receivedBy}</td>
                           <td className="px-4 py-3 text-xs text-gray-400">{row.memo || "-"}</td>
+                          <td className="px-4 py-3 text-center whitespace-nowrap">{rowActions(row, "inbound")}</td>
                         </>
                       ) : (
                         <>
@@ -647,6 +684,7 @@ function HistoryContent() {
                           <td className="px-4 py-3 text-right font-bold text-gray-800">{row.stockQtyAfter != null ? row.stockQtyAfter : <span className="text-gray-300 font-normal">-</span>}</td>
                           <td className="px-4 py-3 text-center text-xs text-gray-500">{row.item?.unit}</td>
                           <td className="px-4 py-3 text-xs text-gray-400">{row.memo || "-"}</td>
+                          <td className="px-4 py-3 text-center whitespace-nowrap">{rowActions(row, "outbound")}</td>
                         </>
                       )}
                     </tr>

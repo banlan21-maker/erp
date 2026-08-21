@@ -152,7 +152,7 @@ export default function SupplyStatsPage() {
         <td class="num inb">${totalIn}</td>
         <td></td>
         <td class="num out">${totalOut}</td>
-        <td colspan="2"></td>
+        <td colspan="2" class="ctr" style="font-size:9px;color:#888">※ 단위가 다른 품목을 합산한 수치입니다</td>
       </tr>
     </tfoot>
   </table>
