@@ -1270,6 +1270,7 @@ model Remnant {
 
   urgentWorks     UrgentWork[]
   assignedToLists DrawingList[] @relation("AssignedRemnant")
+  partnerClaims   PartnerClaim[] // 설계업체 선점·사용 기록
 
   @@index([shipoutLabel])
 }
@@ -1640,6 +1641,75 @@ model AppUser {
   sessionToken String?  @unique             // 로그인 세션(쿠키) — 최소 세션
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+// ==========================================
+// 협력 설계업체 공유 링크 — 여유원재 현황을 외부에서 보고 선점·사용기록을 남긴다.
+//
+// 배경: 진교 여유원재를 설계업체 3곳과 우리가 같이 쓰는데 엑셀을 주고받다 보니
+//   없는 철판에 네스팅하거나, 있는 철판을 안 쓰는 일이 생겼다.
+//   업체마다 ERP 계정을 주기엔 다른 공정·관리 정보가 다 보이므로,
+//   여유원재 목록만 있는 별도 화면(app/partner)을 토큰 링크로 연다.
+//
+// ⚠ 이 화면은 로그인이 없다. 링크를 아는 사람은 누구나 본다(사용자 결정, 2026-08-21).
+//   그래서 토큰은 추측 불가능한 길이로 만들고, 유출되면 재발급해 이전 링크를 죽인다.
+// ==========================================
+
+/// 공유 링크 — 실사용은 active 1건. 재발급하면 새 행을 만들고 이전 행을 죽인다(이력 보존).
+model PartnerPortal {
+  id        String   @id @default(cuid())
+  token     String   @unique // URL 토큰 (추측 불가 난수)
+  active    Boolean  @default(true)
+  memo      String? // 발급 사유 등
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+
+  @@index([active])
+}
+
+/// 설계업체 목록 — 외부 화면에서 '어느 업체가' 선점하는지 고르는 값.
+/// 링크가 하나뿐이라 업체 구분은 자기 신고다(사용자 결정) — 기록으로 되짚을 수 있게 남긴다.
+model PartnerVendor {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  memo      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  claims PartnerClaim[]
+}
+
+enum PartnerClaimStatus {
+  RESERVED // 선점 — 쓰겠다고 잡아 둔 상태. 되돌릴 수 있다
+  USED // 사용확정 — 네스팅 끝. 여유원재는 소진(EXHAUSTED)으로 바뀐다
+  RELEASED // 선점 해제 — 안 쓰기로 함
+}
+
+/// 선점·사용 기록 — "누가 언제 무엇을 어디에 썼나". 나중에 따질 근거가 된다.
+model PartnerClaim {
+  id         String        @id @default(cuid())
+  remnantId  String
+  remnant    Remnant       @relation(fields: [remnantId], references: [id], onDelete: Cascade)
+  vendorId   String
+  vendor     PartnerVendor @relation(fields: [vendorId], references: [id])
+
+  vesselCode String // 호선
+  block      String? // 블록
+  memo       String?
+  status     PartnerClaimStatus @default(RESERVED)
+
+  reservedAt DateTime  @default(now())
+  usedAt     DateTime?
+  releasedAt DateTime?
+  actor      String? // 화면에서 적은 담당자 이름(선택)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([remnantId])
+  @@index([status])
 }
 
 // ==========================================
