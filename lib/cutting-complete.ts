@@ -286,6 +286,17 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
   // 돌발작업은 DrawingList/SteelPlan 비대상. 연결 잔재(UrgentWork.remnantId)를 소진 처리해야
   // 강재매칭 선별목록 등에서 재선택되지 않는다.
   if (log.isUrgent && log.urgentWorkId) {
+    // 돌발작업 자체도 여기서 닫는다 (2026-09-04).
+    //   예전에는 현장 화면이 절단완료 PATCH 와 별개로 UrgentWork PATCH 를 한 번 더 쏘는 구조라,
+    //   그 사이에 창을 닫거나 통신이 끊기면 "절단은 완료인데 돌발은 진행중" 으로 갈라졌다.
+    //   더 흔한 경로는 정규 탭이었다 — ongoing 이 isUrgent 를 안 걸러 돌발 로그가 정규 탭
+    //   진행중 카드에 잡히고, 그 [절단 완료] 는 UrgentWork 를 건드리지 않는다.
+    //   완료 트랜잭션 안으로 들여오면 어느 화면에서 끝내든 한 번에 닫힌다.
+    await tx.urgentWork.updateMany({
+      where: { id: log.urgentWorkId, status: { in: ["PENDING", "IN_PROGRESS"] } },
+      data:  { status: "COMPLETED" },
+    });
+
     const uw = await tx.urgentWork.findUnique({
       where: { id: log.urgentWorkId },
       select: { remnantId: true },
@@ -535,10 +546,20 @@ export async function applyCuttingRestore(tx: Tx, log: RestoreLog): Promise<void
     }
     // I9: 로그 삭제로 돌발작업이 다시 필요해지면 UrgentWork.status 를 PENDING 으로 복원.
     //     COMPLETED 로 남아있으면 loadUrgentWorks(PENDING/IN_PROGRESS 만) 에서 사라져 재작업 불가.
-    await tx.urgentWork.updateMany({
-      where: { id: log.urgentWorkId, status: { in: ["IN_PROGRESS", "COMPLETED"] } },
-      data:  { status: "PENDING" },
+    //
+    // 단 한 돌발에 완료 로그가 여럿인 경우(로그 219 / 돌발 156 — 나눠 자른 정상 상태)
+    // 그중 하나만 지운 것이면 작업은 아직 끝난 상태다. 다른 완료 로그가 남아 있으면
+    // 되돌리지 않는다 — 안 그러면 완료 트랜잭션이 닫은 것을 여기서 다시 열어버린다.
+    const siblingDone = await tx.cuttingLog.findFirst({
+      where: { urgentWorkId: log.urgentWorkId, id: { not: log.id }, status: "COMPLETED" },
+      select: { id: true },
     });
+    if (!siblingDone) {
+      await tx.urgentWork.updateMany({
+        where: { id: log.urgentWorkId, status: { in: ["IN_PROGRESS", "COMPLETED"] } },
+        data:  { status: "PENDING" },
+      });
+    }
   }
 
   // ── 통합 sync — DrawingList 복원 spec + SteelPlan 복원 spec ───────────

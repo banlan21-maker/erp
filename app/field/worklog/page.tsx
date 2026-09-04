@@ -37,6 +37,9 @@ export default async function FieldWorklogPage() {
     where: {
       OR: [
         { startAt: { gte: dayStart, lte: dayEnd } },
+        // 어제 착수해 오늘 끝낸 작업 — 종료하면 STARTED/PAUSED 에서 빠지고 startAt 은 어제라
+        // 양쪽 어디에도 안 걸려 화면에서 사라졌다. /api/cutting-logs 와 같은 규칙으로 맞춘다.
+        { endAt: { gte: dayStart, lte: dayEnd } },
         // 미종료 STARTED + 중단(PAUSED) 야간이월 모두 포함 — 다음날에도 재개/종료 가능하게
         { status: { in: ["STARTED", "PAUSED"] } },
       ],

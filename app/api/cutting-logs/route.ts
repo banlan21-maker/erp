@@ -87,7 +87,16 @@ export async function GET(request: NextRequest) {
     if (Object.keys(dateFilter).length > 0) {
       if (needStuck) {
         // STARTED + 중단(PAUSED) 모두 stuck 으로 포함 — 야간이월 중단 작업이 다음날 사라지지 않게
-        whereCondition.OR = [{ ...dateFilter }, { status: { in: ["STARTED", "PAUSED"] } }];
+        //
+        // endAt 기준도 함께 본다 (2026-09-04). 날짜창이 startAt 뿐이라 어제 착수해 오늘 끝낸
+        // 작업은 종료를 누르는 순간 STARTED/PAUSED 에서도 빠지고 어제 날짜라 창에도 안 걸려
+        // 화면에서 통째로 사라졌다. 방금 자기가 끝낸 작업이 안 보이니 "등록이 안 됐다" 가 된다.
+        const endFilter = (dateFilter as { startAt?: unknown }).startAt;
+        whereCondition.OR = [
+          { ...dateFilter },
+          ...(endFilter ? [{ endAt: endFilter }] : []),
+          { status: { in: ["STARTED", "PAUSED"] } },
+        ];
       } else {
         Object.assign(whereCondition, dateFilter);
       }

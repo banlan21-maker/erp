@@ -268,6 +268,10 @@ export default function FieldWorklog({
         body: JSON.stringify({ status: "COMPLETED" }),
       });
       await refreshLogs();
+      // 끝낸 돌발의 선택 상태를 푼다 — 안 그러면 진행중 카드가 사라진 자리에
+      // 작업자까지 채워진 [작업 시작] 패널이 그대로 남아 같은 돌발을 다시 착수하게 된다.
+      // (실측: 완료 뒤 같은 돌발에 로그가 또 찍힌 건 28회)
+      setSelUrgentId("");
       // show remnant popup (잔재 등록만 — UrgentWork 상태는 위에서 이미 처리)
       setRemnantPopup({ logId, urgentId });
     } catch { setError("서버 오류"); }
@@ -586,6 +590,20 @@ export default function FieldWorklog({
           </button>
         </div>
       </div>
+
+      {/* 오류 배너 — 헤더 바로 아래, 탭·진행상태와 무관하게 항상 보인다 (2026-09-04).
+          예전에는 오류 문구가 두 곳에서만 렌더됐는데 둘 다 조건부 블록 안이라,
+          작업종료·중단·재개가 실패해도 화면에 아무 글자도 안 떴다. 버튼만 눌리고 끝이라
+          작업자는 왜 안 되는지 알 수 없었다. */}
+      {error && (
+        <div className="sticky top-[92px] z-20 mx-4 mt-3 rounded-xl border border-red-800 bg-red-950 px-3 py-2.5">
+          <div className="flex items-start gap-2">
+            <p className="flex-1 text-sm text-red-300 whitespace-pre-line">{error}</p>
+            <button onClick={() => setError(null)} aria-label="닫기"
+              className="shrink-0 rounded-lg px-2 py-0.5 text-red-400 active:bg-red-900">✕</button>
+          </div>
+        </div>
+      )}
 
       {/* ══ 돌발작업 탭 ══ */}
       {mainTab === "urgent" && (
