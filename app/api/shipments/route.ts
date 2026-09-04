@@ -29,6 +29,7 @@ import { departureOf, vesselsOf } from "@/lib/charter-cost";
 import { ShipmentStatus, SteelPlanStatus, SteelPlanHeatStatus, Prisma } from "@prisma/client";
 import { nextShipmentNo, nextInvoiceNo } from "@/lib/shipment-numbering";
 import { normalizedHeatIds } from "@/lib/heat-lookup";
+import { SHIPMENT_ITEM_ORDER } from "@/lib/shipment-item-order";
 
 export const dynamic = "force-dynamic";
 
@@ -93,7 +94,7 @@ export async function GET(req: NextRequest) {
         vehicles: {
           orderBy: { sequence: "asc" },
           // 용차 여부 — 목록에서 배지로 표시하고 체크 상태를 잡는다
-          include: { items: true, charterUsage: { select: { id: true, cost: true } } },
+          include: { items: { orderBy: SHIPMENT_ITEM_ORDER }, charterUsage: { select: { id: true, cost: true } } },
         },
       },
     });
@@ -569,7 +570,7 @@ export async function POST(req: NextRequest) {
       return tx.shipment.findUnique({
         where: { id: shipment.id },
         include: {
-          vehicles: { orderBy: { sequence: "asc" }, include: { items: true } },
+          vehicles: { orderBy: { sequence: "asc" }, include: { items: { orderBy: SHIPMENT_ITEM_ORDER } } },
         },
       });
     });

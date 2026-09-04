@@ -7,6 +7,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { SHIPMENT_ITEM_ORDER } from "@/lib/shipment-item-order";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +48,7 @@ export async function PATCH(
     const updated = await prisma.shipmentVehicle.update({
       where: { id: vid },
       data,
-      include: { items: true },
+      include: { items: { orderBy: SHIPMENT_ITEM_ORDER } },
     });
     return NextResponse.json({
       success: true,

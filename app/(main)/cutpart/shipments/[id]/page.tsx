@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import ShipmentDetailMain from "@/components/shipment-detail-main";
+import { SHIPMENT_ITEM_ORDER } from "@/lib/shipment-item-order";
 
 interface PageProps { params: Promise<{ id: string }> }
 
@@ -10,7 +11,7 @@ export default async function ShipmentDetailPage({ params }: PageProps) {
   const { id } = await params;
   const s = await prisma.shipment.findUnique({
     where: { id },
-    include: { vehicles: { orderBy: { sequence: "asc" }, include: { items: true } } },
+    include: { vehicles: { orderBy: { sequence: "asc" }, include: { items: { orderBy: SHIPMENT_ITEM_ORDER } } } },
   });
   if (!s) notFound();
 

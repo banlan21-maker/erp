@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ShipmentStatus } from "@prisma/client";
+import { SHIPMENT_ITEM_ORDER } from "@/lib/shipment-item-order";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +48,7 @@ export async function GET(
   const { id } = await params;
   const s = await prisma.shipment.findUnique({
     where: { id },
-    include: { vehicles: { orderBy: { sequence: "asc" }, include: { items: true } } },
+    include: { vehicles: { orderBy: { sequence: "asc" }, include: { items: { orderBy: SHIPMENT_ITEM_ORDER } } } },
   });
   if (!s) return NextResponse.json({ success: false, error: "존재하지 않습니다." }, { status: 404 });
   return NextResponse.json({

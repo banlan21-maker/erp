@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import InvoicePrint, { type InvoiceVehicle, type SupplierSnapshot } from "@/components/invoice-print";
+import { SHIPMENT_ITEM_ORDER } from "@/lib/shipment-item-order";
 
 interface PageProps {
   params: Promise<{ id: string; vid: string }>;
@@ -12,7 +13,12 @@ export default async function ShipmentVehicleInvoicePage({ params }: PageProps) 
   const { id, vid } = await params;
   const v = await prisma.shipmentVehicle.findUnique({
     where: { id: vid },
-    include: { items: true, shipment: true },
+    include: {
+      // 순서를 고정한다 — 명세서 NO 와 장 나눔(20행/장) 기준이라 흔들리면 안 된다.
+      // 한 번에 담긴 자재는 createdAt 이 같아서 id 로 한 번 더 끊는다.
+      items: { orderBy: SHIPMENT_ITEM_ORDER },
+      shipment: true,
+    },
   });
   if (!v || v.shipmentId !== id) notFound();
 

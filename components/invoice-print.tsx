@@ -9,6 +9,12 @@
  *       발행일자, 작성자/연락처, 인수자
  *       절단예정일, 선급, 도면번호, 절단장비, 선별지시번호
  *   - 인쇄: window.print() — A4 가로 레이아웃 (CSS @media print)
+ *
+ * 장 나눔 (2026-09-04):
+ *   한 장에 강재 20행이 들어간다. 예전에는 21번째부터 그냥 안 찍히면서
+ *   합계만 전체 기준으로 나와 목록과 합계가 어긋났다(실제 3건 발생).
+ *   이제 20행 단위로 장을 나눈다 — 각 장은 머리말·공급자·인수자까지 갖춘 완결된 서류이고
+ *   장마다 소계, 마지막 장에만 총 합계를 둔다.
  */
 
 import { useEffect, useState } from "react";
@@ -102,7 +108,17 @@ const fmtNum = (n: number, digits = 0) =>
 
 const area_m2 = (w: number, l: number) => (w * l) / 1_000_000;
 
-const TOTAL_ROWS = 20;
+/** 한 장에 들어가는 강재 행 수 — 양식 높이(A4 가로)에 맞춰 고정 */
+const ROWS_PER_PAGE = 20;
+
+interface SheetPage {
+  no:     number;
+  from:   number;
+  last:   boolean;
+  qty:    number;
+  weight: number;
+  area:   number;
+}
 
 export default function InvoicePrint({ vehicle, onUpdate }: Props) {
   const [v, setV] = useState(vehicle);
@@ -139,6 +155,233 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
   const S = v.supplierSnapshot ?? {};
   const D = v.deliverySnapshot ?? {};
 
+  // 20행씩 끊어 장을 만든다. 자재가 없어도 빈 양식 1장은 나온다.
+  const pageCount = Math.max(1, Math.ceil(v.items.length / ROWS_PER_PAGE));
+  const pages: SheetPage[] = Array.from({ length: pageCount }, (_, p) => {
+    const from = p * ROWS_PER_PAGE;
+    const rows = v.items.slice(from, from + ROWS_PER_PAGE);
+    return {
+      no:     p + 1,
+      from,
+      last:   p === pageCount - 1,
+      qty:    rows.length,
+      weight: rows.reduce((s, it) => s + (it.weight || 0), 0),
+      area:   rows.reduce((s, it) => s + area_m2(it.width, it.length), 0),
+    };
+  });
+
+  /* 한 장을 그린다. 장마다 머리말·공급자·인수자를 되풀이해 각 장이 그 자체로 완결된 서류가 되게 한다.
+     (컴포넌트가 아니라 렌더 함수 — 컴포넌트로 만들면 매 렌더마다 입력칸이 다시 마운트되어 포커스가 튄다) */
+  const renderSheet = (pg: SheetPage) => (
+    <div
+      key={pg.no}
+      className={`invoice-sheet bg-white mx-auto${pg.last ? " invoice-sheet-last" : ""}`}
+      style={{ width: "297mm", height: "210mm", padding: "26mm 8mm 6mm 8mm", boxSizing: "border-box" }}
+    >
+      {/* 제목 */}
+      <h1 className="text-center text-2xl font-extrabold tracking-[0.3em] mb-1">거 래 명 세 표</h1>
+
+      {/* 상단 발행일자 / 송장번호 / 출고증 */}
+      <div className="flex items-center justify-between text-[11px] mb-1 px-1 whitespace-nowrap">
+        <div className="flex items-center gap-1">
+          <span className="font-semibold whitespace-nowrap">발 행 일 자 :</span>
+          <input
+            type="date"
+            value={toYMD(v.issueDate)}
+            /* 저장은 UTC 자정으로 — 표시(toYMD = ISO 앞 10자)와 왕복이 맞아야 한다.
+               로컬 자정으로 만들면 KST(+9)에서 전날 15:00Z 가 되어 하루 밀려 인쇄된다.
+               저장소의 날짜-온리 관례와도 같다 (app/api/shipments/route.ts:282). */
+            onChange={e => setVehicleField("issueDate", e.target.value ? `${e.target.value}T00:00:00.000Z` : null)}
+            className="cell border-b border-gray-400 px-1"
+            style={{ borderBottom: "1px solid #777", width: "32mm" }}
+          />
+        </div>
+        <div>송 장 등 록 번 호 : <strong className="font-mono">{v.invoiceNo}</strong></div>
+        <div className="font-semibold flex items-baseline gap-1.5">
+          ( 출 고 증 )
+          {/* 여러 장일 때만 몇 째 장인지 — 한 장짜리는 예전 그대로 아무것도 안 찍는다 */}
+          {pageCount > 1 && (
+            <span className="text-[10px] font-normal tabular-nums text-gray-600">{pg.no} / {pageCount}</span>
+          )}
+        </div>
+      </div>
+
+      {/* 공급자 / 공급받는자 — 좌/우 정확히 50% 분할 (table-layout: fixed)
+          기본 auto layout 은 cell 컨텐츠 길이에 따라 col width 가 변동되어
+          한쪽 회사명/주소가 길면 그 영역이 더 넓게 잡힘. fixed 로 강제. */}
+      <table className="mb-1" style={{ tableLayout: "fixed" }}>
+        <colgroup>
+          <col style={{ width: "2.2%" }} />
+          <col style={{ width: "7.8%" }} />
+          <col style={{ width: "23%"  }} />
+          <col style={{ width: "5%"   }} />
+          <col style={{ width: "12%"  }} />
+          <col style={{ width: "2.2%" }} />
+          <col style={{ width: "7.8%" }} />
+          <col style={{ width: "23%"  }} />
+          <col style={{ width: "5%"   }} />
+          <col style={{ width: "12%"  }} />
+        </colgroup>
+        <tbody>
+          <tr>
+            <td rowSpan={5} className="text-center font-bold bg-gray-50">공<br/>급<br/>자</td>
+            <td className="bg-gray-50 text-center">등록번호</td>
+            <td colSpan={3}>{S.bizNo ?? ""}</td>
+            <td rowSpan={5} className="text-center font-bold bg-gray-50">공<br/>급<br/>받<br/>는<br/>자</td>
+            <td className="bg-gray-50 text-center">등록번호</td>
+            <td colSpan={3}>{D.bizNo ?? ""}</td>
+          </tr>
+          <tr>
+            <td className="bg-gray-50 text-center">상  호</td><td>{S.name ?? ""}</td>
+            <td className="bg-gray-50 text-center">대표자</td><td>{S.ceo ?? ""}</td>
+            <td className="bg-gray-50 text-center">상  호</td><td>{D.name ?? ""}</td>
+            <td className="bg-gray-50 text-center">대표자</td><td>{D.ceo ?? ""}</td>
+          </tr>
+          <tr>
+            <td className="bg-gray-50 text-center">주  소</td><td colSpan={3}>{S.address ?? ""}</td>
+            <td className="bg-gray-50 text-center">주  소</td><td colSpan={3}>{D.address ?? ""}</td>
+          </tr>
+          <tr>
+            <td className="bg-gray-50 text-center">업  태</td><td>{S.bizType ?? ""}</td>
+            <td className="bg-gray-50 text-center">종 목</td><td>{S.bizItem ?? ""}</td>
+            <td className="bg-gray-50 text-center">업  태</td><td>{D.bizType ?? ""}</td>
+            <td className="bg-gray-50 text-center">종  목</td><td>{D.bizItem ?? ""}</td>
+          </tr>
+          <tr>
+            <td className="bg-gray-50 text-center">전화번호</td><td>{S.phone ?? ""}</td>
+            <td className="bg-gray-50 text-center">팩 스</td><td>{S.fax ?? ""}</td>
+            <td className="bg-gray-50 text-center">전화번호</td><td>{D.phone ?? ""}</td>
+            <td className="bg-gray-50 text-center">팩 스</td><td>{D.fax ?? ""}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* 본문 자재 테이블 */}
+      <table>
+        <thead>
+          <tr className="bg-gray-100 text-center font-bold">
+            <td rowSpan={2} style={{ width: "26px" }}>NO</td>
+            <td rowSpan={2} style={{ width: "60px" }}>잔재<br/>번호</td>
+            <td rowSpan={2} style={{ width: "55px" }}>호 선</td>
+            <td rowSpan={2} style={{ width: "55px" }}>블 록</td>
+            <td rowSpan={2} style={{ width: "70px" }}>제품번호</td>
+            <td rowSpan={2} style={{ width: "50px" }}>선 급</td>
+            <td rowSpan={2} style={{ width: "90px" }}>도면번호</td>
+            <td rowSpan={2} style={{ width: "60px" }}>재 질</td>
+            <td colSpan={3}>규 격</td>
+            <td rowSpan={2} style={{ width: "45px" }}>수 량<br/>(SH)</td>
+            <td rowSpan={2} style={{ width: "55px" }}>중 량<br/>(KG)</td>
+            <td rowSpan={2} style={{ width: "55px" }}>면 적<br/>(m²)</td>
+            <td rowSpan={2} style={{ width: "55px" }}>절단<br/>장비</td>
+            <td rowSpan={2} style={{ width: "75px" }}>선별지시번호</td>
+          </tr>
+          <tr className="bg-gray-100 text-center font-bold">
+            <td style={{ width: "40px" }}>두 께</td>
+            <td style={{ width: "55px" }}>폭</td>
+            <td style={{ width: "55px" }}>길 이</td>
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: ROWS_PER_PAGE }, (_, j) => {
+            // gi = 전체 목록 기준 위치 — NO 와 수정 대상이 장을 넘어가도 어긋나지 않게 한다
+            const gi = pg.from + j;
+            const it = v.items[gi];
+            if (!it) {
+              return (
+                <tr key={`empty-${gi}`} className="text-center">
+                  <td>{gi + 1}</td>
+                  {Array.from({ length: 15 }, (_, k) => <td key={k}>&nbsp;</td>)}
+                </tr>
+              );
+            }
+            return (
+              <tr key={it.id} className="text-center">
+                <td>{gi + 1}</td>
+                <td className="font-mono text-[10px]">{it.remnantNo ?? ""}</td>
+                <td>{it.vesselCode}</td>
+                <td><input className="cell text-center" value={it.block ?? ""} onChange={e => setItem(gi, { block: e.target.value })} /></td>
+                <td className="font-mono">{it.heatNo ?? ""}</td>
+                <td><input className="cell text-center" value={it.classSociety ?? ""} onChange={e => setItem(gi, { classSociety: e.target.value })} /></td>
+                <td><input className="cell text-center font-mono text-[10px]" value={it.drawingNo ?? ""} onChange={e => setItem(gi, { drawingNo: e.target.value })} /></td>
+                <td>{it.material}</td>
+                <td className="text-right">{it.thickness}</td>
+                <td className="text-right">{it.width ? fmtNum(it.width) : ""}</td>
+                <td className="text-right">{it.length ? fmtNum(it.length) : ""}</td>
+                <td className="text-right">1</td>
+                <td className="text-right">{fmtNum(it.weight, 1)}</td>
+                <td className="text-right">{it.width && it.length ? fmtNum(area_m2(it.width, it.length), 3) : ""}</td>
+                <td><input className="cell text-center" value={it.cuttingEquipment ?? ""} onChange={e => setItem(gi, { cuttingEquipment: e.target.value })} /></td>
+                <td><input className="cell text-center font-mono text-[10px]" value={it.selectionOrderNo ?? ""} onChange={e => setItem(gi, { selectionOrderNo: e.target.value })} /></td>
+              </tr>
+            );
+          })}
+        </tbody>
+        {/* 합계 행 — 본문 컬럼과 자동 정렬 (수량/중량/면적)
+            여러 장이면 앞 장은 그 장의 소계, 마지막 장만 전체 총합계 */}
+        <tfoot>
+          <tr>
+            {/* 본문 컬럼 1~7 (NO~도면번호) = 빈 좌측 영역 */}
+            <td colSpan={7}></td>
+            {/* 본문 컬럼 8~11 (재질~길이) = 합계 라벨 */}
+            <td colSpan={4} className="bg-gray-50 text-center font-bold">
+              {pageCount === 1 ? "합  계" : pg.last ? "총 합 계" : "소  계"}
+            </td>
+            {/* 본문 컬럼 12~14 = 수량 / 중량 / 면적 (자동 정렬) */}
+            <td className="text-right font-bold">{pg.last ? totalQty : pg.qty}</td>
+            <td className="text-right font-bold">{fmtNum(pg.last ? totalWeight : pg.weight, 1)}</td>
+            <td className="text-right font-bold">{fmtNum(pg.last ? totalArea : pg.area, 3)}</td>
+            {/* 본문 컬럼 15~16 = 빈 (앞 장은 이어짐 표시).
+                이 칸은 130px 뿐이라 줄바꿈되면 행이 높아져 시트가 210mm 를 넘는다 — nowrap 고정 */}
+            <td colSpan={2} className="text-center text-[9px] text-gray-500 whitespace-nowrap">
+              {pg.last ? "" : "다음 장에 계속"}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+
+      {/* 하단 작성자 + 인수자 두 행 — 같은 colgroup 공유 (라벨/값 폭이 동일) */}
+      <table className="mt-0">
+        <colgroup>
+          <col style={{ width: mm(LAYOUT.bottomB.receiverLabelMm) }} />
+          <col style={{ width: mm(LAYOUT.bottomB.receiverValueMm) }} />
+          <col style={{ width: mm(LAYOUT.bottomB.vehicleLabelMm) }} />
+          <col style={{ width: mm(LAYOUT.bottomB.vehicleValueMm) }} />
+          <col style={{ width: mm(LAYOUT.bottomB.driverLabelMm) }} />
+          <col style={{ width: mm(LAYOUT.bottomB.driverValueMm) }} />
+          <col style={{ width: mm(LAYOUT.bottomB.phoneLabelMm) }} />
+          <col style={{ width: mm(LAYOUT.bottomB.phoneValueMm) }} />
+        </colgroup>
+        <tbody>
+          {/* 작성자 행 — 라벨/값 폭이 아래 인수자 행과 동일 */}
+          <tr>
+            <td className="bg-gray-50 text-center font-bold">작성(출고)자</td>
+            <td><input className="cell" value={v.writerName ?? ""} onChange={e => setVehicleField("writerName", e.target.value)} /></td>
+            <td className="bg-gray-50 text-center font-bold">연락처</td>
+            <td><input className="cell font-mono" value={v.writerPhone ?? ""} onChange={e => setVehicleField("writerPhone", e.target.value)} /></td>
+            {/* 우측 4 컬럼은 빈 영역 */}
+            <td colSpan={4}></td>
+          </tr>
+          {/* 인수자/차량/운전자 행 */}
+          <tr>
+            <td className="bg-gray-50 text-center font-bold">인수(입고)자</td>
+            <td><input className="cell" value={v.receiverName ?? ""} onChange={e => setVehicleField("receiverName", e.target.value)} /></td>
+            <td className="bg-gray-50 text-center font-bold">차량번호</td>
+            <td><input className="cell font-mono" value={v.vehicleNo ?? ""} onChange={e => setVehicleField("vehicleNo", e.target.value)} /></td>
+            <td className="bg-gray-50 text-center font-bold">운전자 성명</td>
+            <td><input className="cell" value={v.driverName ?? ""} onChange={e => setVehicleField("driverName", e.target.value)} /></td>
+            <td className="bg-gray-50 text-center font-bold">운전자 연락처</td>
+            <td><input className="cell font-mono" value={v.driverPhone ?? ""} onChange={e => setVehicleField("driverPhone", e.target.value)} /></td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* 우측 하단 회사 표시 */}
+      <div className="text-right mt-3 text-lg font-extrabold tracking-[0.3em]">
+        한 국 테 크 ㈜ 진 교 공 장
+      </div>
+    </div>
+  );
+
   return (
     <>
       {/* 인쇄용 / 화면 공통 스타일 */}
@@ -147,7 +390,7 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
           /* @page 마진 0 — 시트 내부 padding 으로 안전 영역 확보 */
           @page { size: A4 landscape; margin: 0; }
           /* 사이드바/헤더 등 chrome 은 main-layout-client 에서 print:hidden 처리됨.
-             여기서는 시트 본인만 정확히 1페이지에 맞추면 됨 */
+             여기서는 시트 한 장이 정확히 1페이지를 차지하게만 하면 됨 */
           html, body {
             background: white !important;
             margin: 0 !important;
@@ -159,21 +402,29 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
             position: static !important;
             width: 297mm !important;
             height: 210mm !important;
-            padding: 26mm 8mm 6mm 8mm !important;   /* 상단 여백 +20mm */
+            padding: 26mm 8mm 6mm 8mm !important;
             margin: 0 !important;
             box-sizing: border-box !important;
             box-shadow: none !important;
-            page-break-after: avoid !important;
+            /* 한 장은 쪼개지지 않고, 다음 장은 새 페이지에서 시작 */
             page-break-inside: avoid !important;
-            break-after: avoid !important;
             break-inside: avoid !important;
+            page-break-after: always !important;
+            break-after: page !important;
             overflow: hidden !important;
+          }
+          /* 마지막 장 뒤로는 페이지를 만들지 않는다 — 안 그러면 빈 장이 한 장 더 나온다 */
+          .invoice-sheet.invoice-sheet-last {
+            page-break-after: avoid !important;
+            break-after: avoid !important;
           }
           .invoice-sheet input { border: none !important; background: transparent !important; }
           .invoice-sheet h1 { font-size: 22px !important; margin: 0 0 4px 0 !important; }
           /* 입력칸 placeholder (절단예정일 빈칸 등) 인쇄 누출 차단 */
           .invoice-sheet input::placeholder { color: transparent !important; opacity: 0 !important; }
         }
+        /* 화면에서는 장 사이를 띄워 몇 장인지 눈으로 보이게 (인쇄 시엔 위 margin:0 이 이긴다) */
+        .invoice-sheet + .invoice-sheet { margin-top: 24px; }
         .invoice-sheet table { border-collapse: collapse; width: 100%; font-size: 10.5px; }
         .invoice-sheet td, .invoice-sheet th { border: 1px solid #555; padding: 1px 3px; vertical-align: middle; line-height: 1.25; }
         .invoice-sheet tbody tr { height: 18px; }
@@ -188,6 +439,11 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
         <div className="text-sm text-gray-600">
           빈칸을 클릭해서 입력 — 1초 후 자동 저장됨
           {savedMark && <span className="ml-2 inline-flex items-center gap-1 text-emerald-600 text-xs"><Check size={12} /> 저장됨</span>}
+          {pageCount > 1 && (
+            <span className="ml-2 inline-flex items-center rounded bg-blue-50 px-1.5 py-0.5 text-xs font-semibold text-blue-700">
+              강재 {v.items.length}장 → {pageCount}장으로 인쇄
+            </span>
+          )}
         </div>
         <button
           onClick={() => window.print()}
@@ -197,192 +453,7 @@ export default function InvoicePrint({ vehicle, onUpdate }: Props) {
         </button>
       </div>
 
-      <div className="invoice-sheet bg-white mx-auto" style={{ width: "297mm", height: "210mm", padding: "26mm 8mm 6mm 8mm", boxSizing: "border-box" }}>
-        {/* 제목 */}
-        <h1 className="text-center text-2xl font-extrabold tracking-[0.3em] mb-1">거 래 명 세 표</h1>
-
-        {/* 상단 발행일자 / 송장번호 / 출고증 */}
-        <div className="flex items-center justify-between text-[11px] mb-1 px-1 whitespace-nowrap">
-          <div className="flex items-center gap-1">
-            <span className="font-semibold whitespace-nowrap">발 행 일 자 :</span>
-            <input
-              type="date"
-              value={toYMD(v.issueDate)}
-              onChange={e => setVehicleField("issueDate", e.target.value ? new Date(e.target.value + "T00:00:00").toISOString() : null)}
-              className="cell border-b border-gray-400 px-1"
-              style={{ borderBottom: "1px solid #777", width: "32mm" }}
-            />
-          </div>
-          <div>송 장 등 록 번 호 : <strong className="font-mono">{v.invoiceNo}</strong></div>
-          <div className="font-semibold">( 출 고 증 )</div>
-        </div>
-
-        {/* 공급자 / 공급받는자 — 좌/우 정확히 50% 분할 (table-layout: fixed)
-            기본 auto layout 은 cell 컨텐츠 길이에 따라 col width 가 변동되어
-            한쪽 회사명/주소가 길면 그 영역이 더 넓게 잡힘. fixed 로 강제. */}
-        <table className="mb-1" style={{ tableLayout: "fixed" }}>
-          <colgroup>
-            <col style={{ width: "2.2%" }} />
-            <col style={{ width: "7.8%" }} />
-            <col style={{ width: "23%"  }} />
-            <col style={{ width: "5%"   }} />
-            <col style={{ width: "12%"  }} />
-            <col style={{ width: "2.2%" }} />
-            <col style={{ width: "7.8%" }} />
-            <col style={{ width: "23%"  }} />
-            <col style={{ width: "5%"   }} />
-            <col style={{ width: "12%"  }} />
-          </colgroup>
-          <tbody>
-            <tr>
-              <td rowSpan={5} className="text-center font-bold bg-gray-50">공<br/>급<br/>자</td>
-              <td className="bg-gray-50 text-center">등록번호</td>
-              <td colSpan={3}>{S.bizNo ?? ""}</td>
-              <td rowSpan={5} className="text-center font-bold bg-gray-50">공<br/>급<br/>받<br/>는<br/>자</td>
-              <td className="bg-gray-50 text-center">등록번호</td>
-              <td colSpan={3}>{D.bizNo ?? ""}</td>
-            </tr>
-            <tr>
-              <td className="bg-gray-50 text-center">상  호</td><td>{S.name ?? ""}</td>
-              <td className="bg-gray-50 text-center">대표자</td><td>{S.ceo ?? ""}</td>
-              <td className="bg-gray-50 text-center">상  호</td><td>{D.name ?? ""}</td>
-              <td className="bg-gray-50 text-center">대표자</td><td>{D.ceo ?? ""}</td>
-            </tr>
-            <tr>
-              <td className="bg-gray-50 text-center">주  소</td><td colSpan={3}>{S.address ?? ""}</td>
-              <td className="bg-gray-50 text-center">주  소</td><td colSpan={3}>{D.address ?? ""}</td>
-            </tr>
-            <tr>
-              <td className="bg-gray-50 text-center">업  태</td><td>{S.bizType ?? ""}</td>
-              <td className="bg-gray-50 text-center">종 목</td><td>{S.bizItem ?? ""}</td>
-              <td className="bg-gray-50 text-center">업  태</td><td>{D.bizType ?? ""}</td>
-              <td className="bg-gray-50 text-center">종  목</td><td>{D.bizItem ?? ""}</td>
-            </tr>
-            <tr>
-              <td className="bg-gray-50 text-center">전화번호</td><td>{S.phone ?? ""}</td>
-              <td className="bg-gray-50 text-center">팩 스</td><td>{S.fax ?? ""}</td>
-              <td className="bg-gray-50 text-center">전화번호</td><td>{D.phone ?? ""}</td>
-              <td className="bg-gray-50 text-center">팩 스</td><td>{D.fax ?? ""}</td>
-            </tr>
-          </tbody>
-        </table>
-
-        {/* 본문 자재 테이블 */}
-        <table>
-          <thead>
-            <tr className="bg-gray-100 text-center font-bold">
-              <td rowSpan={2} style={{ width: "26px" }}>NO</td>
-              <td rowSpan={2} style={{ width: "60px" }}>잔재<br/>번호</td>
-              <td rowSpan={2} style={{ width: "55px" }}>호 선</td>
-              <td rowSpan={2} style={{ width: "55px" }}>블 록</td>
-              <td rowSpan={2} style={{ width: "70px" }}>제품번호</td>
-              <td rowSpan={2} style={{ width: "50px" }}>선 급</td>
-              <td rowSpan={2} style={{ width: "90px" }}>도면번호</td>
-              <td rowSpan={2} style={{ width: "60px" }}>재 질</td>
-              <td colSpan={3}>규 격</td>
-              <td rowSpan={2} style={{ width: "45px" }}>수 량<br/>(SH)</td>
-              <td rowSpan={2} style={{ width: "55px" }}>중 량<br/>(KG)</td>
-              <td rowSpan={2} style={{ width: "55px" }}>면 적<br/>(m²)</td>
-              <td rowSpan={2} style={{ width: "55px" }}>절단<br/>장비</td>
-              <td rowSpan={2} style={{ width: "75px" }}>선별지시번호</td>
-            </tr>
-            <tr className="bg-gray-100 text-center font-bold">
-              <td style={{ width: "40px" }}>두 께</td>
-              <td style={{ width: "55px" }}>폭</td>
-              <td style={{ width: "55px" }}>길 이</td>
-            </tr>
-          </thead>
-          <tbody>
-            {Array.from({ length: TOTAL_ROWS }, (_, i) => {
-              const it = v.items[i];
-              if (!it) {
-                return (
-                  <tr key={`empty-${i}`} className="text-center">
-                    <td>{i + 1}</td>
-                    {Array.from({ length: 15 }, (_, j) => <td key={j}>&nbsp;</td>)}
-                  </tr>
-                );
-              }
-              return (
-                <tr key={it.id} className="text-center">
-                  <td>{i + 1}</td>
-                  <td className="font-mono text-[10px]">{it.remnantNo ?? ""}</td>
-                  <td>{it.vesselCode}</td>
-                  <td><input className="cell text-center" value={it.block ?? ""} onChange={e => setItem(i, { block: e.target.value })} /></td>
-                  <td className="font-mono">{it.heatNo ?? ""}</td>
-                  <td><input className="cell text-center" value={it.classSociety ?? ""} onChange={e => setItem(i, { classSociety: e.target.value })} /></td>
-                  <td><input className="cell text-center font-mono text-[10px]" value={it.drawingNo ?? ""} onChange={e => setItem(i, { drawingNo: e.target.value })} /></td>
-                  <td>{it.material}</td>
-                  <td className="text-right">{it.thickness}</td>
-                  <td className="text-right">{it.width ? fmtNum(it.width) : ""}</td>
-                  <td className="text-right">{it.length ? fmtNum(it.length) : ""}</td>
-                  <td className="text-right">1</td>
-                  <td className="text-right">{fmtNum(it.weight, 1)}</td>
-                  <td className="text-right">{it.width && it.length ? fmtNum(area_m2(it.width, it.length), 3) : ""}</td>
-                  <td><input className="cell text-center" value={it.cuttingEquipment ?? ""} onChange={e => setItem(i, { cuttingEquipment: e.target.value })} /></td>
-                  <td><input className="cell text-center font-mono text-[10px]" value={it.selectionOrderNo ?? ""} onChange={e => setItem(i, { selectionOrderNo: e.target.value })} /></td>
-                </tr>
-              );
-            })}
-          </tbody>
-          {/* 합계 행 — 본문 컬럼과 자동 정렬 (수량/중량/면적) */}
-          <tfoot>
-            <tr>
-              {/* 본문 컬럼 1~11 (NO~길이) = 빈 좌측 영역 */}
-              <td colSpan={7}></td>
-              {/* 본문 컬럼 8~11 (재질~길이) = 합계 라벨 */}
-              <td colSpan={4} className="bg-gray-50 text-center font-bold">합  계</td>
-              {/* 본문 컬럼 12~14 = 수량 / 중량 / 면적 합계 (자동 정렬) */}
-              <td className="text-right font-bold">{totalQty}</td>
-              <td className="text-right font-bold">{fmtNum(totalWeight, 1)}</td>
-              <td className="text-right font-bold">{fmtNum(totalArea, 3)}</td>
-              {/* 본문 컬럼 15~16 = 빈 */}
-              <td colSpan={2}></td>
-            </tr>
-          </tfoot>
-        </table>
-
-        {/* 하단 작성자 + 인수자 두 행 — 같은 colgroup 공유 (라벨/값 폭이 동일) */}
-        <table className="mt-0">
-          <colgroup>
-            <col style={{ width: mm(LAYOUT.bottomB.receiverLabelMm) }} />
-            <col style={{ width: mm(LAYOUT.bottomB.receiverValueMm) }} />
-            <col style={{ width: mm(LAYOUT.bottomB.vehicleLabelMm) }} />
-            <col style={{ width: mm(LAYOUT.bottomB.vehicleValueMm) }} />
-            <col style={{ width: mm(LAYOUT.bottomB.driverLabelMm) }} />
-            <col style={{ width: mm(LAYOUT.bottomB.driverValueMm) }} />
-            <col style={{ width: mm(LAYOUT.bottomB.phoneLabelMm) }} />
-            <col style={{ width: mm(LAYOUT.bottomB.phoneValueMm) }} />
-          </colgroup>
-          <tbody>
-            {/* 작성자 행 — 라벨/값 폭이 아래 인수자 행과 동일 */}
-            <tr>
-              <td className="bg-gray-50 text-center font-bold">작성(출고)자</td>
-              <td><input className="cell" value={v.writerName ?? ""} onChange={e => setVehicleField("writerName", e.target.value)} /></td>
-              <td className="bg-gray-50 text-center font-bold">연락처</td>
-              <td><input className="cell font-mono" value={v.writerPhone ?? ""} onChange={e => setVehicleField("writerPhone", e.target.value)} /></td>
-              {/* 우측 4 컬럼은 빈 영역 */}
-              <td colSpan={4}></td>
-            </tr>
-            {/* 인수자/차량/운전자 행 */}
-            <tr>
-              <td className="bg-gray-50 text-center font-bold">인수(입고)자</td>
-              <td><input className="cell" value={v.receiverName ?? ""} onChange={e => setVehicleField("receiverName", e.target.value)} /></td>
-              <td className="bg-gray-50 text-center font-bold">차량번호</td>
-              <td><input className="cell font-mono" value={v.vehicleNo ?? ""} onChange={e => setVehicleField("vehicleNo", e.target.value)} /></td>
-              <td className="bg-gray-50 text-center font-bold">운전자 성명</td>
-              <td><input className="cell" value={v.driverName ?? ""} onChange={e => setVehicleField("driverName", e.target.value)} /></td>
-              <td className="bg-gray-50 text-center font-bold">운전자 연락처</td>
-              <td><input className="cell font-mono" value={v.driverPhone ?? ""} onChange={e => setVehicleField("driverPhone", e.target.value)} /></td>
-            </tr>
-          </tbody>
-        </table>
-
-        {/* 우측 하단 회사 표시 */}
-        <div className="text-right mt-3 text-lg font-extrabold tracking-[0.3em]">
-          한 국 테 크 ㈜ 진 교 공 장
-        </div>
-      </div>
+      {pages.map(renderSheet)}
     </>
   );
 }
