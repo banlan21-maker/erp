@@ -31,6 +31,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { applyCuttingComplete } from "@/lib/cutting-complete";
 import { remnantNotReadyMessage } from "@/lib/remnant-ready-guard";
+import { kstDayRange, kstTodayYmd } from "@/lib/work-date";
 
 // ─── GET ───────────────────────────────────────────────────────────────────────
 // 쿼리 파라미터:
@@ -54,30 +55,23 @@ export async function GET(request: NextRequest) {
     // ── 날짜 필터 구성 ──────────────────────────────────────────────────────
     let dateFilter: Record<string, unknown> = {};
     if (!all) {
+      // 날짜 경계는 전부 KST 기준으로 자른다 (kstDayRange).
+      // 예전에는 new Date(ymd) + setHours() 라 실행 환경 시간대를 탔다 — 컨테이너가 UTC 면
+      // 아침 8시(KST) 착수 작업이 전날로 잡혔다. 현장 목록에서 완료 직후 사라지던 원인.
       if (dateFrom || dateTo) {
         // 관리자 범위 필터
         const rangeFilter: Record<string, Date> = {};
-        if (dateFrom) {
-          const d = new Date(dateFrom); d.setHours(0, 0, 0, 0);
-          rangeFilter.gte = d;
-        }
-        if (dateTo) {
-          const d = new Date(dateTo); d.setHours(23, 59, 59, 999);
-          rangeFilter.lte = d;
-        }
+        if (dateFrom) rangeFilter.gte = kstDayRange(dateFrom).start;
+        if (dateTo)   rangeFilter.lte = kstDayRange(dateTo).end;
         dateFilter = { startAt: rangeFilter };
       } else if (date) {
         // 단일 날짜 (하위 호환 / 현장 뷰)
-        const targetDate = new Date(date);
-        const dayStart = new Date(targetDate); dayStart.setHours(0, 0, 0, 0);
-        const dayEnd   = new Date(targetDate); dayEnd.setHours(23, 59, 59, 999);
-        dateFilter = { startAt: { gte: dayStart, lte: dayEnd } };
+        const { start, end } = kstDayRange(date);
+        dateFilter = { startAt: { gte: start, lte: end } };
       } else if (!projectId && !equipmentId) {
-        // 아무 조건도 없고 all=false → 오늘로 제한 (현장 뷰 기본값)
-        const today    = new Date();
-        const dayStart = new Date(today); dayStart.setHours(0, 0, 0, 0);
-        const dayEnd   = new Date(today); dayEnd.setHours(23, 59, 59, 999);
-        dateFilter = { startAt: { gte: dayStart, lte: dayEnd } };
+        // 아무 조건도 없고 all=false → 오늘(KST)로 제한 (현장 뷰 기본값)
+        const { start, end } = kstDayRange(kstTodayYmd());
+        dateFilter = { startAt: { gte: start, lte: end } };
       }
     }
 

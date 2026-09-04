@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Play, Square, Pause, RotateCcw, ChevronDown, ChevronUp, Loader2, Check, Zap, AlertTriangle, X, Save } from "lucide-react";
+import { kstTodayYmd } from "@/lib/work-date";
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -166,7 +167,10 @@ export default function FieldWorklog({
   const isSurplusDraw = selDrawing?.assignedRemnant?.type === "SURPLUS";   // 여유원재 사용 절단 — 실물 판번호 입력 필요
 
   const refreshLogs = useCallback(async () => {
-    const res = await fetch(`/api/cutting-logs?date=${new Date().toISOString().slice(0, 10)}&includeStuck=true`);
+    // KST 오늘 — toISOString() 은 UTC 날짜라 새벽~오전9시 사이엔 어제 날짜를 보냈다.
+    // 서버 첫 로드(app/field/worklog/page.tsx)는 KST 로 자르는데 여기만 UTC 라,
+    // 아침 작업을 완료하는 순간 목록에서 사라졌다.
+    const res = await fetch(`/api/cutting-logs?date=${kstTodayYmd()}&includeStuck=true`);
     const d = await res.json();
     if (d.success) setLogs(d.data);
   }, []);

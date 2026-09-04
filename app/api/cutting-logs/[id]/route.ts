@@ -38,6 +38,15 @@ import { prisma } from "@/lib/prisma";
 import { applyCuttingComplete, applyCuttingRestore } from "@/lib/cutting-complete";
 import { remnantNotReadyMessage } from "@/lib/remnant-ready-guard";
 
+/**
+ * 사용자에게 그대로 보여줄 안내 — 서버 고장이 아니라 규칙 위반이다.
+ * 아래 가드들은 트랜잭션을 되돌리려고 throw 하는데, 그냥 Error 로 던지면
+ * 맨 바깥 catch 가 "작업일보 수정 중 오류가 발생했습니다." 로 덮어써
+ * 정작 왜 안 되는지를 현장이 못 봤다. 표시를 달아 원문 그대로 409 로 내보낸다.
+ * (같은 패턴: app/api/urgent-works/route.ts 의 ConflictError)
+ */
+class ConflictError extends Error {}
+
 // ─── PATCH ─────────────────────────────────────────────────────────────────────
 // action="complete" → 절단 종료 (강재 상태 자동 동기화)
 // action 없음       → 관리자 직접 수정 (강재 상태 수동 관리)
@@ -145,7 +154,7 @@ export async function PATCH(
           const when = sibling.endAt
             ? new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(sibling.endAt)
             : "";
-          throw new Error(
+          throw new ConflictError(
             `이 도면은 이미 절단완료로 등록돼 있습니다.\n` +
             `(${when} ${sibling.equipment?.name ?? "?"} · ${sibling.operator})\n\n` +
             `중복 완료를 막았습니다. 이 작업이 별개 철판이면 강재리스트에서 별도 행으로 등록하세요.`,
@@ -156,7 +165,7 @@ export async function PATCH(
       // 발생예정 잔재 가드 — 원판 미절단이면 그 잔재로 완료 처리할 수 없다.
       // throw → 트랜잭션 롤백(위 CAS 로 이미 COMPLETED 로 바꾼 것도 함께 되돌아간다).
       const notReady = await remnantNotReadyMessage(tx, log.drawingListId);
-      if (notReady) throw new Error(notReady);
+      if (notReady) throw new ConflictError(notReady);
 
       // 완료 부작용(도면 CUT / 강재 소진 / 판번호 / 잔재 EXHAUSTED / sync) — 공용 헬퍼로 위임
       await applyCuttingComplete(tx, log);
@@ -290,6 +299,10 @@ export async function PATCH(
     });
     return NextResponse.json({ success: true, data: log });
   } catch (error) {
+    // 규칙 위반 안내는 원문 그대로 409 — 현장이 읽고 조치해야 하는 문장이다.
+    if (error instanceof ConflictError) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 409 });
+    }
     console.error("[PATCH /api/cutting-logs/[id]]", error);
     return NextResponse.json(
       { success: false, error: "작업일보 수정 중 오류가 발생했습니다." },
