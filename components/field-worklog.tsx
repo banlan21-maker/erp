@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Play, Square, Pause, RotateCcw, ChevronDown, ChevronUp, Loader2, Check, Zap, AlertTriangle, X, Save } from "lucide-react";
 import { kstTodayYmd } from "@/lib/work-date";
 
@@ -54,6 +54,11 @@ interface Remnant {
 
 // 일반 중단 사유 dropdown — 미가동시간(중단시간)에 포함됨.
 // WORK_EXTENSION(퇴근/야간이월) 은 dropdown 에 노출하지 않고 별도 버튼으로 분리.
+/** 저장 못 하고 나간 잔재 입력을 기기에 잠시 두는 자리 (기기 안에만 남는다) */
+const REM_DRAFT_KEY = "field-worklog:remnant-draft";
+/** 초안 유효기간 — 한 교대. 지나면 남의 것일 가능성이 커 조용히 버린다 */
+const REM_DRAFT_TTL_MS = 12 * 60 * 60 * 1000;
+
 const PAUSE_REASON_OPTIONS = [
   { value: "EQUIPMENT_FAILURE", label: "장비고장" },
   { value: "DRAWING_CHANGE",    label: "도면변경" },
@@ -128,6 +133,26 @@ export default function FieldWorklog({
   const [remnantLoaded,   setRemnantLoaded]   = useState(false);
   const [remnantPopup,    setRemnantPopup]    = useState<{ logId: string; urgentId: string } | null>(null);
   const [remForm,         setRemForm]         = useState({ material: "", thickness: "", width: "", length: "", weight: "", registeredBy: "" });
+
+  /* ── 잔재 입력 이탈 방어 (2026-09-05) ────────────────────────────────
+   * 팝업에 재질·중량을 적어 놓고 창을 닫거나 뒤로가기를 하면 그 입력이 사라졌다.
+   * 나중에 등록할 화면도 현장앱엔 없다. 그래서 세 겹으로 막는다.
+   *   · 입력이 있으면 타이핑할 때마다 기기에 초안을 남기고
+   *   · 뒤로가기는 가로채 [저장하고 나가기 / 저장 안 하고 나가기] 를 묻고
+   *   · 창 닫기는 브라우저 기본 경고로 한 번 잡은 뒤, 다시 들어오면 초안을 꺼내 묻는다.
+   * 창을 닫는 시점에 우리가 만든 확인창을 띄우거나 저장 요청을 보내는 것은
+   * 브라우저가 막아 놨다 — 그래서 마지막 겹이 "다시 들어왔을 때" 가 된다.
+   */
+  const [leaveAsk, setLeaveAsk] = useState(false);
+  const [draftAsk, setDraftAsk] = useState<
+    null | { form: typeof remForm; urgentId: string; logId: string; by: string | null; savedAt: string | null }
+  >(null);
+  const remDirty = !!(remForm.material || remForm.thickness || remForm.width || remForm.length || remForm.weight);
+  // 가드 effect 가 remDirty 를 deps 없이 읽기 위한 거울
+  const remDirtyRef = useRef(remDirty);
+  useEffect(() => { remDirtyRef.current = remDirty; }, [remDirty]);
+  // 팝업이 '나가는 중' 인가 — cleanup 의 되감기를 건너뛸지 판단
+  const popupClosingRef = useRef(false);
 
   // 1단계 (세션, 유지)
   const [s1, setS1] = useState({ vesselCode: "", projectId: "", operatorId: "" });
@@ -260,13 +285,9 @@ export default function FieldWorklog({
       });
       const d = await res.json();
       if (!d.success) { setError(d.error); return; }
-      // I9: 팝업 이탈/미처리 시 UrgentWork 가 IN_PROGRESS 로 남는 문제 방지 —
-      //     완료 직후 즉시 COMPLETED 로 전환. 잔재 팝업은 순수 잔재 등록만 담당.
-      await fetch(`/api/urgent-works/${urgentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "COMPLETED" }),
-      });
+      // UrgentWork 는 서버가 절단완료 트랜잭션 안에서 함께 닫는다(lib/cutting-complete.ts).
+      //   예전에는 여기서 한 번 더 PATCH 했는데, 요청이 둘로 갈라져 있어 사이에 통신이
+      //   끊기면 "절단은 완료, 돌발은 진행중" 이 됐다. 이제 클라이언트가 관여하지 않는다.
       await refreshLogs();
       // 끝낸 돌발의 선택 상태를 푼다 — 안 그러면 진행중 카드가 사라진 자리에
       // 작업자까지 채워진 [작업 시작] 패널이 그대로 남아 같은 돌발을 다시 착수하게 된다.
@@ -279,22 +300,27 @@ export default function FieldWorklog({
   };
 
   const handleRemnantNo = async () => {
-    // 잔여분 없음 → urgent work COMPLETED
-    if (remnantPopup) {
-      await fetch(`/api/urgent-works/${remnantPopup.urgentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "COMPLETED" }),
-      });
-    }
+    // 돌발작업은 절단완료 시점에 서버가 이미 닫았다 — 여기서 다시 PATCH 하지 않는다.
+    //   완료된 건을 또 COMPLETED 로 쓰면 api/urgent-works/[id] 가 연결 잔재의
+    //   확정표시(reservedFor)를 풀어버려, 사무실이 되돌려 놓은 상태를 덮어쓴다.
+    // 입력하다 마음을 바꿔 [없음] 을 누른 경우 — 초안과 폼을 같이 비운다.
+    // 안 비우면 다음 접속 때 "저장하지 못한 잔재가 있습니다" 가 유령처럼 뜨고,
+    // 다음 돌발의 팝업에도 지난 값이 그대로 남는다.
+    clearRemDraft();
     setRemnantPopup(null);
+    setRemForm({ material: "", thickness: "", width: "", length: "", weight: "", registeredBy: "" });
     await loadUrgentWorks();
   };
 
-  const handleRemnantYes = async () => {
-    if (!remForm.material || !remForm.thickness || !remForm.weight) {
+  const clearRemDraft = () => {
+    try { localStorage.removeItem(REM_DRAFT_KEY); } catch { /* 사생활 모드 등 — 무시 */ }
+  };
+
+  /** 잔재 1건 등록. 팝업에서도, 나중에 초안을 되살릴 때도 같은 경로를 쓴다. */
+  const saveRemnant = async (form: typeof remForm): Promise<boolean> => {
+    if (!form.material || !form.thickness || !form.weight) {
       alert("재질, 두께, 중량은 필수입니다.");
-      return;
+      return false;
     }
     setLoading(true);
     try {
@@ -304,30 +330,117 @@ export default function FieldWorklog({
         body: JSON.stringify({
           type: "REMNANT",
           shape: "RECTANGLE",
-          material: remForm.material,
-          thickness: parseFloat(remForm.thickness),
-          weight: parseFloat(remForm.weight),
-          width1: remForm.width ? parseFloat(remForm.width) : null,
-          length1: remForm.length ? parseFloat(remForm.length) : null,
-          registeredBy: remForm.registeredBy || workers.find(w => w.id === uOperatorId)?.name || "현장",
+          material: form.material,
+          thickness: parseFloat(form.thickness),
+          weight: parseFloat(form.weight),
+          width1: form.width ? parseFloat(form.width) : null,
+          length1: form.length ? parseFloat(form.length) : null,
+          registeredBy: form.registeredBy || workers.find(w => w.id === uOperatorId)?.name || "현장",
         }),
       });
       const d = await res.json();
-      if (!d.success) { alert(d.error); return; }
-      if (remnantPopup) {
-        await fetch(`/api/urgent-works/${remnantPopup.urgentId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "COMPLETED" }),
-        });
-      }
-      setRemnantPopup(null);
-      setRemForm({ material: "", thickness: "", width: "", length: "", weight: "", registeredBy: "" });
-      setRemnantLoaded(false);
-      await loadUrgentWorks();
-    } catch { alert("서버 오류"); }
+      if (!d.success) { alert(d.error); return false; }
+      // 잔재 등록만 한다. 돌발작업 완료는 서버가 절단완료 때 이미 처리했다.
+      clearRemDraft();
+      return true;
+    } catch { alert("서버 오류"); return false; }
     finally { setLoading(false); }
   };
+
+  const handleRemnantYes = async () => {
+    const ok = await saveRemnant(remForm);
+    if (!ok) return;
+    setRemnantPopup(null);
+    setRemForm({ material: "", thickness: "", width: "", length: "", weight: "", registeredBy: "" });
+    setRemnantLoaded(false);
+    await loadUrgentWorks();
+  };
+
+  /** [취소 — 저장 안 함]: 입력을 버리고 팝업을 닫는다.
+   *  여기서 history.back() 을 더 부르지는 않는다 — 이 화면은 북마크·홈화면 아이콘으로
+   *  바로 들어오는 경우가 있어, 한 칸 더 물러나면 앱 밖으로 나가버릴 수 있다.
+   *  가드가 쌓아 둔 항목은 effect cleanup 이 되감으므로 위치는 팝업 뜨기 전으로 돌아간다.
+   *  그 상태에서 뒤로가기를 다시 누르면 평소대로 이 화면을 벗어난다. */
+  const discardRemnant = () => {
+    clearRemDraft();
+    setLeaveAsk(false);
+    setRemnantPopup(null);
+    setRemForm({ material: "", thickness: "", width: "", length: "", weight: "", registeredBy: "" });
+  };
+
+  // 초안 보관 — 입력이 있는 동안만. 비우면 지운다.
+  useEffect(() => {
+    if (!remnantPopup) return;
+    try {
+      if (!remDirty) { localStorage.removeItem(REM_DRAFT_KEY); return; }
+      localStorage.setItem(REM_DRAFT_KEY, JSON.stringify({
+        form: remForm,
+        urgentId: remnantPopup.urgentId,
+        logId:    remnantPopup.logId,
+        // 공용 태블릿이라 누구 것인지 남긴다. 되살릴 때 등록자로도 쓴다
+        // (안 남기면 나중에 복구한 잔재의 등록자가 전부 "현장" 으로 박힌다).
+        by:       workers.find(w => w.id === uOperatorId)?.name ?? null,
+        savedAt:  new Date().toISOString(),
+      }));
+    } catch { /* 저장 못 해도 화면은 그대로 돌아가야 한다 */ }
+  }, [remnantPopup, remForm, remDirty]);
+
+  /* 뒤로가기 가로채기.
+   * 팝업 1개당 히스토리 항목을 딱 한 겹만 쌓고, 팝업이 닫힐 때 반드시 되감는다.
+   *   · deps 를 remnantPopup 하나로 둔다 — remDirty 를 넣으면 입력을 지웠다 쓸 때마다
+   *     항목이 새로 쌓여 스택이 오염되고, 그만큼 뒤로가기가 먹통이 된다.
+   *   · 뒤로가기로 항목이 소비되면 즉시 다시 쌓는다. 안 그러면 가드가 1회용이 되어
+   *     (저장 실패로 팝업이 남은 경우 포함) 두 번째 뒤로가기에 그냥 나가버린다.
+   *   · cleanup 은 리스너를 먼저 떼고 되감는다 — 그래야 되감기로 생긴 popstate 가
+   *     우리 리스너에 잡히지 않아 별도의 억제 플래그가 필요 없다.
+   */
+  useEffect(() => {
+    if (!remnantPopup) return;
+    history.pushState({ remnantGuard: true }, "");
+    popupClosingRef.current = false;
+    const onPop = () => {
+      if (remDirtyRef.current) {
+        history.pushState({ remnantGuard: true }, "");   // 소비된 가드를 즉시 재무장
+        setLeaveAsk(true);
+        return;
+      }
+      // 입력이 없으면 붙잡을 이유가 없다 — 팝업만 닫고 보낸다(가드는 이미 소비됐다).
+      popupClosingRef.current = true;
+      setRemnantPopup(null);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      if (!popupClosingRef.current) history.back();      // 정상 종료 시 쌓은 항목 회수
+    };
+  }, [remnantPopup]);
+
+  // 창 닫기 — 브라우저 기본 경고만 가능하다(문구·버튼을 우리가 정할 수 없다).
+  useEffect(() => {
+    if (!remnantPopup || !remDirty) return;
+    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener("beforeunload", h);
+    return () => window.removeEventListener("beforeunload", h);
+  }, [remnantPopup, remDirty]);
+
+  /* 다시 들어왔을 때 — 저장 못 하고 나간 초안이 있으면 꺼내 준다.
+   * 여기서 바로 저장하지 않고 팝업에 도로 채워 넣는다. 필수값이 덜 찬 초안을
+   * "저장/버리기" 로만 물으면 저장이 alert 로 막혀 다이얼로그를 못 닫는 덫이 된다.
+   * 한 교대(12시간)가 지난 것은 남의 작업일 가능성이 커 조용히 버린다. */
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(REM_DRAFT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      const dirty = !!(d?.form?.material || d?.form?.thickness || d?.form?.width || d?.form?.length || d?.form?.weight);
+      const age   = d?.savedAt ? Date.now() - new Date(d.savedAt).getTime() : Infinity;
+      if (dirty && age < REM_DRAFT_TTL_MS) {
+        setDraftAsk({ form: d.form, urgentId: d.urgentId ?? null, logId: d.logId ?? "", by: d.by ?? null, savedAt: d.savedAt ?? null });
+      } else {
+        localStorage.removeItem(REM_DRAFT_KEY);
+      }
+    } catch { try { localStorage.removeItem(REM_DRAFT_KEY); } catch { /* 무시 */ } }
+  }, []);
 
   const loadDrawings = useCallback(async (pid: string) => {
     if (!pid) { setDrawings([]); return; }
@@ -487,6 +600,39 @@ export default function FieldWorklog({
     const q = search.toLowerCase();
     return d.drawingNo?.toLowerCase().includes(q) || d.heatNo?.toLowerCase().includes(q);
   });
+
+  /* 저장 못 하고 나간 초안 — 바로 저장하지 않고 팝업에 도로 채워 준다.
+     "저장/버리기" 로만 물으면 필수값이 덜 찬 초안에서 저장이 alert 로 막혀
+     다이얼로그를 닫을 수 없는 덫이 된다. 이어서 입력하게 하면 그런 상태가 없다. */
+  const draftDialog = draftAsk && (
+    <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-6">
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-sm p-6 space-y-4">
+        <h3 className="text-base font-bold text-white text-center">저장하지 못한 잔재가 있습니다</h3>
+        <p className="text-xs text-gray-400 text-center">
+          {draftAsk.form.material || "-"} · {draftAsk.form.thickness || "-"}t · {draftAsk.form.weight || "-"}kg
+          {draftAsk.form.width || draftAsk.form.length
+            ? ` · ${draftAsk.form.width || "-"}×${draftAsk.form.length || "-"}` : ""}
+        </p>
+        <p className="text-[11px] text-gray-500 text-center">
+          {draftAsk.by ? `${draftAsk.by} 님이 ` : ""}입력만 하고 나간 내용입니다. 이어서 등록할까요?
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => { clearRemDraft(); setDraftAsk(null); }}
+            className="py-4 rounded-xl bg-gray-700 text-white font-semibold text-sm active:bg-gray-600"
+          >버리기</button>
+          <button
+            onClick={() => {
+              setRemForm({ ...draftAsk.form, registeredBy: draftAsk.form.registeredBy || draftAsk.by || "" });
+              setRemnantPopup({ logId: draftAsk.logId, urgentId: draftAsk.urgentId });
+              setDraftAsk(null);
+            }}
+            className="py-4 rounded-xl bg-blue-600 text-white font-bold text-sm active:bg-blue-700"
+          >이어서 입력</button>
+        </div>
+      </div>
+    </div>
+  );
 
   // ── 장비 미선택 ──────────────────────────────────────────────────────────
 
@@ -914,6 +1060,32 @@ export default function FieldWorklog({
           </div>
         </div>
       )}
+
+      {/* 뒤로가기로 나가려 할 때 — 입력한 잔재를 저장할지 묻는다 */}
+      {leaveAsk && (
+        <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-6">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-sm p-6 space-y-4">
+            <h3 className="text-base font-bold text-white text-center">입력한 잔재를 저장할까요?</h3>
+            <p className="text-xs text-gray-400 text-center">
+              {remForm.material || "-"} · {remForm.thickness || "-"}t · {remForm.weight || "-"}kg
+            </p>
+            <p className="text-[11px] text-gray-500 text-center">저장하지 않고 나가면 이 입력은 사라집니다.</p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={discardRemnant}
+                className="py-4 rounded-xl bg-gray-700 text-white font-semibold text-sm active:bg-gray-600"
+              >취소 — 저장 안 함</button>
+              <button
+                onClick={async () => { setLeaveAsk(false); await handleRemnantYes(); }}
+                disabled={loading}
+                className="py-4 rounded-xl bg-blue-600 text-white font-bold text-sm active:bg-blue-700 disabled:opacity-50"
+              >{loading ? "저장 중..." : "확인 — 저장"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {draftDialog}
 
       {/* ══ 정규작업 탭 ══ */}
       {mainTab === "normal" && (
