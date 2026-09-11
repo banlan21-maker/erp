@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { useShipoutCart, type ShipoutCartItem } from "./shipout-cart";
+import { defaultBlockFromLabel } from "@/lib/block-from-label";
 
 /** 외부출고리스트 양식 다운로드 */
 function downloadShipoutListTemplate() {
@@ -149,7 +150,9 @@ export default function ShipoutBar() {
         manualHeatNo: !!it.prefilledHeatNo,
         heatOptions:  [],
         vehicleIdx:   null,
-        block:        "",
+        // 담을 때의 강재매칭 이름에서 블록을 뽑아 기본값으로(lib/block-from-label).
+        // 못 뽑으면 장식만 뗀 이름이 들어가 사람이 다듬는다. 라벨 없으면 빈칸(예전과 같음).
+        block:        defaultBlockFromLabel(it.matchLabel),
       }));
       setRowsM(init);
 
@@ -701,6 +704,10 @@ function Step1({
                     <td className="px-2 py-1">
                       <input value={r.block} onChange={e => setRow(r.steelPlanId, { block: e.target.value })}
                         placeholder="블록" className="w-20 px-1.5 py-0.5 text-xs border border-gray-200 rounded" />
+                      {/* 기본값의 근거 — 담을 때의 매칭이름. 인쇄되지 않는다 */}
+                      {r.matchLabel && (
+                        <div className="mt-0.5 max-w-[9rem] truncate text-[10px] text-gray-400" title={r.matchLabel}>{r.matchLabel}</div>
+                      )}
                     </td>
                     <td className="px-2 py-1">
                       <HeatPicker row={r} onChange={patch => setRow(r.steelPlanId, patch)} />

@@ -16,6 +16,7 @@ import {
   ChevronLeft, ChevronUp, ChevronDown, ListChecks, ClipboardList, MapPin, RefreshCw, History, Zap,
 } from "lucide-react";
 import { ShipoutCartProvider, useShipoutCart, type ShipoutCartItem } from "@/components/shipout-cart";
+import { defaultBlockFromLabel } from "@/lib/block-from-label";
 
 const calcWeight = (t: number, w: number, l: number) => parseFloat(((t * w * l * 7.85) / 1_000_000).toFixed(1));
 const fmtT = (v: number) => parseFloat(v.toFixed(1));
@@ -210,6 +211,7 @@ function AddTab() {
       thickness: c.thickness, width: c.width, length: c.length,
       weight: c.weight, prefilledHeatNo: h || undefined,
       steelPlanHeatId: result?.heatId,   // 입력 판번호의 WAITING heat → 출고 시 SHIPPED 전환
+      matchLabel: c.shipoutLabel ?? null, // 명세서 블록 칸 기본값의 근거
     };
     const { added, duplicates } = cart.add([item]);
     if (duplicates) { alert("이미 카트에 담긴 강재입니다."); return; }
@@ -846,6 +848,9 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }
   const [vehicleNo, setVehicleNo]   = useState("");
   const [driverName, setDriverName] = useState("");
   const [blocks, setBlocks]         = useState<Record<string, string>>({}); // 자재별 블록 (steelPlanId → 블록)
+  // 사람이 손대기 전에는 담을 때의 매칭이름에서 만든 기본값을 쓴다(lib/block-from-label).
+  // 지워서 빈칸으로 만든 것("")은 그대로 존중한다 — ?? 라서 빈 문자열은 기본값으로 안 돌아간다.
+  const blockOf = (it: ShipoutCartItem) => blocks[it.steelPlanId] ?? defaultBlockFromLabel(it.matchLabel);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [vendorLoading, setVendorLoading] = useState(false);
@@ -916,7 +921,7 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }
             steelPlanHeatId: it.steelPlanHeatId,
             vesselCode: it.vesselCode, material: it.material,
             thickness: it.thickness, width: it.width, length: it.length, weight: it.weight,
-            block: blocks[it.steelPlanId]?.trim() || null,
+            block: blockOf(it).trim() || null,
             heatNo: it.prefilledHeatNo?.trim() || null,
             // heatId 있으면 그 heat 를 정확히 SHIPPED 전환(manual 아님). 없으면 사양+판번호로 find/create
             manualHeatNo: it.kind !== "remnant" && !it.steelPlanHeatId,
@@ -976,9 +981,13 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }
                 </div>
                 <div className="flex items-center gap-2">
                   <label className="text-[11px] font-semibold text-gray-400 whitespace-nowrap">블록</label>
-                  <input value={blocks[it.steelPlanId] ?? ""} onChange={e => setBlocks(b => ({ ...b, [it.steelPlanId]: e.target.value }))}
+                  <input value={blockOf(it)} onChange={e => setBlocks(b => ({ ...b, [it.steelPlanId]: e.target.value }))}
                     placeholder="블록 (예: F52P) — 선택" className="flex-1 px-2.5 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
                 </div>
+                {/* 기본값의 근거 — 담을 때 카드에 보이던 매칭이름. 인쇄되지 않는다 */}
+                {it.matchLabel && (
+                  <div className="mt-1 pl-9 text-[11px] text-gray-500 break-all">매칭 {it.matchLabel}</div>
+                )}
               </div>
             ))}
           </div>

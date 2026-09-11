@@ -257,6 +257,7 @@ export default function SelectionListTab() {
         weight:      r.weight,
         prefilledHeatNo: r.heatNo ?? undefined,
         remnantNo:   r.remnantNo ?? undefined,
+        matchLabel:  r.kind === "plate" ? r.shipoutLabel : null,  // 명세서 블록 칸 기본값의 근거
       };
     });
     const { added, duplicates } = cart.add(items);

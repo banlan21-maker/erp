@@ -33,6 +33,10 @@ export interface ShipoutCartItem {
   // I1: 현장직접출고로 담을 때 원 자재의 사무실 선별 라벨 스냅샷.
   // 출고 확정 시 ShipmentItem.originShipoutLabel 로 저장되어 사후 추적 가능.
   originShipoutLabel?: string | null;
+  // 담을 때 카드에 보이던 강재매칭 이름(선별 라벨). 출고장 만들기 화면에서 블록 칸 기본값을
+  // 만들고 옆에 참고로 보여 주는 데만 쓴다 — 서버로 보내지 않는다.
+  // (originShipoutLabel 은 출고취소의 선별 복원 판단에 쓰이는 감사 표시라 따로 둔다)
+  matchLabel?: string | null;
 }
 
 // 카트 변경 시마다 값이 바뀌는 "상태"와, 참조가 고정된 "동작"을 분리한다.
