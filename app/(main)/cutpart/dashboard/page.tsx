@@ -22,6 +22,7 @@ export default async function DashboardPage() {
     cutByProj,
     activeLogProjs,
     lastCutByProj,
+    firstCutByProj,
     allCodes,
   ] = await Promise.all([
     prisma.drawingList.count(),
@@ -37,6 +38,8 @@ export default async function DashboardPage() {
     prisma.cuttingLog.groupBy({ by: ["projectId"], where: { isUrgent: false, status: { in: ["STARTED", "PAUSED"] } }, _count: { _all: true } }),
     // 프로젝트별 마지막 절단완료일(= 블록 완료일) — 정규작업만
     prisma.cuttingLog.groupBy({ by: ["projectId"], where: { isUrgent: false, status: "COMPLETED", endAt: { not: null } }, _max: { endAt: true } }),
+    // 프로젝트별 최초 착수일 — 현장작업일보에 처음 등록된 시각. 상태 무관(진행중·완료 모두 포함)
+    prisma.cuttingLog.groupBy({ by: ["projectId"], where: { isUrgent: false }, _min: { startAt: true } }),
     prisma.project.findMany({ select: { projectCode: true }, distinct: ["projectCode"] }),
   ]);
 
@@ -71,12 +74,13 @@ export default async function DashboardPage() {
   const cutMap     = new Map(cutByProj.map(r => [r.projectId, r._count._all]));
   const activeSet  = new Set(activeLogProjs.filter(r => r.projectId).map(r => r.projectId as string));
   const lastCutMap = new Map(lastCutByProj.filter(r => r.projectId && r._max.endAt).map(r => [r.projectId as string, r._max.endAt as Date]));
+  const firstCutMap = new Map(firstCutByProj.filter(r => r.projectId && r._min.startAt).map(r => [r.projectId as string, r._min.startAt as Date]));
 
   // 블록 절단 상태 분류 — Project.status 가 아니라 "실제 절단(CUT) 도면 수" 기준.
   //  · 완료   = 등록된 모든 도면이 절단완료 (total>0 && cut===total)
   //  · 진행중 = 1장 이상 절단됨(cut>0) 또는 절단작업 진행중(STARTED/PAUSED), 단 완료 아님
   //  · 대기   = 절단 0장 (등록·확정만) → 표시 안 함
-  type BlockStat = { id: string; projectCode: string; projectName: string; total: number; cut: number; pct: number; doneAt: Date | null };
+  type BlockStat = { id: string; projectCode: string; projectName: string; total: number; cut: number; pct: number; doneAt: Date | null; startedAt: Date | null };
   const blocks: BlockStat[] = [];
   for (const p of allProjects) {
     const total = totalMap.get(p.id) ?? 0;
@@ -85,6 +89,7 @@ export default async function DashboardPage() {
     blocks.push({
       id: p.id, projectCode: p.projectCode, projectName: p.projectName,
       total, cut, pct: Math.round((cut / total) * 100), doneAt: lastCutMap.get(p.id) ?? null,
+      startedAt: firstCutMap.get(p.id) ?? null,
     });
   }
   const completeBlocks   = blocks.filter(b => b.cut === b.total);                                   // 100%
@@ -101,6 +106,13 @@ export default async function DashboardPage() {
     .filter(b => b.doneAt)
     .sort((a, b) => (b.doneAt as Date).getTime() - (a.doneAt as Date).getTime())
     .slice(0, 6);
+
+  // "9월 15일" — 착수일 표기용(연도 없이, 앞 0 없이)
+  const fmtKMD = (d: Date) => {
+    const s = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit" }).format(d);
+    const [m, dd] = s.split("-");
+    return `${Number(m)}월 ${Number(dd)}일`;
+  };
 
   const fmtKDate = (d: Date) => {
     const s = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
@@ -214,7 +226,7 @@ export default async function DashboardPage() {
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold text-gray-700">블록 절단 현황</CardTitle>
+            <CardTitle className="text-sm font-semibold text-gray-700">실시간 절단 현황</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* 진행 중 블록 — 진행률 */}
@@ -235,7 +247,10 @@ export default async function DashboardPage() {
                   <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
                     <div className="h-full bg-blue-500 rounded-full" style={{ width: `${p.pct}%` }} />
                   </div>
-                  <p className="text-[10px] text-gray-400 mt-0.5">{p.cut}/{p.total}행 절단</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    {p.cut}/{p.total}행 절단
+                    {p.startedAt && ` / ${fmtKMD(p.startedAt)} 착수`}
+                  </p>
                 </Link>
               ))}
             </div>
