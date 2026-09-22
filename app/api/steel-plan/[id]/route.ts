@@ -73,6 +73,11 @@ export async function PATCH(
       ...(body.status === "ISSUED" ? { issuedAt: new Date(), storageLocation: null, shipoutMarkedAt: null, shipoutHeatNo: null, shipoutLabel: null } : {}),
       // 출고 취소(RECEIVED로 되돌리기) 시 issuedAt 초기화
       ...(body.status === "RECEIVED" && body.cancelIssue ? { issuedAt: null } : {}),
+      // 재고 상태로 되돌리면 숨김 도장과 종료일도 같이 지운다 (2026-09-22).
+      //   아카이브는 COMPLETED/SHIPPED_OUT + finishedAt 으로 판정하고, 되살아난 강재는 목록에
+      //   보여야 한다. 안 지우면 "재고인데 어느 목록에도 안 보이는" 유령이 다음 아카이브 실행 때까지 남는다.
+      //   (절단취소·출고취소·상태동기화는 이미 지우고 있었고 이 수동 경로만 빠져 있었다)
+      ...(["REGISTERED", "RECEIVED", "ISSUED"].includes(body.status) ? { archivedAt: null, finishedAt: null } : {}),
       // N15: receivedAt 은 유효한 값일 때만 반영. status=RECEIVED + receivedAt=null 조합으로
       //     '입고 상태인데 입고일 null' 이 되는 이상 상태 방지 (입고취소는 위 REGISTERED 분기가 처리).
       ...(body.receivedAt ? { receivedAt: new Date(body.receivedAt) } : {}),

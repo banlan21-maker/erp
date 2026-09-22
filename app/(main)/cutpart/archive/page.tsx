@@ -9,6 +9,7 @@ import {
   type ColumnAccessorMap,
   type TextPredicate,
 } from "@/lib/cascading-filters";
+import { kstTodayYmd } from "@/lib/work-date";
 
 interface HeatRow {
   id: string; heatNo: string; status: string; archivedAt: string;
@@ -24,8 +25,13 @@ interface PlanRow {
 const fmtDate = (v: string | null) => v ? new Date(v).toLocaleDateString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit" }) : "";
 const fmtT = (v: number) => parseFloat(v.toFixed(1));
 const fmtL = (v: number) => Math.round(v);
-const todayStr = () => new Date().toISOString().slice(0, 10);
-const monthsAgoStr = (n: number) => { const d = new Date(); d.setMonth(d.getMonth() - n); return d.toISOString().slice(0, 10); };
+// 기간 기본값은 KST 달력일로 — toISOString() 은 UTC 날짜라 자정~오전 9시엔 하루 밀렸다 (2026-09-22).
+// 월 산술은 UTC 자정 기준 Date.UTC 로 해 시간대 영향을 없앤다(달 말일 넘침은 예전과 같이 자연 롤오버).
+const todayStr = () => kstTodayYmd();
+const monthsAgoStr = (n: number) => {
+  const [y, m, d] = kstTodayYmd().split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1 - n, d)).toISOString().slice(0, 10);
+};
 const heatStatusLabel = (s: string) => s === "CUT" ? "절단" : s === "SHIPPED" ? "외부출고" : s === "WAITING" ? "대기" : s;
 const planStatusLabel = (s: string) => s === "COMPLETED" ? "절단완료" : s === "SHIPPED_OUT" ? "외부출고" : s;
 

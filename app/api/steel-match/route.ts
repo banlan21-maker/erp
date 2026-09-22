@@ -17,8 +17,10 @@ export async function GET() {
     const sel = { vesselCode: true, material: true, thickness: true, width: true, length: true, shipoutLabel: true } as const;
     const remSel = { material: true, thickness: true, width1: true, length1: true, shipoutLabel: true } as const;
     const [markedAll, shippedAll, markedRemRows, shippedRemItems] = await Promise.all([
-      prisma.steelPlan.findMany({ where: { shipoutMarkedAt: { not: null }, shipoutLabel: { not: null } }, select: sel }),
-      prisma.steelPlan.findMany({ where: { status: "SHIPPED_OUT", shipoutLabel: { not: null } }, select: sel }),
+      // archivedAt: null — 상세([id])와 같은 모집단이어야 한다. 아카이브(숨김)된 출고 강재를 여기서만 세면
+      // 목록엔 "출고 12건" 인데 들어가면 8건인 식으로 갈린다(2026-09-22).
+      prisma.steelPlan.findMany({ where: { archivedAt: null, shipoutMarkedAt: { not: null }, shipoutLabel: { not: null } }, select: sel }),
+      prisma.steelPlan.findMany({ where: { archivedAt: null, status: "SHIPPED_OUT", shipoutLabel: { not: null } }, select: sel }),
       // 잔재도 강재처럼 라벨(=매칭이름)로 작업에 귀속시킨다. 전에는 전역 풀이라 다른 호선·다른
       // 작업에서 나간 잔재가 치수만 같으면 남의 목록을 '출고'로 덮었다.
       // 절단 미확정(reservedFor null) 선별 잔재만 (절단확정 잔재는 출고 선별 아님 — 강재와 대칭).
