@@ -185,52 +185,23 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
     }
   }
 
-  // ── 여유원재(SURPLUS) 사용 절단 — 실물 판번호 추적 ─────────────────────
+  // ── 여유원재(SURPLUS) 사용 절단 — 실물 판번호를 여유원재에 남긴다 ─────────
+  //   여유원재는 프로젝트 강재가 아니라 따로 관리한다(2026-09-22 정책). 프로젝트 강재
+  //   판번호 목록(SteelPlanHeat)으로 옮기지 않고, 작업일보에 적힌 실물 판번호를 여유원재
+  //   자체에 기록한 뒤 EXHAUSTED 로 소진하는 것으로 끝낸다.
+  //   예전에는 여기서 SteelPlanHeat 을 찾아 CUT 하거나 없으면 신규 생성했는데, 생성 행이
+  //   도면 치수로 만들어져 "옮겨지고 나니 판번호 사양이 바뀌었다"는 현장 혼선을 낳았다
+  //   (REM-2026-053: 잔재 10550 ↔ 생성 행 11830). 그 행 2건은 삭제했다(scripts/revert-surplus-heat-rows.mjs).
+  //   등록 때 판번호가 이미 적혀 있으면 건드리지 않는다 — 현장은 그 값을 '선택'해서 쓴다.
   if (
     targetDrawing?.assignedRemnantId &&
     targetDrawing.assignedRemnant?.type === "SURPLUS" &&
-    log.heatNo?.trim() && effectiveVessel &&
-    log.material && log.thickness && log.width && log.length
+    log.heatNo?.trim()
   ) {
-    const hn  = log.heatNo.trim();
-    const mat = log.material.trim().toUpperCase();
-    await tx.remnant.update({
-      where: { id: targetDrawing.assignedRemnantId },
-      data:  { heatNo: hn },
+    await tx.remnant.updateMany({
+      where: { id: targetDrawing.assignedRemnantId, OR: [{ heatNo: null }, { heatNo: "" }] },
+      data:  { heatNo: log.heatNo.trim().toUpperCase() },
     });
-    // 판번호 매칭은 호선 우선, 없으면 호선 무관(R12·R14). SURPLUS 여유원재도 옆 호선 실물을
-    // 쓸 수 있으므로 작업호선으로 잠그면 실재 판번호를 못 찾아 유령 heat 을 새로 만든다.
-    const surplusSpec = {
-      material: { equals: mat, mode: "insensitive" as const },
-      thickness: log.thickness, width: log.width, length: log.length,
-      heatNo: hn,
-    };
-    const existingHeat =
-      await tx.steelPlanHeat.findFirst({
-        where: { ...surplusSpec, vesselCode: effectiveVessel },
-        select: { id: true },
-      })
-      ?? await tx.steelPlanHeat.findFirst({
-        where: surplusSpec,
-        orderBy: { createdAt: "asc" },
-        select: { id: true },
-      });
-    if (existingHeat) {
-      await tx.steelPlanHeat.update({
-        where: { id: existingHeat.id },
-        data:  { status: "CUT", cutAt: log.endAt ?? new Date() },
-      });
-    } else {
-      // I2: SURPLUS 절단으로 신규 생성되는 판번호 — 절단 취소 시 유령 heat 잔류 방지 마커
-      await tx.steelPlanHeat.create({
-        data: {
-          heatNo: hn, vesselCode: effectiveVessel, material: mat,
-          thickness: log.thickness, width: log.width, length: log.length,
-          status: "CUT", cutAt: log.endAt ?? new Date(),
-          autoCreatedFromSurplusCut: true,
-        },
-      });
-    }
   }
 
   // ── SteelPlan: 사용된 강재 1장 RECEIVED/ISSUED → COMPLETED ────────────
@@ -299,13 +270,21 @@ export async function applyCuttingComplete(tx: Tx, log: CompleteLog): Promise<vo
 
     const uw = await tx.urgentWork.findUnique({
       where: { id: log.urgentWorkId },
-      select: { remnantId: true },
+      select: { remnantId: true, remnant: { select: { type: true } } },
     });
     if (uw?.remnantId) {
       await tx.remnant.update({
         where: { id: uw.remnantId },
         data:  { status: "EXHAUSTED" },
       });
+      // 여유원재면 작업일보에 적힌 실물 판번호를 여유원재에 남긴다(비어 있을 때만).
+      // 프로젝트 강재 판번호 목록에는 옮기지 않는다 — 정규 절단의 SURPLUS 블록과 같은 정책.
+      if (uw.remnant?.type === "SURPLUS" && log.heatNo?.trim()) {
+        await tx.remnant.updateMany({
+          where: { id: uw.remnantId, OR: [{ heatNo: null }, { heatNo: "" }] },
+          data:  { heatNo: log.heatNo.trim().toUpperCase() },
+        });
+      }
       // 돌발 등록 때 미리 적어 둔 발생 등록잔재를 발생예정 → 재고로 승격.
       // 도면 흐름(drawingListId 기준)과 같은 대칭을 돌발에도 건다 — 사용 강재를 실제로
       // 잘라야 자투리가 실물로 생긴다. 돌발 발생잔재는 parentRemnantId 로 매달려 있다.
@@ -345,13 +324,17 @@ export async function applyCuttingRestore(tx: Tx, log: RestoreLog): Promise<void
     vesselCode: string; material: string; thickness: number; width: number; length: number;
   } | null = null;
   let drawingAltVessel: string | null = null;
+  // 여유원재 사용 절단이었나 — 그 판번호는 프로젝트 목록에 없으므로 아래 판번호 복원 폴백을 건너뛴다.
+  // 안 건너뛰면 우연히 같은 heatNo·사양인 프로젝트 판을 WAITING 으로 되돌려 버린다.
+  let restoreSurplusDraw = false;
   if (log.drawingListId) {
     const drawing = await tx.drawingList.findUnique({
       where: { id: log.drawingListId },
-      include: { project: { select: { projectCode: true } } },
+      include: { project: { select: { projectCode: true } }, assignedRemnant: { select: { type: true } } },
     });
     if (drawing) {
       drawingAltVessel = drawing.alternateVesselCode?.trim() || null;
+      restoreSurplusDraw = drawing.assignedRemnant?.type === "SURPLUS";
     }
     if (drawing && drawing.status === "CUT") {
       await tx.drawingList.update({
@@ -414,9 +397,10 @@ export async function applyCuttingRestore(tx: Tx, log: RestoreLog): Promise<void
     if (r.count > 0) restoredHeat = true;
   }
 
-  // (2) 폴백: consumedHeatId 없는 레거시 로그·여유원재. heatNo+사양 매칭하되
+  // (2) 폴백: consumedHeatId 없는 레거시 로그. heatNo+사양 매칭하되
   //     (a) 다른 로그가 정확 소진(consumedHeatId)한 판은 제외, (b) 여러 장 일괄 아닌 1장만 복원(과다복원 방지).
-  if (!restoredHeat && log.heatNo?.trim() && effectiveVesselForLog && log.material && log.thickness && log.width && log.length) {
+  //     여유원재 절단(restoreSurplusDraw)은 프로젝트 판번호를 소진한 적이 없으므로 제외.
+  if (!restoredHeat && !restoreSurplusDraw && log.heatNo?.trim() && effectiveVesselForLog && log.material && log.thickness && log.width && log.length) {
     const others = await tx.cuttingLog.findMany({
       where: { id: { not: log.id }, consumedHeatId: { not: null } },
       select: { consumedHeatId: true },
@@ -430,29 +414,10 @@ export async function applyCuttingRestore(tx: Tx, log: RestoreLog): Promise<void
       thickness: log.thickness, width: log.width, length: log.length,
       ...(excludeIds.length > 0 ? { id: { notIn: excludeIds } } : {}),
     };
-    // I2: SURPLUS 절단으로 신규 생성됐던 heat (autoCreatedFromSurplusCut=true) 는 실물이 SURPLUS 원판으로
-    //     되살아나므로 삭제(참조 있으면 WAITING 복원). 1장만.
-    const surplusHeat = await tx.steelPlanHeat.findFirst({
-      where: { ...heatSpec, autoCreatedFromSurplusCut: true },
-      orderBy: { createdAt: "desc" },
-      select: { id: true },
-    });
-    if (surplusHeat) {
-      const referenced = await tx.shipmentItem.findFirst({
-        where: { steelPlanHeatId: surplusHeat.id },
-        select: { id: true },
-      });
-      if (referenced) {
-        await tx.steelPlanHeat.update({ where: { id: surplusHeat.id }, data: { status: "WAITING", cutAt: null, archivedAt: null } });
-      } else {
-        await tx.steelPlanHeat.delete({ where: { id: surplusHeat.id } });
-      }
-      restoredHeat = true;
-    }
-    // 일반 heat (autoCreatedFromSurplusCut=false) — 1장만 복원
+    // 1장만 복원
     if (!restoredHeat) {
       const one = await tx.steelPlanHeat.findFirst({
-        where: { ...heatSpec, autoCreatedFromSurplusCut: false },
+        where: heatSpec,
         orderBy: { createdAt: "desc" },
         select: { id: true },
       });

@@ -65,26 +65,8 @@ export async function POST(
             } else if (rem) {
               restoreFailures.push(`잔재 ${rem.remnantNo} 상태가 소진이 아니라 복원 불가 (현재: ${rem.status})`);
             }
-            // 여유원재 출고 시 함께 소진했던 판번호 복원 (원판 갈래와 대칭).
-            // 등록잔재·현장잔재는 판번호를 소진하지 않으므로 steelPlanHeatId 가 비어 있어 그냥 지나간다.
-            if (item.steelPlanHeatId) {
-              const h = await tx.steelPlanHeat.findUnique({ where: { id: item.steelPlanHeatId } });
-              if (h && h.status === SteelPlanHeatStatus.SHIPPED) {
-                const otherShipped = await tx.shipmentItem.count({
-                  where: {
-                    steelPlanHeatId: h.id,
-                    NOT: { vehicle: { shipmentId: id } },
-                    vehicle: { shipment: { status: ShipmentStatus.ACTIVE } },
-                  },
-                });
-                if (otherShipped === 0) {
-                  await tx.steelPlanHeat.update({
-                    where: { id: h.id },
-                    data:  { status: SteelPlanHeatStatus.WAITING, shippedAt: null, archivedAt: null },
-                  });
-                }
-              }
-            }
+            // 여유원재는 프로젝트 강재 판번호 목록을 소진하지 않는다(2026-09-22 정책) — 되돌릴 것도 없다.
+            //   (그 전에 여유원재 출고로 판번호를 SHIPPED 로 넘긴 건은 0건이라 레거시 처리도 불필요)
             continue; // 잔재는 SteelPlan 처리 없음
           }
 

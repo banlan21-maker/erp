@@ -1260,8 +1260,9 @@ export default function SteelPlanMain() {
       {/* 탭 */}
       <div className="flex border-b border-gray-200">
         {[
-          { key: "plan",   icon: <ClipboardList size={14} />,   label: "강재 전체목록" },
-          { key: "heatno", icon: <Hash size={14} />,            label: "판번호 리스트" },
+          // 이 화면은 프로젝트에 할당된 강재와 그 판번호만 다룬다. 여유원재는 잔재관리에서 따로 관리한다(2026-09-22).
+          { key: "plan",   icon: <ClipboardList size={14} />,   label: "프로젝트 강재 목록" },
+          { key: "heatno", icon: <Hash size={14} />,            label: "프로젝트 강재 판번호 목록" },
           { key: "match",  icon: <FileSpreadsheet size={14} />, label: "강재매칭" },
           { key: "selection", icon: <ListChecks size={14} />,  label: "선별 목록" },
         ].map(({ key, icon, label }) => (

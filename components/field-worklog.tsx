@@ -45,7 +45,7 @@ interface UrgentWork {
   materialMemo: string | null;
   drawingNo: string | null;      // 무엇을 자를지 — 한 요청의 여러 건을 구분하는 1차 식별자
   status: string;
-  remnant: { id: string; remnantNo: string; material: string; thickness: number; weight: number; needsConsult: boolean; heatNo?: string | null } | null;
+  remnant: { id: string; remnantNo: string; material: string; thickness: number; weight: number; needsConsult: boolean; heatNo?: string | null; type?: string } | null;
 }
 
 interface Remnant {
@@ -244,16 +244,23 @@ export default function FieldWorklog({
     if (!selectedEq)   { setError("장비를 선택하세요."); return; }
     if (!selUrgentId)  { setError("돌발작업을 선택하세요."); return; }
     if (!uOperatorId)  { setError("작업자를 선택하세요."); return; }
+    // 여유원재 사용 돌발 — 실물 판번호가 있어야 한다. 등록된 게 있으면 그것, 없으면 현장이 입력한 것.
+    // (판번호는 여유원재 자체에 남고, 프로젝트 강재 판번호 목록으로는 옮기지 않는다 — 2026-09-22)
+    const w0 = urgentWorks.find(u => u.id === selUrgentId);
+    const surplusReg = w0?.remnant?.type === "SURPLUS" ? (w0.remnant.heatNo?.trim() ?? "") : "";
+    if (w0?.remnant?.type === "SURPLUS" && !surplusReg && !uHeatNo.trim()) {
+      setError("여유원재의 실물 판번호를 입력하세요. (철판에 적힌 번호)"); return;
+    }
     setLoading(true);
     try {
-      const w = urgentWorks.find(u => u.id === selUrgentId);
+      const w = w0;
       const workerName = workers.find(wo => wo.id === uOperatorId)?.name ?? "";
       const res = await fetch("/api/cutting-logs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           equipmentId:  selectedEq,
-          heatNo:       uHeatNo || "",
+          heatNo:       (surplusReg || uHeatNo).trim(),
           operator:     workerName,
           memo:         uMemo || null,
           isUrgent:     true,
@@ -884,7 +891,12 @@ export default function FieldWorklog({
                   {urgentWorks.map(w => (
                     <button
                       key={w.id}
-                      onClick={() => setSelUrgentId(prev => prev === w.id ? "" : w.id)}
+                      onClick={() => {
+                        const next = selUrgentId === w.id ? "" : w.id;
+                        setSelUrgentId(next);
+                        // 여유원재를 쓰는 돌발이면 등록된 판번호를 미리 채운다 — 현장은 그 값을 '선택'해서 쓴다
+                        setUHeatNo(next && w.remnant?.type === "SURPLUS" ? (w.remnant.heatNo?.trim() ?? "") : "");
+                      }}
                       className={`w-full text-left px-4 py-4 rounded-2xl border-2 transition-all ${
                         selUrgentId === w.id
                           ? URGENCY_COLOR_DARK[w.urgency] ?? "border-orange-500 bg-orange-950"
@@ -942,17 +954,38 @@ export default function FieldWorklog({
                         {workers.map(w => <option key={w.id} value={w.id}>{w.name}{w.nationality ? ` (${w.nationality})` : ""}</option>)}
                       </select>
                     </div>
-                    {/* Heat NO */}
-                    <div>
-                      <label className="text-xs text-gray-400 font-medium mb-1.5 block">Heat NO <span className="text-gray-600">(선택)</span></label>
-                      <input
-                        type="text"
-                        placeholder="Heat NO"
-                        value={uHeatNo}
-                        onChange={e => setUHeatNo(e.target.value)}
-                        className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white placeholder-gray-500 font-mono"
-                      />
-                    </div>
+                    {/* Heat NO — 여유원재를 쓰는 돌발이면 필수.
+                        등록된 판번호가 있으면 그걸 그대로 쓰고(선택), 없으면 현장이 입력해 여유원재에 남긴다. */}
+                    {(() => {
+                      const rem = urgentWorks.find(u => u.id === selUrgentId)?.remnant;
+                      const isSur = rem?.type === "SURPLUS";
+                      const reg = isSur ? (rem?.heatNo?.trim() ?? "") : "";
+                      if (reg) return (
+                        <div>
+                          <label className="text-xs text-gray-400 font-medium mb-1.5 block">
+                            판번호(Heat NO) <span className="text-orange-400">(여유원재 — 등록된 판번호)</span>
+                          </label>
+                          <div className="w-full bg-gray-800 border border-orange-700 rounded-xl px-3 py-3 text-sm text-white font-mono">{reg}</div>
+                          <p className="text-[11px] text-gray-500 mt-1">여유원재 등록 때 적힌 판번호입니다. 현물과 다르면 잔재관리에서 먼저 고치세요.</p>
+                        </div>
+                      );
+                      return (
+                        <div>
+                          <label className="text-xs text-gray-400 font-medium mb-1.5 block">
+                            Heat NO {isSur
+                              ? <span className="text-red-400">* (여유원재 — 철판에 적힌 실물 판번호 입력)</span>
+                              : <span className="text-gray-600">(선택)</span>}
+                          </label>
+                          <input
+                            type="text"
+                            placeholder={isSur ? "실물 판번호 입력" : "Heat NO"}
+                            value={uHeatNo}
+                            onChange={e => setUHeatNo(e.target.value)}
+                            className={`w-full bg-gray-800 border rounded-xl px-3 py-3 text-sm text-white placeholder-gray-500 font-mono ${isSur ? "border-orange-700" : "border-gray-700"}`}
+                          />
+                        </div>
+                      );
+                    })()}
                     {/* 특이사항 */}
                     <div>
                       <label className="text-xs text-gray-400 font-medium mb-1.5 block">특이사항</label>
@@ -1390,24 +1423,38 @@ export default function FieldWorklog({
                   {selDrawing?.assignedRemnant?.type === "REMNANT" ? "현장잔재" : "등록잔재"} 사용 절단 — 판번호 없이 작업 시작 가능합니다.
                 </div>
               )}
-              {isSurplusDraw && (
-                <div>
-                  <label className="text-xs text-gray-400 font-medium mb-1.5 block">
-                    판번호(Heat NO) <span className="text-orange-400">(여유원재 — 실물 판번호 입력)</span>
-                  </label>
-                  <input
-                    value={heatNo}
-                    onChange={e => setHeatNo(e.target.value)}
-                    placeholder="실물 판번호 입력"
-                    className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white placeholder-gray-500 font-mono"
-                  />
-                  {heatNo && (
-                    <p className="text-[11px] text-amber-300 bg-amber-950/50 border border-amber-800 rounded-lg px-2.5 py-1.5 mt-1.5">
-                      ⚠ 입력한 판번호 <span className="font-mono font-bold text-amber-200">{heatNo}</span> 가 현물과 <b>일치하는지 다시 확인</b>하세요.
-                    </p>
-                  )}
-                </div>
-              )}
+              {isSurplusDraw && (() => {
+                // 여유원재 등록 때 판번호가 적혀 있으면 그걸 그대로 쓴다(선택). 없으면 현장이 입력해 여유원재에 남긴다.
+                // 어느 쪽이든 프로젝트 강재 판번호 목록으로는 옮기지 않는다(2026-09-22).
+                const reg = selDrawing?.assignedRemnant?.heatNo?.trim() ?? "";
+                if (reg) return (
+                  <div>
+                    <label className="text-xs text-gray-400 font-medium mb-1.5 block">
+                      판번호(Heat NO) <span className="text-orange-400">(여유원재 — 등록된 판번호)</span>
+                    </label>
+                    <div className="w-full bg-gray-800 border border-orange-700 rounded-xl px-3 py-3 text-sm text-white font-mono">{reg}</div>
+                    <p className="text-[11px] text-gray-500 mt-1">여유원재 등록 때 적힌 판번호입니다. 현물과 다르면 잔재관리에서 먼저 고치세요.</p>
+                  </div>
+                );
+                return (
+                  <div>
+                    <label className="text-xs text-gray-400 font-medium mb-1.5 block">
+                      판번호(Heat NO) <span className="text-red-400">* (여유원재 — 철판에 적힌 실물 판번호 입력)</span>
+                    </label>
+                    <input
+                      value={heatNo}
+                      onChange={e => setHeatNo(e.target.value)}
+                      placeholder="실물 판번호 입력"
+                      className="w-full bg-gray-800 border border-orange-700 rounded-xl px-3 py-3 text-sm text-white placeholder-gray-500 font-mono"
+                    />
+                    {heatNo && (
+                      <p className="text-[11px] text-amber-300 bg-amber-950/50 border border-amber-800 rounded-lg px-2.5 py-1.5 mt-1.5">
+                        ⚠ 입력한 판번호 <span className="font-mono font-bold text-amber-200">{heatNo}</span> 가 현물과 <b>일치하는지 다시 확인</b>하세요. 이 값이 여유원재에 기록됩니다.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
               {!isRemnantDraw && <div>
                 <label className="text-xs text-gray-400 font-medium mb-1.5 block">
                   판번호(Heat NO) <span className="text-gray-600">(필수)</span>

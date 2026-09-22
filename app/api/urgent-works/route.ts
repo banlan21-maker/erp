@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
           select: {
             id: true, remnantNo: true, material: true, thickness: true, weight: true, needsConsult: true,
             heatNo: true,   // 현장 카드에 판번호를 띄워 돌발 절단의 판번호 추적을 잇는다
+            type: true,     // 여유원재(SURPLUS)면 현장에서 판번호 선택/입력을 요구한다(2026-09-22)
             width1: true, length1: true, width2: true, length2: true,
           },
         },
