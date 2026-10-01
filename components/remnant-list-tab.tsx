@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, type ReactNode } from "react";
-import { Filter, X, Search, RefreshCw, Package, StickyNote } from "lucide-react";
+import { Filter, X, Search, RefreshCw, Package, StickyNote, Download } from "lucide-react";
+import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
 import { DetailModal, EditModal, ReregisterModal, type Remnant } from "@/components/remnant-tabs";
@@ -183,11 +184,11 @@ export default function RemnantListTab({
   }, [typeFilter, filters]);
 
   // 서버사이드 필터 + 페이지네이션
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+  // 조회 조건 — 화면 목록과 엑셀 다운로드가 똑같은 조건을 쓰도록 한 곳에서 만든다
+  const buildParams = useCallback((withPage: boolean) => {
     const p = new URLSearchParams();
     p.set("type", typeFilter);
-    p.set("page", String(page));
+    if (withPage) p.set("page", String(page));
     if (search) p.set("search", search);
     const cf = filters;
     if (cf.shape?.length)       p.set("shapes",      cf.shape.join(","));
@@ -210,7 +211,12 @@ export default function RemnantListTab({
     if (appliedCond.location.trim())  p.set("qLocation",  appliedCond.location.trim());
     if (appliedCond.status.trim())    p.set("qStatus",    appliedCond.status.trim());
     if (appliedCond.reserved.trim())  p.set("qReserved",  appliedCond.reserved.trim());
+    return p;
+  }, [typeFilter, page, search, filters, appliedCond]);
 
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    const p = buildParams(true);
     try {
       const res  = await fetch(`/api/remnants?${p}`);
       const data = await res.json();
@@ -221,7 +227,7 @@ export default function RemnantListTab({
         setPendingCount(data.pendingCount ?? 0);
       }
     } finally { setLoading(false); }
-  }, [typeFilter, page, search, filters, appliedCond]);
+  }, [buildParams]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { setPage(1); }, [filters, search, appliedCond]);
@@ -278,6 +284,61 @@ export default function RemnantListTab({
   });
   const weightIdx = cols.findIndex(c => c.key === "weight");
 
+  /* ── 엑셀 다운로드 (재고조사용) ──
+     지금 걸린 필터·검색 조건 그대로, 페이지 구분 없이 전체를 받는다(page 없이 호출하면 API 가 전체 반환).
+     컬럼은 화면에 보이는 것과 같고, 배지·아이콘 대신 글자 값으로 넣는다. */
+  const [exporting, setExporting] = useState(false);
+  const exportValue = (r: RemnantRow, key: string): string | number => {
+    switch (key) {
+      case "remnantNo": return r.remnantNo;
+      case "vessel":    return r.sourceProject?.projectCode ?? r.sourceVesselName ?? "";
+      case "block":     return r.sourceBlock ?? "";
+      case "drawingNo": return r.drawingNo ?? "";
+      case "heatNo":    return r.heatNo ?? "";
+      case "shape":     return SHAPE_LABEL[r.shape] ?? r.shape;
+      case "material":  return r.material;
+      case "thickness": return r.thickness;
+      case "width1":    return r.width1 ?? "";
+      case "width2":    return r.width2 ?? "";
+      case "length1":   return r.length1 ?? "";
+      case "length2":   return r.length2 ?? "";
+      case "weight":    return Math.round(r.weight * 10) / 10;
+      case "location":  return r.location ?? "";
+      case "status":    return remnantDisplayStatus(r).label;
+      case "usedVessel":
+        return r.reservedFor
+          ?? (r.assignedToLists?.length > 0
+              ? `${r.assignedToLists[0].project?.projectCode ?? "-"} / ${r.assignedToLists[0].block ?? "-"}`
+              : "");
+      case "memo":      return r.memo?.trim() ?? "";
+      default:          return "";
+    }
+  };
+  const downloadExcel = async () => {
+    setExporting(true);
+    try {
+      const res  = await fetch(`/api/remnants?${buildParams(false)}`);
+      const data = await res.json();
+      const rows: RemnantRow[] = data.data ?? [];
+      if (rows.length === 0) { alert("다운로드할 데이터가 없습니다."); return; }
+      const sheetRows = rows.map(r => {
+        const o: Record<string, string | number> = {};
+        for (const c of cols) o[c.label] = exportValue(r, c.key);
+        o["등록자"] = r.registeredBy ?? "";
+        o["등록일"] = r.createdAt ? r.createdAt.slice(0, 10) : "";
+        return o;
+      });
+      const ws = XLSX.utils.json_to_sheet(sheetRows);
+      const wb = XLSX.utils.book_new();
+      const name = titleLabel ?? "잔재 목록";
+      XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31));
+      const ymd = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date()).replace(/-/g, "");
+      XLSX.writeFile(wb, `${name}_${ymd}.xlsx`);
+    } catch {
+      alert("엑셀 다운로드 중 오류가 발생했습니다.");
+    } finally { setExporting(false); }
+  };
+
   const openFilter = (col: string, el: HTMLElement) => {
     if (openCol === col) { setOpenCol(null); setAnchorEl(null); return; }
     setOpenCol(col); setAnchorEl(el);
@@ -315,7 +376,10 @@ export default function RemnantListTab({
             <X size={12} /> 필터 {activeCount}개 초기화
           </button>
         )}
-        <Button variant="outline" size="sm" onClick={fetchData} className="text-xs shrink-0 ml-auto">
+        <Button variant="outline" size="sm" onClick={downloadExcel} disabled={exporting} className="text-xs shrink-0 ml-auto">
+          <Download size={12} className="mr-1" /> {exporting ? "받는 중..." : "엑셀 다운로드"}
+        </Button>
+        <Button variant="outline" size="sm" onClick={fetchData} className="text-xs shrink-0">
           <RefreshCw size={12} className="mr-1" /> 새로고침
         </Button>
       </div>
