@@ -43,6 +43,8 @@ export interface Remnant {
   // 통합 리스트에서 사용 — 등록잔재의 발생판번호/사용호선·블록 표시용
   heatNo?: string | null;
   assignedToLists?: { block: string | null; project: { projectCode: string } | null }[];
+  // 프로젝트 강재에서 옮겨 온 여유원재면 원래 행 스냅샷 — 있으면 [프로젝트 강재로 되돌리기] 노출
+  movedFromPlan?: unknown;
 }
 
 // ─── 상수 ──────────────────────────────────────────────────────────────────
@@ -957,8 +959,22 @@ function DetailRow({ label, value, sub }: { label: string; value: string; sub?: 
 }
 
 export function DetailModal({
-  remnant, onClose, onEdit, onReregister,
-}: { remnant: Remnant; onClose: () => void; onEdit: () => void; onReregister: () => void }) {
+  remnant, onClose, onEdit, onReregister, onRestored,
+}: { remnant: Remnant; onClose: () => void; onEdit: () => void; onReregister: () => void; onRestored?: () => void }) {
+  // 프로젝트 강재에서 옮겨 온 여유원재를 되돌린다 — 아직 아무 데도 안 쓴 것만(서버가 확인)
+  const restoreToPlan = async () => {
+    const vessel = (remnant.movedFromPlan as { plan?: { vesselCode?: string } } | undefined)?.plan?.vesselCode ?? "";
+    if (!confirm(`${remnant.remnantNo} 를 ${vessel} 프로젝트 강재로 되돌릴까요?
+여유원재 목록에서 빠지고, 강재 목록·판번호 목록에 원래대로 돌아갑니다.`)) return;
+    const r = await fetch("/api/steel-plan/to-surplus", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "restore", remnantId: remnant.id }),
+    });
+    const d = await r.json();
+    if (!d.success) { alert(d.error ?? "되돌리기 실패"); return; }
+    alert(d.message);
+    onRestored?.();
+  };
   const src = sourceInfo(remnant);
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
@@ -1007,6 +1023,12 @@ export function DetailModal({
             className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 gap-1.5">
             <Edit2 size={13} /> 수정
           </Button>
+          {remnant.type === "SURPLUS" && !!remnant.movedFromPlan && remnant.status === "IN_STOCK" && (
+            <Button onClick={restoreToPlan} variant="outline"
+              className="mr-auto text-xs font-bold px-4 gap-1.5 border-amber-400 text-amber-700 hover:bg-amber-50">
+              <RotateCcw size={13} /> 프로젝트 강재로 되돌리기
+            </Button>
+          )}
           {remnant.status !== "EXHAUSTED" && (
             <Button onClick={onReregister}
               className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 gap-1.5">

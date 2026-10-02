@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { parseExcelBuffer, parseExcelBufferWithPreset } from "@/lib/excel-parser";
 import { syncDrawingListBySpecs } from "@/lib/sync-drawing-spec";
 import { syncProjectStatus } from "@/lib/sync-project-status";
+import { nextRemnantNo } from "@/lib/remnant-numbering";
 
 // syncSpecsAfterUpload 함수는 통합 syncDrawingListBySpecs 로 대체됨 (lib/sync-drawing-spec.ts)
 
@@ -416,15 +417,8 @@ export async function POST(request: NextRequest) {
       // hasRemnant 업데이트
       await prisma.drawingList.update({ where: { id: dlRow.id }, data: { hasRemnant: true } });
 
-      // 잔재번호 자동채번
-      const year = new Date().getFullYear();
-      const prefix = `REM-${year}-`;
-      const last = await prisma.remnant.findFirst({
-        where: { remnantNo: { startsWith: prefix } },
-        orderBy: { remnantNo: "desc" },
-      });
-      const seq = last ? parseInt(last.remnantNo.split("-")[2], 10) + 1 : 1;
-      const autoNo = rem.remnantNo || `${prefix}${String(seq).padStart(3, "0")}`;
+      // 잔재번호 자동채번 (숫자 최댓값 기준 — lib/remnant-numbering)
+      const autoNo = rem.remnantNo || await nextRemnantNo(prisma);
 
       // 중량 계산
       const t = dlRow.thickness;

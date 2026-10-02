@@ -62,6 +62,7 @@ type RemnantRow = {
   sourceProjectId: string | null;
   sourceProject: { id: string; projectCode: string; projectName: string } | null;
   assignedToLists: { block: string | null; project: { projectCode: string } | null }[];
+  movedFromPlan?: unknown;
 };
 
 const PAGE_SIZE = 50;
@@ -545,6 +546,7 @@ export default function RemnantListTab({
           onClose={() => setDetailItem(null)}
           onEdit={() => { setEditItem(detailItem); setDetailItem(null); }}
           onReregister={() => { setReregItem(detailItem); setDetailItem(null); }}
+          onRestored={() => { setDetailItem(null); fetchData(); }}
         />
       )}
       {editItem && (

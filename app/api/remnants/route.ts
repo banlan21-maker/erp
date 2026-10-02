@@ -1,19 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { nextRemnantNo } from "@/lib/remnant-numbering";
 
 export const dynamic = "force-dynamic";
-
-// 잔재번호 자동채번: REM-YYYY-NNN
-async function generateRemnantNo(): Promise<string> {
-  const year = new Date().getFullYear();
-  const prefix = `REM-${year}-`;
-  const last = await prisma.remnant.findFirst({
-    where: { remnantNo: { startsWith: prefix } },
-    orderBy: { remnantNo: "desc" },
-  });
-  const seq = last ? parseInt(last.remnantNo.split("-")[2], 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(3, "0")}`;
-}
 
 const PAGE_SIZE = 50;
 const parseList = (v: string | null) => v?.split(",").filter(Boolean) ?? [];
@@ -250,7 +239,7 @@ export async function POST(request: NextRequest) {
       if (exists) return NextResponse.json({ success: false, error: `잔재번호 '${customNo.trim()}'이 이미 사용 중입니다.` }, { status: 409 });
       remnantNo = customNo.trim();
     } else {
-      remnantNo = await generateRemnantNo();
+      remnantNo = await nextRemnantNo(prisma);
     }
 
     const remnant = await prisma.remnant.create({

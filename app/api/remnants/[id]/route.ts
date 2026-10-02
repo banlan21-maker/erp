@@ -1,18 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// 잔재번호 자동채번 (잔여분 재등록용)
-async function generateRemnantNo(): Promise<string> {
-  const year = new Date().getFullYear();
-  const prefix = `REM-${year}-`;
-  const last = await prisma.remnant.findFirst({
-    where: { remnantNo: { startsWith: prefix } },
-    orderBy: { remnantNo: "desc" },
-  });
-  const seq = last ? parseInt(last.remnantNo.split("-")[2], 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(3, "0")}`;
-}
-
 // PATCH /api/remnants/[id]
 export async function PATCH(
   request: NextRequest,

@@ -5,7 +5,7 @@ import * as XLSX from "xlsx";
 import {
   Upload, Plus, Trash2, RefreshCw, Download, Search, X,
   CheckSquare, Square, ClipboardList, PackageOpen, Hash, PackageCheck, Printer, Filter,
-  ArrowUp, ArrowDown, FileSpreadsheet, Truck, ListChecks, ChevronDown,
+  ArrowUp, ArrowDown, FileSpreadsheet, Truck, ListChecks, ChevronDown, ArrowRightLeft,
 } from "lucide-react";
 import ColumnFilterDropdown, { type FilterValue } from "./column-filter-dropdown";
 import { serializeColFilters } from "@/lib/client-cascading";
@@ -13,6 +13,7 @@ import { useShipoutCart, useShipoutCartActions } from "./shipout-cart";
 import ShipoutBar, { ExcelUploadModal as ShipoutExcelUploadModal } from "./shipout-bar";
 import SteelMatchTab from "./steel-match-tab";
 import SelectionListTab from "./selection-list-tab";
+import ToSurplusModal from "@/components/to-surplus-modal";
 
 /* ── 컬럼 key → 쿼리스트링 param 이름 (distinct API 와 일치) ── */
 const STEEL_PLAN_QS_KEY: Record<string, string> = {
@@ -199,6 +200,7 @@ export default function SteelPlanMain() {
   const [loading, setLoading]   = useState(false);
   const [search, setSearch]     = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [toSurplusIds, setToSurplusIds] = useState<string[] | null>(null); // 여유원재로 이동 대상
   const [page,       setPage]       = useState(1);
   const [total,      setTotal]      = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -1535,11 +1537,25 @@ export default function SteelPlanMain() {
               >
                 <PackageOpen size={13} /> 외부출고
               </button>
+              {/* 프로젝트가 끝나고 남은 입고 강재를 여유원재로 — 판번호와 함께 옮긴다 */}
+              <button onClick={() => setToSurplusIds(Array.from(selectedIds))}
+                className="flex items-center gap-1.5 px-3 py-1 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+                title="입고 상태이면서 블록확정·출고선별이 없는 강재를 잔재관리 여유원재로 옮깁니다">
+                <ArrowRightLeft size={13} /> 여유원재로 이동
+              </button>
               <button onClick={() => openDeleteModal("plan")} className="flex items-center gap-1.5 px-3 py-1 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">
                 <Trash2 size={13} /> 삭제
               </button>
               <button onClick={() => setSelectedIds(new Set())} className="ml-auto text-sm text-green-600 hover:underline">선택 해제</button>
             </div>
+          )}
+
+          {toSurplusIds && (
+            <ToSurplusModal
+              ids={toSurplusIds}
+              onClose={() => setToSurplusIds(null)}
+              onDone={() => { setToSurplusIds(null); setSelectedIds(new Set()); loadPlan(); }}
+            />
           )}
 
           {/* 강재 전체목록 테이블 */}

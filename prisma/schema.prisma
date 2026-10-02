@@ -1270,6 +1270,10 @@ model Remnant {
 
   urgentWorks     UrgentWork[]
   assignedToLists DrawingList[] @relation("AssignedRemnant")
+  // 프로젝트 강재에서 여유원재로 옮겨 온 경우 원래 행 스냅샷(2026-10-02).
+  // { plan: SteelPlan 원본, heat: SteelPlanHeat 원본|null } — [프로젝트 강재로 되돌리기] 가
+  // 같은 id·입고일·위치·판번호로 정확히 복원하는 근거. 일반 여유원재는 null.
+  movedFromPlan   Json?
   partnerClaims   PartnerClaim[] // 설계업체 선점·사용 기록
 
   @@index([shipoutLabel])
