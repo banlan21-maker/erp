@@ -18,7 +18,6 @@ export async function GET(request: NextRequest) {
         _count: {
           select: {
             drawingLists: true,
-            workOrders: true,
           },
         },
       },

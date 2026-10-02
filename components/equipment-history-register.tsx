@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Wrench, ClipboardCheck, Save, AlertTriangle, CheckCircle2, Plus, X, Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Wrench, ClipboardCheck, Save, AlertTriangle, CheckCircle2, Plus, X, Search, Zap } from "lucide-react";
 import type { Equipment } from "@/components/equipment-main";
 
 /**
@@ -54,6 +54,60 @@ export default function EquipmentHistoryRegister({
   const [completedAt, setCompletedAt] = useState(today);
   const [insMemo, setInsMemo] = useState("");
 
+  /* ── 작업일보 고장 정지 — 수선이력 미반영 (2026-10-02) ──
+     현장이 [중단 → 장비고장] 으로 찍은 정지 중 아직 수선이력에 안 들어간 것.
+     골라서 [수선이력 작성] 을 누르면 장비·수선일·비가동시간이 채워지고, 저장하면 그 정지들이
+     이 수선이력에 묶여 목록에서 빠진다. 이미 따로 등록했거나 수선이 아니면 [목록에서 빼기]. */
+  type PendingPause = {
+    id: string; pausedAt: string; resumedAt: string | null; minutes: number | null; reasonText: string | null;
+    operator: string; drawingNo: string | null; equipmentName: string; mgmtEquipmentId: string; mgmtEquipmentName: string;
+  };
+  const [pending, setPending] = useState<PendingPause[]>([]);
+  const [pickedPauses, setPickedPauses] = useState<Set<string>>(new Set());
+  const [linkedPauseIds, setLinkedPauseIds] = useState<string[]>([]);
+  const loadPending = useCallback(async () => {
+    try {
+      const r = await fetch("/api/mgmt-repair/pending-pauses?days=30");
+      const d = await r.json();
+      if (d.success) setPending(d.data);
+    } catch { /* 목록은 보조 기능 — 실패해도 등록 화면은 쓸 수 있어야 한다 */ }
+  }, []);
+  useEffect(() => { loadPending(); }, [loadPending]);
+  const kstDate = (iso: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date(iso));
+  const kstTime = (iso: string) => new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
+  const togglePause = (pz: PendingPause) => setPickedPauses(prev => {
+    const n = new Set(prev);
+    if (n.has(pz.id)) { n.delete(pz.id); return n; }
+    // 한 수선이력은 한 장비 — 다른 장비 정지를 고르면 새로 시작
+    const other = pending.find(x => n.has(x.id) && x.mgmtEquipmentId !== pz.mgmtEquipmentId);
+    if (other) n.clear();
+    n.add(pz.id);
+    return n;
+  });
+  const startFromPauses = () => {
+    const sel = pending.filter(x => pickedPauses.has(x.id)).sort((a, b) => a.pausedAt.localeCompare(b.pausedAt));
+    if (!sel.length) return;
+    const mins = sel.reduce((s2, x) => s2 + (x.minutes ?? 0), 0);
+    setKind("repair");
+    setEquipmentId(sel[0].mgmtEquipmentId);
+    setRepairedAt(kstDate(sel[0].pausedAt));
+    setDtH(String(Math.floor(mins / 60))); setDtM(String(mins % 60));
+    const texts = [...new Set(sel.map(x => x.reasonText?.trim()).filter(Boolean))];
+    if (texts.length) setCause(texts.join(" / "));
+    setMemo(`작업일보 고장 정지 ${sel.length}건 — ${sel.map(x => `${kstTime(x.pausedAt)} ${x.operator}`).join(", ")}`);
+    setLinkedPauseIds(sel.map(x => x.id));
+    setError(""); setDone("");
+  };
+  const dismissPauses = async () => {
+    const ids = [...pickedPauses];
+    if (!ids.length) return;
+    if (!confirm(`고장 정지 ${ids.length}건을 목록에서 뺄까요?
+(수선이 아니었거나 이미 수선이력을 따로 등록한 경우)`)) return;
+    await fetch("/api/mgmt-repair/pending-pauses", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "dismiss", ids }) });
+    setPickedPauses(new Set());
+    loadPending();
+  };
+
   const eq = equipments.find(e => e.id === equipmentId) ?? null;
   const totalCost = costs.reduce((s, c) => s + (Number(c.amount) || 0), 0);
 
@@ -68,6 +122,7 @@ export default function EquipmentHistoryRegister({
   const resetRepair = () => {
     setCause(""); setContent(""); setContractor(""); setCosts([]);
     setDtH(""); setDtM(""); setMemo(""); setRepairedAt(today);
+    setLinkedPauseIds([]);
   };
 
   const save = async () => {
@@ -85,12 +140,17 @@ export default function EquipmentHistoryRegister({
             costs: costs.filter(c => c.itemName.trim() && Number(c.amount) > 0),
             downtimeHours: Number(dtH) || 0,
             downtimeMins: Number(dtM) || 0,
+            // 같은 장비일 때만 묶는다 — 작성 중에 장비를 바꿨으면 연결하지 않는다(서버도 장비로 거른다)
+            pauseIds: linkedPauseIds,
           }),
         });
         const json = await res.json();
         if (!json.success) { setError(json.error || "등록 실패"); return; }
-        setDone(`${eq?.name} 수선이력이 등록됐습니다. 장비 이력카드에서 확인할 수 있습니다.`);
+        setDone(`${eq?.name} 수선이력이 등록됐습니다. 장비 이력카드에서 확인할 수 있습니다.`
+          + (linkedPauseIds.length ? ` (작업일보 고장 정지 ${linkedPauseIds.length}건 연결)` : ""));
         resetRepair();
+        setPickedPauses(new Set());
+        loadPending();
       } else {
         if (!itemId) { setError("검사 항목을 선택하세요."); setSaving(false); return; }
         const res = await fetch(`/api/mgmt-inspection/${itemId}/complete`, {
@@ -125,6 +185,42 @@ export default function EquipmentHistoryRegister({
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm flex items-start gap-2">
           <AlertTriangle size={16} className="shrink-0 mt-0.5" /> {error}
+        </div>
+      )}
+
+      {/* 작업일보 고장 정지 — 수선이력 미반영 */}
+      {pending.length > 0 && (
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 space-y-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Zap size={15} className="text-orange-600" />
+            <p className="text-sm font-bold text-orange-800">작업일보 고장 정지 — 수선이력 미등록 {pending.length}건</p>
+            <span className="text-xs text-orange-700/80">최근 30일 · 현장에서 [장비고장] 으로 중단한 기록</span>
+            <div className="ml-auto flex gap-2">
+              <button onClick={startFromPauses} disabled={!pickedPauses.size}
+                className="px-3 py-1.5 text-xs font-bold bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-40">
+                선택한 {pickedPauses.size || ""}건으로 수선이력 작성
+              </button>
+              <button onClick={dismissPauses} disabled={!pickedPauses.size}
+                className="px-3 py-1.5 text-xs border border-orange-300 text-orange-700 rounded-lg hover:bg-orange-100 disabled:opacity-40">
+                목록에서 빼기
+              </button>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg border border-orange-100 divide-y divide-orange-50 max-h-56 overflow-y-auto">
+            {pending.map(pz => (
+              <label key={pz.id} className="flex items-center gap-3 px-3 py-1.5 text-xs cursor-pointer hover:bg-orange-50/50">
+                <input type="checkbox" checked={pickedPauses.has(pz.id)} onChange={() => togglePause(pz)} />
+                <span className="font-semibold text-gray-800 w-32 truncate">{pz.mgmtEquipmentName}</span>
+                <span className="tabular-nums text-gray-600 w-28">{kstTime(pz.pausedAt)}</span>
+                <span className="tabular-nums text-red-600 w-20">{pz.minutes != null ? `${Math.floor(pz.minutes / 60)}시간 ${pz.minutes % 60}분` : "정지 중"}</span>
+                <span className="text-gray-600 w-16 truncate">{pz.operator}</span>
+                <span className="text-gray-400 truncate">{pz.reasonText ?? pz.drawingNo ?? ""}</span>
+              </label>
+            ))}
+          </div>
+          {linkedPauseIds.length > 0 && (
+            <p className="text-xs text-orange-800">→ 아래 수선이력에 고장 정지 {linkedPauseIds.length}건이 연결돼 있습니다. 조치 내용을 채우고 저장하세요.</p>
+          )}
         </div>
       )}
 

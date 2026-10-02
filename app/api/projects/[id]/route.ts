@@ -14,11 +14,7 @@ export async function GET(
       where: { id },
       include: {
         drawingLists: { orderBy: { createdAt: "asc" } },
-        workOrders: {
-          include: { equipment: true, drawingList: true },
-          orderBy: { createdAt: "desc" },
-        },
-        _count: { select: { drawingLists: true, workOrders: true } },
+        _count: { select: { drawingLists: true } },
       },
     });
 

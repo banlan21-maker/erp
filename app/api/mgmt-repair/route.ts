@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // body: { equipmentId, repairedAt, cause?, content, contractor?, costs?: [{itemName, amount}], downtimeHours?, downtimeMins?, memo? }
 export async function POST(request: NextRequest) {
   try {
-    const { equipmentId, repairedAt, cause, content, contractor, costs, downtimeHours, downtimeMins, memo } = await request.json();
+    const { equipmentId, repairedAt, cause, content, contractor, costs, downtimeHours, downtimeMins, memo, pauseIds } = await request.json();
 
     if (!equipmentId) {
       return NextResponse.json({ success: false, error: "장비 ID는 필수입니다." }, { status: 400 });
@@ -49,6 +49,18 @@ export async function POST(request: NextRequest) {
       },
       include: { costs: { orderBy: { sortOrder: "asc" } } },
     });
+
+    // 작업일보 고장 정지에서 작성한 경우 — 그 정지들을 이 수선이력에 묶어 '미등록' 목록에서 뺀다.
+    // 같은 장비(장비관리 연결)의 고장 정지만, 아직 아무 수선이력에도 안 묶인 것만.
+    if (Array.isArray(pauseIds) && pauseIds.length) {
+      await prisma.cuttingPause.updateMany({
+        where: {
+          id: { in: pauseIds.map(String) }, reason: "EQUIPMENT_FAILURE", repairLogId: null,
+          cuttingLog: { equipment: { mgmtEquipmentId: equipmentId } },
+        },
+        data: { repairLogId: log.id },
+      });
+    }
 
     return NextResponse.json({ success: true, data: log }, { status: 201 });
   } catch (error) {

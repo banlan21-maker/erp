@@ -87,20 +87,6 @@ enum ProjectStatus {
   ON_HOLD
 }
 
-enum WorkOrderStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-  CANCELLED
-}
-
-enum Priority {
-  LOW
-  NORMAL
-  HIGH
-  URGENT
-}
-
 enum CuttingStatus {
   STARTED   // 절단 진행중
   PAUSED    // 절단 중단
@@ -174,7 +160,6 @@ model Project {
   updatedAt       DateTime      @updatedAt
 
   drawingLists DrawingList[]
-  workOrders   WorkOrder[]
   cuttingLogs  CuttingLog[]
   schedules    CncSchedule[]
   urgentWorks  UrgentWork[]
@@ -314,30 +299,8 @@ model DrawingList {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  workOrders  WorkOrder[]
   cuttingLogs CuttingLog[]
   remnants    Remnant[]
-}
-
-// 작업지시 (내부 참조용 유지)
-model WorkOrder {
-  id            String       @id @default(cuid())
-  projectId     String
-  project       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  drawingListId String?
-  drawingList   DrawingList? @relation(fields: [drawingListId], references: [id])
-  equipmentId   String?
-  equipment     Equipment?   @relation(fields: [equipmentId], references: [id])
-
-  orderNo    String          @unique
-  status     WorkOrderStatus @default(PENDING)
-  priority   Priority        @default(NORMAL)
-  assignedAt DateTime?
-  dueDate    DateTime?
-  memo       String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 }
 
 // 절단 작업일보
@@ -388,6 +351,10 @@ model CuttingPause {
   reasonText   String?      // OTHER 선택 시 직접 입력 내용
   pausedAt     DateTime     @default(now())
   resumedAt    DateTime?    // 재개 시각 (null = 아직 중단 중)
+  // 장비고장 정지 → 수선이력 반영 (2026-10-02). 이력등록 탭의 '미등록 고장 정지' 목록에서 빠지는 근거.
+  repairLogId      String?
+  repairLog        MgmtRepairLog? @relation(fields: [repairLogId], references: [id], onDelete: SetNull)
+  repairDismissedAt DateTime?    // "수선 아님 / 이미 등록함" 으로 목록에서 뺀 시각
   createdAt    DateTime     @default(now())
 }
 
@@ -567,7 +534,10 @@ model Equipment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  workOrders  WorkOrder[]
+  // 장비관리(MgmtEquipment)의 같은 장비 — 작업일보 고장 정지를 그 장비 수선이력으로 잇는 고리 (2026-10-02)
+  mgmtEquipmentId String?
+  mgmtEquipment   MgmtEquipment? @relation(fields: [mgmtEquipmentId], references: [id], onDelete: SetNull)
+
   cuttingLogs CuttingLog[]
 }
 
@@ -773,6 +743,7 @@ model MgmtEquipment {
 
   specs       MgmtEquipmentSpec[]
   inspections MgmtInspectionItem[]
+  cuttingEquipments Equipment[]
   repairs     MgmtRepairLog[]
 }
 
@@ -825,6 +796,7 @@ model MgmtRepairLog {
   downtimeMinutes Int? // 비가동시간 (분)
   memo        String? // 비고
 
+  cuttingPauses CuttingPause[] // 이 수선으로 처리한 작업일보 고장 정지
   costs MgmtRepairCost[]
 
   createdAt DateTime @default(now())

@@ -216,6 +216,26 @@ export default function ReportsStatsTab({
     });
   }, [logs, equipments]);
 
+  // 4. 장비별 중단 지표 — 횟수와 작업량 대비 비율 (2026-10-02)
+  //   위 차트는 '분' 누적이라 장비마다 작업량이 다르면 비교가 안 된다. 100작업당으로 나눠
+  //   소모품 교체·고장이 유독 잦은 장비를 드러낸다(실측 90일: 1호기 소모품 17.9 vs 2호기 1.0).
+  const pauseStats = useMemo(() => {
+    const rows = equipments.map(eq => {
+      const mine = logs.filter(l => eqShort(l.equipment.name) === eq);
+      const r = { equipment: eq, jobs: mine.length, cons: 0, fail: 0, failMin: 0, dwg: 0, dwgMin: 0 };
+      for (const l of mine) for (const p of l.pauses) {
+        const min = p.resumedAt ? (new Date(p.resumedAt).getTime() - new Date(p.pausedAt).getTime()) / 60000 : 0;
+        if (p.reason === "CONSUMABLE") r.cons++;
+        else if (p.reason === "EQUIPMENT_FAILURE") { r.fail++; r.failMin += min; }
+        else if (p.reason === "DRAWING_CHANGE") { r.dwg++; r.dwgMin += min; }
+      }
+      return r;
+    });
+    const per100 = (n: number, jobs: number) => jobs ? n / jobs * 100 : 0;
+    const avgCons = per100(rows.reduce((s, r) => s + r.cons, 0), rows.reduce((s, r) => s + r.jobs, 0));
+    return { rows, per100, avgCons };
+  }, [logs, equipments]);
+
   // PDF 다운로드 — A4 가로
   const downloadPDF = async () => {
     if (!targetRef.current) return;
@@ -440,6 +460,49 @@ export default function ReportsStatsTab({
                   ))}
                 </LineChart>
               </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* 표: 장비별 중단 지표 — 횟수·100작업당 */}
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 mb-2">
+              장비별 중단 지표 <span className="text-xs font-normal text-gray-400">
+                100작업당 횟수로 비교 · 평균의 2배를 넘는 소모품 교체는 빨간색
+              </span>
+            </h4>
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 text-gray-500">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold">장비</th>
+                    <th className="px-3 py-2 text-right font-semibold">완료 작업</th>
+                    <th className="px-3 py-2 text-right font-semibold">소모품 교체</th>
+                    <th className="px-3 py-2 text-right font-semibold">100작업당</th>
+                    <th className="px-3 py-2 text-right font-semibold">장비고장</th>
+                    <th className="px-3 py-2 text-right font-semibold">고장 정지</th>
+                    <th className="px-3 py-2 text-right font-semibold">도면변경</th>
+                    <th className="px-3 py-2 text-right font-semibold">도면변경 정지</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {pauseStats.rows.map(r => {
+                    const c100 = pauseStats.per100(r.cons, r.jobs);
+                    const hot = r.jobs >= 20 && pauseStats.avgCons > 0 && c100 > pauseStats.avgCons * 2;
+                    return (
+                      <tr key={r.equipment}>
+                        <td className="px-3 py-1.5 font-semibold text-gray-800">{r.equipment}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{r.jobs}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{r.cons}회</td>
+                        <td className={`px-3 py-1.5 text-right tabular-nums font-semibold ${hot ? "text-red-600" : "text-gray-700"}`}>{c100.toFixed(1)}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{r.fail}회</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-red-600">{hhmm(r.failMin * 60000)}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{r.dwg}회</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{hhmm(r.dwgMin * 60000)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
 

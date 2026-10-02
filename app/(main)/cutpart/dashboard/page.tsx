@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FolderOpen, FileSpreadsheet, CheckCircle2, LayoutDashboard, TrendingUp, Truck } from "lucide-react";
+import { FolderOpen, FileSpreadsheet, CheckCircle2, LayoutDashboard, TrendingUp, Truck, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { DashboardEquipmentProgress } from "@/components/dashboard-equipment-progress";
 
@@ -120,6 +120,34 @@ export default async function DashboardPage() {
     return `${y}년 ${m}월 ${dd}일`;
   };
 
+  // ── 조치 필요 (2026-10-02) ───────────────────────────────────────────────
+  //   사무실이 처리할 일이 화면마다 흩어져 있어 일일이 들어가야 보였다. 블록별로 모아 바로 보낸다.
+  //   · 강재 없음(CAUTION) — 강재 목록에 같은 호선·사양이 없어 절단할 수 없는 도면
+  //   · 확정 전(REGISTERED) — 강재가 있지만 아직 확정 안 된 도면
+  //   · 30일 넘게 미절단 — 등록 후 30일이 지났는데 아직 안 자른 도면(확정 여부 무관)
+  const staleCut = new Date(Date.now() - 30 * 86_400_000);
+  const pendingRows = await prisma.drawingList.findMany({
+    where: { status: { in: ["CAUTION", "REGISTERED", "WAITING"] } },
+    select: { status: true, createdAt: true, projectId: true },
+  });
+  type ActionGroup = { id: string; code: string; name: string; n: number };
+  const projById = new Map(allProjects.map(pr => [pr.id, pr]));
+  const groupBy = (rows: typeof pendingRows): ActionGroup[] => {
+    const m = new Map<string, number>();
+    for (const r of rows) m.set(r.projectId, (m.get(r.projectId) ?? 0) + 1);
+    return [...m].map(([id, n]) => ({ id, n, code: projById.get(id)?.projectCode ?? "?", name: projById.get(id)?.projectName ?? "?" }))
+      .sort((a, b) => b.n - a.n);
+  };
+  const actions = [
+    { key: "caution", title: "강재 없음", hint: "강재 목록에 같은 호선·사양이 없어 절단할 수 없습니다 — 대체호선·여유원재 지정 또는 강재 등록",
+      cls: "text-red-700 bg-red-50 border-red-200", groups: groupBy(pendingRows.filter(r => r.status === "CAUTION")) },
+    { key: "registered", title: "확정 전", hint: "강재는 있지만 아직 확정하지 않은 도면",
+      cls: "text-amber-700 bg-amber-50 border-amber-200", groups: groupBy(pendingRows.filter(r => r.status === "REGISTERED")) },
+    { key: "stale", title: "30일 넘게 미절단", hint: "등록한 지 30일이 지났는데 아직 자르지 않은 도면",
+      cls: "text-gray-700 bg-gray-50 border-gray-200", groups: groupBy(pendingRows.filter(r => r.createdAt < staleCut)) },
+  ];
+  const actionTotal = actions.reduce((s2, a) => s2 + a.groups.reduce((x, g) => x + g.n, 0), 0);
+
   return (
     <div className="space-y-6">
       <div>
@@ -157,6 +185,46 @@ export default async function DashboardPage() {
           bg="bg-purple-50"
         />
       </div>
+
+      {/* 조치 필요 — 블록을 누르면 그 블록 도면 목록으로 */}
+      <Card>
+        <CardHeader className="pb-3 flex flex-row items-center justify-between">
+          <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+            <AlertTriangle size={14} className={actionTotal ? "text-amber-500" : "text-gray-300"} /> 조치 필요
+          </CardTitle>
+          {actionTotal === 0 && <span className="text-xs text-green-600">처리할 도면이 없습니다</span>}
+        </CardHeader>
+        {actionTotal > 0 && (
+          <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {actions.map(a => {
+              const rows = a.groups.reduce((x, g) => x + g.n, 0);
+              return (
+                <div key={a.key} className={`rounded-lg border p-3 ${a.cls}`}>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="text-sm font-bold">{a.title}</p>
+                    <p className="text-lg font-bold tabular-nums">{rows}<span className="text-xs font-normal ml-0.5">행</span></p>
+                  </div>
+                  <p className="text-[11px] opacity-80 mt-0.5 mb-2">{a.hint}</p>
+                  {rows === 0 ? (
+                    <p className="text-xs opacity-60">없음</p>
+                  ) : (
+                    <div className="space-y-0.5">
+                      {a.groups.slice(0, 5).map(g => (
+                        <Link key={g.id} href={`/cutpart/projects?tab=vessels&projectId=${g.id}&view=list`}
+                          className="flex items-center justify-between gap-2 text-xs bg-white/70 hover:bg-white rounded px-2 py-1">
+                          <span className="truncate">[{g.code}] {g.name}</span>
+                          <span className="font-semibold tabular-nums shrink-0">{g.n}행</span>
+                        </Link>
+                      ))}
+                      {a.groups.length > 5 && <p className="text-[11px] opacity-70 px-2">외 {a.groups.length - 5}개 블록</p>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </CardContent>
+        )}
+      </Card>
 
       {/* 최근 블록 + 최근 강재리스트 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
