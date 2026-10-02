@@ -6,14 +6,16 @@
  *  - 잔재: [잔재 추가] 모달에서 여유원재/등록잔재/현장잔재를 골라 추가(shipoutMarkedAt 마킹)한 것.
  * 선택 → 출고 카트에 담기 → 하단 카트바 [출고장 만들기] 마법사로 출고증 발행 (원판·잔재 같이 출고).
  * 선별 취소(unmark)도 여기서 가능 (원판/잔재 각각 적절한 API 호출).
+ * [선별지시서] — 선택(없으면 화면 전체) 자재를 매칭(블록)별로 묶어 사무실 양식으로 인쇄·엑셀 (2026-10-02).
  *
  * 컬럼 필터·정렬: 표준 cascading 패턴 (lib/cascading-filters + ColumnFilterDropdown).
  */
 
 import { useState, useEffect, useCallback, useMemo, memo } from "react";
-import { RefreshCw, Truck, Undo2, Search, Filter, Plus, X, Layers } from "lucide-react";
+import { RefreshCw, Truck, Undo2, Search, Filter, Plus, X, Layers, Printer } from "lucide-react";
 import { useShipoutCart, type ShipoutCartItem } from "@/components/shipout-cart";
 import ColumnFilterDropdown from "@/components/column-filter-dropdown";
+import SelectionSheetModal, { type SheetSource } from "@/components/selection-sheet-modal";
 import { getAllCascadedOptions, getCascadedFilteredRowsWithPredicates, type ColumnAccessorMap, type TextPredicate } from "@/lib/cascading-filters";
 
 type ItemKind = "plate" | "remnant";
@@ -28,6 +30,7 @@ interface Row {
   length: number;
   weight: number;        // plate: 계산값 · remnant: 저장값
   storageLocation: string | null;
+  receivedAt: string | null;      // plate 전용 — 선별지시서 입고일
   shipoutMarkedAt: string | null;
   heatNo: string | null;          // plate: shipoutHeatNo · remnant: heatNo
   shipoutLabel: string | null;    // plate 전용
@@ -112,7 +115,7 @@ const COLUMNS: { key: string; label: string; align: "left" | "right" }[] = [
 ];
 
 /* 원판/잔재 응답 → 공통 Row 매핑 ─────────────────────────────────────────── */
-interface PlanApi { id: string; vesselCode: string; material: string; thickness: number; width: number; length: number; storageLocation: string | null; shipoutMarkedAt: string | null; shipoutHeatNo: string | null; shipoutLabel: string | null; shipoutCancelledAt: string | null; }
+interface PlanApi { id: string; vesselCode: string; material: string; thickness: number; width: number; length: number; storageLocation: string | null; receivedAt?: string | null; shipoutMarkedAt: string | null; shipoutHeatNo: string | null; shipoutLabel: string | null; shipoutCancelledAt: string | null; }
 interface RemnantApi {
   id: string; remnantNo: string; type: string; material: string; thickness: number; weight: number;
   width1: number | null; length1: number | null; location: string | null; heatNo: string | null;
@@ -125,7 +128,7 @@ const planToRow = (p: PlanApi): Row => ({
   id: p.id, kind: "plate",
   vesselCode: p.vesselCode, material: p.material, thickness: p.thickness, width: p.width, length: p.length,
   weight: calcWeight(p.thickness, p.width, p.length),
-  storageLocation: p.storageLocation,
+  storageLocation: p.storageLocation, receivedAt: p.receivedAt ?? null,
   shipoutMarkedAt: p.shipoutMarkedAt, heatNo: p.shipoutHeatNo, shipoutLabel: p.shipoutLabel,
   shipoutCancelledAt: p.shipoutCancelledAt ?? null,
   remnantNo: null, remnantType: null,
@@ -135,7 +138,7 @@ const remnantToRow = (r: RemnantApi): Row => ({
   vesselCode: r.sourceVesselName || r.sourceProject?.projectCode || "",
   material: r.material, thickness: r.thickness, width: r.width1 ?? 0, length: r.length1 ?? 0,
   weight: r.weight,
-  storageLocation: r.location,
+  storageLocation: r.location, receivedAt: null,
   shipoutMarkedAt: r.shipoutMarkedAt, heatNo: r.heatNo, shipoutLabel: null, shipoutCancelledAt: null,
   remnantNo: r.remnantNo, remnantType: r.type,
 });
@@ -148,6 +151,7 @@ export default function SelectionListTab() {
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [sheetItems, setSheetItems] = useState<SheetSource[] | null>(null);
 
   // 컬럼 필터·정렬 (표준 cascading 패턴)
   const [colFilters, setColFilters] = useState<Record<string, string[]>>({});
@@ -291,8 +295,21 @@ export default function SelectionListTab() {
     } finally { setBusy(false); }
   };
 
+  // 선별지시서 — 선택한 자재, 없으면 지금 화면에 보이는 자재 전체
+  const openSheet = () => {
+    const src = validSelected.length ? validSelected.map(id => rowById.get(id)!) : displayRows;
+    if (!src.length) { alert("출력할 자재가 없습니다."); return; }
+    setSheetItems(src.map(r => ({
+      id: r.id, kind: r.kind, vesselCode: r.vesselCode, material: r.material,
+      thickness: r.thickness, width: r.width, length: r.length,
+      storageLocation: r.storageLocation, receivedAt: r.receivedAt,
+      label: r.shipoutLabel, groupName: r.kind === "remnant" ? REMNANT_TYPE_LABEL[r.remnantType ?? ""] ?? "잔재" : undefined,
+    })));
+  };
+
   return (
     <div className="space-y-4">
+      {sheetItems && <SelectionSheetModal items={sheetItems} onClose={() => setSheetItems(null)} />}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h3 className="text-sm font-semibold text-gray-700">선별 목록 (출고 예약 풀)</h3>
@@ -310,6 +327,10 @@ export default function SelectionListTab() {
           <button onClick={unmarkSelected} disabled={busy || validSelected.length === 0}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-red-300 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-40">
             <Undo2 size={14} /> 선별 취소{validSelected.length ? ` (${validSelected.length})` : ""}
+          </button>
+          <button onClick={openSheet} title="선택한 자재(없으면 화면 전체)를 블록별로 묶어 선별지시서로 인쇄·엑셀"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-blue-400 text-blue-700 rounded-lg hover:bg-blue-50">
+            <Printer size={14} /> 선별지시서{validSelected.length ? ` (${validSelected.length})` : ""}
           </button>
           <button onClick={() => setAddOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-amber-400 text-amber-700 rounded-lg hover:bg-amber-50">

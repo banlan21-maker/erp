@@ -40,6 +40,30 @@ export function trimLabel(label: string | null | undefined): string {
 }
 
 /**
+ * 선별지시서 블록 칸 — 명세서와 달리 PS 를 그대로 쓴다(사무실 선별지시서 엑셀: B60PS · S70PS · H40P).
+ *   두 글자 꼬리는 PS/CS/SS 뒤에 글자가 더 붙지 않을 때만(F21CNCP50 → F21C).
+ *   못 고르거나 여러 개면 장식만 뗀 라벨 — 화면에서 고친다.
+ */
+const SHEET_BLOCK = /[A-Z]\d{2}(?:(?:PS|CS|SS)(?![A-Z])|[A-Z])/g;
+export function sheetBlockFromLabel(label: string | null | undefined): string {
+  if (!label) return "";
+  const found = [...new Set(label.replace(PARENS, " ").toUpperCase().match(SHEET_BLOCK) ?? [])];
+  if (found.length === 1) return found[0];
+  return trimLabel(label);
+}
+
+/**
+ * 매칭이름 괄호 → 선별지시서 착지 기본값 — Steellist-1023-H40P(월드-덕광) → "월드-덕광".
+ * 괄호가 여럿이면 마지막 것. 개정차수·잔량 메모(REV.0 · 개정1장 · 14장 잔량 · 추가강재)는 착지가 아니므로 뺀다.
+ * 운송사가 출하 직전에 바뀌는 일이 있어(월드 → 세림) 이 값도 화면에서 고친다.
+ */
+export function destFromLabel(label: string | null | undefined): string {
+  if (!label) return "";
+  const inner = [...label.matchAll(/\(([^)]*)\)/g)].map(m => m[1].trim()).filter(s => s && !/rev|개정|잔량|추가|긴급|^\d+\s*장/i.test(s));
+  return inner.at(-1) ?? "";
+}
+
+/**
  * 명세서 블록 칸 기본값.
  *   블록이 딱 하나면 그 블록, 없거나 여러 개면 장식만 뗀 라벨(사람이 다듬는다), 라벨이 없으면 "".
  */

@@ -6,6 +6,9 @@ import { Upload, Download, Trash2, RefreshCw, X, FileSpreadsheet, Search, Eye, F
 import ColumnFilterDropdown from "@/components/column-filter-dropdown";
 import { getAllCascadedOptions, getCascadedFilteredRowsWithPredicates, type ColumnAccessorMap, type TextPredicate } from "@/lib/cascading-filters";
 import SteelMatchRemnantPanel from "@/components/steel-match-remnant-panel";
+import UnreceivedSheetModal from "@/components/unreceived-sheet-modal";
+import { sheetBlockFromLabel, destFromLabel } from "@/lib/block-from-label";
+import { printSelectionSheet, sheetTitle, todayMd, ymdDot, type UnreceivedRow } from "@/lib/selection-sheet";
 
 type MatchSource = "plan" | "SURPLUS" | "REGISTERED" | "REMNANT";
 const SOURCE_TABS: { key: MatchSource; label: string }[] = [
@@ -35,8 +38,6 @@ const ALL_KEYS = STATUS_LIST.map(s => s.key);
 
 const fmtT = (v: number) => parseFloat(v.toFixed(1));
 const fmtL = (v: number) => Math.round(v);
-// 중량(kg) = 두께×폭×길이×비중(7.85)/1e6 — 출고 카트/엑셀 흐름과 동일 공식 (반올림 0.1)
-const calcWeight = (t: number, w: number, l: number) => parseFloat(((t * w * l * 7.85) / 1_000_000).toFixed(1));
 const fmtYMD = (iso: string | null) => {
   if (!iso) return "";
   const d = new Date(iso);
@@ -287,45 +288,32 @@ export default function SteelMatchTab() {
     setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   };
 
+  // 선별지시서 — 사무실 양식(lib/selection-sheet): 블록·착지는 매칭이름에서, 보관위치 순.
+  //   여러 블록을 한 장으로 묶거나 착지를 고쳐 다시 찍는 건 선별목록 탭 [선별지시서].
   const writeSelectionSheet = (win: Window, plans: PlanRow[]) => {
-    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const body = plans.map((p, i) => `
-      <tr class="${i % 2 === 0 ? "even" : ""}">
-        <td>${esc(p.vesselCode)}</td>
-        <td>${esc(p.material)}</td>
-        <td class="num">${fmtT(p.thickness)}</td>
-        <td class="num">${fmtL(p.width)}</td>
-        <td class="num">${fmtL(p.length)}</td>
-        <td class="num">${calcWeight(p.thickness, p.width, p.length).toFixed(1)}</td>
-        <td>${esc(p.storageLocation ?? "-")}</td>
-      </tr>`).join("");
-    const totalWt = plans.reduce((s, p) => s + calcWeight(p.thickness, p.width, p.length), 0).toFixed(1);
-    const html = `<!DOCTYPE html>
-<html lang="ko"><head><meta charset="UTF-8"/><title>선별지시서 (${esc(selJobName)})</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: "Malgun Gothic", sans-serif; font-size: 16pt; color: #111; padding: 4mm; }
-  h1 { font-size: 20pt; font-weight: bold; text-align: center; margin-bottom: 2mm; letter-spacing: 1px; }
-  .meta { text-align: center; font-size: 10pt; color: #555; margin-bottom: 2mm; }
-  table { width: 100%; border-collapse: collapse; table-layout: auto; }
-  th { background: #1e3a5f; color: #fff; padding: 1px 2px; font-size: 13pt; text-align: center; border: 1px solid #888; line-height: 1.1; white-space: nowrap; }
-  td { padding: 1px 2px; border: 1px solid #aaa; text-align: center; vertical-align: middle; font-size: 16pt; line-height: 1.1; white-space: nowrap; }
-  td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  tr.even { background: #f5f8fc; }
-  @media print { body { padding: 3mm; } @page { margin: 6mm; size: A4 landscape; } }
-</style></head>
-<body>
-<h1>선 별 지 시 서</h1>
-<p class="meta">${esc(selJobName)} | 출력일시: ${new Date().toLocaleString("ko-KR")} | 총수량: ${plans.length}장 | 총중량: ${totalWt}kg</p>
-<table>
-  <thead><tr>
-    <th>호선</th><th>재질</th><th>두께</th><th>폭</th><th>길이</th><th>중량(kg)</th><th>위치</th>
-  </tr></thead>
-  <tbody>${body}</tbody>
-</table>
-<script>window.onload = () => { window.print(); }<\/script>
-</body></html>`;
-    win.document.write(html); win.document.close();
+    const block = sheetBlockFromLabel(selJobName), dest = destFromLabel(selJobName);
+    printSelectionSheet(win, sheetTitle(todayMd()), plans.map(p => ({
+      vesselCode: p.vesselCode, block, dest, material: p.material, thickness: p.thickness, width: p.width, length: p.length,
+      location: p.storageLocation ?? "", receivedAt: ymdDot(p.receivedAt),
+    })));
+  };
+
+  // 미입고 강재 — 선별·출고 안 된 사양. 비고 초안은 같은 사양의 매칭 결과로.
+  const [unreceived, setUnreceived] = useState<UnreceivedRow[] | null>(null);
+  const openUnreceived = () => {
+    const block = sheetBlockFromLabel(selJobName);
+    const same = (a: Spec, b: Spec) => a.vesselCode === b.vesselCode && a.material === b.material && fmtT(a.thickness) === fmtT(b.thickness) && fmtL(a.width) === fmtL(b.width) && fmtL(a.length) === fmtL(b.length);
+    const out = selJobSpecs.filter(sp => !sp.selected && !sp.shipped).map(sp => {
+      const plans = rows.filter(r => r.matched && r.plan && same(r.spec, sp)).map(r => r.plan!);
+      const note = plans.some(p => p.status === "REGISTERED") ? "입고 대기"
+        : plans.some(p => p.status === "RECEIVED" && !p.shipoutMarkedAt && !p.reservedFor) ? "재고 있음"
+        : plans.some(p => p.status === "RECEIVED" && p.reservedFor) ? "절단 확정됨"
+        // 매칭 대상에 '입고'가 들어 있는데 맞는 판이 하나도 없으면 — 들어온 재고가 없다
+        : !plans.length && parseStatuses(selJobStatuses).has("RECEIVED") ? "재고 없음" : "";
+      return { vesselCode: sp.vesselCode, block, material: sp.material, thickness: fmtT(sp.thickness), width: fmtL(sp.width), length: fmtL(sp.length), note };
+    });
+    if (!out.length) { alert("선별·출고되지 않은 사양이 없습니다."); return; }
+    setUnreceived(out);
   };
 
   // 선택 강재를 선별지시서로 출력하고 '매칭이름 선별'로 확정(마킹). 상태는 입고 유지.
@@ -461,7 +449,7 @@ export default function SteelMatchTab() {
         <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-start">
           {/* 왼쪽: 사용자가 등록한 원본 리스트 */}
           <div className="w-full lg:w-[460px] lg:shrink-0 bg-white border border-gray-200 rounded-lg overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
+            <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center">
               <span className="text-sm font-semibold text-gray-800">원본 리스트</span>
               <span className="ml-2 text-xs text-gray-400">{selJobSpecs.length}건</span>
               {(() => {
@@ -475,6 +463,12 @@ export default function SteelMatchTab() {
                         ? <span className="ml-2 text-xs font-semibold text-red-600">전체 처리</span>
                         : null}
                     {shipped > 0 && <span className="ml-2 text-xs font-semibold text-purple-600">출고 {shipped}</span>}
+                    {unsel > 0 && (
+                      <button onClick={openUnreceived} title="선별·출고되지 않은 사양을 '미입고 강재' 양식으로 인쇄·엑셀 (매칭을 지우기 전에 출력)"
+                        className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 text-[11px] border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
+                        <Printer size={12} /> 미입고 강재
+                      </button>
+                    )}
                   </>
                 );
               })()}
@@ -666,6 +660,7 @@ export default function SteelMatchTab() {
         />
       )}
 
+      {unreceived && <UnreceivedSheetModal rows={unreceived} onClose={() => setUnreceived(null)} />}
       {editJob && (
         <EditStatusModal
           job={editJob}
