@@ -37,6 +37,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { applyCuttingComplete, applyCuttingRestore } from "@/lib/cutting-complete";
 import { remnantNotReadyMessage } from "@/lib/remnant-ready-guard";
+import { isZeroWork, ZERO_WORK_MESSAGE } from "@/lib/cutting-time";
 
 /**
  * 사용자에게 그대로 보여줄 안내 — 서버 고장이 아니라 규칙 위반이다.
@@ -272,6 +273,13 @@ export async function PATCH(
           success: false,
           error: "종료 일시가 시작 일시보다 빠를 수 없습니다.",
         }, { status: 400 });
+      }
+      // (B-3) 작업시간 0분 금지 — 시각을 저장하는 수정(작업일보관리)이면 기존 0분 기록도 고쳐야 저장된다
+      if ((startAt !== undefined || endAt !== undefined) && effStart && effEnd) {
+        const pauses = await prisma.cuttingPause.findMany({ where: { cuttingLogId: id }, select: { reason: true, pausedAt: true, resumedAt: true } });
+        if (isZeroWork(effStart, effEnd, pauses)) {
+          return NextResponse.json({ success: false, error: ZERO_WORK_MESSAGE }, { status: 400 });
+        }
       }
     }
 

@@ -32,6 +32,7 @@ import { prisma } from "@/lib/prisma";
 import { applyCuttingComplete } from "@/lib/cutting-complete";
 import { remnantNotReadyMessage } from "@/lib/remnant-ready-guard";
 import { kstDayRange, kstTodayYmd } from "@/lib/work-date";
+import { isZeroWork, ZERO_WORK_MESSAGE } from "@/lib/cutting-time";
 
 // ─── GET ───────────────────────────────────────────────────────────────────────
 // 쿼리 파라미터:
@@ -150,6 +151,10 @@ export async function POST(request: NextRequest) {
     const isBackfillCompleted = status === "COMPLETED" && !!endAt;
 
     // ── 필수값 검증 ─────────────────────────────────────────────────────────
+    // 완료로 바로 등록(작업일보관리 '추가' + 종료일시)은 작업시간 0분 금지 — 몰아서 입력 방지
+    if (isBackfillCompleted && startAt && isZeroWork(startAt, endAt)) {
+      return NextResponse.json({ success: false, error: ZERO_WORK_MESSAGE }, { status: 400 });
+    }
     if (!equipmentId) {
       return NextResponse.json({ success: false, error: "장비를 선택하세요." }, { status: 400 });
     }

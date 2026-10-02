@@ -10,6 +10,7 @@ import { nextRemnantNo } from "@/lib/remnant-numbering";
 // GET /api/drawings?projectId=xxx&status=WAITING — 강재리스트 조회
 // GET /api/drawings?projectId=xxx&confirmed=true  — 확정된 항목만 조회 (현장 작업일보용)
 // GET /api/drawings?allConfirmed=true             — 전체 프로젝트 확정(WAITING/CUT) 목록 (관리자 작업일보용)
+//   WAITING 은 현장 작업일보와 같은 기준 — 블록 확정(강재 reservedFor 또는 배정잔재)된 것만 (2026-10-03). CUT 은 그대로 전부.
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -48,7 +49,9 @@ export async function GET(request: NextRequest) {
         },
         orderBy: [{ projectId: "asc" }, { createdAt: "asc" }],
       });
-      return NextResponse.json({ success: true, data: drawings });
+      // 입고완료(WAITING)는 블록 확정된 것만 — 확정 안 된 도면에 사무실에서 먼저 작업일보를 넣지 못하게(현장과 같은 기준)
+      const ok = await confirmedWaitingIds(drawings.filter(d => d.status === "WAITING"));
+      return NextResponse.json({ success: true, data: drawings.filter(d => d.status !== "WAITING" || ok.has(d.id)) });
     }
 
     if (!projectId) {
@@ -97,39 +100,15 @@ export async function GET(request: NextRequest) {
       const looseByNo = new Map<string, number>();   // 행 id 없는 진행중 기록 — 도면번호별 건수
       for (const l of activeLogs) if (!l.drawingListId && l.drawingNo) looseByNo.set(l.drawingNo, (looseByNo.get(l.drawingNo) ?? 0) + 1);
 
-      const result = [];
-      for (const row of waitingRows) {
-        if (activeDrawIds.has(row.id)) continue;   // 이 행이 절단 진행중 → 목록 제외
+      const visible = waitingRows.filter(row => {
+        if (activeDrawIds.has(row.id)) return false;   // 이 행이 절단 진행중 → 목록 제외
         const loose = row.drawingNo ? looseByNo.get(row.drawingNo) ?? 0 : 0;
-        if (loose > 0) { looseByNo.set(row.drawingNo!, loose - 1); continue; }
-        // 등록잔재/현장잔재 사용 행 — assignedRemnantId가 있고 status=WAITING이면 이미 확정 상태
-        const rowExt = row as typeof row & { assignedRemnantId?: string | null; alternateVesselCode?: string | null };
-        if (rowExt.assignedRemnantId) {
-          result.push(row);
-          continue;
-        }
-        const projectCode    = project.projectCode;
-        const blockCode      = row.block ?? "UNKNOWN";
-        const newFmt         = `${projectCode}/${blockCode}`;
-        const effectiveVessel = rowExt.alternateVesselCode?.trim() || projectCode;
-
-        // 정규작업: '확정만 되어 있으면' 통과 — 출고 여부 무관
-        // - vesselCode 필터: 호선 격리 (다른 호선의 동명 블록 매칭 방지)
-        // - reservedFor 매칭: 신규 포맷("호선/블록") 또는 레거시 포맷("블록")
-        // - status 필터 없음: 확정(reservedFor) 채워졌다는 것 자체가 RECEIVED 이상 의미
-        const reserved = await prisma.steelPlan.findFirst({
-          where: {
-            vesselCode:  effectiveVessel,
-            material:    row.material,
-            thickness:   row.thickness,
-            width:       row.width,
-            length:      row.length,
-            reservedFor: { in: [newFmt, blockCode] },
-          },
-          select: { id: true },
-        });
-        if (reserved) result.push(row);
-      }
+        if (loose > 0) { looseByNo.set(row.drawingNo!, loose - 1); return false; }
+        return true;
+      });
+      // 정규작업: '확정만 되어 있으면' 통과 — 출고 여부 무관 (판정은 confirmedWaitingIds)
+      const ok = await confirmedWaitingIds(visible, project.projectCode);
+      const result = visible.filter(r => ok.has(r.id));
 
       return NextResponse.json({ success: true, data: result });
     }
@@ -550,4 +529,34 @@ export async function DELETE(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+/**
+ * 블록 확정 판정 — 현장 작업일보(confirmed=true)와 작업일보관리(allConfirmed=true) 공용.
+ *   배정잔재(assignedRemnantId)가 있으면 확정. 아니면 같은 호선(대체호선 우선)·재질·두께·폭·길이 강재 중
+ *   reservedFor 가 "호선/블록"(신규) 또는 "블록"(레거시)인 것이 하나라도 있으면 확정. 상태는 보지 않는다
+ *   (확정됐다는 것 자체가 입고 이상). 강재 조회는 한 번에(행마다 조회하면 작업일보관리 전체 목록에서 느림).
+ */
+async function confirmedWaitingIds(rows: {
+  id: string; block: string | null; material: string; thickness: number; width: number; length: number;
+  assignedRemnantId?: string | null; alternateVesselCode?: string | null; project?: { projectCode: string } | null;
+}[], projectCode?: string): Promise<Set<string>> {
+  const ok = new Set<string>();
+  const need: { id: string; vessel: string; key: string; fmts: string[] }[] = [];
+  for (const r of rows) {
+    if (r.assignedRemnantId) { ok.add(r.id); continue; }
+    const code = projectCode ?? r.project?.projectCode;
+    if (!code) continue;
+    const blockCode = r.block ?? "UNKNOWN";
+    const vessel = r.alternateVesselCode?.trim() || code;
+    need.push({ id: r.id, vessel, key: `${vessel}|${r.material}|${r.thickness}|${r.width}|${r.length}`, fmts: [`${code}/${blockCode}`, blockCode] });
+  }
+  if (!need.length) return ok;
+  const plans = await prisma.steelPlan.findMany({
+    where: { reservedFor: { in: [...new Set(need.flatMap(n => n.fmts))] }, vesselCode: { in: [...new Set(need.map(n => n.vessel))] } },
+    select: { vesselCode: true, material: true, thickness: true, width: true, length: true, reservedFor: true },
+  });
+  const have = new Set(plans.map(p => `${p.vesselCode}|${p.material}|${p.thickness}|${p.width}|${p.length}|${p.reservedFor}`));
+  for (const n of need) if (n.fmts.some(f => have.has(`${n.key}|${f}`))) ok.add(n.id);
+  return ok;
 }

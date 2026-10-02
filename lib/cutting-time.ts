@@ -65,3 +65,18 @@ export function calcActiveMs(
 ): number {
   return Math.max(0, calcTotalMs(startAt, endAt, pauses) - calcPauseMs(pauses));
 }
+
+/**
+ * 작업시간 0분 금지 (2026-10-03) — 아무리 작은 철판도 0분은 나올 수 없다.
+ * ERP 초기에 끝난 뒤 몰아서 입력하며 시작·종료를 같은 시각(가동 0분)으로 넣은 기록이 924건 쌓였다.
+ * 작업일보관리 추가·수정에서 종료일시가 있으면 작업시간(calcTotalMs: 종료−시작−야간이월)이 1분 이상이어야 한다.
+ * (현장 [완료] 는 실제 시각이 찍히므로 대상 아님)
+ */
+export const MIN_WORK_MS = 60_000;
+export const ZERO_WORK_MESSAGE = "작업시간이 0분입니다. 실제 절단 시작·종료 시각을 입력하세요. (아무리 작은 철판도 0분은 나올 수 없습니다)";
+export function isZeroWork(startAt: Date | string, endAt: Date | string | null, pauses?: PauseLike[] | null): boolean {
+  return !!endAt && calcTotalMs(startAt, endAt, pauses) < MIN_WORK_MS;
+}
+
+/** 10분 미만은 경고(저장은 가능) — 아무리 작은 작업도 실제로는 10분보다 짧을 수 없다(현장 의견) */
+export const SHORT_WORK_MS = 10 * 60_000;

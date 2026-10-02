@@ -9,7 +9,7 @@ import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ColumnFilterDropdown, { type FilterValue } from "@/components/column-filter-dropdown";
-import { calcPauseMs as libCalcPauseMs, calcTotalMs as libCalcTotalMs } from "@/lib/cutting-time";
+import { calcPauseMs as libCalcPauseMs, calcTotalMs as libCalcTotalMs, isZeroWork, ZERO_WORK_MESSAGE, SHORT_WORK_MS } from "@/lib/cutting-time";
 import { steelWeightOf } from "@/lib/remnant-area";
 import {
   getCascadedFilteredRowsWithPredicates, getAllCascadedOptions, type TextPredicate,
@@ -594,7 +594,8 @@ function LogModal({
   onSaved: () => void;
 }) {
   const [form, setForm] = useState({
-    equipmentId: log?.equipmentId ?? equipment[0]?.id ?? "",
+    // 추가 시 장비 기본값 없음 — 첫 항목(이름순 '가스 절단기 1호기')이 그대로 저장되던 문제(가스 1호기 기록 924건의 한 원인)
+    equipmentId: log?.equipmentId ?? "",
     operator:    log?.operator ?? "",
     // 추가(add)모드는 판번호를 목록 선택으로만 채움(프리필 안 함) — select(selectedHeatId)과 heatNo 불일치 방지.
     // 수정(edit)모드는 기존 값 표시(잠금).
@@ -633,6 +634,19 @@ function LogModal({
       setError("장비, 작업자, 시작일시는 필수입니다.");
       return;
     }
+    // 작업일(종료일시)이 찍히면 작업시간 0분 금지 — 서버도 같은 기준으로 거절(lib/cutting-time)
+    if (form.endAt && isZeroWork(new Date(form.startAt), new Date(form.endAt), log?.pauses)) {
+      setError(ZERO_WORK_MESSAGE);
+      return;
+    }
+    // 10분 미만은 경고 — 아무리 작은 작업도 실제로는 10분보다 짧을 수 없다(확인하면 저장)
+    if (form.endAt) {
+      const ms = libCalcTotalMs(new Date(form.startAt), new Date(form.endAt), log?.pauses);
+      if (ms < SHORT_WORK_MS && !confirm(`작업시간이 ${Math.round(ms / 60_000)}분입니다.\n\n아무리 작은 철판도 실제 작업은 10분보다 짧을 수 없습니다.\n시작·종료 시각이 맞습니까?\n(틀렸다면 [취소]를 누르고 고쳐 주세요)`)) return;
+    }
+    // 가스 CNC 는 전체 절단의 5% 미만 — 고른 게 맞는지 한 번 더 확인
+    const eqSel = equipment.find(e => e.id === form.equipmentId);
+    if (eqSel?.type === "GAS" && !confirm(`장비가 「${eqSel.name}」(가스 CNC)로 선택돼 있습니다.\n\n가스 장비로 절단한 게 맞습니까?\n(플라즈마로 절단했다면 [취소]를 누르고 장비를 다시 고르세요)`)) return;
     // 판번호 재확인 — 신규 등록 시 현물과 일치하는지 최종 확인 (판번호 있는 절단만)
     if (mode === "add") {
       const hn = (form.heatNo || drawing?.heatNo || "").trim();
@@ -748,6 +762,7 @@ function LogModal({
               onChange={e => setForm(f => ({ ...f, equipmentId: e.target.value }))}
               className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
+              <option value="" disabled>-- 장비 선택 --</option>
               {equipment.map(eq => (
                 <option key={eq.id} value={eq.id}>{eq.name} ({TYPE_LABEL[eq.type] ?? eq.type})</option>
               ))}
