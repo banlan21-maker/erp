@@ -501,6 +501,7 @@ export default function FieldWorklog({
         thickness:  String(row.thickness),
         width:      String(row.width),
         length:     String(row.length),
+        excludeActive: "1",   // 다른 장비가 지금 자르는 판번호는 빼고 보여준다
       });
       const res = await fetch(`/api/steel-plan/heat-options?${params}`);
       if (res.ok) setHeatOptions(await res.json());
