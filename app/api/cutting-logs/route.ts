@@ -244,8 +244,9 @@ export async function POST(request: NextRequest) {
       const dupDraw = await prisma.cuttingLog.findFirst({
         where: {
           status: { in: ["STARTED", "PAUSED"] }, isUrgent: false,
-          // 행 id 또는 같은 도면번호(projectId+drawingNo) — 동일 도면의 별개 행 중복도 차단
-          OR: [{ drawingListId }, ...(dNo && projectId ? [{ projectId, drawingNo: dNo }] : [])],
+          // 같은 행(drawingListId)만 막는다 (2026-10-02). 같은 도면번호의 다른 행은 철판 한 장 더 자르는
+          // 정상 작업 — 아래 완료 중복 가드와 같은 기준. 행 id 없이 도면번호만 남은 진행중 기록(레거시)만 도면번호로.
+          OR: [{ drawingListId }, ...(dNo && projectId ? [{ projectId, drawingNo: dNo, drawingListId: null }] : [])],
         },
         include: { equipment: { select: { name: true } } },
       });
@@ -266,7 +267,7 @@ export async function POST(request: NextRequest) {
     // ★ 행(drawingListId) 정확 일치로만 본다.
     //   같은 도면번호라도 행이 다르면 철판을 두 장 자르는 정상 작업이다
     //   (강재리스트에 2행으로 등록된 경우 — 예: a36-20-2304 가 2행).
-    //   위 진행중 가드처럼 projectId+drawingNo 까지 넓히면 그 정상 작업이 막힌다.
+    //   projectId+drawingNo 까지 넓히면 그 정상 작업이 막힌다(진행중 가드도 같은 이유로 행 기준).
     if (drawingListId && isUrgent !== true) {
       const doneLog = await prisma.cuttingLog.findFirst({
         where: { drawingListId, status: "COMPLETED" },

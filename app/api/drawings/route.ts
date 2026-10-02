@@ -79,23 +79,29 @@ export async function GET(request: NextRequest) {
 
       // 절단 진행중(STARTED/PAUSED)인 도면은 목록에서 제외 — 다른 장비에서 같은 도면 중복 작업 방지.
       // (도면 status 는 완료 시에만 WAITING→CUT 이라, 진행중에는 WAITING 으로 남아 목록에 노출되던 문제)
-      // 행 id 뿐 아니라 도면번호(projectId+drawingNo)로도 매칭 — 같은 도면번호의 별개 행 중복도 차단
-      // (완료 흐름이 projectId+drawingNo 키로 동작하므로 동일 키 사용). 돌발작업(isUrgent) 로그는 제외.
+      // ★ 행(drawingListId) 단위로 뺀다 (2026-10-02). 같은 도면번호가 여러 행이면 철판 여러 장을 자르는
+      //   정상 작업이다 — 도면번호로 묶어 빼면 1장 자르는 동안 나머지가 전부 사라진다
+      //   (LB4508 후행 ah36-15-2331 4행: 4호기 1장 진행중 → 3장이 현장 목록에서 안 보임).
+      //   행 id 없이 도면번호만 남은 진행중 기록(레거시·사무실 등록)은 그 건수만큼만 같은 도면번호 행을 뺀다.
+      //   완료 흐름도 drawingListId 우선이라(lib/cutting-complete) 행이 다르면 서로 섞이지 않는다.
       const wIds = waitingRows.map(r => r.id);
       const wNos = waitingRows.map(r => r.drawingNo).filter((x): x is string => !!x);
       const activeLogs = await prisma.cuttingLog.findMany({
         where: {
           projectId, isUrgent: false, status: { in: ["STARTED", "PAUSED"] },
-          OR: [{ drawingListId: { in: wIds } }, ...(wNos.length ? [{ drawingNo: { in: wNos } }] : [])],
+          OR: [{ drawingListId: { in: wIds } }, ...(wNos.length ? [{ drawingListId: null, drawingNo: { in: wNos } }] : [])],
         },
         select: { drawingListId: true, drawingNo: true },
       });
       const activeDrawIds = new Set(activeLogs.map(l => l.drawingListId).filter((x): x is string => !!x));
-      const activeDrawNos = new Set(activeLogs.map(l => l.drawingNo).filter((x): x is string => !!x));
+      const looseByNo = new Map<string, number>();   // 행 id 없는 진행중 기록 — 도면번호별 건수
+      for (const l of activeLogs) if (!l.drawingListId && l.drawingNo) looseByNo.set(l.drawingNo, (looseByNo.get(l.drawingNo) ?? 0) + 1);
 
       const result = [];
       for (const row of waitingRows) {
-        if (activeDrawIds.has(row.id) || (row.drawingNo && activeDrawNos.has(row.drawingNo))) continue;   // 절단 진행중 → 목록 제외
+        if (activeDrawIds.has(row.id)) continue;   // 이 행이 절단 진행중 → 목록 제외
+        const loose = row.drawingNo ? looseByNo.get(row.drawingNo) ?? 0 : 0;
+        if (loose > 0) { looseByNo.set(row.drawingNo!, loose - 1); continue; }
         // 등록잔재/현장잔재 사용 행 — assignedRemnantId가 있고 status=WAITING이면 이미 확정 상태
         const rowExt = row as typeof row & { assignedRemnantId?: string | null; alternateVesselCode?: string | null };
         if (rowExt.assignedRemnantId) {
