@@ -1,0 +1,6 @@
+# 이 PC(Windows · py3.14)에서 샘플 송장 55장으로 검증한 버전 — 리눅스 py3.12 휠 존재 확인
+rapidocr==3.9.2
+onnxruntime==1.30.0
+pymupdf==1.28.0
+numpy==2.5.3
+omegaconf==2.3.1

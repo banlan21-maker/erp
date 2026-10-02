@@ -43,6 +43,9 @@ app/
 2. NAS SSH 접속: `ssh kortech@59.4.248.240 -p 34567`
    (포트 22는 열려 있지 않음 — timed out 나면 포트 확인. 옵션은 소문자 `-p`)
 3. 배포 명령: `cd ~/erp_namhun/erp/cnc-erp && sudo docker compose run --rm git-sync && sudo docker compose up --build -d app`
+4. **송장 OCR 컨테이너(`ocr`)** — 처음 한 번만: `sudo docker compose up --build -d ocr` (이후 app 배포와 무관하게 계속 떠 있음).
+   `ocr/` 코드를 고쳤을 때만 같은 명령으로 다시 빌드. 외부 포트 없음 — app 이 `http://ocr:8000` 으로 호출(강재입출고 [송장 스캔 입고]).
+   꺼져 있어도 ERP 는 정상이고 송장 판독만 "ocr 서버에 연결할 수 없습니다"로 안내된다. 메모리 상한 1.5GB(판독 중 최대 약 1GB).
 
 ## 네트워크·외부접속 구조
 

@@ -5,7 +5,7 @@ import * as XLSX from "xlsx";
 import {
   Upload, Plus, Trash2, RefreshCw, Download, Search, X,
   CheckSquare, Square, ClipboardList, PackageOpen, Hash, PackageCheck, Printer, Filter,
-  ArrowUp, ArrowDown, FileSpreadsheet, Truck, ListChecks, ChevronDown, ArrowRightLeft,
+  ArrowUp, ArrowDown, FileSpreadsheet, Truck, ListChecks, ChevronDown, ArrowRightLeft, ScanLine,
 } from "lucide-react";
 import ColumnFilterDropdown, { type FilterValue } from "./column-filter-dropdown";
 import { serializeColFilters } from "@/lib/client-cascading";
@@ -14,6 +14,7 @@ import ShipoutBar, { ExcelUploadModal as ShipoutExcelUploadModal } from "./shipo
 import SteelMatchTab from "./steel-match-tab";
 import SelectionListTab from "./selection-list-tab";
 import ToSurplusModal from "@/components/to-surplus-modal";
+import InvoiceScanModal from "@/components/invoice-scan-modal";
 
 /* ── 컬럼 key → 쿼리스트링 param 이름 (distinct API 와 일치) ── */
 const STEEL_PLAN_QS_KEY: Record<string, string> = {
@@ -301,6 +302,7 @@ export default function SteelPlanMain() {
   /* ── 일괄 입고 모달 ── */
   const emptyBulkRow = (): BulkRow => ({ vesselCode: "", material: "", thickness: "", width: "", length: "", qty: "1", storageLocation: "" });
   const [showBulkReceive, setShowBulkReceive]   = useState(false);
+  const [showInvoiceScan, setShowInvoiceScan]   = useState(false);   // 송장 스캔 입고
   const [bulkRows,        setBulkRows]          = useState<BulkRow[]>([emptyBulkRow()]);
   const [showShipoutRegister, setShowShipoutRegister] = useState(false);
   const [bulkSubmitting,  setBulkSubmitting]    = useState(false);
@@ -1250,6 +1252,13 @@ export default function SteelPlanMain() {
             <PackageCheck size={14} /> 입고등록
           </button>
           <button
+            onClick={() => setShowInvoiceScan(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-teal-500 text-teal-700 rounded-lg hover:bg-teal-50"
+            title="프린터로 스캔한 입고송장 PDF 를 판독해 판번호·규격을 읽고, 확인 후 입고"
+          >
+            <ScanLine size={14} /> 송장 스캔 입고
+          </button>
+          <button
             onClick={() => setShowShipoutRegister(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700"
             title="판번호를 입력해 출고할 강재를 확인하고 선별지시서를 출력"
@@ -1258,6 +1267,7 @@ export default function SteelPlanMain() {
           </button>
         </div>
       </div>
+      {showInvoiceScan && <InvoiceScanModal onClose={() => setShowInvoiceScan(false)} onDone={() => { setQueried(true); setHeatQueried(true); syncAndRefresh(); }} />}
 
       {/* 탭 */}
       <div className="flex border-b border-gray-200">
