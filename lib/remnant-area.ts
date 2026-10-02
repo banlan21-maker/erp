@@ -134,3 +134,37 @@ export function steelWeightOf(
   const area = (w2 && l2) ? lShapeArea(w1, l1, w2, l2) : rectArea(w1, l1);
   return Math.round(area * thickness * STEEL_DENSITY * 10) / 10;
 }
+
+/* ── 중량 검사 (2026-10-02) ─────────────────────────────────────────────────
+ * 잔재 중량은 화면에 따라 손으로 입력받는다(현장 돌발 팝업, 수정 화면, 비정형).
+ * 검사가 없어 0kg 이나 1,022억kg(REM-2026-184 — 정상 371.2kg) 같은 값이 그대로 저장됐다.
+ * 서버(등록·수정)와 화면이 같은 기준으로 막도록 한 곳에 둔다.
+ *   · 0 이하·숫자 아님·50톤 초과 → 거부
+ *   · 치수로 계산이 되는 형상(사각·L자·삼각)은 계산값의 0.5~2배 밖이면 거부
+ *     (재질별 비중 차이·실측 오차는 이 폭 안에 들어간다)
+ *   · 비정형(IRREGULAR)은 치수로 계산이 안 되므로 범위만 본다
+ */
+export const MAX_REMNANT_WEIGHT_KG = 50_000;
+
+export function expectedRemnantWeight(r: {
+  shape: string; thickness: number;
+  width1?: number | null; length1?: number | null; width2?: number | null; length2?: number | null;
+  sideA?: number | null; sideB?: number | null; sideC?: number | null;
+}): number | null {
+  if (r.shape === "IRREGULAR") return null;
+  if (r.shape === "TRIANGLE" && r.sideA && r.sideB) return triangleWeight(r.thickness, r.sideA, r.sideB, r.sideC);
+  if (!r.width1 || !r.length1) return null;
+  return remnantWeight(r.shape, r.thickness, r.width1, r.length1, r.width2, r.length2);
+}
+
+/** 문제가 있으면 사용자에게 보여 줄 문장, 없으면 null */
+export function remnantWeightProblem(weight: unknown, r: Parameters<typeof expectedRemnantWeight>[0]): string | null {
+  const w = Number(weight);
+  if (!Number.isFinite(w) || w <= 0) return "중량을 0보다 큰 숫자로 입력하세요.";
+  if (w > MAX_REMNANT_WEIGHT_KG) return `중량 ${w.toLocaleString()}kg 은 비정상적으로 큽니다. 다시 확인하세요.`;
+  const exp = expectedRemnantWeight(r);
+  if (exp && (w < exp * 0.5 || w > exp * 2)) {
+    return `중량 ${w.toLocaleString()}kg 이 치수로 계산한 값(${exp.toLocaleString()}kg)과 크게 다릅니다. 치수나 중량을 다시 확인하세요.`;
+  }
+  return null;
+}

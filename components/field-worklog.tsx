@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Play, Square, Pause, RotateCcw, ChevronDown, ChevronUp, Loader2, Check, Zap, AlertTriangle, X, Save } from "lucide-react";
 import { kstTodayYmd } from "@/lib/work-date";
+import { remnantWeight, remnantWeightProblem } from "@/lib/remnant-area";
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -319,16 +320,28 @@ export default function FieldWorklog({
     await loadUrgentWorks();
   };
 
+  // 팝업 치수로 계산한 중량(사각형 기준) — 폭·길이·두께가 다 있어야 나온다
+  const remAutoWeight = (f: typeof remForm) =>
+    remnantWeight("RECTANGLE", parseFloat(f.thickness) || 0, parseFloat(f.width) || 0, parseFloat(f.length) || 0);
+
   const clearRemDraft = () => {
     try { localStorage.removeItem(REM_DRAFT_KEY); } catch { /* 사생활 모드 등 — 무시 */ }
   };
 
   /** 잔재 1건 등록. 팝업에서도, 나중에 초안을 되살릴 때도 같은 경로를 쓴다. */
   const saveRemnant = async (form: typeof remForm): Promise<boolean> => {
-    if (!form.material || !form.thickness || !form.weight) {
-      alert("재질, 두께, 중량은 필수입니다.");
+    // 중량: 손으로 넣은 값이 있으면 그것, 없으면 치수로 계산한 값 (2026-10-02 — 손 입력만 받다가
+    // 0kg·1,022억kg 이 그대로 저장된 사고. REM-2026-184/185)
+    const weight = form.weight ? parseFloat(form.weight) : remAutoWeight(form);
+    if (!form.material || !form.thickness || !weight) {
+      alert("재질, 두께는 필수이고, 중량은 직접 넣거나 폭·길이를 넣어 자동 계산되게 하세요.");
       return false;
     }
+    const problem = remnantWeightProblem(weight, {
+      shape: "RECTANGLE", thickness: parseFloat(form.thickness),
+      width1: form.width ? parseFloat(form.width) : null, length1: form.length ? parseFloat(form.length) : null,
+    });
+    if (problem) { alert(problem); return false; }
     setLoading(true);
     try {
       const res = await fetch("/api/remnants", {
@@ -339,7 +352,7 @@ export default function FieldWorklog({
           shape: "RECTANGLE",
           material: form.material,
           thickness: parseFloat(form.thickness),
-          weight: parseFloat(form.weight),
+          weight,
           width1: form.width ? parseFloat(form.width) : null,
           length1: form.length ? parseFloat(form.length) : null,
           registeredBy: form.registeredBy || workers.find(w => w.id === uOperatorId)?.name || "현장",
@@ -1074,9 +1087,22 @@ export default function FieldWorklog({
                   onChange={e => setRemForm(f => ({ ...f, length: e.target.value }))}
                   className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white placeholder-gray-500" />
               </div>
-              <input type="number" placeholder="중량 kg *" value={remForm.weight}
-                onChange={e => setRemForm(f => ({ ...f, weight: e.target.value }))}
-                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white placeholder-gray-500" />
+              {/* 중량 — 폭·길이·두께가 있으면 자동 계산된 값이 기본. 실측이 다르면 덮어쓴다 */}
+              {(() => {
+                const auto = remAutoWeight(remForm);
+                return (
+                  <div>
+                    <input type="number" inputMode="decimal"
+                      placeholder={auto ? `중량 kg — 자동 ${auto.toLocaleString()}kg (다르면 입력)` : "중량 kg * (폭·길이 넣으면 자동 계산)"}
+                      value={remForm.weight}
+                      onChange={e => setRemForm(f => ({ ...f, weight: e.target.value }))}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white placeholder-gray-500" />
+                    {auto != null && !remForm.weight && (
+                      <p className="mt-1 text-[11px] text-emerald-400">치수로 계산한 중량 {auto.toLocaleString()}kg 으로 등록됩니다.</p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="grid grid-cols-2 gap-3">

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { remnantWeightProblem } from "@/lib/remnant-area";
 
 // PATCH /api/remnants/[id]
 export async function PATCH(
@@ -21,6 +22,32 @@ export async function PATCH(
     if (status === "EXHAUSTED") {
       const blocked = await assignedDrawingBlock(id);
       if (blocked) return NextResponse.json({ success: false, error: blocked }, { status: 409 });
+    }
+
+    // 중량 검사 — 치수·두께·형상·중량 중 하나라도 **실제로 바뀌면** 바뀐 뒤의 모습으로 다시 본다(lib/remnant-area).
+    //   수정 화면은 저장 때 모든 필드를 같이 보내므로, 값 비교 없이 검사하면 위치·메모만 고쳐도
+    //   예전에 잘못 들어간 중량 때문에 저장이 막힌다.
+    const cur = [weight, thickness, width1, length1, width2, length2, shape].some(v => v !== undefined)
+      ? await prisma.remnant.findUnique({ where: { id } })
+      : null;
+    if (cur) {
+      const num = (v: unknown, fb: number | null) => v === undefined ? fb : (v ? Number(v) : null);
+      const changed =
+        (weight    !== undefined && Number(weight)    !== cur.weight)    ||
+        (thickness !== undefined && Number(thickness) !== cur.thickness) ||
+        (shape     !== undefined && shape             !== cur.shape)     ||
+        num(width1, cur.width1)   !== cur.width1  || num(length1, cur.length1) !== cur.length1 ||
+        num(width2, cur.width2)   !== cur.width2  || num(length2, cur.length2) !== cur.length2;
+      if (changed) {
+        const problem = remnantWeightProblem(weight !== undefined ? weight : cur.weight, {
+          shape:     shape ?? cur.shape,
+          thickness: thickness !== undefined ? Number(thickness) : cur.thickness,
+          width1:  num(width1,  cur.width1),  length1: num(length1, cur.length1),
+          width2:  num(width2,  cur.width2),  length2: num(length2, cur.length2),
+          sideA: cur.sideA, sideB: cur.sideB, sideC: cur.sideC,
+        });
+        if (problem) return NextResponse.json({ success: false, error: problem }, { status: 400 });
+      }
     }
 
     const updated = await prisma.remnant.update({

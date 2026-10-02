@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { nextRemnantNo } from "@/lib/remnant-numbering";
+import { remnantWeightProblem } from "@/lib/remnant-area";
 
 export const dynamic = "force-dynamic";
 
@@ -231,6 +232,15 @@ export async function POST(request: NextRequest) {
     if (!type || !shape || !material || thickness == null || weight == null || !registeredBy) {
       return NextResponse.json({ success: false, error: "필수 항목이 누락됐습니다." }, { status: 400 });
     }
+
+    // 중량 검사 — 0·비정상 큰 값·치수 계산값과 크게 다른 값 거부 (REM-2026-184 1,022억kg 사고)
+    const weightProblem = remnantWeightProblem(weight, {
+      shape, thickness: Number(thickness),
+      width1: width1 != null ? Number(width1) : null, length1: length1 != null ? Number(length1) : null,
+      width2: width2 != null ? Number(width2) : null, length2: length2 != null ? Number(length2) : null,
+      sideA: sideA != null ? Number(sideA) : null, sideB: sideB != null ? Number(sideB) : null, sideC: sideC != null ? Number(sideC) : null,
+    });
+    if (weightProblem) return NextResponse.json({ success: false, error: weightProblem }, { status: 400 });
 
     // 잔재번호: 사용자 입력 우선, 없으면 자동채번
     let remnantNo: string;
