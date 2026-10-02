@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Save, Download, Loader2, RefreshCw, ChevronLeft, ChevronRight, History } from "lucide-react";
+import { Save, Download, Loader2, RefreshCw, ChevronLeft, ChevronRight, History, ListChecks } from "lucide-react";
 import { useWorkUser } from "@/components/work-user-context";
 import { kstTodayYmd } from "@/lib/work-date";
+import WeeklyReportPicker from "@/components/weekly-report-picker";
 
 /**
  * 주간보고 (업무관리 > 보고서) — 2026-10-02
@@ -11,7 +12,7 @@ import { kstTodayYmd } from "@/lib/work-date";
  * 사무실이 매주 엑셀로 만들어 보내던 세 장을 여기서 작성하고, 같은 양식의 엑셀로 내려받는다.
  *   1. 플라즈마 가동현황 — 작업일보에서 자동 계산(특이사항만 고칠 수 있음)
  *   2. 주간업무계획표 — 숫자 칸은 자동 초안, 나머지는 입력
- *   3. 업무보고 — 서술형 입력(금주 실적은 절단 블록 목록으로 초안)
+ *   3. 업무보고 — 서술형 입력(금주 실적은 절단 블록 목록으로 초안, 업무일지·일정에서 골라 덧붙이기)
  * 저장은 기간 시작일 기준 한 건. 엑셀은 저장한 내용으로 만든다(받기 전에 자동 저장).
  */
 
@@ -59,6 +60,7 @@ export default function WeeklyReport() {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
 
   const load = useCallback(async (f: string, tt: string) => {
     setLoading(true); setMsg(null);
@@ -284,6 +286,9 @@ export default function WeeklyReport() {
             <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
               <h3 className="text-sm font-bold text-gray-800">3. 주간업무 보고서</h3>
               <span className="text-xs text-gray-400">금주 실적은 이번 주 절단 블록 목록으로 초안을 채웠습니다</span>
+              <button onClick={() => setPicking(true)} className="ml-auto h-7 px-2.5 text-xs border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 inline-flex items-center gap-1">
+                <ListChecks size={13} /> 업무일지·일정에서 가져오기
+              </button>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 p-4">
               <div>
@@ -308,6 +313,16 @@ export default function WeeklyReport() {
               </div>
             </div>
           </section>
+          {picking && (
+            <WeeklyReportPicker
+              from={from} to={to} thisWeek={form.report.thisWeek} nextWeek={form.report.nextWeek}
+              onClose={() => setPicking(false)}
+              onAdd={add => {
+                const join = (cur: string, more: string) => (!more ? cur : cur.trim() ? `${cur.replace(/\s+$/, "")}\n${more}` : more);
+                setRep({ thisWeek: join(form.report.thisWeek, add.thisWeek), nextWeek: join(form.report.nextWeek, add.nextWeek) });
+              }}
+            />
+          )}
         </>
       )}
     </div>
