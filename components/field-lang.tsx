@@ -45,7 +45,12 @@ export function useFieldLang() {
     inline: (ko: string, vars?: Vars) => {
       const base = vars ? ko.replace(/\{(\w+)\}/g, (m, k) => (vars[k] !== undefined ? String(vars[k]) : m)) : ko;
       const t = trOf(ko, lang, vars);
-      return t ? `${base} (${t})` : base;
+      if (!t) return base;
+      // "-- 호선 선택 --" 류는 "-- 호선 선택 · เลือกโฮซอน --" 로 짧게 — 좁은 휴대폰에서 선택칸이 두 줄로 넘치지 않게
+      const dash = /^--\s*(.*?)\s*--$/;
+      const a = base.match(dash), b = t.match(dash);
+      if (a && b) return `-- ${a[1]} · ${b[1]} --`;
+      return `${base} · ${t}`;
     },
     /** alert/confirm 용 — 한국어 줄들 + 빈 줄 + 번역 줄들 */
     dialog: (lines: (string | [string, Vars])[]) => {
@@ -66,14 +71,21 @@ export function useFieldLang() {
   }), [lang, setLang]);
 }
 
-const SUB = "block text-[0.72em] leading-snug font-normal opacity-75 mt-0.5";
+// 번역 줄 — 한국어보다 작고 옅게, 줄간격은 촘촘하게(휴대폰 한 화면에 더 들어가게)
+const SUB = "block text-[0.7em] leading-tight font-normal opacity-60 mt-px";
 
 /** 한국어 + 아래 작은 번역 */
-export function T({ k, v, className }: { k: string; v?: Vars; className?: string }) {
+export function T({ k, v, className, row }: { k: string; v?: Vars; className?: string; row?: boolean }) {
   const { lang } = useContext(LangCtx);
   const base = v ? k.replace(/\{(\w+)\}/g, (m, kk) => (v[kk] !== undefined ? String(v[kk]) : m)) : k;
   const t = trOf(k, lang, v);
   if (!t) return <>{base}</>;   // 한국어만일 때는 예전 모양 그대로
+  // row — 작은 알약 표시(진행중·완료 3건 등)는 아래로 붙이면 알약이 두툼해진다. 한 줄로 나란히.
+  if (row) return (
+    <span className="inline-flex items-baseline gap-1 whitespace-nowrap">
+      {base}<span className="text-[0.85em] font-normal opacity-75">{t}</span>
+    </span>
+  );
   // 한국어 + 번역을 세로 한 묶음으로 — 아이콘이 붙은 버튼(flex 가로줄) 안에서도 번역이 옆이 아니라 아래로 간다.
   // 정렬은 부모의 text-align 을 따른다(버튼은 가운데, 라벨은 왼쪽).
   return (

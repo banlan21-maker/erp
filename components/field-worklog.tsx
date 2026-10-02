@@ -695,11 +695,11 @@ export default function FieldWorklog({
                     <div className="flex flex-col items-end gap-1.5">
                       {eqOngoing && (
                         eqOngoing.status === "PAUSED"
-                          ? <span className="text-xs px-2.5 py-1 rounded-full bg-yellow-500 text-white font-bold"><T k="중단중" /></span>
-                          : <span className="text-xs px-2.5 py-1 rounded-full bg-red-500 text-white font-bold animate-pulse"><T k="진행중" /></span>
+                          ? <span className="text-xs px-2.5 py-1 rounded-full bg-yellow-500 text-white font-bold"><T k="중단중" row /></span>
+                          : <span className="text-xs px-2.5 py-1 rounded-full bg-red-500 text-white font-bold animate-pulse"><T k="진행중" row /></span>
                       )}
                       {eqDone > 0 && (
-                        <span className="text-xs px-2.5 py-1 rounded-full bg-gray-700 text-gray-300"><T k="완료 {n}건" v={{ n: eqDone }} /></span>
+                        <span className="text-xs px-2.5 py-1 rounded-full bg-gray-700 text-gray-300"><T k="완료 {n}건" v={{ n: eqDone }} row /></span>
                       )}
                     </div>
                   </div>
@@ -809,13 +809,13 @@ export default function FieldWorklog({
                 </span>
               </div>
               <div className="space-y-1.5 text-sm">
-                <div className="flex gap-3">
-                  <span className="text-gray-500 w-16"><T k="작업자" /></span>
+                <div className="flex items-start gap-2">
+                  <span className="text-gray-500 w-[5.25rem] shrink-0 leading-tight"><T k="작업자" /></span>
                   <span className="text-gray-300">{urgentOngoing.operator}</span>
                 </div>
                 {urgentOngoing.heatNo && (
                   <div className="flex gap-3">
-                    <span className="text-gray-500 w-16">Heat NO</span>
+                    <span className="text-gray-500 w-[5.25rem] shrink-0 leading-tight">Heat NO</span>
                     <span className="font-mono text-blue-300">{urgentOngoing.heatNo}</span>
                   </div>
                 )}
@@ -831,7 +831,7 @@ export default function FieldWorklog({
                             {Math.round((new Date(p.resumedAt).getTime() - new Date(p.pausedAt).getTime()) / 60000)}분
                           </span>
                         )}
-                        {!p.resumedAt && <span className="text-yellow-400 ml-auto font-bold"><T k="중단중" /></span>}
+                        {!p.resumedAt && <span className="text-yellow-400 ml-auto font-bold"><T k="중단중" row /></span>}
                       </div>
                     ))}
                   </div>
@@ -930,7 +930,7 @@ export default function FieldWorklog({
                           <p className="font-semibold text-white text-sm leading-tight">
                             {w.title}
                             {w.status === "IN_PROGRESS" && (
-                              <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-amber-600 text-white align-middle"><T k="진행중" /></span>
+                              <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-amber-600 text-white align-middle"><T k="진행중" row /></span>
                             )}
                           </p>
                           {/* 도면번호 — 같은 요청으로 등록된 여러 건은 이것으로 구분한다 */}
@@ -941,7 +941,7 @@ export default function FieldWorklog({
                           {w.dueDate && <p className="text-xs text-yellow-600">납기: {w.dueDate.slice(0,10)}</p>}
                         </div>
                         <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold flex-shrink-0 ${URGENCY_BADGE[w.urgency] ?? "bg-gray-700 text-gray-300"}`}>
-                          <T k={URGENCY_LABEL[w.urgency] ?? w.urgency} />
+                          <T k={URGENCY_LABEL[w.urgency] ?? w.urgency} row />
                         </span>
                       </div>
                       {w.remnant && (
@@ -1062,7 +1062,7 @@ export default function FieldWorklog({
                           {log.endAt && <span className="text-green-500 ml-1">{fmtDuration(log.startAt, log.endAt)}</span>}
                         </p>
                       </div>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-orange-900 text-orange-400 flex-shrink-0"><T k="완료" /></span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-orange-900 text-orange-400 flex-shrink-0"><T k="완료" row /></span>
                     </div>
                   </div>
                 ))}
@@ -1174,41 +1174,41 @@ export default function FieldWorklog({
             </div>
             <div className="space-y-1.5 text-sm">
               {ongoing.drawingNo && (
-                <div className="flex gap-3">
-                  <span className="text-gray-500 w-16"><T k="도면번호" /></span>
+                <div className="flex items-start gap-2">
+                  <span className="text-gray-500 w-[5.25rem] shrink-0 leading-tight"><T k="도면번호" /></span>
                   <span className="font-mono font-bold text-white">{ongoing.drawingNo}</span>
                 </div>
               )}
               {ongoing.heatNo && (
-                <div className="flex gap-3">
-                  <span className="text-gray-500 w-16">Heat NO</span>
+                <div className="flex items-start gap-2">
+                  <span className="text-gray-500 w-[5.25rem] shrink-0 leading-tight">Heat NO</span>
                   <span className="font-mono text-blue-300">{ongoing.heatNo}</span>
                 </div>
               )}
               {ongoing.project && (
-                <div className="flex gap-3">
-                  <span className="text-gray-500 w-16"><T k="호선/블록" /></span>
+                <div className="flex items-start gap-2">
+                  <span className="text-gray-500 w-[5.25rem] shrink-0 leading-tight"><T k="호선/블록" /></span>
                   <span className="text-gray-300">[{ongoing.project.projectCode}] {ongoing.project.projectName}</span>
                 </div>
               )}
-              <div className="flex gap-3">
-                <span className="text-gray-500 w-16"><T k="작업자" /></span>
+              <div className="flex items-start gap-2">
+                <span className="text-gray-500 w-[5.25rem] shrink-0 leading-tight"><T k="작업자" /></span>
                 <span className="text-gray-300">{ongoing.operator}</span>
               </div>
-              <div className="flex gap-3">
-                <span className="text-gray-500 w-16"><T k="시작" /></span>
+              <div className="flex items-start gap-2">
+                <span className="text-gray-500 w-[5.25rem] shrink-0 leading-tight"><T k="시작" /></span>
                 <span className="text-gray-300">{fmtTime(ongoing.startAt)}</span>
               </div>
               {ongoing.memo && (
-                <div className="flex gap-3">
-                  <span className="text-gray-500 w-16"><T k="특이사항" /></span>
+                <div className="flex items-start gap-2">
+                  <span className="text-gray-500 w-[5.25rem] shrink-0 leading-tight"><T k="특이사항" /></span>
                   <span className="text-gray-400">{ongoing.memo}</span>
                 </div>
               )}
               {/* 중단 이력 표시 */}
               {(ongoing.pauses?.length ?? 0) > 0 && (
-                <div className="flex gap-3">
-                  <span className="text-gray-500 w-16"><T k="중단이력" /></span>
+                <div className="flex items-start gap-2">
+                  <span className="text-gray-500 w-[5.25rem] shrink-0 leading-tight"><T k="중단이력" /></span>
                   <div className="space-y-0.5">
                     {ongoing.pauses!.map((p, i) => (
                       <div key={i} className="text-[11px] text-gray-400">
@@ -1431,7 +1431,7 @@ export default function FieldWorklog({
                         <p className="font-mono font-semibold text-sm">{d.drawingNo ?? <T k="(번호없음)" />}</p>
                         {d.assignedRemnantId && (() => {
                           const b = REMNANT_BADGE[d.assignedRemnant?.type ?? ""] ?? { label: "잔재사용", cls: "bg-gray-600" };
-                          return <span className={`text-xs px-1.5 py-0.5 rounded ${b.cls} text-white font-medium`}><T k={b.label} /></span>;
+                          return <span className={`text-xs px-1.5 py-0.5 rounded ${b.cls} text-white font-medium`}><T k={b.label} row /></span>;
                         })()}
                       </div>
                       <p className="text-xs text-gray-400 mt-0.5">
@@ -1608,7 +1608,7 @@ export default function FieldWorklog({
                         {log.endAt && <span className="text-green-500 ml-1">{fmtDuration(log.startAt, log.endAt)}</span>}
                       </p>
                     </div>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-green-900 text-green-400 flex-shrink-0"><T k="완료" /></span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-green-900 text-green-400 flex-shrink-0"><T k="완료" row /></span>
                   </div>
                 </div>
               ))}
