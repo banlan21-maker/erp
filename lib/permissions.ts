@@ -53,6 +53,7 @@ export const RESOURCE_GROUPS: ResourceGroup[] = [
     key: "work", label: "업무관리", items: [
       { key: "work.dashboard", label: "업무 대시보드" },
       { key: "work.journal",   label: "업무일지" },
+      { key: "work.reports",   label: "보고서" },
       { key: "work.users",     label: "사용자 등록" },
     ],
   },

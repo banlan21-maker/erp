@@ -6,7 +6,7 @@ import {
   LayoutDashboard, FolderOpen, FileSpreadsheet, ClipboardList,
   Users, BarChart2, ChevronLeft, ChevronRight, Smartphone,
   ExternalLink, Package, Truck, History, CalendarDays, Eye, Wrench,
-  UtensilsCrossed, Archive, Zap, Gauge, CreditCard, Building2,
+  UtensilsCrossed, Archive, Zap, Gauge, CreditCard, Building2, FileBarChart,
 } from "lucide-react";
 import type { ComponentType } from "react";
 import { confirmLeaveIfUnsaved } from "@/lib/unsaved-guard";
@@ -58,6 +58,7 @@ const menuGroups: Record<string, MenuItem[]> = {
   work: [
     { href: "/work/dashboard", label: "업무 대시보드", icon: LayoutDashboard },
     { href: "/work/journal",   label: "업무일지",      icon: ClipboardList },
+    { href: "/work/reports",   label: "보고서",        icon: FileBarChart },
     { href: "/work/users",     label: "사용자 등록",   icon: Users },
   ],
 };

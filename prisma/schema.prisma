@@ -1792,3 +1792,18 @@ model BillingAuthor {
   title     String?  // 직책
   createdAt DateTime @default(now())
 }
+
+// 주간보고 (업무관리 > 보고서 > 주간보고) — 2026-10-02
+// 가동현황 숫자는 작업일보에서 그때그때 계산하고, 여기에는 사람이 쓰거나 고친 것만 둔다.
+model WeeklyReport {
+  id         String    @id @default(cuid())
+  periodFrom DateTime  @unique // 보고 시작일 (날짜만 — UTC 자정 정규화, lib/work-date)
+  periodTo   DateTime          // 보고 종료일
+  writer     String?           // 작성자
+  writtenAt  DateTime?         // 작성일 (날짜만)
+  opsNotes   Json?             // 가동현황 특이사항 수정분 { "<장비id>|<YYYY-MM-DD>": "LB, 잔재" }
+  plan       Json?             // 주간업무계획표 { rows: { [키]: { now, next, note } }, special }
+  report     Json?             // 업무보고 { thisWeek, nextWeek, problems, requests, thisRange, nextRange }
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
