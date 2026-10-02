@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import FieldWorklog from "@/components/field-worklog";
+import { FieldLangProvider } from "@/components/field-lang";
 
 export const metadata: Metadata = { title: "현장 작업일보" };
 
@@ -71,11 +72,14 @@ export default async function FieldWorklogPage() {
   }));
 
   return (
-    <FieldWorklog
-      equipment={equipment.map((e) => ({ ...e, type: e.type as string }))}
-      projects={projects}
-      workers={workers}
-      todayLogs={todayLogs}
-    />
+    // 다국어 — 언어 선택은 각자 휴대폰에 기억한다(components/field-lang)
+    <FieldLangProvider>
+      <FieldWorklog
+        equipment={equipment.map((e) => ({ ...e, type: e.type as string }))}
+        projects={projects}
+        workers={workers}
+        todayLogs={todayLogs}
+      />
+    </FieldLangProvider>
   );
 }

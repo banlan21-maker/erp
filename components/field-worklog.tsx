@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Play, Square, Pause, RotateCcw, ChevronDown, ChevronUp, Loader2, Check, Zap, AlertTriangle, X, Save } from "lucide-react";
 import { kstTodayYmd } from "@/lib/work-date";
 import { remnantWeight, remnantWeightProblem } from "@/lib/remnant-area";
+import { T, Tr, Msg, FieldLangBar, useFieldLang } from "@/components/field-lang";
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -115,6 +116,8 @@ export default function FieldWorklog({
   workers:   Worker[];
   todayLogs: CuttingLog[];
 }) {
+  // 다국어 — 한국어는 그대로, 고른 언어 번역을 아래에 붙인다(components/field-lang)
+  const L = useFieldLang();
   const [logs,       setLogs]       = useState<CuttingLog[]>(initialLogs);
   const [selectedEq, setSelectedEq] = useState<string>("");
   const [loading,    setLoading]    = useState(false);
@@ -334,14 +337,14 @@ export default function FieldWorklog({
     // 0kg·1,022억kg 이 그대로 저장된 사고. REM-2026-184/185)
     const weight = form.weight ? parseFloat(form.weight) : remAutoWeight(form);
     if (!form.material || !form.thickness || !weight) {
-      alert("재질, 두께는 필수이고, 중량은 직접 넣거나 폭·길이를 넣어 자동 계산되게 하세요.");
+      alert(L.message("재질, 두께는 필수이고, 중량은 직접 넣거나 폭·길이를 넣어 자동 계산되게 하세요."));
       return false;
     }
     const problem = remnantWeightProblem(weight, {
       shape: "RECTANGLE", thickness: parseFloat(form.thickness),
       width1: form.width ? parseFloat(form.width) : null, length1: form.length ? parseFloat(form.length) : null,
     });
-    if (problem) { alert(problem); return false; }
+    if (problem) { alert(L.message(problem)); return false; }
     setLoading(true);
     try {
       const res = await fetch("/api/remnants", {
@@ -359,11 +362,11 @@ export default function FieldWorklog({
         }),
       });
       const d = await res.json();
-      if (!d.success) { alert(d.error); return false; }
+      if (!d.success) { alert(L.message(d.error)); return false; }
       // 잔재 등록만 한다. 돌발작업 완료는 서버가 절단완료 때 이미 처리했다.
       clearRemDraft();
       return true;
-    } catch { alert("서버 오류"); return false; }
+    } catch { alert(L.message("서버 오류")); return false; }
     finally { setLoading(false); }
   };
 
@@ -519,7 +522,7 @@ export default function FieldWorklog({
 
     // 판번호 재확인 — 현물(실물 철판)의 판번호와 일치하는지 최종 확인 (판번호 있는 절단만)
     if (heatNo.trim()) {
-      if (!confirm(`판번호 「${heatNo.trim()}」\n\n현물(실물 철판)의 판번호와 일치합니까?\n확인을 누르면 이 판번호로 절단을 시작합니다.`)) return;
+      if (!confirm(L.dialog([["판번호 「{x}」", { x: heatNo.trim() }], "", "현물(실물 철판)의 판번호와 일치합니까?", "확인을 누르면 이 판번호로 절단을 시작합니다."]))) return;
     }
 
     setLoading(true);
@@ -600,7 +603,7 @@ export default function FieldWorklog({
   // 퇴근/야간이월 — STARTED 상태에서 호출. reason=WORK_EXTENSION 으로 PAUSED 전환.
   // 미가동시간에서 자동 제외됨 (lib/cutting-time.ts NIGHT_OFF_REASONS)
   const handleNightOff = async (logId: string) => {
-    if (!confirm("퇴근/야간이월 처리하시겠습니까?\n다음날 출근해서 '절단 재개' 로 이어서 진행할 수 있습니다.")) return;
+    if (!confirm(L.dialog(["퇴근/야간이월 처리하시겠습니까?", "다음날 출근해서 '절단 재개' 로 이어서 진행할 수 있습니다."]))) return;
     setLoading(true);
     try {
       const res = await fetch(`/api/cutting-logs/${logId}`, {
@@ -627,20 +630,20 @@ export default function FieldWorklog({
   const draftDialog = draftAsk && (
     <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-6">
       <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-sm p-6 space-y-4">
-        <h3 className="text-base font-bold text-white text-center">저장하지 못한 잔재가 있습니다</h3>
+        <h3 className="text-base font-bold text-white text-center"><T k="저장하지 못한 잔재가 있습니다" /></h3>
         <p className="text-xs text-gray-400 text-center">
           {draftAsk.form.material || "-"} · {draftAsk.form.thickness || "-"}t · {draftAsk.form.weight || "-"}kg
           {draftAsk.form.width || draftAsk.form.length
             ? ` · ${draftAsk.form.width || "-"}×${draftAsk.form.length || "-"}` : ""}
         </p>
         <p className="text-[11px] text-gray-500 text-center">
-          {draftAsk.by ? `${draftAsk.by} 님이 ` : ""}입력만 하고 나간 내용입니다. 이어서 등록할까요?
+          {draftAsk.by ? `${draftAsk.by} 님이 ` : ""}<T k="입력만 하고 나간 내용입니다. 이어서 등록할까요?" />
         </p>
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={() => { clearRemDraft(); setDraftAsk(null); }}
             className="py-4 rounded-xl bg-gray-700 text-white font-semibold text-sm active:bg-gray-600"
-          >버리기</button>
+          ><T k="버리기" /></button>
           <button
             onClick={() => {
               setRemForm({ ...draftAsk.form, registeredBy: draftAsk.form.registeredBy || draftAsk.by || "" });
@@ -648,7 +651,7 @@ export default function FieldWorklog({
               setDraftAsk(null);
             }}
             className="py-4 rounded-xl bg-blue-600 text-white font-bold text-sm active:bg-blue-700"
-          >이어서 입력</button>
+          ><T k="이어서 입력" /></button>
         </div>
       </div>
     </div>
@@ -660,16 +663,19 @@ export default function FieldWorklog({
     return (
       <div className="min-h-screen bg-gray-950 flex flex-col">
         {/* 헤더 */}
-        <div className="bg-gray-900 px-4 py-4 border-b border-gray-800">
-          <p className="text-xs text-gray-500 font-medium">CNC 절단 파트</p>
-          <h1 className="text-lg font-bold text-white mt-0.5">현장 작업일보</h1>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {new Date().toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "short" })}
-          </p>
+        <div className="bg-gray-900 px-4 py-4 border-b border-gray-800 flex items-start justify-between gap-2">
+          <div>
+            <p className="text-xs text-gray-500 font-medium"><T k="CNC 절단 파트" /></p>
+            <h1 className="text-lg font-bold text-white mt-0.5"><T k="현장 작업일보" /></h1>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {new Date().toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "short" })}
+            </p>
+          </div>
+          <FieldLangBar />
         </div>
 
         <div className="flex-1 p-4">
-          <p className="text-sm text-gray-400 mb-4 font-medium">사용할 장비를 선택하세요</p>
+          <p className="text-sm text-gray-400 mb-4 font-medium"><T k="사용할 장비를 선택하세요" /></p>
           <div className="grid grid-cols-1 gap-3">
             {equipment.map(eq => {
               // 진행중(STARTED) + 중단(PAUSED) 둘 다 "작업중" 으로 판단 — 대시보드와 동일 의미
@@ -689,11 +695,11 @@ export default function FieldWorklog({
                     <div className="flex flex-col items-end gap-1.5">
                       {eqOngoing && (
                         eqOngoing.status === "PAUSED"
-                          ? <span className="text-xs px-2.5 py-1 rounded-full bg-yellow-500 text-white font-bold">중단중</span>
-                          : <span className="text-xs px-2.5 py-1 rounded-full bg-red-500 text-white font-bold animate-pulse">진행중</span>
+                          ? <span className="text-xs px-2.5 py-1 rounded-full bg-yellow-500 text-white font-bold"><T k="중단중" /></span>
+                          : <span className="text-xs px-2.5 py-1 rounded-full bg-red-500 text-white font-bold animate-pulse"><T k="진행중" /></span>
                       )}
                       {eqDone > 0 && (
-                        <span className="text-xs px-2.5 py-1 rounded-full bg-gray-700 text-gray-300">완료 {eqDone}건</span>
+                        <span className="text-xs px-2.5 py-1 rounded-full bg-gray-700 text-gray-300"><T k="완료 {n}건" v={{ n: eqDone }} /></span>
                       )}
                     </div>
                   </div>
@@ -702,7 +708,7 @@ export default function FieldWorklog({
             })}
           </div>
           {equipment.length === 0 && (
-            <p className="text-center text-gray-500 py-12">등록된 장비가 없습니다.</p>
+            <p className="text-center text-gray-500 py-12"><T k="등록된 장비가 없습니다." /></p>
           )}
         </div>
       </div>
@@ -722,12 +728,15 @@ export default function FieldWorklog({
       <div className="bg-gray-900 px-4 py-3 border-b border-gray-800 sticky top-0 z-10">
         <div className="flex items-center justify-between mb-2">
           <div>
-            <button onClick={() => setSelectedEq("")} className="text-xs text-gray-500 hover:text-gray-300 mb-0.5">← 장비 변경</button>
+            <button onClick={() => setSelectedEq("")} className="text-xs text-gray-500 hover:text-gray-300 mb-0.5"><T k="← 장비 변경" /></button>
             <p className="text-base font-bold text-white">{eq.name} <span className="text-xs font-normal text-gray-400">{TYPE_LABEL[eq.type]}</span></p>
           </div>
-          <p className="text-xs text-gray-500">
-            {new Date().toLocaleDateString("ko-KR", { month: "numeric", day: "numeric", weekday: "short" })}
-          </p>
+          <div className="flex flex-col items-end gap-1">
+            <FieldLangBar />
+            <p className="text-xs text-gray-500">
+              {new Date().toLocaleDateString("ko-KR", { month: "numeric", day: "numeric", weekday: "short" })}
+            </p>
+          </div>
         </div>
         {/* 탭 */}
         <div className="flex gap-1">
@@ -736,7 +745,7 @@ export default function FieldWorklog({
             className={`flex-1 py-2 rounded-xl text-xs font-bold transition-colors ${
               mainTab === "normal" ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400"
             }`}
-          >정규작업</button>
+          ><T k="정규작업" /></button>
           <button
             onClick={() => {
               setMainTab("urgent");
@@ -747,7 +756,7 @@ export default function FieldWorklog({
               mainTab === "urgent" ? "bg-orange-600 text-white" : "bg-gray-800 text-gray-400"
             }`}
           >
-            <Zap size={11} className="inline mr-0.5 mb-0.5" />돌발작업
+            <Zap size={11} className="inline mr-0.5 mb-0.5" /><T k="돌발작업" />
             {urgentPendingCount > 0 && (
               <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                 {urgentPendingCount > 9 ? "9+" : urgentPendingCount}
@@ -764,7 +773,7 @@ export default function FieldWorklog({
       {error && (
         <div className="sticky top-[92px] z-20 mx-4 mt-3 rounded-xl border border-red-800 bg-red-950 px-3 py-2.5">
           <div className="flex items-start gap-2">
-            <p className="flex-1 text-sm text-red-300 whitespace-pre-line">{error}</p>
+            <p className="flex-1 text-sm text-red-300"><Msg text={error} /></p>
             <button onClick={() => setError(null)} aria-label="닫기"
               className="shrink-0 rounded-lg px-2 py-0.5 text-red-400 active:bg-red-900">✕</button>
           </div>
@@ -783,7 +792,7 @@ export default function FieldWorklog({
                   <span className={`w-3 h-3 rounded-full ${urgentOngoing.status === "PAUSED" ? "bg-yellow-400" : "bg-orange-500 animate-pulse"}`} />
                   <div className="min-w-0">
                     <span className={`font-bold text-base ${urgentOngoing.status === "PAUSED" ? "text-yellow-300" : "text-orange-300"}`}>
-                      {urgentOngoing.status === "PAUSED" ? "⚡ 돌발 중단됨" : "⚡ 돌발 진행중"}
+                      ⚡ <T k={urgentOngoing.status === "PAUSED" ? "돌발 중단됨" : "돌발 진행중"} />
                     </span>
                     {/* 어느 건인지 — 한 요청으로 여러 건이 등록되면 작업명이 전부 같아 이게 없으면 구분이 안 된다 */}
                     {urgentOngoing.urgentWork && (
@@ -801,7 +810,7 @@ export default function FieldWorklog({
               </div>
               <div className="space-y-1.5 text-sm">
                 <div className="flex gap-3">
-                  <span className="text-gray-500 w-16">작업자</span>
+                  <span className="text-gray-500 w-16"><T k="작업자" /></span>
                   <span className="text-gray-300">{urgentOngoing.operator}</span>
                 </div>
                 {urgentOngoing.heatNo && (
@@ -815,14 +824,14 @@ export default function FieldWorklog({
                   <div className="mt-2 pt-2 border-t border-gray-700 space-y-1">
                     {urgentOngoing.pauses.map((p, idx) => (
                       <div key={idx} className="text-xs text-yellow-600 flex items-center gap-1.5">
-                        <span>{PAUSE_REASON_LABEL[p.reason] ?? p.reason}</span>
+                        <span><T k={PAUSE_REASON_LABEL[p.reason] ?? p.reason} /></span>
                         {p.reasonText && <span className="text-yellow-700">({p.reasonText})</span>}
                         {p.resumedAt && (
                           <span className="text-gray-500 ml-auto">
                             {Math.round((new Date(p.resumedAt).getTime() - new Date(p.pausedAt).getTime()) / 60000)}분
                           </span>
                         )}
-                        {!p.resumedAt && <span className="text-yellow-400 ml-auto font-bold">중단중</span>}
+                        {!p.resumedAt && <span className="text-yellow-400 ml-auto font-bold"><T k="중단중" /></span>}
                       </div>
                     ))}
                   </div>
@@ -837,15 +846,15 @@ export default function FieldWorklog({
                     onChange={e => { setPauseReason(e.target.value); setPauseReasonText(""); }}
                     className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white"
                   >
-                    <option value="">-- 중단 사유 선택 (중단 시) --</option>
+                    <option value="">{L.inline("-- 중단 사유 선택 (중단 시) --")}</option>
                     {PAUSE_REASON_OPTIONS.map(o => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
+                      <option key={o.value} value={o.value}>{L.inline(o.label)}</option>
                     ))}
                   </select>
                   {pauseReason === "OTHER" && (
                     <input
                       type="text"
-                      placeholder="직접 입력"
+                      placeholder={L.inline("직접 입력")}
                       value={pauseReasonText}
                       onChange={e => setPauseReasonText(e.target.value)}
                       className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white placeholder-gray-500"
@@ -858,7 +867,7 @@ export default function FieldWorklog({
                       className="bg-yellow-600 active:bg-yellow-700 disabled:opacity-40 rounded-xl py-4 flex items-center justify-center gap-2 text-white font-bold text-base"
                     >
                       <Pause size={18} fill="currentColor" />
-                      절단중단
+                      <T k="절단중단" />
                     </button>
                     <button
                       onClick={() => urgentOngoing.urgentWorkId && handleUrgentComplete(urgentOngoing.id, urgentOngoing.urgentWorkId)}
@@ -866,7 +875,7 @@ export default function FieldWorklog({
                       className="bg-orange-600 active:bg-orange-700 disabled:opacity-50 rounded-xl py-4 flex items-center justify-center gap-2 text-white font-bold text-base"
                     >
                       <Square size={18} fill="currentColor" />
-                      작업종료
+                      <T k="작업종료" />
                     </button>
                   </div>
                 </div>
@@ -880,7 +889,7 @@ export default function FieldWorklog({
                   className="w-full bg-green-600 active:bg-green-700 disabled:opacity-50 rounded-xl py-4 flex items-center justify-center gap-3 text-white font-bold text-lg"
                 >
                   <RotateCcw size={20} />
-                  절단재개
+                  <T k="절단재개" />
                 </button>
               )}
             </div>
@@ -890,14 +899,14 @@ export default function FieldWorklog({
           {!urgentOngoing && (
             <>
               <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-400 font-medium">돌발작업 선택</p>
+                <p className="text-sm text-gray-400 font-medium"><T k="돌발작업 선택" /></p>
                 <button onClick={loadUrgentWorks} className="text-xs text-gray-600 flex items-center gap-1">
-                  <RotateCcw size={11} /> 새로고침
+                  <RotateCcw size={11} /> <T k="새로고침" />
                 </button>
               </div>
               {urgentWorks.length === 0 ? (
                 <div className="rounded-2xl border-2 border-dashed border-gray-800 p-8 text-center text-gray-600 text-sm">
-                  등록된 돌발작업이 없습니다
+                  <T k="등록된 돌발작업이 없습니다" />
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -921,7 +930,7 @@ export default function FieldWorklog({
                           <p className="font-semibold text-white text-sm leading-tight">
                             {w.title}
                             {w.status === "IN_PROGRESS" && (
-                              <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-amber-600 text-white align-middle">진행중</span>
+                              <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-amber-600 text-white align-middle"><T k="진행중" /></span>
                             )}
                           </p>
                           {/* 도면번호 — 같은 요청으로 등록된 여러 건은 이것으로 구분한다 */}
@@ -932,7 +941,7 @@ export default function FieldWorklog({
                           {w.dueDate && <p className="text-xs text-yellow-600">납기: {w.dueDate.slice(0,10)}</p>}
                         </div>
                         <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold flex-shrink-0 ${URGENCY_BADGE[w.urgency] ?? "bg-gray-700 text-gray-300"}`}>
-                          {URGENCY_LABEL[w.urgency]}
+                          <T k={URGENCY_LABEL[w.urgency] ?? w.urgency} />
                         </span>
                       </div>
                       {w.remnant && (
@@ -952,18 +961,18 @@ export default function FieldWorklog({
                 <div className="rounded-2xl border-2 border-orange-600 bg-gray-900 overflow-hidden">
                   <div className="px-4 py-3 bg-orange-950 border-b border-orange-800 flex items-center gap-2">
                     <Zap size={14} className="text-orange-400" />
-                    <span className="text-sm font-semibold text-orange-300">작업 정보 입력</span>
+                    <span className="text-sm font-semibold text-orange-300"><T k="작업 정보 입력" /></span>
                   </div>
                   <div className="px-4 pb-4 pt-3 space-y-3">
                     {/* 작업자 */}
                     <div>
-                      <label className="text-xs text-gray-400 font-medium mb-1.5 block">작업자 <span className="text-red-400">*</span></label>
+                      <label className="text-xs text-gray-400 font-medium mb-1.5 block"><T k="작업자" /> <span className="text-red-400">*</span></label>
                       <select
                         value={uOperatorId}
                         onChange={e => setUOperatorId(e.target.value)}
                         className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white"
                       >
-                        <option value="">-- 선택 --</option>
+                        <option value="">{L.inline("-- 선택 --")}</option>
                         {workers.map(w => <option key={w.id} value={w.id}>{w.name}{w.nationality ? ` (${w.nationality})` : ""}</option>)}
                       </select>
                     </div>
@@ -976,22 +985,22 @@ export default function FieldWorklog({
                       if (reg) return (
                         <div>
                           <label className="text-xs text-gray-400 font-medium mb-1.5 block">
-                            판번호(Heat NO) <span className="text-orange-400">(여유원재 — 등록된 판번호)</span>
+                            <T k="판번호(Heat NO)" /> <span className="text-orange-400"><T k="(여유원재 — 등록된 판번호)" /></span>
                           </label>
                           <div className="w-full bg-gray-800 border border-orange-700 rounded-xl px-3 py-3 text-sm text-white font-mono">{reg}</div>
-                          <p className="text-[11px] text-gray-500 mt-1">여유원재 등록 때 적힌 판번호입니다. 현물과 다르면 잔재관리에서 먼저 고치세요.</p>
+                          <p className="text-[11px] text-gray-500 mt-1"><T k="여유원재 등록 때 적힌 판번호입니다. 현물과 다르면 잔재관리에서 먼저 고치세요." /></p>
                         </div>
                       );
                       return (
                         <div>
                           <label className="text-xs text-gray-400 font-medium mb-1.5 block">
                             Heat NO {isSur
-                              ? <span className="text-red-400">* (여유원재 — 철판에 적힌 실물 판번호 입력)</span>
-                              : <span className="text-gray-600">(선택)</span>}
+                              ? <span className="text-red-400"><T k="* (여유원재 — 철판에 적힌 실물 판번호 입력)" /></span>
+                              : <span className="text-gray-600"><T k="(선택)" /></span>}
                           </label>
                           <input
                             type="text"
-                            placeholder={isSur ? "실물 판번호 입력" : "Heat NO"}
+                            placeholder={isSur ? L.inline("실물 판번호 입력") : "Heat NO"}
                             value={uHeatNo}
                             onChange={e => setUHeatNo(e.target.value)}
                             className={`w-full bg-gray-800 border rounded-xl px-3 py-3 text-sm text-white placeholder-gray-500 font-mono ${isSur ? "border-orange-700" : "border-gray-700"}`}
@@ -1001,7 +1010,7 @@ export default function FieldWorklog({
                     })()}
                     {/* 특이사항 */}
                     <div>
-                      <label className="text-xs text-gray-400 font-medium mb-1.5 block">특이사항</label>
+                      <label className="text-xs text-gray-400 font-medium mb-1.5 block"><T k="특이사항" /></label>
                       <textarea
                         rows={2}
                         value={uMemo}
@@ -1010,7 +1019,7 @@ export default function FieldWorklog({
                       />
                     </div>
                     {error && (
-                      <p className="text-sm text-red-400 bg-red-950 border border-red-800 rounded-xl px-3 py-2.5">{error}</p>
+                      <p className="text-sm text-red-400 bg-red-950 border border-red-800 rounded-xl px-3 py-2.5"><Msg text={error} /></p>
                     )}
                     <button
                       onClick={handleUrgentStart}
@@ -1018,7 +1027,7 @@ export default function FieldWorklog({
                       className="w-full bg-orange-600 active:bg-orange-700 disabled:opacity-50 rounded-xl py-4 flex items-center justify-center gap-3 text-white font-bold text-lg"
                     >
                       <Play size={20} fill="currentColor" />
-                      {loading ? "등록 중..." : "작업 시작"}
+                      <T k={loading ? "등록 중..." : "작업 시작"} />
                     </button>
                   </div>
                 </div>
@@ -1031,7 +1040,7 @@ export default function FieldWorklog({
             <div className="rounded-2xl bg-gray-900 border border-gray-800 overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-800">
                 <h3 className="text-sm font-semibold text-gray-300">
-                  오늘 돌발 완료 <span className="text-gray-500 font-normal">({eqLogs.filter(l => l.status === "COMPLETED" && l.isUrgent).length}건)</span>
+                  <T k="오늘 돌발 완료" /> <span className="text-gray-500 font-normal">({eqLogs.filter(l => l.status === "COMPLETED" && l.isUrgent).length}건)</span>
                 </h3>
               </div>
               <div className="divide-y divide-gray-800">
@@ -1040,7 +1049,7 @@ export default function FieldWorklog({
                     <div className="flex items-start justify-between gap-2">
                       <div className="space-y-1">
                         <p className="text-xs font-semibold text-orange-300 flex items-center gap-1">
-                          <Zap size={11} /> 돌발
+                          <Zap size={11} /> <T k="돌발" />
                           {log.urgentWork && (
                             <span className="font-mono text-gray-400 font-normal">
                               {log.urgentWork.urgentNo}
@@ -1053,7 +1062,7 @@ export default function FieldWorklog({
                           {log.endAt && <span className="text-green-500 ml-1">{fmtDuration(log.startAt, log.endAt)}</span>}
                         </p>
                       </div>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-orange-900 text-orange-400 flex-shrink-0">완료</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-orange-900 text-orange-400 flex-shrink-0"><T k="완료" /></span>
                     </div>
                   </div>
                 ))}
@@ -1067,23 +1076,23 @@ export default function FieldWorklog({
       {remnantPopup && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center">
           <div className="bg-gray-900 rounded-t-3xl w-full max-w-lg p-6 space-y-4 pb-8">
-            <h3 className="text-base font-bold text-white text-center">남은 잔재가 있나요?</h3>
-            <p className="text-xs text-gray-400 text-center">이번 작업에 사용한 자재가 남아있으면 등록해주세요</p>
+            <h3 className="text-base font-bold text-white text-center"><T k="남은 잔재가 있나요?" /></h3>
+            <p className="text-xs text-gray-400 text-center"><T k="이번 작업에 사용한 자재가 남아있으면 등록해주세요" /></p>
 
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
-                <input type="text" placeholder="재질 (예: AH36)" value={remForm.material}
+                <input type="text" placeholder={L.inline("재질 (예: AH36)")} value={remForm.material}
                   onChange={e => setRemForm(f => ({ ...f, material: e.target.value }))}
                   className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white placeholder-gray-500" />
-                <input type="number" placeholder="두께 (mm)" value={remForm.thickness}
+                <input type="number" placeholder={L.inline("두께 (mm)")} value={remForm.thickness}
                   onChange={e => setRemForm(f => ({ ...f, thickness: e.target.value }))}
                   className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white placeholder-gray-500" />
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <input type="number" placeholder="폭 mm (선택)" value={remForm.width}
+                <input type="number" placeholder={L.inline("폭 mm (선택)")} value={remForm.width}
                   onChange={e => setRemForm(f => ({ ...f, width: e.target.value }))}
                   className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white placeholder-gray-500" />
-                <input type="number" placeholder="길이 mm (선택)" value={remForm.length}
+                <input type="number" placeholder={L.inline("길이 mm (선택)")} value={remForm.length}
                   onChange={e => setRemForm(f => ({ ...f, length: e.target.value }))}
                   className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white placeholder-gray-500" />
               </div>
@@ -1093,12 +1102,12 @@ export default function FieldWorklog({
                 return (
                   <div>
                     <input type="number" inputMode="decimal"
-                      placeholder={auto ? `중량 kg — 자동 ${auto.toLocaleString()}kg (다르면 입력)` : "중량 kg * (폭·길이 넣으면 자동 계산)"}
+                      placeholder={auto ? L.inline("중량 kg — 자동 {n}kg (다르면 입력)", { n: auto.toLocaleString() }) : L.inline("중량 kg * (폭·길이 넣으면 자동 계산)")}
                       value={remForm.weight}
                       onChange={e => setRemForm(f => ({ ...f, weight: e.target.value }))}
                       className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white placeholder-gray-500" />
                     {auto != null && !remForm.weight && (
-                      <p className="mt-1 text-[11px] text-emerald-400">치수로 계산한 중량 {auto.toLocaleString()}kg 으로 등록됩니다.</p>
+                      <p className="mt-1 text-[11px] text-emerald-400"><T k="치수로 계산한 중량 {n}kg 으로 등록됩니다." v={{ n: auto.toLocaleString() }} /></p>
                     )}
                   </div>
                 );
@@ -1109,12 +1118,12 @@ export default function FieldWorklog({
               <button
                 onClick={handleRemnantNo}
                 className="py-4 rounded-xl bg-gray-700 text-white font-semibold text-sm active:bg-gray-600"
-              >없음</button>
+              ><T k="없음" /></button>
               <button
                 onClick={handleRemnantYes}
                 disabled={loading}
                 className="py-4 rounded-xl bg-blue-600 text-white font-bold text-sm active:bg-blue-700 disabled:opacity-50"
-              >{loading ? "등록 중..." : "있음 — 등록"}</button>
+              ><T k={loading ? "등록 중..." : "있음 — 등록"} /></button>
             </div>
           </div>
         </div>
@@ -1124,21 +1133,21 @@ export default function FieldWorklog({
       {leaveAsk && (
         <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-6">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-sm p-6 space-y-4">
-            <h3 className="text-base font-bold text-white text-center">입력한 잔재를 저장할까요?</h3>
+            <h3 className="text-base font-bold text-white text-center"><T k="입력한 잔재를 저장할까요?" /></h3>
             <p className="text-xs text-gray-400 text-center">
               {remForm.material || "-"} · {remForm.thickness || "-"}t · {remForm.weight || "-"}kg
             </p>
-            <p className="text-[11px] text-gray-500 text-center">저장하지 않고 나가면 이 입력은 사라집니다.</p>
+            <p className="text-[11px] text-gray-500 text-center"><T k="저장하지 않고 나가면 이 입력은 사라집니다." /></p>
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={discardRemnant}
                 className="py-4 rounded-xl bg-gray-700 text-white font-semibold text-sm active:bg-gray-600"
-              >취소 — 저장 안 함</button>
+              ><T k="취소 — 저장 안 함" /></button>
               <button
                 onClick={async () => { setLeaveAsk(false); await handleRemnantYes(); }}
                 disabled={loading}
                 className="py-4 rounded-xl bg-blue-600 text-white font-bold text-sm active:bg-blue-700 disabled:opacity-50"
-              >{loading ? "저장 중..." : "확인 — 저장"}</button>
+              ><T k={loading ? "저장 중..." : "확인 — 저장"} /></button>
             </div>
           </div>
         </div>
@@ -1156,8 +1165,8 @@ export default function FieldWorklog({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 {ongoing.status === "PAUSED"
-                  ? <><span className="w-3 h-3 bg-yellow-400 rounded-full" /><span className="font-bold text-yellow-300 text-base">절단 중단중</span></>
-                  : <><span className="w-3 h-3 bg-red-500 rounded-full animate-pulse" /><span className="font-bold text-red-300 text-base">절단 진행중</span></>}
+                  ? <><span className="w-3 h-3 bg-yellow-400 rounded-full" /><span className="font-bold text-yellow-300 text-base"><T k="절단 중단중" /></span></>
+                  : <><span className="w-3 h-3 bg-red-500 rounded-full animate-pulse" /><span className="font-bold text-red-300 text-base"><T k="절단 진행중" /></span></>}
               </div>
               <span className={`font-mono text-lg font-bold ${ongoing.status === "PAUSED" ? "text-yellow-300" : "text-red-300"}`}>
                 <LiveTimer startAt={ongoing.startAt} />
@@ -1166,7 +1175,7 @@ export default function FieldWorklog({
             <div className="space-y-1.5 text-sm">
               {ongoing.drawingNo && (
                 <div className="flex gap-3">
-                  <span className="text-gray-500 w-16">도면번호</span>
+                  <span className="text-gray-500 w-16"><T k="도면번호" /></span>
                   <span className="font-mono font-bold text-white">{ongoing.drawingNo}</span>
                 </div>
               )}
@@ -1178,33 +1187,33 @@ export default function FieldWorklog({
               )}
               {ongoing.project && (
                 <div className="flex gap-3">
-                  <span className="text-gray-500 w-16">호선/블록</span>
+                  <span className="text-gray-500 w-16"><T k="호선/블록" /></span>
                   <span className="text-gray-300">[{ongoing.project.projectCode}] {ongoing.project.projectName}</span>
                 </div>
               )}
               <div className="flex gap-3">
-                <span className="text-gray-500 w-16">작업자</span>
+                <span className="text-gray-500 w-16"><T k="작업자" /></span>
                 <span className="text-gray-300">{ongoing.operator}</span>
               </div>
               <div className="flex gap-3">
-                <span className="text-gray-500 w-16">시작</span>
+                <span className="text-gray-500 w-16"><T k="시작" /></span>
                 <span className="text-gray-300">{fmtTime(ongoing.startAt)}</span>
               </div>
               {ongoing.memo && (
                 <div className="flex gap-3">
-                  <span className="text-gray-500 w-16">특이사항</span>
+                  <span className="text-gray-500 w-16"><T k="특이사항" /></span>
                   <span className="text-gray-400">{ongoing.memo}</span>
                 </div>
               )}
               {/* 중단 이력 표시 */}
               {(ongoing.pauses?.length ?? 0) > 0 && (
                 <div className="flex gap-3">
-                  <span className="text-gray-500 w-16">중단이력</span>
+                  <span className="text-gray-500 w-16"><T k="중단이력" /></span>
                   <div className="space-y-0.5">
                     {ongoing.pauses!.map((p, i) => (
                       <div key={i} className="text-[11px] text-gray-400">
-                        {PAUSE_REASON_LABEL[p.reason]}{p.reasonText ? ` (${p.reasonText})` : ""}
-                        {" · "}{fmtTime(p.pausedAt)}{p.resumedAt ? ` ~ ${fmtTime(p.resumedAt)}` : " ~ 재개 대기중"}
+                        <T k={PAUSE_REASON_LABEL[p.reason] ?? p.reason} />{p.reasonText ? ` (${p.reasonText})` : ""}
+                        {" · "}{fmtTime(p.pausedAt)}{p.resumedAt ? ` ~ ${fmtTime(p.resumedAt)}` : <> ~ <T k="재개 대기중" /></>}
                       </div>
                     ))}
                   </div>
@@ -1215,19 +1224,19 @@ export default function FieldWorklog({
             {/* ─ 진행/중단 공통 사유 dropdown — STARTED 일 때만 표시 ─ */}
             {ongoing.status === "STARTED" && (
               <div className="space-y-2">
-                <p className="text-xs text-gray-400">중단 사유 선택 후 [절단 중단] 버튼을 누르세요</p>
+                <p className="text-xs text-gray-400"><T k="중단 사유 선택 후 [절단 중단] 버튼을 누르세요" /></p>
                 <select
                   value={pauseReason}
                   onChange={e => { setPauseReason(e.target.value); setPauseReasonText(""); }}
                   className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
                 >
-                  <option value="">-- 중단 사유 선택 --</option>
-                  {PAUSE_REASON_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  <option value="">{L.inline("-- 중단 사유 선택 --")}</option>
+                  {PAUSE_REASON_OPTIONS.map(o => <option key={o.value} value={o.value}>{L.inline(o.label)}</option>)}
                 </select>
                 {pauseReason === "OTHER" && (
                   <input
                     type="text"
-                    placeholder="사유 직접 입력"
+                    placeholder={L.inline("사유 직접 입력")}
                     value={pauseReasonText}
                     onChange={e => setPauseReasonText(e.target.value)}
                     className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500"
@@ -1244,7 +1253,7 @@ export default function FieldWorklog({
                 className="w-full bg-yellow-600 active:bg-yellow-700 rounded-xl py-3.5 flex items-center justify-center gap-2 text-white font-bold text-base transition-colors disabled:opacity-40"
               >
                 <Pause size={18} fill="currentColor" />
-                절단 중단
+                <T k="절단 중단" />
               </button>
             ) : (
               <button
@@ -1253,7 +1262,7 @@ export default function FieldWorklog({
                 className="w-full bg-yellow-500 active:bg-yellow-600 rounded-xl py-3.5 flex items-center justify-center gap-3 text-black font-bold text-base transition-colors disabled:opacity-50"
               >
                 <Play size={18} fill="currentColor" />
-                절단 재개
+                <T k="절단 재개" />
               </button>
             )}
 
@@ -1262,10 +1271,10 @@ export default function FieldWorklog({
               <button
                 onClick={() => handleNightOff(ongoing.id)}
                 disabled={loading || ongoing.status === "PAUSED"}
-                title={ongoing.status === "PAUSED" ? "재개 후 사용하세요" : "퇴근/야간이월 — 다음날 이어서 절단"}
+                title={ongoing.status === "PAUSED" ? L.inline("재개 후 사용하세요") : L.inline("퇴근/야간이월 — 다음날 이어서 절단")}
                 className="flex-1 bg-purple-600 active:bg-purple-700 rounded-xl py-3.5 flex items-center justify-center gap-2 text-white font-bold text-sm transition-colors disabled:opacity-40"
               >
-                퇴근/야간이월
+                <T k="퇴근/야간이월" />
               </button>
               <button
                 onClick={() => handleComplete(ongoing.id)}
@@ -1273,7 +1282,7 @@ export default function FieldWorklog({
                 className="flex-1 bg-red-600 active:bg-red-700 rounded-xl py-3.5 flex items-center justify-center gap-2 text-white font-bold text-sm transition-colors disabled:opacity-60"
               >
                 <Square size={16} fill="currentColor" />
-                절단 완료
+                <T k="절단 완료" />
               </button>
             </div>
           </div>
@@ -1290,7 +1299,7 @@ export default function FieldWorklog({
                 {s1Done ? <Check size={13} /> : "1"}
               </span>
               <div className="text-left">
-                <p className="text-sm font-semibold text-white">세션 설정</p>
+                <p className="text-sm font-semibold text-white"><T k="세션 설정" /></p>
                 {s1Done && (
                   <p className="text-xs text-blue-300 mt-0.5">
                     {selBlock ? `[${selBlock.projectCode}] ${selBlock.projectName}` : ""} · {selWorker?.name}
@@ -1315,7 +1324,7 @@ export default function FieldWorklog({
             <div className="border-t border-gray-700 px-4 pb-4 pt-3 space-y-3">
               {/* 호선 */}
               <div>
-                <label className="text-xs text-gray-400 font-medium mb-1.5 block">호선 선택</label>
+                <label className="text-xs text-gray-400 font-medium mb-1.5 block"><T k="호선 선택" /></label>
                 <select
                   value={s1.vesselCode}
                   onChange={e => {
@@ -1324,7 +1333,7 @@ export default function FieldWorklog({
                   }}
                   className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white appearance-none"
                 >
-                  <option value="">-- 호선 선택 --</option>
+                  <option value="">{L.inline("-- 호선 선택 --")}</option>
                   {vesselCodes.map(code => (
                     <option key={code} value={code}>{code}</option>
                   ))}
@@ -1333,14 +1342,14 @@ export default function FieldWorklog({
 
               {/* 블록 */}
               <div>
-                <label className="text-xs text-gray-400 font-medium mb-1.5 block">블록 선택</label>
+                <label className="text-xs text-gray-400 font-medium mb-1.5 block"><T k="블록 선택" /></label>
                 <select
                   value={s1.projectId}
                   onChange={e => handleBlockChange(e.target.value)}
                   disabled={!s1.vesselCode}
                   className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white appearance-none disabled:opacity-40"
                 >
-                  <option value="">-- 블록 선택 --</option>
+                  <option value="">{L.inline("-- 블록 선택 --")}</option>
                   {blocksForVessel.map(p => (
                     <option key={p.id} value={p.id}>{p.projectName}</option>
                   ))}
@@ -1349,18 +1358,18 @@ export default function FieldWorklog({
 
               {/* 작업자 */}
               <div>
-                <label className="text-xs text-gray-400 font-medium mb-1.5 block">작업자 선택</label>
+                <label className="text-xs text-gray-400 font-medium mb-1.5 block"><T k="작업자 선택" /></label>
                 <select
                   value={s1.operatorId}
                   onChange={e => setS1(s => ({ ...s, operatorId: e.target.value }))}
                   className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white appearance-none"
                 >
-                  <option value="">-- 작업자 선택 --</option>
+                  <option value="">{L.inline("-- 작업자 선택 --")}</option>
                   {workers.map(w => (
                     <option key={w.id} value={w.id}>{w.name}{w.nationality ? ` (${w.nationality})` : ""}</option>
                   ))}
                 </select>
-                {workers.length === 0 && <p className="text-xs text-gray-500 mt-1">인원관리에서 먼저 등록하세요.</p>}
+                {workers.length === 0 && <p className="text-xs text-gray-500 mt-1"><T k="인원관리에서 먼저 등록하세요." /></p>}
               </div>
 
               {s1Done && (
@@ -1368,7 +1377,7 @@ export default function FieldWorklog({
                   onClick={() => setStep1Open(false)}
                   className="w-full bg-blue-600 active:bg-blue-700 rounded-xl py-3 text-white font-semibold text-sm"
                 >
-                  확인 →
+                  <T k="확인 →" />
                 </button>
               )}
             </div>
@@ -1380,7 +1389,7 @@ export default function FieldWorklog({
           <div className="rounded-2xl border-2 border-green-600 bg-gray-900 overflow-hidden">
             <div className="px-4 py-3 bg-green-950 border-b border-green-800 flex items-center gap-2">
               <span className="w-6 h-6 rounded-full bg-green-600 text-white flex items-center justify-center text-xs font-bold">2</span>
-              <span className="text-sm font-semibold text-green-300">절단 등록</span>
+              <span className="text-sm font-semibold text-green-300"><T k="절단 등록" /></span>
               <span className="text-xs text-gray-500 ml-1">
                 {selBlock ? `[${selBlock.projectCode}] ${selBlock.projectName}` : ""} · {selWorker?.name}
               </span>
@@ -1390,13 +1399,13 @@ export default function FieldWorklog({
               {/* 도면번호 검색 */}
               <div>
                 <label className="text-xs text-gray-400 font-medium mb-1.5 block">
-                  도면번호 선택 <span className="text-red-400">*</span>
+                  <T k="도면번호 선택" /> <span className="text-red-400">*</span>
                   {dwLoading && <Loader2 size={11} className="inline ml-1 animate-spin" />}
                 </label>
                 {drawings.length > 5 && (
                   <input
                     type="text"
-                    placeholder="도면번호 검색..."
+                    placeholder={L.inline("도면번호 검색...")}
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                     className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-500 mb-2"
@@ -1405,7 +1414,7 @@ export default function FieldWorklog({
                 <div className="space-y-2 max-h-52 overflow-y-auto">
                   {filteredDrawings.length === 0 && !dwLoading && (
                     <p className="text-xs text-gray-500 py-2">
-                      {!s1.projectId ? "블록을 먼저 선택하세요" : "입고 완료된 강재가 없습니다"}
+                      <T k={!s1.projectId ? "블록을 먼저 선택하세요" : "입고 완료된 강재가 없습니다"} />
                     </p>
                   )}
                   {filteredDrawings.map(d => (
@@ -1419,10 +1428,10 @@ export default function FieldWorklog({
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <p className="font-mono font-semibold text-sm">{d.drawingNo ?? "(번호없음)"}</p>
+                        <p className="font-mono font-semibold text-sm">{d.drawingNo ?? <T k="(번호없음)" />}</p>
                         {d.assignedRemnantId && (() => {
                           const b = REMNANT_BADGE[d.assignedRemnant?.type ?? ""] ?? { label: "잔재사용", cls: "bg-gray-600" };
-                          return <span className={`text-xs px-1.5 py-0.5 rounded ${b.cls} text-white font-medium`}>{b.label}</span>;
+                          return <span className={`text-xs px-1.5 py-0.5 rounded ${b.cls} text-white font-medium`}><T k={b.label} /></span>;
                         })()}
                       </div>
                       <p className="text-xs text-gray-400 mt-0.5">
@@ -1437,16 +1446,16 @@ export default function FieldWorklog({
               {/* 선택된 도면 정보 */}
               {selDrawing && (
                 <div className="bg-gray-800 rounded-xl px-3 py-2.5 text-xs text-gray-400 space-y-1">
-                  <div className="flex justify-between"><span>재질</span><span className="text-white font-medium">{selDrawing.material}</span></div>
-                  <div className="flex justify-between"><span>두께</span><span className="text-white font-medium">{selDrawing.thickness}mm</span></div>
-                  <div className="flex justify-between"><span>폭 × 길이</span><span className="text-white font-medium">{selDrawing.width} × {selDrawing.length}</span></div>
+                  <div className="flex justify-between"><span><T k="재질" /></span><span className="text-white font-medium">{selDrawing.material}</span></div>
+                  <div className="flex justify-between"><span><T k="두께" /></span><span className="text-white font-medium">{selDrawing.thickness}mm</span></div>
+                  <div className="flex justify-between"><span><T k="폭 × 길이" /></span><span className="text-white font-medium">{selDrawing.width} × {selDrawing.length}</span></div>
                 </div>
               )}
 
               {/* Heat NO — 등록잔재/현장잔재 사용 행은 판번호 불필요, 여유원재는 실물 판번호 입력 */}
               {isRemnantDraw && !isSurplusDraw && (
                 <div className="bg-orange-950 border border-orange-700 rounded-xl px-3 py-2.5 text-xs text-orange-300">
-                  {selDrawing?.assignedRemnant?.type === "REMNANT" ? "현장잔재" : "등록잔재"} 사용 절단 — 판번호 없이 작업 시작 가능합니다.
+                  <T k={selDrawing?.assignedRemnant?.type === "REMNANT" ? "현장잔재 사용 절단 — 판번호 없이 작업 시작 가능합니다." : "등록잔재 사용 절단 — 판번호 없이 작업 시작 가능합니다."} />
                 </div>
               )}
               {isSurplusDraw && (() => {
@@ -1456,26 +1465,26 @@ export default function FieldWorklog({
                 if (reg) return (
                   <div>
                     <label className="text-xs text-gray-400 font-medium mb-1.5 block">
-                      판번호(Heat NO) <span className="text-orange-400">(여유원재 — 등록된 판번호)</span>
+                      <T k="판번호(Heat NO)" /> <span className="text-orange-400"><T k="(여유원재 — 등록된 판번호)" /></span>
                     </label>
                     <div className="w-full bg-gray-800 border border-orange-700 rounded-xl px-3 py-3 text-sm text-white font-mono">{reg}</div>
-                    <p className="text-[11px] text-gray-500 mt-1">여유원재 등록 때 적힌 판번호입니다. 현물과 다르면 잔재관리에서 먼저 고치세요.</p>
+                    <p className="text-[11px] text-gray-500 mt-1"><T k="여유원재 등록 때 적힌 판번호입니다. 현물과 다르면 잔재관리에서 먼저 고치세요." /></p>
                   </div>
                 );
                 return (
                   <div>
                     <label className="text-xs text-gray-400 font-medium mb-1.5 block">
-                      판번호(Heat NO) <span className="text-red-400">* (여유원재 — 철판에 적힌 실물 판번호 입력)</span>
+                      <T k="판번호(Heat NO)" /> <span className="text-red-400"><T k="* (여유원재 — 철판에 적힌 실물 판번호 입력)" /></span>
                     </label>
                     <input
                       value={heatNo}
                       onChange={e => setHeatNo(e.target.value)}
-                      placeholder="실물 판번호 입력"
+                      placeholder={L.inline("실물 판번호 입력")}
                       className="w-full bg-gray-800 border border-orange-700 rounded-xl px-3 py-3 text-sm text-white placeholder-gray-500 font-mono"
                     />
                     {heatNo && (
                       <p className="text-[11px] text-amber-300 bg-amber-950/50 border border-amber-800 rounded-lg px-2.5 py-1.5 mt-1.5">
-                        ⚠ 입력한 판번호 <span className="font-mono font-bold text-amber-200">{heatNo}</span> 가 현물과 <b>일치하는지 다시 확인</b>하세요. 이 값이 여유원재에 기록됩니다.
+                        ⚠ 입력한 판번호 <span className="font-mono font-bold text-amber-200">{heatNo}</span> 가 현물과 <b>일치하는지 다시 확인</b>하세요. 이 값이 여유원재에 기록됩니다.<Tr k="입력한 판번호가 현물과 일치하는지 다시 확인하세요. 이 값이 여유원재에 기록됩니다." />
                       </p>
                     )}
                   </div>
@@ -1483,11 +1492,11 @@ export default function FieldWorklog({
               })()}
               {!isRemnantDraw && <div>
                 <label className="text-xs text-gray-400 font-medium mb-1.5 block">
-                  판번호(Heat NO) <span className="text-gray-600">(필수)</span>
+                  <T k="판번호(Heat NO)" /> <span className="text-gray-600"><T k="(필수)" /></span>
                 </label>
                 <div className="space-y-1.5">
                   {heatLoading && (
-                    <p className="text-xs text-gray-500 px-1">판번호 목록 불러오는 중...</p>
+                    <p className="text-xs text-gray-500 px-1"><T k="판번호 목록 불러오는 중..." /></p>
                   )}
 
                   {/* 판번호 선택 목록 */}
@@ -1517,7 +1526,7 @@ export default function FieldWorklog({
                                 <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-sans font-semibold ${
                                   other ? "bg-amber-500/20 text-amber-300" : "bg-gray-700 text-gray-400"
                                 }`}>
-                                  {h.vesselCode}{other ? " · 타호선" : ""}
+                                  {h.vesselCode}{other ? <> · <T k="타호선" /></> : ""}
                                 </span>
                               )}
                             </button>
@@ -1529,13 +1538,13 @@ export default function FieldWorklog({
 
                   {/* 목록 없을 때 안내 */}
                   {!heatLoading && drawingId && heatOptions.length === 0 && (
-                    <p className="text-xs text-yellow-400 px-1">등록된 판번호가 없습니다. 강재입출고에서 판번호를 먼저 등록하세요.</p>
+                    <p className="text-xs text-yellow-400 px-1"><T k="등록된 판번호가 없습니다. 강재입출고에서 판번호를 먼저 등록하세요." /></p>
                   )}
 
                   {/* 선택 후 재확인 경고 */}
                   {heatNo && (
                     <p className="text-[11px] text-amber-300 bg-amber-950/50 border border-amber-800 rounded-lg px-2.5 py-1.5">
-                      ⚠ 선택한 판번호 <span className="font-mono font-bold text-amber-200">{heatNo}</span> 가 현물(실물 철판)과 <b>일치하는지 다시 확인</b>하세요.
+                      ⚠ 선택한 판번호 <span className="font-mono font-bold text-amber-200">{heatNo}</span> 가 현물(실물 철판)과 <b>일치하는지 다시 확인</b>하세요.<Tr k="선택한 판번호가 현물(실물 철판)과 일치하는지 다시 확인하세요." />
                     </p>
                   )}
                 </div>
@@ -1543,10 +1552,10 @@ export default function FieldWorklog({
 
               {/* 특이사항 */}
               <div>
-                <label className="text-xs text-gray-400 font-medium mb-1.5 block">특이사항 <span className="text-gray-600">(선택)</span></label>
+                <label className="text-xs text-gray-400 font-medium mb-1.5 block"><T k="특이사항" /> <span className="text-gray-600"><T k="(선택)" /></span></label>
                 <textarea
                   rows={2}
-                  placeholder="특이사항"
+                  placeholder={L.inline("특이사항")}
                   value={memo}
                   onChange={e => setMemo(e.target.value)}
                   className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm text-white placeholder-gray-500 resize-none"
@@ -1554,7 +1563,7 @@ export default function FieldWorklog({
               </div>
 
               {error && (
-                <p className="text-sm text-red-400 bg-red-950 border border-red-800 rounded-xl px-3 py-2.5">{error}</p>
+                <p className="text-sm text-red-400 bg-red-950 border border-red-800 rounded-xl px-3 py-2.5"><Msg text={error} /></p>
               )}
 
               <button
@@ -1563,7 +1572,7 @@ export default function FieldWorklog({
                 className="w-full bg-green-600 active:bg-green-700 disabled:opacity-50 rounded-xl py-4 flex items-center justify-center gap-3 text-white font-bold text-lg transition-colors"
               >
                 <Play size={20} fill="currentColor" />
-                {loading ? "등록 중..." : "절단 시작"}
+                <T k={loading ? "등록 중..." : "절단 시작"} />
               </button>
             </div>
           </div>
@@ -1571,7 +1580,7 @@ export default function FieldWorklog({
 
         {!s1Done && !ongoing && (
           <div className="rounded-2xl border-2 border-dashed border-gray-800 p-8 text-center text-gray-600 text-sm">
-            1단계 세션을 설정하면 절단 등록이 활성화됩니다
+            <T k="1단계 세션을 설정하면 절단 등록이 활성화됩니다" />
           </div>
         )}
 
@@ -1579,7 +1588,7 @@ export default function FieldWorklog({
         {doneLogs.length > 0 && (
           <div className="rounded-2xl bg-gray-900 border border-gray-800 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-800">
-              <h3 className="text-sm font-semibold text-gray-300">오늘 완료 <span className="text-gray-500 font-normal">({doneLogs.length}건)</span></h3>
+              <h3 className="text-sm font-semibold text-gray-300"><T k="오늘 완료" /> <span className="text-gray-500 font-normal">({doneLogs.length}건)</span></h3>
             </div>
             <div className="divide-y divide-gray-800">
               {doneLogs.map(log => (
@@ -1599,7 +1608,7 @@ export default function FieldWorklog({
                         {log.endAt && <span className="text-green-500 ml-1">{fmtDuration(log.startAt, log.endAt)}</span>}
                       </p>
                     </div>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-green-900 text-green-400 flex-shrink-0">완료</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-green-900 text-green-400 flex-shrink-0"><T k="완료" /></span>
                   </div>
                 </div>
               ))}
