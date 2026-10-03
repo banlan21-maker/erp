@@ -37,7 +37,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { applyCuttingComplete, applyCuttingRestore } from "@/lib/cutting-complete";
 import { remnantNotReadyMessage } from "@/lib/remnant-ready-guard";
-import { isZeroWork, ZERO_WORK_MESSAGE } from "@/lib/cutting-time";
+import { isZeroWork, ZERO_WORK_MESSAGE, calcTotalMs, FIELD_MIN_WORK_MS, fieldTooShortMessage } from "@/lib/cutting-time";
 
 /**
  * 사용자에게 그대로 보여줄 안내 — 서버 고장이 아니라 규칙 위반이다.
@@ -111,6 +111,21 @@ export async function PATCH(
       // where-기반 compare-and-swap 으로 atomic 보호.
       // (CAS + 후속 동기화 전체를 아래 $transaction 으로 묶어 부분실패 시 전부 롤백)
       const { endAt: completeEndAt, startAt: completeStartAt } = body;
+      // 최소 작업시간 5분 — [시작]·[완료]를 1초 간격으로 눌러 끝난 작업을 몰아서 입력하던 것 방지(2026-10-03).
+      //   작업시간 = 종료(지금)−시작−야간이월 (lib/cutting-time). 아직 완료 전인 기록만 본다(이미 완료면 아래 멱등 처리).
+      {
+        const cur = await prisma.cuttingLog.findUnique({
+          where: { id }, select: { status: true, startAt: true, pauses: { select: { reason: true, pausedAt: true, resumedAt: true } } },
+        });
+        if (cur && cur.status !== "COMPLETED") {
+          const st = completeStartAt ? new Date(completeStartAt) : cur.startAt;
+          const en = completeEndAt ? new Date(completeEndAt) : new Date();
+          const ms = calcTotalMs(st, en, cur.pauses.map(p => ({ ...p, resumedAt: p.resumedAt ?? en })));
+          if (ms < FIELD_MIN_WORK_MS) {
+            return NextResponse.json({ success: false, error: fieldTooShortMessage(Math.floor(ms / 60_000)) }, { status: 409 });
+          }
+        }
+      }
       // 완료 부작용 전체(CAS + DrawingList/SteelPlan/Heat/Remnant + sync)를 한 트랜잭션으로 —
       // 중간 실패 시 CAS 포함 전부 롤백되어 half-synced + 재시도 차단 상태를 방지.
       const outcome = await prisma.$transaction(async (tx) => {

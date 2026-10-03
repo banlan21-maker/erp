@@ -80,3 +80,9 @@ export function isZeroWork(startAt: Date | string, endAt: Date | string | null, 
 
 /** 10분 미만은 경고(저장은 가능) — 아무리 작은 작업도 실제로는 10분보다 짧을 수 없다(현장 의견) */
 export const SHORT_WORK_MS = 10 * 60_000;
+
+/** 현장 작업일보 [완료] 최소 작업시간 (2026-10-03) — [시작]·[완료]를 연달아 눌러 몰아서 입력하는 것 방지 */
+export const FIELD_MIN_WORK_MS = 5 * 60_000;
+/** lib/i18n/field-dict.ts FIELD_PATTERNS 에 같은 문장 번역이 있다 — 문구를 바꾸면 그쪽 정규식도 같이 */
+export const fieldTooShortMessage = (elapsedMin: number) =>
+  `작업을 시작한 지 ${elapsedMin}분밖에 지나지 않았습니다. 시작 후 5분이 지나야 완료할 수 있습니다.`;
