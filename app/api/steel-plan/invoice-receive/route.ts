@@ -5,16 +5,18 @@ import { prisma } from "@/lib/prisma";
 import { genBatchNo } from "@/lib/steel-batch-no";
 import { syncDrawingListBySpecs } from "@/lib/sync-drawing-spec";
 import { validateName } from "@/lib/validate-name";
+import { classifyReceipt, applyReceipt, ReceiptConflict, type ReceiptKind } from "@/lib/invoice-receipt";
 
 /**
- * 송장 스캔 입고 ② 확정 — POST { fileName, receivedAt: "YYYY-MM-DD", rows: [...], dryRun? }  (2026-10-02)
+ * 송장 스캔 입고 ② 확정 — POST { fileName, receivedAt: "YYYY-MM-DD", rows: [...], dryRun?, classifyOnly? }  (2026-10-02 · 10-03 개정)
  *
- * 검수한 행을 한 묶음(uploadBatchNo)으로 등록한다 — 사무실이 송장을 보고 만들던
- * 「입고 LIST」 엑셀 업로드 + [일괄 입고]와 같은 결과를 한 번에:
- *   강재(SteelPlan) = 입고(RECEIVED) · 입고일 · 보관위치,  판번호(SteelPlanHeat) = 대기(WAITING).
- * 기존 [일괄 입고]는 사양만 보고 다른 묶음의 대기 강재를 집을 수 있어 쓰지 않는다 — 송장에 적힌 판만 새로 만든다.
- * sourceFile = "송장스캔(파일명)" — 어디서 들어왔는지 목록에서 보이게. PDF 자체는 저장하지 않는다.
- * 같은 판번호가 이미 있으면 통째로 거절(이중 입고 방지). dryRun=true 면 끝까지 해 보고 되돌린다(검증용).
+ * 재강사 목록으로 먼저 등록(REGISTERED)해 둔 강재를 송장대로 입고로 바꾼다 — 판정은 lib/invoice-receipt:
+ *   입고(목록 판번호) / 입고 + 판번호 추가(목록에 판번호가 없던 재강사) / 목록에 없는 강재는 새로 등록하며 입고.
+ *   이미 입고됐거나 절단·출고된 판번호가 들어 있으면 통째로 거절.
+ * 화면 값을 믿지 않고 트랜잭션 안에서 다시 판정해 적용한다(그사이 다른 사람이 입고했으면 조건부 갱신에서 걸러 거절).
+ * 판번호를 추가할 땐 그 강재의 업로드 묶음에 넣는다(묶음 삭제 시 같이 정리되게). 새 등록분은 새 묶음 하나.
+ * sourceFile = "송장스캔(파일명)". PDF 자체는 저장하지 않는다.
+ * classifyOnly=true: 판정만 돌려준다(화면에서 칸을 고친 뒤 [다시 대조]). dryRun=true: 끝까지 해 보고 되돌림.
  */
 
 type Row = { vesselCode: string; material: string; thickness: number; width: number; length: number; heatNo: string; storageLocation?: string | null };
@@ -36,6 +38,12 @@ export async function POST(req: NextRequest) {
       heatNo: String(r.heatNo ?? "").trim().toUpperCase(),
       storageLocation: String(r.storageLocation ?? "").trim() || null,
     }));
+
+    if (b?.classifyOnly === true) {
+      const d = await classifyReceipt(prisma, items);
+      return NextResponse.json({ success: true, decisions: d });
+    }
+
     for (const [i, it] of items.entries()) {
       const bad = !it.vesselCode ? "호선" : !it.material ? "재질" : !(it.thickness > 0) ? "두께" : !(it.width > 0) ? "폭" : !(it.length > 0) ? "길이" : !it.heatNo ? "판번호" : null;
       if (bad) return NextResponse.json({ success: false, error: `${i + 1}번째 행(${it.heatNo || "판번호 없음"})의 ${bad}이(가) 비어 있거나 잘못됐습니다.` }, { status: 400 });
@@ -46,45 +54,26 @@ export async function POST(req: NextRequest) {
     if (dupIn.length) return NextResponse.json({ success: false, error: `같은 판번호가 두 번 들어 있습니다: ${[...new Set(dupIn)].join(", ")}` }, { status: 400 });
 
     const sourceFile = `송장스캔(${fileName})`;
-    let result: { uploadBatchNo: string; count: number };
+    let result: { counts: Record<ReceiptKind, number>; newBatch: string | null };
+    let synced: { vesselCode: string; material: string; thickness: number; width: number; length: number }[] = [];
     try {
       result = await prisma.$transaction(async (tx) => {
-        const exist = await tx.steelPlanHeat.findMany({
-          where: { heatNo: { in: items.map(i => i.heatNo), mode: "insensitive" } },
-          select: { heatNo: true, uploadBatchNo: true },
-        });
-        if (exist.length) throw new Rollback({ conflict: exist.map(e => `${e.heatNo}(${e.uploadBatchNo ?? "-"})`) });
-
-        const uploadBatchNo = await genBatchNo(tx);
-        const created = await tx.steelPlan.createMany({
-          data: items.map(i => ({
-            vesselCode: i.vesselCode, material: i.material, thickness: i.thickness, width: i.width, length: i.length,
-            status: "RECEIVED" as const, receivedAt, storageLocation: i.storageLocation, sourceFile, uploadBatchNo,
-          })),
-        });
-        await tx.steelPlanHeat.createMany({
-          data: items.map(i => ({
-            vesselCode: i.vesselCode, material: i.material, thickness: i.thickness, width: i.width, length: i.length,
-            heatNo: i.heatNo, sourceFile, uploadBatchNo,
-          })),
-        });
-        const res = { uploadBatchNo, count: created.count };
-        if (b?.dryRun === true) throw new Rollback({ dryRun: res });
+        const ds = await classifyReceipt(tx, items);   // 화면 값 말고 지금 DB 로 다시 판정
+        const res = await applyReceipt(tx, items, ds, { receivedAt, sourceFile, genBatch: () => genBatchNo(tx) });
+        synced = ds.map(d => ({ vesselCode: d.vesselCode, material: d.material, thickness: d.thickness, width: d.width, length: d.length }));
+        if (b?.dryRun === true) throw new Rollback(res);
         return res;
-      });
+      }, { maxWait: 5000, timeout: 30000 });
     } catch (e) {
-      if (e instanceof Rollback) {
-        const r = e.result as { conflict?: string[]; dryRun?: unknown };
-        if (r.conflict) return NextResponse.json({ success: false, error: `이미 등록된 판번호가 있어 입고하지 않았습니다: ${r.conflict.join(", ")}` }, { status: 409 });
-        return NextResponse.json({ success: true, dryRun: true, ...(r.dryRun as object) });
-      }
+      if (e instanceof ReceiptConflict) return NextResponse.json({ success: false, error: e.message }, { status: 409 });
+      if (e instanceof Rollback) return NextResponse.json({ success: true, dryRun: true, ...(e.result as object) });
       throw e;
     }
 
-    // 새 강재로 '주의' 도면이 풀릴 수 있다 — 엑셀 업로드와 같은 동기화
-    await syncDrawingListBySpecs(items.map(i => ({ vesselCode: i.vesselCode, material: i.material, thickness: i.thickness, width: i.width, length: i.length })));
+    // 입고로 '대기' 도면이 '입고완료'로 바뀔 수 있다 — 엑셀 업로드·일괄 입고와 같은 동기화
+    await syncDrawingListBySpecs(synced);
 
-    return NextResponse.json({ success: true, ...result });
+    return NextResponse.json({ success: true, count: items.length, ...result });
   } catch (e) {
     console.error("[POST /api/steel-plan/invoice-receive]", e);
     return NextResponse.json({ success: false, error: e instanceof Error ? e.message : "입고 오류" }, { status: 500 });

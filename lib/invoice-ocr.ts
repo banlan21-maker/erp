@@ -56,7 +56,8 @@ export function parseInvoice(pages: OcrPage[]): { rows: ParsedRow[]; bizNos: str
   const dates = new Set<string>();
 
   pages.forEach((pg, pi) => {
-    const items = pg.items.map(it => ({ ...it, c: clean(it.t) }));
+    // 위→아래, 왼→오른쪽 순으로 — 송장 순서대로 행이 나오게(서버가 페이지를 바로 세워 준다)
+    const items = pg.items.map(it => ({ ...it, c: clean(it.t) })).sort((a, b) => a.y - b.y || a.x - b.x);
     for (const it of items) {
       for (const m of it.c.matchAll(BIZ)) bizNos.add(m[0]);
       const d = it.t.match(DATE);
